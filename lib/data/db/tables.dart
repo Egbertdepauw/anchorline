@@ -130,6 +130,7 @@ class DiveComputers extends Table {
 class OxygenCells extends Table {
   TextColumn get id => text()();
   IntColumn get slot => integer()(); // 1, 2, or 3
+  TextColumn get label => text().nullable()(); // e.g. "Analytical R-22D #1234"
   IntColumn get installedDate => integer().nullable()();
   IntColumn get retiredDate => integer().nullable()();
   TextColumn get notes => text().nullable()();
@@ -160,6 +161,43 @@ class ScrubberSessions extends Table {
 
   @override
   Set<Column> get primaryKey => {id};
+}
+
+/// User-managed cylinders (O2, diluent, bailout, offboard).
+class Cylinders extends Table {
+  TextColumn get id => text()();
+  TextColumn get label => text()(); // "AL40 stage", "12L steel"
+  TextColumn get role => text()(); // 'oxygen' | 'diluent' | 'bailout' | 'offboard'
+  IntColumn get bailoutOrder => integer().nullable()(); // only when role == 'bailout'
+  RealColumn get volumeLiters => real()();
+  IntColumn get workingPressureBar => integer()();
+  TextColumn get gasMix => text().nullable()(); // "21/35", "100", null
+  TextColumn get notes => text().nullable()();
+
+  IntColumn get createdAt => integer()();
+  IntColumn get updatedAt => integer()();
+  IntColumn get deletedAt => integer().nullable()();
+  IntColumn get version => integer().withDefault(const Constant(1))();
+  IntColumn get syncStatus => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Per-DC mapping from pressure-channel index to a Cylinder.
+class PressureMappings extends Table {
+  TextColumn get diveComputerId => text()();
+  IntColumn get channelIndex => integer()(); // 0, 1, 2, ... as logged
+  TextColumn get cylinderId => text().nullable()(); // FK to Cylinders.id; null = unmapped
+
+  IntColumn get createdAt => integer()();
+  IntColumn get updatedAt => integer()();
+  IntColumn get deletedAt => integer().nullable()();
+  IntColumn get version => integer().withDefault(const Constant(1))();
+  IntColumn get syncStatus => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {diveComputerId, channelIndex};
 }
 
 /// Import state for incremental sync per dive computer.

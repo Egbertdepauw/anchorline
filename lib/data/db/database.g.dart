@@ -3648,6 +3648,15 @@ class $OxygenCellsTable extends OxygenCells
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
+  @override
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _installedDateMeta = const VerificationMeta(
     'installedDate',
   );
@@ -3740,6 +3749,7 @@ class $OxygenCellsTable extends OxygenCells
   List<GeneratedColumn> get $columns => [
     id,
     slot,
+    label,
     installedDate,
     retiredDate,
     notes,
@@ -3773,6 +3783,12 @@ class $OxygenCellsTable extends OxygenCells
       );
     } else if (isInserting) {
       context.missing(_slotMeta);
+    }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
     }
     if (data.containsKey('installed_date')) {
       context.handle(
@@ -3849,6 +3865,10 @@ class $OxygenCellsTable extends OxygenCells
         DriftSqlType.int,
         data['${effectivePrefix}slot'],
       )!,
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      ),
       installedDate: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}installed_date'],
@@ -3893,6 +3913,7 @@ class $OxygenCellsTable extends OxygenCells
 class OxygenCell extends DataClass implements Insertable<OxygenCell> {
   final String id;
   final int slot;
+  final String? label;
   final int? installedDate;
   final int? retiredDate;
   final String? notes;
@@ -3904,6 +3925,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
   const OxygenCell({
     required this.id,
     required this.slot,
+    this.label,
     this.installedDate,
     this.retiredDate,
     this.notes,
@@ -3918,6 +3940,9 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['slot'] = Variable<int>(slot);
+    if (!nullToAbsent || label != null) {
+      map['label'] = Variable<String>(label);
+    }
     if (!nullToAbsent || installedDate != null) {
       map['installed_date'] = Variable<int>(installedDate);
     }
@@ -3941,6 +3966,9 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
     return OxygenCellsCompanion(
       id: Value(id),
       slot: Value(slot),
+      label: label == null && nullToAbsent
+          ? const Value.absent()
+          : Value(label),
       installedDate: installedDate == null && nullToAbsent
           ? const Value.absent()
           : Value(installedDate),
@@ -3968,6 +3996,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
     return OxygenCell(
       id: serializer.fromJson<String>(json['id']),
       slot: serializer.fromJson<int>(json['slot']),
+      label: serializer.fromJson<String?>(json['label']),
       installedDate: serializer.fromJson<int?>(json['installedDate']),
       retiredDate: serializer.fromJson<int?>(json['retiredDate']),
       notes: serializer.fromJson<String?>(json['notes']),
@@ -3984,6 +4013,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'slot': serializer.toJson<int>(slot),
+      'label': serializer.toJson<String?>(label),
       'installedDate': serializer.toJson<int?>(installedDate),
       'retiredDate': serializer.toJson<int?>(retiredDate),
       'notes': serializer.toJson<String?>(notes),
@@ -3998,6 +4028,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
   OxygenCell copyWith({
     String? id,
     int? slot,
+    Value<String?> label = const Value.absent(),
     Value<int?> installedDate = const Value.absent(),
     Value<int?> retiredDate = const Value.absent(),
     Value<String?> notes = const Value.absent(),
@@ -4009,6 +4040,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
   }) => OxygenCell(
     id: id ?? this.id,
     slot: slot ?? this.slot,
+    label: label.present ? label.value : this.label,
     installedDate: installedDate.present
         ? installedDate.value
         : this.installedDate,
@@ -4024,6 +4056,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
     return OxygenCell(
       id: data.id.present ? data.id.value : this.id,
       slot: data.slot.present ? data.slot.value : this.slot,
+      label: data.label.present ? data.label.value : this.label,
       installedDate: data.installedDate.present
           ? data.installedDate.value
           : this.installedDate,
@@ -4046,6 +4079,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
     return (StringBuffer('OxygenCell(')
           ..write('id: $id, ')
           ..write('slot: $slot, ')
+          ..write('label: $label, ')
           ..write('installedDate: $installedDate, ')
           ..write('retiredDate: $retiredDate, ')
           ..write('notes: $notes, ')
@@ -4062,6 +4096,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
   int get hashCode => Object.hash(
     id,
     slot,
+    label,
     installedDate,
     retiredDate,
     notes,
@@ -4077,6 +4112,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
       (other is OxygenCell &&
           other.id == this.id &&
           other.slot == this.slot &&
+          other.label == this.label &&
           other.installedDate == this.installedDate &&
           other.retiredDate == this.retiredDate &&
           other.notes == this.notes &&
@@ -4090,6 +4126,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
 class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
   final Value<String> id;
   final Value<int> slot;
+  final Value<String?> label;
   final Value<int?> installedDate;
   final Value<int?> retiredDate;
   final Value<String?> notes;
@@ -4102,6 +4139,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
   const OxygenCellsCompanion({
     this.id = const Value.absent(),
     this.slot = const Value.absent(),
+    this.label = const Value.absent(),
     this.installedDate = const Value.absent(),
     this.retiredDate = const Value.absent(),
     this.notes = const Value.absent(),
@@ -4115,6 +4153,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
   OxygenCellsCompanion.insert({
     required String id,
     required int slot,
+    this.label = const Value.absent(),
     this.installedDate = const Value.absent(),
     this.retiredDate = const Value.absent(),
     this.notes = const Value.absent(),
@@ -4131,6 +4170,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
   static Insertable<OxygenCell> custom({
     Expression<String>? id,
     Expression<int>? slot,
+    Expression<String>? label,
     Expression<int>? installedDate,
     Expression<int>? retiredDate,
     Expression<String>? notes,
@@ -4144,6 +4184,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (slot != null) 'slot': slot,
+      if (label != null) 'label': label,
       if (installedDate != null) 'installed_date': installedDate,
       if (retiredDate != null) 'retired_date': retiredDate,
       if (notes != null) 'notes': notes,
@@ -4159,6 +4200,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
   OxygenCellsCompanion copyWith({
     Value<String>? id,
     Value<int>? slot,
+    Value<String?>? label,
     Value<int?>? installedDate,
     Value<int?>? retiredDate,
     Value<String?>? notes,
@@ -4172,6 +4214,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
     return OxygenCellsCompanion(
       id: id ?? this.id,
       slot: slot ?? this.slot,
+      label: label ?? this.label,
       installedDate: installedDate ?? this.installedDate,
       retiredDate: retiredDate ?? this.retiredDate,
       notes: notes ?? this.notes,
@@ -4192,6 +4235,9 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
     }
     if (slot.present) {
       map['slot'] = Variable<int>(slot.value);
+    }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
     }
     if (installedDate.present) {
       map['installed_date'] = Variable<int>(installedDate.value);
@@ -4228,6 +4274,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
     return (StringBuffer('OxygenCellsCompanion(')
           ..write('id: $id, ')
           ..write('slot: $slot, ')
+          ..write('label: $label, ')
           ..write('installedDate: $installedDate, ')
           ..write('retiredDate: $retiredDate, ')
           ..write('notes: $notes, ')
@@ -4861,6 +4908,1296 @@ class ScrubberSessionsCompanion extends UpdateCompanion<ScrubberSession> {
   }
 }
 
+class $CylindersTable extends Cylinders
+    with TableInfo<$CylindersTable, Cylinder> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CylindersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
+  @override
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _roleMeta = const VerificationMeta('role');
+  @override
+  late final GeneratedColumn<String> role = GeneratedColumn<String>(
+    'role',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bailoutOrderMeta = const VerificationMeta(
+    'bailoutOrder',
+  );
+  @override
+  late final GeneratedColumn<int> bailoutOrder = GeneratedColumn<int>(
+    'bailout_order',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _volumeLitersMeta = const VerificationMeta(
+    'volumeLiters',
+  );
+  @override
+  late final GeneratedColumn<double> volumeLiters = GeneratedColumn<double>(
+    'volume_liters',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _workingPressureBarMeta =
+      const VerificationMeta('workingPressureBar');
+  @override
+  late final GeneratedColumn<int> workingPressureBar = GeneratedColumn<int>(
+    'working_pressure_bar',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _gasMixMeta = const VerificationMeta('gasMix');
+  @override
+  late final GeneratedColumn<String> gasMix = GeneratedColumn<String>(
+    'gas_mix',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
+  @override
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _syncStatusMeta = const VerificationMeta(
+    'syncStatus',
+  );
+  @override
+  late final GeneratedColumn<int> syncStatus = GeneratedColumn<int>(
+    'sync_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    label,
+    role,
+    bailoutOrder,
+    volumeLiters,
+    workingPressureBar,
+    gasMix,
+    notes,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    version,
+    syncStatus,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cylinders';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Cylinder> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_labelMeta);
+    }
+    if (data.containsKey('role')) {
+      context.handle(
+        _roleMeta,
+        role.isAcceptableOrUnknown(data['role']!, _roleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_roleMeta);
+    }
+    if (data.containsKey('bailout_order')) {
+      context.handle(
+        _bailoutOrderMeta,
+        bailoutOrder.isAcceptableOrUnknown(
+          data['bailout_order']!,
+          _bailoutOrderMeta,
+        ),
+      );
+    }
+    if (data.containsKey('volume_liters')) {
+      context.handle(
+        _volumeLitersMeta,
+        volumeLiters.isAcceptableOrUnknown(
+          data['volume_liters']!,
+          _volumeLitersMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_volumeLitersMeta);
+    }
+    if (data.containsKey('working_pressure_bar')) {
+      context.handle(
+        _workingPressureBarMeta,
+        workingPressureBar.isAcceptableOrUnknown(
+          data['working_pressure_bar']!,
+          _workingPressureBarMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_workingPressureBarMeta);
+    }
+    if (data.containsKey('gas_mix')) {
+      context.handle(
+        _gasMixMeta,
+        gasMix.isAcceptableOrUnknown(data['gas_mix']!, _gasMixMeta),
+      );
+    }
+    if (data.containsKey('notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    }
+    if (data.containsKey('sync_status')) {
+      context.handle(
+        _syncStatusMeta,
+        syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Cylinder map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Cylinder(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      )!,
+      role: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}role'],
+      )!,
+      bailoutOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}bailout_order'],
+      ),
+      volumeLiters: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}volume_liters'],
+      )!,
+      workingPressureBar: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}working_pressure_bar'],
+      )!,
+      gasMix: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}gas_mix'],
+      ),
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notes'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+      syncStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sync_status'],
+      )!,
+    );
+  }
+
+  @override
+  $CylindersTable createAlias(String alias) {
+    return $CylindersTable(attachedDatabase, alias);
+  }
+}
+
+class Cylinder extends DataClass implements Insertable<Cylinder> {
+  final String id;
+  final String label;
+  final String role;
+  final int? bailoutOrder;
+  final double volumeLiters;
+  final int workingPressureBar;
+  final String? gasMix;
+  final String? notes;
+  final int createdAt;
+  final int updatedAt;
+  final int? deletedAt;
+  final int version;
+  final int syncStatus;
+  const Cylinder({
+    required this.id,
+    required this.label,
+    required this.role,
+    this.bailoutOrder,
+    required this.volumeLiters,
+    required this.workingPressureBar,
+    this.gasMix,
+    this.notes,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+    required this.version,
+    required this.syncStatus,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['label'] = Variable<String>(label);
+    map['role'] = Variable<String>(role);
+    if (!nullToAbsent || bailoutOrder != null) {
+      map['bailout_order'] = Variable<int>(bailoutOrder);
+    }
+    map['volume_liters'] = Variable<double>(volumeLiters);
+    map['working_pressure_bar'] = Variable<int>(workingPressureBar);
+    if (!nullToAbsent || gasMix != null) {
+      map['gas_mix'] = Variable<String>(gasMix);
+    }
+    if (!nullToAbsent || notes != null) {
+      map['notes'] = Variable<String>(notes);
+    }
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<int>(deletedAt);
+    }
+    map['version'] = Variable<int>(version);
+    map['sync_status'] = Variable<int>(syncStatus);
+    return map;
+  }
+
+  CylindersCompanion toCompanion(bool nullToAbsent) {
+    return CylindersCompanion(
+      id: Value(id),
+      label: Value(label),
+      role: Value(role),
+      bailoutOrder: bailoutOrder == null && nullToAbsent
+          ? const Value.absent()
+          : Value(bailoutOrder),
+      volumeLiters: Value(volumeLiters),
+      workingPressureBar: Value(workingPressureBar),
+      gasMix: gasMix == null && nullToAbsent
+          ? const Value.absent()
+          : Value(gasMix),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      version: Value(version),
+      syncStatus: Value(syncStatus),
+    );
+  }
+
+  factory Cylinder.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Cylinder(
+      id: serializer.fromJson<String>(json['id']),
+      label: serializer.fromJson<String>(json['label']),
+      role: serializer.fromJson<String>(json['role']),
+      bailoutOrder: serializer.fromJson<int?>(json['bailoutOrder']),
+      volumeLiters: serializer.fromJson<double>(json['volumeLiters']),
+      workingPressureBar: serializer.fromJson<int>(json['workingPressureBar']),
+      gasMix: serializer.fromJson<String?>(json['gasMix']),
+      notes: serializer.fromJson<String?>(json['notes']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
+      version: serializer.fromJson<int>(json['version']),
+      syncStatus: serializer.fromJson<int>(json['syncStatus']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'label': serializer.toJson<String>(label),
+      'role': serializer.toJson<String>(role),
+      'bailoutOrder': serializer.toJson<int?>(bailoutOrder),
+      'volumeLiters': serializer.toJson<double>(volumeLiters),
+      'workingPressureBar': serializer.toJson<int>(workingPressureBar),
+      'gasMix': serializer.toJson<String?>(gasMix),
+      'notes': serializer.toJson<String?>(notes),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'deletedAt': serializer.toJson<int?>(deletedAt),
+      'version': serializer.toJson<int>(version),
+      'syncStatus': serializer.toJson<int>(syncStatus),
+    };
+  }
+
+  Cylinder copyWith({
+    String? id,
+    String? label,
+    String? role,
+    Value<int?> bailoutOrder = const Value.absent(),
+    double? volumeLiters,
+    int? workingPressureBar,
+    Value<String?> gasMix = const Value.absent(),
+    Value<String?> notes = const Value.absent(),
+    int? createdAt,
+    int? updatedAt,
+    Value<int?> deletedAt = const Value.absent(),
+    int? version,
+    int? syncStatus,
+  }) => Cylinder(
+    id: id ?? this.id,
+    label: label ?? this.label,
+    role: role ?? this.role,
+    bailoutOrder: bailoutOrder.present ? bailoutOrder.value : this.bailoutOrder,
+    volumeLiters: volumeLiters ?? this.volumeLiters,
+    workingPressureBar: workingPressureBar ?? this.workingPressureBar,
+    gasMix: gasMix.present ? gasMix.value : this.gasMix,
+    notes: notes.present ? notes.value : this.notes,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    version: version ?? this.version,
+    syncStatus: syncStatus ?? this.syncStatus,
+  );
+  Cylinder copyWithCompanion(CylindersCompanion data) {
+    return Cylinder(
+      id: data.id.present ? data.id.value : this.id,
+      label: data.label.present ? data.label.value : this.label,
+      role: data.role.present ? data.role.value : this.role,
+      bailoutOrder: data.bailoutOrder.present
+          ? data.bailoutOrder.value
+          : this.bailoutOrder,
+      volumeLiters: data.volumeLiters.present
+          ? data.volumeLiters.value
+          : this.volumeLiters,
+      workingPressureBar: data.workingPressureBar.present
+          ? data.workingPressureBar.value
+          : this.workingPressureBar,
+      gasMix: data.gasMix.present ? data.gasMix.value : this.gasMix,
+      notes: data.notes.present ? data.notes.value : this.notes,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      version: data.version.present ? data.version.value : this.version,
+      syncStatus: data.syncStatus.present
+          ? data.syncStatus.value
+          : this.syncStatus,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Cylinder(')
+          ..write('id: $id, ')
+          ..write('label: $label, ')
+          ..write('role: $role, ')
+          ..write('bailoutOrder: $bailoutOrder, ')
+          ..write('volumeLiters: $volumeLiters, ')
+          ..write('workingPressureBar: $workingPressureBar, ')
+          ..write('gasMix: $gasMix, ')
+          ..write('notes: $notes, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('version: $version, ')
+          ..write('syncStatus: $syncStatus')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    label,
+    role,
+    bailoutOrder,
+    volumeLiters,
+    workingPressureBar,
+    gasMix,
+    notes,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    version,
+    syncStatus,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Cylinder &&
+          other.id == this.id &&
+          other.label == this.label &&
+          other.role == this.role &&
+          other.bailoutOrder == this.bailoutOrder &&
+          other.volumeLiters == this.volumeLiters &&
+          other.workingPressureBar == this.workingPressureBar &&
+          other.gasMix == this.gasMix &&
+          other.notes == this.notes &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.version == this.version &&
+          other.syncStatus == this.syncStatus);
+}
+
+class CylindersCompanion extends UpdateCompanion<Cylinder> {
+  final Value<String> id;
+  final Value<String> label;
+  final Value<String> role;
+  final Value<int?> bailoutOrder;
+  final Value<double> volumeLiters;
+  final Value<int> workingPressureBar;
+  final Value<String?> gasMix;
+  final Value<String?> notes;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int?> deletedAt;
+  final Value<int> version;
+  final Value<int> syncStatus;
+  final Value<int> rowid;
+  const CylindersCompanion({
+    this.id = const Value.absent(),
+    this.label = const Value.absent(),
+    this.role = const Value.absent(),
+    this.bailoutOrder = const Value.absent(),
+    this.volumeLiters = const Value.absent(),
+    this.workingPressureBar = const Value.absent(),
+    this.gasMix = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.version = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CylindersCompanion.insert({
+    required String id,
+    required String label,
+    required String role,
+    this.bailoutOrder = const Value.absent(),
+    required double volumeLiters,
+    required int workingPressureBar,
+    this.gasMix = const Value.absent(),
+    this.notes = const Value.absent(),
+    required int createdAt,
+    required int updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.version = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       label = Value(label),
+       role = Value(role),
+       volumeLiters = Value(volumeLiters),
+       workingPressureBar = Value(workingPressureBar),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<Cylinder> custom({
+    Expression<String>? id,
+    Expression<String>? label,
+    Expression<String>? role,
+    Expression<int>? bailoutOrder,
+    Expression<double>? volumeLiters,
+    Expression<int>? workingPressureBar,
+    Expression<String>? gasMix,
+    Expression<String>? notes,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? deletedAt,
+    Expression<int>? version,
+    Expression<int>? syncStatus,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (label != null) 'label': label,
+      if (role != null) 'role': role,
+      if (bailoutOrder != null) 'bailout_order': bailoutOrder,
+      if (volumeLiters != null) 'volume_liters': volumeLiters,
+      if (workingPressureBar != null)
+        'working_pressure_bar': workingPressureBar,
+      if (gasMix != null) 'gas_mix': gasMix,
+      if (notes != null) 'notes': notes,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (version != null) 'version': version,
+      if (syncStatus != null) 'sync_status': syncStatus,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CylindersCompanion copyWith({
+    Value<String>? id,
+    Value<String>? label,
+    Value<String>? role,
+    Value<int?>? bailoutOrder,
+    Value<double>? volumeLiters,
+    Value<int>? workingPressureBar,
+    Value<String?>? gasMix,
+    Value<String?>? notes,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int?>? deletedAt,
+    Value<int>? version,
+    Value<int>? syncStatus,
+    Value<int>? rowid,
+  }) {
+    return CylindersCompanion(
+      id: id ?? this.id,
+      label: label ?? this.label,
+      role: role ?? this.role,
+      bailoutOrder: bailoutOrder ?? this.bailoutOrder,
+      volumeLiters: volumeLiters ?? this.volumeLiters,
+      workingPressureBar: workingPressureBar ?? this.workingPressureBar,
+      gasMix: gasMix ?? this.gasMix,
+      notes: notes ?? this.notes,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      version: version ?? this.version,
+      syncStatus: syncStatus ?? this.syncStatus,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
+    }
+    if (role.present) {
+      map['role'] = Variable<String>(role.value);
+    }
+    if (bailoutOrder.present) {
+      map['bailout_order'] = Variable<int>(bailoutOrder.value);
+    }
+    if (volumeLiters.present) {
+      map['volume_liters'] = Variable<double>(volumeLiters.value);
+    }
+    if (workingPressureBar.present) {
+      map['working_pressure_bar'] = Variable<int>(workingPressureBar.value);
+    }
+    if (gasMix.present) {
+      map['gas_mix'] = Variable<String>(gasMix.value);
+    }
+    if (notes.present) {
+      map['notes'] = Variable<String>(notes.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<int>(deletedAt.value);
+    }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    if (syncStatus.present) {
+      map['sync_status'] = Variable<int>(syncStatus.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CylindersCompanion(')
+          ..write('id: $id, ')
+          ..write('label: $label, ')
+          ..write('role: $role, ')
+          ..write('bailoutOrder: $bailoutOrder, ')
+          ..write('volumeLiters: $volumeLiters, ')
+          ..write('workingPressureBar: $workingPressureBar, ')
+          ..write('gasMix: $gasMix, ')
+          ..write('notes: $notes, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('version: $version, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PressureMappingsTable extends PressureMappings
+    with TableInfo<$PressureMappingsTable, PressureMapping> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PressureMappingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _diveComputerIdMeta = const VerificationMeta(
+    'diveComputerId',
+  );
+  @override
+  late final GeneratedColumn<String> diveComputerId = GeneratedColumn<String>(
+    'dive_computer_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _channelIndexMeta = const VerificationMeta(
+    'channelIndex',
+  );
+  @override
+  late final GeneratedColumn<int> channelIndex = GeneratedColumn<int>(
+    'channel_index',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _cylinderIdMeta = const VerificationMeta(
+    'cylinderId',
+  );
+  @override
+  late final GeneratedColumn<String> cylinderId = GeneratedColumn<String>(
+    'cylinder_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _syncStatusMeta = const VerificationMeta(
+    'syncStatus',
+  );
+  @override
+  late final GeneratedColumn<int> syncStatus = GeneratedColumn<int>(
+    'sync_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    diveComputerId,
+    channelIndex,
+    cylinderId,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    version,
+    syncStatus,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pressure_mappings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PressureMapping> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('dive_computer_id')) {
+      context.handle(
+        _diveComputerIdMeta,
+        diveComputerId.isAcceptableOrUnknown(
+          data['dive_computer_id']!,
+          _diveComputerIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_diveComputerIdMeta);
+    }
+    if (data.containsKey('channel_index')) {
+      context.handle(
+        _channelIndexMeta,
+        channelIndex.isAcceptableOrUnknown(
+          data['channel_index']!,
+          _channelIndexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_channelIndexMeta);
+    }
+    if (data.containsKey('cylinder_id')) {
+      context.handle(
+        _cylinderIdMeta,
+        cylinderId.isAcceptableOrUnknown(data['cylinder_id']!, _cylinderIdMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    }
+    if (data.containsKey('sync_status')) {
+      context.handle(
+        _syncStatusMeta,
+        syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {diveComputerId, channelIndex};
+  @override
+  PressureMapping map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PressureMapping(
+      diveComputerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dive_computer_id'],
+      )!,
+      channelIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}channel_index'],
+      )!,
+      cylinderId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cylinder_id'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+      syncStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sync_status'],
+      )!,
+    );
+  }
+
+  @override
+  $PressureMappingsTable createAlias(String alias) {
+    return $PressureMappingsTable(attachedDatabase, alias);
+  }
+}
+
+class PressureMapping extends DataClass implements Insertable<PressureMapping> {
+  final String diveComputerId;
+  final int channelIndex;
+  final String? cylinderId;
+  final int createdAt;
+  final int updatedAt;
+  final int? deletedAt;
+  final int version;
+  final int syncStatus;
+  const PressureMapping({
+    required this.diveComputerId,
+    required this.channelIndex,
+    this.cylinderId,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+    required this.version,
+    required this.syncStatus,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['dive_computer_id'] = Variable<String>(diveComputerId);
+    map['channel_index'] = Variable<int>(channelIndex);
+    if (!nullToAbsent || cylinderId != null) {
+      map['cylinder_id'] = Variable<String>(cylinderId);
+    }
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<int>(deletedAt);
+    }
+    map['version'] = Variable<int>(version);
+    map['sync_status'] = Variable<int>(syncStatus);
+    return map;
+  }
+
+  PressureMappingsCompanion toCompanion(bool nullToAbsent) {
+    return PressureMappingsCompanion(
+      diveComputerId: Value(diveComputerId),
+      channelIndex: Value(channelIndex),
+      cylinderId: cylinderId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cylinderId),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      version: Value(version),
+      syncStatus: Value(syncStatus),
+    );
+  }
+
+  factory PressureMapping.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PressureMapping(
+      diveComputerId: serializer.fromJson<String>(json['diveComputerId']),
+      channelIndex: serializer.fromJson<int>(json['channelIndex']),
+      cylinderId: serializer.fromJson<String?>(json['cylinderId']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
+      version: serializer.fromJson<int>(json['version']),
+      syncStatus: serializer.fromJson<int>(json['syncStatus']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'diveComputerId': serializer.toJson<String>(diveComputerId),
+      'channelIndex': serializer.toJson<int>(channelIndex),
+      'cylinderId': serializer.toJson<String?>(cylinderId),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'deletedAt': serializer.toJson<int?>(deletedAt),
+      'version': serializer.toJson<int>(version),
+      'syncStatus': serializer.toJson<int>(syncStatus),
+    };
+  }
+
+  PressureMapping copyWith({
+    String? diveComputerId,
+    int? channelIndex,
+    Value<String?> cylinderId = const Value.absent(),
+    int? createdAt,
+    int? updatedAt,
+    Value<int?> deletedAt = const Value.absent(),
+    int? version,
+    int? syncStatus,
+  }) => PressureMapping(
+    diveComputerId: diveComputerId ?? this.diveComputerId,
+    channelIndex: channelIndex ?? this.channelIndex,
+    cylinderId: cylinderId.present ? cylinderId.value : this.cylinderId,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    version: version ?? this.version,
+    syncStatus: syncStatus ?? this.syncStatus,
+  );
+  PressureMapping copyWithCompanion(PressureMappingsCompanion data) {
+    return PressureMapping(
+      diveComputerId: data.diveComputerId.present
+          ? data.diveComputerId.value
+          : this.diveComputerId,
+      channelIndex: data.channelIndex.present
+          ? data.channelIndex.value
+          : this.channelIndex,
+      cylinderId: data.cylinderId.present
+          ? data.cylinderId.value
+          : this.cylinderId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      version: data.version.present ? data.version.value : this.version,
+      syncStatus: data.syncStatus.present
+          ? data.syncStatus.value
+          : this.syncStatus,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PressureMapping(')
+          ..write('diveComputerId: $diveComputerId, ')
+          ..write('channelIndex: $channelIndex, ')
+          ..write('cylinderId: $cylinderId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('version: $version, ')
+          ..write('syncStatus: $syncStatus')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    diveComputerId,
+    channelIndex,
+    cylinderId,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    version,
+    syncStatus,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PressureMapping &&
+          other.diveComputerId == this.diveComputerId &&
+          other.channelIndex == this.channelIndex &&
+          other.cylinderId == this.cylinderId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.version == this.version &&
+          other.syncStatus == this.syncStatus);
+}
+
+class PressureMappingsCompanion extends UpdateCompanion<PressureMapping> {
+  final Value<String> diveComputerId;
+  final Value<int> channelIndex;
+  final Value<String?> cylinderId;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int?> deletedAt;
+  final Value<int> version;
+  final Value<int> syncStatus;
+  final Value<int> rowid;
+  const PressureMappingsCompanion({
+    this.diveComputerId = const Value.absent(),
+    this.channelIndex = const Value.absent(),
+    this.cylinderId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.version = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PressureMappingsCompanion.insert({
+    required String diveComputerId,
+    required int channelIndex,
+    this.cylinderId = const Value.absent(),
+    required int createdAt,
+    required int updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.version = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : diveComputerId = Value(diveComputerId),
+       channelIndex = Value(channelIndex),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<PressureMapping> custom({
+    Expression<String>? diveComputerId,
+    Expression<int>? channelIndex,
+    Expression<String>? cylinderId,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? deletedAt,
+    Expression<int>? version,
+    Expression<int>? syncStatus,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (diveComputerId != null) 'dive_computer_id': diveComputerId,
+      if (channelIndex != null) 'channel_index': channelIndex,
+      if (cylinderId != null) 'cylinder_id': cylinderId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (version != null) 'version': version,
+      if (syncStatus != null) 'sync_status': syncStatus,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PressureMappingsCompanion copyWith({
+    Value<String>? diveComputerId,
+    Value<int>? channelIndex,
+    Value<String?>? cylinderId,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int?>? deletedAt,
+    Value<int>? version,
+    Value<int>? syncStatus,
+    Value<int>? rowid,
+  }) {
+    return PressureMappingsCompanion(
+      diveComputerId: diveComputerId ?? this.diveComputerId,
+      channelIndex: channelIndex ?? this.channelIndex,
+      cylinderId: cylinderId ?? this.cylinderId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      version: version ?? this.version,
+      syncStatus: syncStatus ?? this.syncStatus,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (diveComputerId.present) {
+      map['dive_computer_id'] = Variable<String>(diveComputerId.value);
+    }
+    if (channelIndex.present) {
+      map['channel_index'] = Variable<int>(channelIndex.value);
+    }
+    if (cylinderId.present) {
+      map['cylinder_id'] = Variable<String>(cylinderId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<int>(deletedAt.value);
+    }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    if (syncStatus.present) {
+      map['sync_status'] = Variable<int>(syncStatus.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PressureMappingsCompanion(')
+          ..write('diveComputerId: $diveComputerId, ')
+          ..write('channelIndex: $channelIndex, ')
+          ..write('cylinderId: $cylinderId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('version: $version, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $ImportStatesTable extends ImportStates
     with TableInfo<$ImportStatesTable, ImportState> {
   @override
@@ -5174,6 +6511,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ScrubberSessionsTable scrubberSessions = $ScrubberSessionsTable(
     this,
   );
+  late final $CylindersTable cylinders = $CylindersTable(this);
+  late final $PressureMappingsTable pressureMappings = $PressureMappingsTable(
+    this,
+  );
   late final $ImportStatesTable importStates = $ImportStatesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -5186,6 +6527,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     diveComputers,
     oxygenCells,
     scrubberSessions,
+    cylinders,
+    pressureMappings,
     importStates,
   ];
 }
@@ -7274,6 +8617,7 @@ typedef $$OxygenCellsTableCreateCompanionBuilder =
     OxygenCellsCompanion Function({
       required String id,
       required int slot,
+      Value<String?> label,
       Value<int?> installedDate,
       Value<int?> retiredDate,
       Value<String?> notes,
@@ -7288,6 +8632,7 @@ typedef $$OxygenCellsTableUpdateCompanionBuilder =
     OxygenCellsCompanion Function({
       Value<String> id,
       Value<int> slot,
+      Value<String?> label,
       Value<int?> installedDate,
       Value<int?> retiredDate,
       Value<String?> notes,
@@ -7315,6 +8660,11 @@ class $$OxygenCellsTableFilterComposer
 
   ColumnFilters<int> get slot => $composableBuilder(
     column: $table.slot,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7378,6 +8728,11 @@ class $$OxygenCellsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get installedDate => $composableBuilder(
     column: $table.installedDate,
     builder: (column) => ColumnOrderings(column),
@@ -7433,6 +8788,9 @@ class $$OxygenCellsTableAnnotationComposer
 
   GeneratedColumn<int> get slot =>
       $composableBuilder(column: $table.slot, builder: (column) => column);
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
 
   GeneratedColumn<int> get installedDate => $composableBuilder(
     column: $table.installedDate,
@@ -7498,6 +8856,7 @@ class $$OxygenCellsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<int> slot = const Value.absent(),
+                Value<String?> label = const Value.absent(),
                 Value<int?> installedDate = const Value.absent(),
                 Value<int?> retiredDate = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
@@ -7510,6 +8869,7 @@ class $$OxygenCellsTableTableManager
               }) => OxygenCellsCompanion(
                 id: id,
                 slot: slot,
+                label: label,
                 installedDate: installedDate,
                 retiredDate: retiredDate,
                 notes: notes,
@@ -7524,6 +8884,7 @@ class $$OxygenCellsTableTableManager
               ({
                 required String id,
                 required int slot,
+                Value<String?> label = const Value.absent(),
                 Value<int?> installedDate = const Value.absent(),
                 Value<int?> retiredDate = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
@@ -7536,6 +8897,7 @@ class $$OxygenCellsTableTableManager
               }) => OxygenCellsCompanion.insert(
                 id: id,
                 slot: slot,
+                label: label,
                 installedDate: installedDate,
                 retiredDate: retiredDate,
                 notes: notes,
@@ -7878,6 +9240,631 @@ typedef $$ScrubberSessionsTableProcessedTableManager =
       ScrubberSession,
       PrefetchHooks Function()
     >;
+typedef $$CylindersTableCreateCompanionBuilder =
+    CylindersCompanion Function({
+      required String id,
+      required String label,
+      required String role,
+      Value<int?> bailoutOrder,
+      required double volumeLiters,
+      required int workingPressureBar,
+      Value<String?> gasMix,
+      Value<String?> notes,
+      required int createdAt,
+      required int updatedAt,
+      Value<int?> deletedAt,
+      Value<int> version,
+      Value<int> syncStatus,
+      Value<int> rowid,
+    });
+typedef $$CylindersTableUpdateCompanionBuilder =
+    CylindersCompanion Function({
+      Value<String> id,
+      Value<String> label,
+      Value<String> role,
+      Value<int?> bailoutOrder,
+      Value<double> volumeLiters,
+      Value<int> workingPressureBar,
+      Value<String?> gasMix,
+      Value<String?> notes,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int?> deletedAt,
+      Value<int> version,
+      Value<int> syncStatus,
+      Value<int> rowid,
+    });
+
+class $$CylindersTableFilterComposer
+    extends Composer<_$AppDatabase, $CylindersTable> {
+  $$CylindersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get role => $composableBuilder(
+    column: $table.role,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get bailoutOrder => $composableBuilder(
+    column: $table.bailoutOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get volumeLiters => $composableBuilder(
+    column: $table.volumeLiters,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get workingPressureBar => $composableBuilder(
+    column: $table.workingPressureBar,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get gasMix => $composableBuilder(
+    column: $table.gasMix,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CylindersTableOrderingComposer
+    extends Composer<_$AppDatabase, $CylindersTable> {
+  $$CylindersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get role => $composableBuilder(
+    column: $table.role,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get bailoutOrder => $composableBuilder(
+    column: $table.bailoutOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get volumeLiters => $composableBuilder(
+    column: $table.volumeLiters,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get workingPressureBar => $composableBuilder(
+    column: $table.workingPressureBar,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get gasMix => $composableBuilder(
+    column: $table.gasMix,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CylindersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CylindersTable> {
+  $$CylindersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
+
+  GeneratedColumn<String> get role =>
+      $composableBuilder(column: $table.role, builder: (column) => column);
+
+  GeneratedColumn<int> get bailoutOrder => $composableBuilder(
+    column: $table.bailoutOrder,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get volumeLiters => $composableBuilder(
+    column: $table.volumeLiters,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get workingPressureBar => $composableBuilder(
+    column: $table.workingPressureBar,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get gasMix =>
+      $composableBuilder(column: $table.gasMix, builder: (column) => column);
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => column,
+  );
+}
+
+class $$CylindersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CylindersTable,
+          Cylinder,
+          $$CylindersTableFilterComposer,
+          $$CylindersTableOrderingComposer,
+          $$CylindersTableAnnotationComposer,
+          $$CylindersTableCreateCompanionBuilder,
+          $$CylindersTableUpdateCompanionBuilder,
+          (Cylinder, BaseReferences<_$AppDatabase, $CylindersTable, Cylinder>),
+          Cylinder,
+          PrefetchHooks Function()
+        > {
+  $$CylindersTableTableManager(_$AppDatabase db, $CylindersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CylindersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CylindersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CylindersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> label = const Value.absent(),
+                Value<String> role = const Value.absent(),
+                Value<int?> bailoutOrder = const Value.absent(),
+                Value<double> volumeLiters = const Value.absent(),
+                Value<int> workingPressureBar = const Value.absent(),
+                Value<String?> gasMix = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<int> syncStatus = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CylindersCompanion(
+                id: id,
+                label: label,
+                role: role,
+                bailoutOrder: bailoutOrder,
+                volumeLiters: volumeLiters,
+                workingPressureBar: workingPressureBar,
+                gasMix: gasMix,
+                notes: notes,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                version: version,
+                syncStatus: syncStatus,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String label,
+                required String role,
+                Value<int?> bailoutOrder = const Value.absent(),
+                required double volumeLiters,
+                required int workingPressureBar,
+                Value<String?> gasMix = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                required int createdAt,
+                required int updatedAt,
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<int> syncStatus = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CylindersCompanion.insert(
+                id: id,
+                label: label,
+                role: role,
+                bailoutOrder: bailoutOrder,
+                volumeLiters: volumeLiters,
+                workingPressureBar: workingPressureBar,
+                gasMix: gasMix,
+                notes: notes,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                version: version,
+                syncStatus: syncStatus,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CylindersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CylindersTable,
+      Cylinder,
+      $$CylindersTableFilterComposer,
+      $$CylindersTableOrderingComposer,
+      $$CylindersTableAnnotationComposer,
+      $$CylindersTableCreateCompanionBuilder,
+      $$CylindersTableUpdateCompanionBuilder,
+      (Cylinder, BaseReferences<_$AppDatabase, $CylindersTable, Cylinder>),
+      Cylinder,
+      PrefetchHooks Function()
+    >;
+typedef $$PressureMappingsTableCreateCompanionBuilder =
+    PressureMappingsCompanion Function({
+      required String diveComputerId,
+      required int channelIndex,
+      Value<String?> cylinderId,
+      required int createdAt,
+      required int updatedAt,
+      Value<int?> deletedAt,
+      Value<int> version,
+      Value<int> syncStatus,
+      Value<int> rowid,
+    });
+typedef $$PressureMappingsTableUpdateCompanionBuilder =
+    PressureMappingsCompanion Function({
+      Value<String> diveComputerId,
+      Value<int> channelIndex,
+      Value<String?> cylinderId,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int?> deletedAt,
+      Value<int> version,
+      Value<int> syncStatus,
+      Value<int> rowid,
+    });
+
+class $$PressureMappingsTableFilterComposer
+    extends Composer<_$AppDatabase, $PressureMappingsTable> {
+  $$PressureMappingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get diveComputerId => $composableBuilder(
+    column: $table.diveComputerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get channelIndex => $composableBuilder(
+    column: $table.channelIndex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get cylinderId => $composableBuilder(
+    column: $table.cylinderId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PressureMappingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PressureMappingsTable> {
+  $$PressureMappingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get diveComputerId => $composableBuilder(
+    column: $table.diveComputerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get channelIndex => $composableBuilder(
+    column: $table.channelIndex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get cylinderId => $composableBuilder(
+    column: $table.cylinderId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PressureMappingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PressureMappingsTable> {
+  $$PressureMappingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get diveComputerId => $composableBuilder(
+    column: $table.diveComputerId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get channelIndex => $composableBuilder(
+    column: $table.channelIndex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get cylinderId => $composableBuilder(
+    column: $table.cylinderId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => column,
+  );
+}
+
+class $$PressureMappingsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PressureMappingsTable,
+          PressureMapping,
+          $$PressureMappingsTableFilterComposer,
+          $$PressureMappingsTableOrderingComposer,
+          $$PressureMappingsTableAnnotationComposer,
+          $$PressureMappingsTableCreateCompanionBuilder,
+          $$PressureMappingsTableUpdateCompanionBuilder,
+          (
+            PressureMapping,
+            BaseReferences<
+              _$AppDatabase,
+              $PressureMappingsTable,
+              PressureMapping
+            >,
+          ),
+          PressureMapping,
+          PrefetchHooks Function()
+        > {
+  $$PressureMappingsTableTableManager(
+    _$AppDatabase db,
+    $PressureMappingsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PressureMappingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PressureMappingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PressureMappingsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> diveComputerId = const Value.absent(),
+                Value<int> channelIndex = const Value.absent(),
+                Value<String?> cylinderId = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<int> syncStatus = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PressureMappingsCompanion(
+                diveComputerId: diveComputerId,
+                channelIndex: channelIndex,
+                cylinderId: cylinderId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                version: version,
+                syncStatus: syncStatus,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String diveComputerId,
+                required int channelIndex,
+                Value<String?> cylinderId = const Value.absent(),
+                required int createdAt,
+                required int updatedAt,
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<int> syncStatus = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PressureMappingsCompanion.insert(
+                diveComputerId: diveComputerId,
+                channelIndex: channelIndex,
+                cylinderId: cylinderId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                version: version,
+                syncStatus: syncStatus,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PressureMappingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PressureMappingsTable,
+      PressureMapping,
+      $$PressureMappingsTableFilterComposer,
+      $$PressureMappingsTableOrderingComposer,
+      $$PressureMappingsTableAnnotationComposer,
+      $$PressureMappingsTableCreateCompanionBuilder,
+      $$PressureMappingsTableUpdateCompanionBuilder,
+      (
+        PressureMapping,
+        BaseReferences<_$AppDatabase, $PressureMappingsTable, PressureMapping>,
+      ),
+      PressureMapping,
+      PrefetchHooks Function()
+    >;
 typedef $$ImportStatesTableCreateCompanionBuilder =
     ImportStatesCompanion Function({
       required String dcSerial,
@@ -8060,6 +10047,10 @@ class $AppDatabaseManager {
       $$OxygenCellsTableTableManager(_db, _db.oxygenCells);
   $$ScrubberSessionsTableTableManager get scrubberSessions =>
       $$ScrubberSessionsTableTableManager(_db, _db.scrubberSessions);
+  $$CylindersTableTableManager get cylinders =>
+      $$CylindersTableTableManager(_db, _db.cylinders);
+  $$PressureMappingsTableTableManager get pressureMappings =>
+      $$PressureMappingsTableTableManager(_db, _db.pressureMappings);
   $$ImportStatesTableTableManager get importStates =>
       $$ImportStatesTableTableManager(_db, _db.importStates);
 }
