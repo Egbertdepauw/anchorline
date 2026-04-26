@@ -38,13 +38,9 @@ class ShearwaterProtocol {
   Future<ResponsePacket> _transfer(Uint8List commandPayload) async {
     final requestPacket = Packet.buildRequest(commandPayload);
     final frames = BleSlipCodec.encode(requestPacket);
-
-    // Write all BLE frames.
     for (final frame in frames) {
       await _ble.writeBytes(frame);
     }
-
-    // Read response frames.
     final responseFrames = await _ble.readFrames();
     final decoded = BleSlipCodec.decode(responseFrames);
     return Packet.parseResponse(decoded);
@@ -140,10 +136,16 @@ class ShearwaterProtocol {
     var done = false;
     var blockNum = 1;
     var nbytes = 0;
+    final stopwatch = Stopwatch()..start();
+    int? firstBlockMs;
+    var blocksRead = 0;
 
     while (nbytes < size && !done) {
+      final blockStart = stopwatch.elapsedMilliseconds;
       final blockRequest = Uint8List.fromList([0x36, blockNum]);
       final blockResponse = await _transfer(blockRequest);
+      firstBlockMs ??= stopwatch.elapsedMilliseconds - blockStart;
+      blocksRead++;
 
       if (!blockResponse.isValid) {
         throw ProtocolException('Invalid download block response');
@@ -184,6 +186,15 @@ class ShearwaterProtocol {
         quitPayload[1] != 0x00) {
       throw ProtocolException('Unexpected download quit response');
     }
+
+    final totalMs = stopwatch.elapsedMilliseconds;
+    final kbps = totalMs > 0
+        ? (nbytes / totalMs * 1000 / 1024).toStringAsFixed(1)
+        : 'inf';
+    // ignore: avoid_print
+    print('download(addr=0x${address.toRadixString(16)}) '
+        '$blocksRead blocks, ${nbytes}B, ${totalMs}ms '
+        '($kbps KB/s, first block ${firstBlockMs ?? 0}ms)');
 
     // ── Finalize ──
     if (compressed) {

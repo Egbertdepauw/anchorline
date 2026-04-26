@@ -4,8 +4,8 @@
 library;
 
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'protocol.dart';
@@ -26,7 +26,16 @@ class FlutterBluePlusBleIo implements BleIo {
   BluetoothCharacteristic? _writeChar;
   BluetoothCharacteristic? _notifyChar;
   StreamSubscription<List<int>>? _notifySub;
-  final _frameController = StreamController<Uint8List>();
+
+  // Explicit frame queue. The notify subscription is the only producer and
+  // is set up once at connect; readFrames is the only consumer. Using a
+  // queue (instead of a Stream) avoids two pitfalls: single-subscription
+  // streams can't be re-listened to after a cancel, and broadcast streams
+  // drop events delivered while no listener is attached — and the Petrel
+  // can start responding before our last withoutResponse write returns,
+  // which is exactly when there is no listener.
+  final _frames = <Uint8List>[];
+  Completer<void>? _frameSignal;
 
   FlutterBluePlusBleIo(this.device);
 
@@ -60,17 +69,26 @@ class FlutterBluePlusBleIo implements BleIo {
       throw ProtocolException('Shearwater BLE characteristics not found');
     }
 
-    // Enable notifications.
     await _notifyChar!.setNotifyValue(true);
+    debugPrint('BLE connected. MTU=${device.mtuNow} bytes');
     _notifySub = _notifyChar!.onValueReceived.listen((data) {
-      _frameController.add(Uint8List.fromList(data));
+      _frames.add(Uint8List.fromList(data));
+      final waiter = _frameSignal;
+      if (waiter != null && !waiter.isCompleted) {
+        _frameSignal = null;
+        waiter.complete();
+      }
     });
   }
 
   /// Disconnect and clean up.
   Future<void> disconnect() async {
     await _notifySub?.cancel();
-    await _frameController.close();
+    final waiter = _frameSignal;
+    _frameSignal = null;
+    if (waiter != null && !waiter.isCompleted) {
+      waiter.completeError(StateError('Disconnected'));
+    }
     await device.disconnect();
   }
 
@@ -88,15 +106,16 @@ class FlutterBluePlusBleIo implements BleIo {
       throw StateError('Not connected');
     }
 
-    final frames = <Uint8List>[];
-    // Read frames until we get a complete SLIP packet (ending with 0xC0).
-    await for (final frame in _frameController.stream) {
-      frames.add(frame);
-      // Check if this frame ends with 0xC0 (SLIP END).
-      if (frame.isNotEmpty && frame.last == 0xC0) {
-        break;
+    final out = <Uint8List>[];
+    while (true) {
+      while (_frames.isEmpty) {
+        _frameSignal = Completer<void>();
+        await _frameSignal!.future;
       }
+      final frame = _frames.removeAt(0);
+      out.add(frame);
+      if (frame.isNotEmpty && frame.last == 0xC0) break;
     }
-    return frames;
+    return out;
   }
 }

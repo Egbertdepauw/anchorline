@@ -51,6 +51,7 @@ class ImportNotifier extends ChangeNotifier {
   int? _currentDiveNumber;
   String? _errorMessage;
   int _failedCount = 0;
+  bool _forceFullReimport = false;
 
   // Mock
   MockBleTransport? _mockTransport;
@@ -82,6 +83,15 @@ class ImportNotifier extends ChangeNotifier {
   /// Whether the mock device advertisement is ready to be selected.
   bool get mockDeviceAvailable => _mockDeviceAvailable;
 
+  /// When true, the next manifest read ignores the saved fingerprint and
+  /// downloads every dive on the device (overriding incremental sync).
+  bool get forceFullReimport => _forceFullReimport;
+  set forceFullReimport(bool value) {
+    if (_forceFullReimport == value) return;
+    _forceFullReimport = value;
+    notifyListeners();
+  }
+
   /// Real BLE devices discovered during scanning.
   List<BluetoothDevice> get discoveredDevices =>
       List.unmodifiable(_discoveredDevices);
@@ -107,10 +117,27 @@ class ImportNotifier extends ChangeNotifier {
       });
     }
 
-    _startRealScan();
+    unawaited(_startRealScan());
   }
 
-  void _startRealScan() {
+  Future<void> _startRealScan() async {
+    // On macOS the Core Bluetooth manager starts in `unknown` and only
+    // reaches `on` after the OS finishes initializing the adapter (and the
+    // user has answered the Bluetooth permission prompt). Calling startScan
+    // before that races and fails with CBManagerStateUnknown.
+    if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) {
+      try {
+        await FlutterBluePlus.adapterState
+            .where((s) => s == BluetoothAdapterState.on)
+            .first
+            .timeout(const Duration(seconds: 15));
+      } catch (e) {
+        debugPrint('BLE adapter never reached on state: $e');
+        return;
+      }
+      if (_disposed) return;
+    }
+
     // Subscribe to results before starting the scan so we don't miss
     // advertisements that arrive immediately.
     try {
@@ -209,8 +236,9 @@ class ImportNotifier extends ChangeNotifier {
       List<ManifestEntry> manifest;
 
       if (_isRealBle) {
-        final lastFp =
-            await _importStateDao.getLastFingerprint(_deviceInfo!.serial);
+        final lastFp = _forceFullReimport
+            ? null
+            : await _importStateDao.getLastFingerprint(_deviceInfo!.serial);
         manifest =
             await _realTransport!.readManifest(lastFingerprint: lastFp);
       } else {
@@ -351,6 +379,7 @@ class ImportNotifier extends ChangeNotifier {
     _mockDeviceAvailable = false;
     _realTransport = null;
     _discoveredDevices.clear();
+    _forceFullReimport = false;
     _stopScan();
   }
 }

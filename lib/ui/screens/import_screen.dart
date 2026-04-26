@@ -47,6 +47,7 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   Widget _buildIdle(ThemeData theme) {
+    final n = widget.notifier;
     return Center(child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -56,9 +57,26 @@ class _ImportScreenState extends State<ImportScreen> {
         const SizedBox(height: 8),
         Text('Connect to your Shearwater dive computer',
             style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
-        const SizedBox(height: 32),
+        const SizedBox(height: 24),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Checkbox(
+              value: n.forceFullReimport,
+              onChanged: (v) => n.forceFullReimport = v ?? false,
+            ),
+            GestureDetector(
+              onTap: () => n.forceFullReimport = !n.forceFullReimport,
+              child: Text('Re-import all dives (ignore prior imports)',
+                  style: TextStyle(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      fontSize: 13)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         FilledButton.icon(
-          onPressed: () => widget.notifier.startScan(),
+          onPressed: () => n.startScan(),
           icon: const Icon(Icons.search),
           label: const Text('Start Scan'),
         ),
