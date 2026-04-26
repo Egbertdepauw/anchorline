@@ -47,3 +47,4 @@ app.*.map.json
 # Drift generated files are committed (needed for builds without build_runner)
 # *.g.dart — keep in version control
 .claude/
+.superpowers/
