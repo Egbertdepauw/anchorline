@@ -33,3 +33,21 @@ String formatGf(int? low, int? high) {
   if (low == null || high == null) return '';
   return 'GF $low/$high';
 }
+
+/// Format a gas mix for display: "21/35" for trimix, "EAN32" for nitrox, "Air" for air.
+String formatGasMix(int o2, int he) {
+  if (he > 0) return '$o2/$he';
+  if (o2 == 21) return 'Air';
+  if (o2 == 100) return 'O2';
+  return 'EAN$o2';
+}
+
+/// Format a date+time from unix seconds: "19 Apr 2026 · 10:38"
+String formatDateTime(int unixSeconds) {
+  final dt = DateTime.fromMillisecondsSinceEpoch(unixSeconds * 1000, isUtc: true);
+  final date = _dayMonth.format(dt);
+  final year = dt.year;
+  final time =
+      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  return '$date $year · $time';
+}
