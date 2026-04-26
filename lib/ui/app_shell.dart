@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../data/db/database.dart';
 import '../data/db/dive_dao.dart';
+import '../data/db/import_state_dao.dart';
 import 'notifiers/dive_list_notifier.dart';
 import 'notifiers/import_notifier.dart';
 import 'screens/dive_list_screen.dart';
@@ -9,9 +11,9 @@ import 'screens/import_screen.dart';
 import 'screens/placeholder_screen.dart';
 
 class AppShell extends StatefulWidget {
-  final DiveDao diveDao;
+  final AppDatabase db;
 
-  const AppShell({super.key, required this.diveDao});
+  const AppShell({super.key, required this.db});
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -19,14 +21,22 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
+  late final DiveDao _diveDao;
+  late final ImportStateDao _importStateDao;
   late final DiveListNotifier _diveListNotifier;
   late final ImportNotifier _importNotifier;
 
   @override
   void initState() {
     super.initState();
-    _diveListNotifier = DiveListNotifier(widget.diveDao);
-    _importNotifier = ImportNotifier(dao: widget.diveDao, useMock: kDebugMode);
+    _diveDao = DiveDao(widget.db);
+    _importStateDao = ImportStateDao(widget.db);
+    _diveListNotifier = DiveListNotifier(_diveDao);
+    _importNotifier = ImportNotifier(
+      dao: _diveDao,
+      importStateDao: _importStateDao,
+      useMock: kDebugMode,
+    );
   }
 
   @override
@@ -48,7 +58,7 @@ class _AppShellState extends State<AppShell> {
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          DiveListScreen(notifier: _diveListNotifier, diveDao: widget.diveDao),
+          DiveListScreen(notifier: _diveListNotifier, diveDao: _diveDao),
           ImportScreen(notifier: _importNotifier, onViewDives: _onViewDives),
           const PlaceholderScreen(title: 'Equipment', icon: Icons.build_outlined),
           const PlaceholderScreen(title: 'Settings', icon: Icons.settings_outlined),

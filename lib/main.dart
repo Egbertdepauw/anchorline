@@ -6,7 +6,6 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'data/db/database.dart';
-import 'data/db/dive_dao.dart';
 import 'dev/fixture_seeder.dart';
 import 'ui/app_shell.dart';
 import 'ui/theme/app_theme.dart';
@@ -33,7 +32,7 @@ class CCRLogApp extends StatelessWidget {
     return MaterialApp(
       title: 'CCRLog',
       theme: AppTheme.dark(),
-      home: AppShell(diveDao: DiveDao(db)),
+      home: AppShell(db: db),
       debugShowCheckedModeBanner: false,
     );
   }
