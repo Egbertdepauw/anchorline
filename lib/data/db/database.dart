@@ -3,21 +3,25 @@ library;
 
 import 'package:drift/drift.dart';
 
+import 'equipment_dao.dart';
 import 'tables.dart';
 
 part 'database.g.dart';
 
-@DriftDatabase(tables: [
-  Dives,
-  DiveSamples,
-  DiveAnnotations,
-  DiveComputers,
-  OxygenCells,
-  ScrubberSessions,
-  Cylinders,
-  PressureMappings,
-  ImportStates,
-])
+@DriftDatabase(
+  tables: [
+    Dives,
+    DiveSamples,
+    DiveAnnotations,
+    DiveComputers,
+    OxygenCells,
+    ScrubberSessions,
+    Cylinders,
+    PressureMappings,
+    ImportStates,
+  ],
+  daos: [EquipmentDao],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
