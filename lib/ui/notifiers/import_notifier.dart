@@ -4,9 +4,14 @@
 /// readingManifest → downloading → done / error.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../../data/db/dive_dao.dart';
+import '../../data/db/import_state_dao.dart';
+import '../../shearwater/ble/ble_io_impl.dart';
 import '../../shearwater/ble/mock_ble_transport.dart';
 import '../../shearwater/ble/shearwater_ble_transport.dart';
 import '../../shearwater/parser/dive_converter.dart';
@@ -34,6 +39,7 @@ enum ImportFlowState {
 /// desktop without hardware.
 class ImportNotifier extends ChangeNotifier {
   final DiveDao _dao;
+  final ImportStateDao _importStateDao;
   final bool useMock;
 
   bool _disposed = false;
@@ -45,10 +51,22 @@ class ImportNotifier extends ChangeNotifier {
   int? _currentDiveNumber;
   String? _errorMessage;
   int _failedCount = 0;
+
+  // Mock
   MockBleTransport? _mockTransport;
   bool _mockDeviceAvailable = false;
 
-  ImportNotifier({required DiveDao dao, this.useMock = false}) : _dao = dao;
+  // Real BLE
+  ShearwaterBleTransport? _realTransport;
+  final List<BluetoothDevice> _discoveredDevices = [];
+  StreamSubscription<List<ScanResult>>? _scanSubscription;
+
+  ImportNotifier({
+    required DiveDao dao,
+    required ImportStateDao importStateDao,
+    this.useMock = false,
+  })  : _dao = dao,
+        _importStateDao = importStateDao;
 
   // ── Accessors ──────────────────────────────────────────────────────────────
 
@@ -64,14 +82,21 @@ class ImportNotifier extends ChangeNotifier {
   /// Whether the mock device advertisement is ready to be selected.
   bool get mockDeviceAvailable => _mockDeviceAvailable;
 
-  // ── State transitions ──────────────────────────────────────────────────────
+  /// Real BLE devices discovered during scanning.
+  List<BluetoothDevice> get discoveredDevices =>
+      List.unmodifiable(_discoveredDevices);
+
+  // ── Scanning ───────────────────────────────────────────────────────────────
 
   /// Begin scanning. Transitions immediately to [ImportFlowState.scanning].
   ///
   /// In mock mode, [mockDeviceAvailable] becomes `true` after a short delay.
+  /// Real BLE devices are discovered via [FlutterBluePlus] and collected into
+  /// [discoveredDevices].
   void startScan() {
     _state = ImportFlowState.scanning;
     _mockDeviceAvailable = false;
+    _discoveredDevices.clear();
     notifyListeners();
 
     if (useMock) {
@@ -81,18 +106,50 @@ class ImportNotifier extends ChangeNotifier {
         notifyListeners();
       });
     }
+
+    _startRealScan();
   }
 
-  @override
-  void dispose() {
-    _disposed = true;
-    super.dispose();
+  void _startRealScan() {
+    // Subscribe to results before starting the scan so we don't miss
+    // advertisements that arrive immediately.
+    try {
+      _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
+        var changed = false;
+        for (final result in results) {
+          if (result.advertisementData.serviceUuids.any((uuid) =>
+              uuid.toString().toLowerCase() ==
+              shearwaterServiceUuid.toLowerCase())) {
+            if (!_discoveredDevices
+                .any((d) => d.remoteId == result.device.remoteId)) {
+              _discoveredDevices.add(result.device);
+              changed = true;
+            }
+          }
+        }
+        if (changed && !_disposed) notifyListeners();
+      });
+    } catch (e) {
+      debugPrint('BLE scan results subscription error: $e');
+    }
+
+    FlutterBluePlus.startScan(timeout: const Duration(seconds: 15))
+        .catchError((Object e) => debugPrint('BLE scan error: $e'));
   }
+
+  void _stopScan() {
+    _scanSubscription?.cancel();
+    _scanSubscription = null;
+    FlutterBluePlus.stopScan().catchError((Object _) {});
+  }
+
+  // ── Connect (mock) ─────────────────────────────────────────────────────────
 
   /// Connect to the mock device and read device info.
   ///
   /// Transitions: scanning → connecting → readingManifest.
   Future<void> selectMockDevice() async {
+    _stopScan();
     _state = ImportFlowState.connecting;
     notifyListeners();
 
@@ -110,17 +167,56 @@ class ImportNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Connect (real BLE) ─────────────────────────────────────────────────────
+
+  /// Connect to a real BLE device and read device info.
+  ///
+  /// Transitions: scanning → connecting → readingManifest.
+  Future<void> selectRealDevice(BluetoothDevice device) async {
+    _stopScan();
+    _state = ImportFlowState.connecting;
+    notifyListeners();
+
+    try {
+      _realTransport = ShearwaterBleTransport();
+      await _realTransport!.connect(device);
+      _deviceInfo = await _realTransport!.readDeviceInfo();
+      _state = ImportFlowState.readingManifest;
+    } catch (e) {
+      _errorMessage = 'Connection failed: $e';
+      _state = ImportFlowState.error;
+      try {
+        await _realTransport?.disconnect();
+      } catch (_) {}
+      _realTransport = null;
+    }
+    notifyListeners();
+  }
+
+  // ── Manifest ───────────────────────────────────────────────────────────────
+
+  bool get _isRealBle => _realTransport != null;
+
   /// Read the manifest and filter out dives that are already in the database.
+  ///
+  /// For real BLE, passes the last known fingerprint from [ImportStateDao] so
+  /// the device can return only newer dives (incremental sync).
   ///
   /// The pre-filter is an optimisation: the authoritative dedup happens
   /// inside [DiveDao.importDive], which returns `false` for existing dives.
-  /// Because mock manifest entries use synthetic timestamps (not the blob's
-  /// actual start time), we skip the pre-filter for mock entries to avoid
-  /// false-positive hits.  All valid entries are queued; duplicates will be
-  /// discarded by [DiveDao.importDive] at import time.
   Future<void> readManifestAndFilterNew() async {
     try {
-      final manifest = await _mockTransport!.readManifest();
+      List<ManifestEntry> manifest;
+
+      if (_isRealBle) {
+        final lastFp =
+            await _importStateDao.getLastFingerprint(_deviceInfo!.serial);
+        manifest =
+            await _realTransport!.readManifest(lastFingerprint: lastFp);
+      } else {
+        manifest = await _mockTransport!.readManifest();
+      }
+
       _newDives = manifest.where((e) => e.isValid).toList();
       _totalToDownload = _newDives.length;
     } catch (e) {
@@ -130,10 +226,16 @@ class ImportNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Download ───────────────────────────────────────────────────────────────
+
   /// Download and persist all queued dives.
   ///
   /// Each dive is parsed and committed atomically. Failures on individual
   /// dives are counted in [failedCount] and do not abort the stream.
+  ///
+  /// On completion (success or connection error), the newest successfully
+  /// imported fingerprint is saved via [ImportStateDao] for incremental sync
+  /// on the next import session.
   Future<void> downloadAll() async {
     _state = ImportFlowState.downloading;
     _downloadedCount = 0;
@@ -142,9 +244,14 @@ class ImportNotifier extends ChangeNotifier {
 
     final parser = ShearwaterDiveParser(model: _deviceInfo!.model);
     final serial = int.parse(_deviceInfo!.serial, radix: 16);
+    ManifestEntry? lastSuccessfulEntry;
 
     try {
-      await for (final downloaded in _mockTransport!.downloadDives(_newDives)) {
+      final diveStream = _isRealBle
+          ? _realTransport!.downloadDives(_newDives)
+          : _mockTransport!.downloadDives(_newDives);
+
+      await for (final downloaded in diveStream) {
         _currentDiveNumber = downloaded.manifest.diveNumber;
         notifyListeners();
 
@@ -156,12 +263,15 @@ class ImportNotifier extends ChangeNotifier {
             dcDiveNumber: downloaded.manifest.diveNumber,
             dcModel: _deviceInfo!.model,
           );
-          await _dao.importDive(
+          final imported = await _dao.importDive(
             converted: converted,
             rawBlob: downloaded.data,
             parserVersion: 1,
           );
-          _downloadedCount++;
+          if (imported) {
+            _downloadedCount++;
+            lastSuccessfulEntry = downloaded.manifest;
+          }
         } catch (e) {
           debugPrint(
             'Failed to import dive ${downloaded.manifest.diveNumber}: $e',
@@ -176,6 +286,21 @@ class ImportNotifier extends ChangeNotifier {
       _errorMessage =
           'Connection lost. $_downloadedCount of $_totalToDownload dives imported.';
       _state = ImportFlowState.error;
+    }
+
+    // Save fingerprint for incremental sync on real BLE imports
+    if (_isRealBle && lastSuccessfulEntry != null) {
+      await _importStateDao.saveLastFingerprint(
+        _deviceInfo!.serial,
+        lastSuccessfulEntry.fingerprint,
+      );
+    }
+
+    // Disconnect real transport when done
+    if (_isRealBle) {
+      try {
+        await _realTransport!.disconnect();
+      } catch (_) {}
     }
 
     _currentDiveNumber = null;
@@ -203,6 +328,14 @@ class ImportNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  @override
+  void dispose() {
+    _disposed = true;
+    _stopScan();
+    _realTransport?.disconnect();
+    super.dispose();
+  }
+
   // ── Internal ───────────────────────────────────────────────────────────────
 
   void _reset() {
@@ -216,5 +349,8 @@ class ImportNotifier extends ChangeNotifier {
     _failedCount = 0;
     _mockTransport = null;
     _mockDeviceAvailable = false;
+    _realTransport = null;
+    _discoveredDevices.clear();
+    _stopScan();
   }
 }

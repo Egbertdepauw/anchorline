@@ -1,5 +1,6 @@
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
+import 'package:ccrlogger/data/db/import_state_dao.dart';
 import 'package:ccrlogger/ui/notifiers/import_notifier.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,12 +10,14 @@ void main() {
 
   late AppDatabase db;
   late DiveDao dao;
+  late ImportStateDao importStateDao;
   late ImportNotifier notifier;
 
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());
     dao = DiveDao(db);
-    notifier = ImportNotifier(dao: dao, useMock: true);
+    importStateDao = ImportStateDao(db);
+    notifier = ImportNotifier(dao: dao, importStateDao: importStateDao, useMock: true);
   });
 
   tearDown(() async {
