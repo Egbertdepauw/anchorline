@@ -1,0 +1,4 @@
+serial=B89641E4
+firmware=V103 DiveCAN
+hardware=0xb407
+base_address=0x80000000
