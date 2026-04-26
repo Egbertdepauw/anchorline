@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../notifiers/import_notifier.dart';
 
 class ImportScreen extends StatefulWidget {
@@ -72,8 +73,13 @@ class _ImportScreenState extends State<ImportScreen> {
         const SizedBox(width: 48, height: 48, child: CircularProgressIndicator()),
         const SizedBox(height: 24),
         const Text('Searching for dive computers...', style: TextStyle(fontSize: 16)),
+        const SizedBox(height: 8),
+        Text('Make sure your dive computer is in upload mode',
+            style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.4), fontSize: 12)),
+
+        // Mock device (debug only)
         if (n.mockDeviceAvailable) ...[
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           Card(child: ListTile(
             leading: const Icon(Icons.bluetooth_connected),
             title: const Text('Petrel 3 (Mock)'),
@@ -85,6 +91,28 @@ class _ImportScreenState extends State<ImportScreen> {
               }
             },
           )),
+        ],
+
+        // Real BLE devices
+        for (final BluetoothDevice device in n.discoveredDevices) ...[
+          const SizedBox(height: 8),
+          Card(child: ListTile(
+            leading: Icon(Icons.bluetooth, color: theme.colorScheme.primary),
+            title: Text(device.platformName.isNotEmpty ? device.platformName : 'Shearwater DC'),
+            subtitle: Text(device.remoteId.toString()),
+            onTap: () async {
+              await n.selectRealDevice(device);
+              if (n.state == ImportFlowState.readingManifest) {
+                await n.readManifestAndFilterNew();
+              }
+            },
+          )),
+        ],
+
+        if (!n.mockDeviceAvailable && n.discoveredDevices.isEmpty) ...[
+          const SizedBox(height: 24),
+          Text('No devices found yet...',
+              style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.3), fontSize: 12)),
         ],
       ],
     ));
