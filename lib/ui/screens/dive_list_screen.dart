@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../data/db/database.dart';
+import '../../data/db/dive_dao.dart';
 import '../notifiers/dive_list_notifier.dart';
 import '../widgets/dive_tile.dart';
+import 'dive_detail_screen.dart';
 
 class DiveListScreen extends StatefulWidget {
   final DiveListNotifier notifier;
+  final DiveDao diveDao;
 
-  const DiveListScreen({super.key, required this.notifier});
+  const DiveListScreen(
+      {super.key, required this.notifier, required this.diveDao});
 
   @override
   State<DiveListScreen> createState() => _DiveListScreenState();
@@ -42,11 +46,19 @@ class _DiveListScreenState extends State<DiveListScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.scuba_diving, size: 48,
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3)),
+            Icon(Icons.scuba_diving,
+                size: 48,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.3)),
             const SizedBox(height: 16),
             Text('No dives yet',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
+                style: TextStyle(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.5))),
           ],
         ),
       );
@@ -67,7 +79,10 @@ class _DiveListScreenState extends State<DiveListScreen> {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.5),
                   ),
                 ),
               ),
@@ -76,7 +91,10 @@ class _DiveListScreenState extends State<DiveListScreen> {
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   final dive = entry.value[index];
-                  return _DiveTileWithSparkline(dive: dive, notifier: notifier);
+                  return _DiveTileWithSparkline(
+                      dive: dive,
+                      notifier: notifier,
+                      diveDao: widget.diveDao);
                 },
                 childCount: entry.value.length,
               ),
@@ -91,8 +109,10 @@ class _DiveListScreenState extends State<DiveListScreen> {
 class _DiveTileWithSparkline extends StatelessWidget {
   final Dive dive;
   final DiveListNotifier notifier;
+  final DiveDao diveDao;
 
-  const _DiveTileWithSparkline({required this.dive, required this.notifier});
+  const _DiveTileWithSparkline(
+      {required this.dive, required this.notifier, required this.diveDao});
 
   @override
   Widget build(BuildContext context) {
@@ -103,9 +123,9 @@ class _DiveTileWithSparkline extends StatelessWidget {
           dive: dive,
           sparklineData: snapshot.data,
           onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Dive #${dive.dcDiveNumber} detail (coming soon)')),
-            );
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => DiveDetailScreen(dive: dive, dao: diveDao),
+            ));
           },
         );
       },

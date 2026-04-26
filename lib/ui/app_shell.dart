@@ -24,7 +24,7 @@ class _AppShellState extends State<AppShell> {
     super.initState();
     _diveListNotifier = DiveListNotifier(widget.diveDao);
     _screens = [
-      DiveListScreen(notifier: _diveListNotifier),
+      DiveListScreen(notifier: _diveListNotifier, diveDao: widget.diveDao),
       const PlaceholderScreen(title: 'Import from dive computer', icon: Icons.bluetooth),
       const PlaceholderScreen(title: 'Equipment', icon: Icons.build_outlined),
       const PlaceholderScreen(title: 'Settings', icon: Icons.settings_outlined),
