@@ -2,10 +2,77 @@ import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
+import 'package:ccrlogger/data/sample_codec/column_packer.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 AppDatabase _db() => AppDatabase(NativeDatabase.memory());
+
+/// Inserts a Dives row + a DiveSamples row whose per-channel blobs hold
+/// the supplied Float32 series. All other channels are filled with
+/// zero-blobs of the same length. Returns the dive id.
+Future<String> _insertDiveWithSamples(
+  AppDatabase db, {
+  required String id,
+  required int dcSerial,
+  required DateTime startTime,
+  required List<double> depthM,
+  required List<double> cellMv0,
+  required List<double> cellMv1,
+  required List<double> cellMv2,
+}) async {
+  final n = depthM.length;
+  assert(cellMv0.length == n && cellMv1.length == n && cellMv2.length == n);
+
+  Uint8List packF(List<double> xs) =>
+      ColumnPacker.packFloat32(Float32List.fromList(xs));
+  final zerosF = packF(List.filled(n, 0.0));
+
+  await db.into(db.dives).insert(DivesCompanion.insert(
+        id: id,
+        dcSerial: dcSerial,
+        dcDiveNumber: 1,
+        startTime: startTime.millisecondsSinceEpoch,
+        endTime: startTime.millisecondsSinceEpoch + 60 * 1000,
+        durationSeconds: 60,
+        maxDepthMm: 0,
+        diveMode: 0,
+        decoModel: 0,
+        atmosphericPressureMbar: 1013,
+        waterDensity: 1030,
+        logVersion: 1,
+        dcModel: 0xB407,
+        sampleIntervalMs: 10000,
+        gasMixesJson: '[]',
+        rawBlob: Uint8List(0),
+        parserVersion: 1,
+        importedAt: 0,
+      ));
+
+  await db.into(db.diveSamples).insert(DiveSamplesCompanion.insert(
+        diveId: id,
+        sampleCount: n,
+        depthBlob: packF(depthM),
+        temperatureBlob: zerosF,
+        ppo2Blob: zerosF,
+        cellMv0Blob: packF(cellMv0),
+        cellMv1Blob: packF(cellMv1),
+        cellMv2Blob: packF(cellMv2),
+        setpointBlob: zerosF,
+        cnsBlob: zerosF,
+        decoDepthBlob: zerosF,
+        decoTimeBlob:
+            ColumnPacker.packInt32(Int32List.fromList(List.filled(n, 0))),
+        ttsBlob:
+            ColumnPacker.packInt32(Int32List.fromList(List.filled(n, 0))),
+        gasMixIdxBlob:
+            ColumnPacker.packUint8(Uint8List.fromList(List.filled(n, 0))),
+        statusBlob:
+            ColumnPacker.packUint8(Uint8List.fromList(List.filled(n, 0))),
+      ));
+
+  return id;
+}
 
 void main() {
   late AppDatabase db;
@@ -193,6 +260,75 @@ void main() {
       final id = await dao.addCell(slot: 1); // no installedDate
       final ok = await dao.deleteCellIfUnused(id);
       expect(ok, isTrue);
+    });
+  });
+
+  group('surfaceMvSeriesForCell', () {
+    test('returns mean of cellMv samples below 1.0m, voted-out filtered',
+        () async {
+      final cellId = await dao.addCell(
+        slot: 1,
+        label: 'test',
+        installedDate: DateTime(2025, 1, 1),
+      );
+      // Slot 1 → cellMv0 column.
+      await _insertDiveWithSamples(
+        db,
+        id: 'dive_a',
+        dcSerial: 1,
+        startTime: DateTime(2025, 6, 1),
+        depthM: [0.0, 0.5, 5.0, 0.5, 0.0],
+        cellMv0: [10.0, 11.0, 50.0, 12.0, 9.0], // surface samples avg = 10.5
+        cellMv1: [0, 0, 0, 0, 0],
+        cellMv2: [0, 0, 0, 0, 0],
+      );
+
+      final series = await dao.surfaceMvSeriesForCell(cellId);
+      expect(series, hasLength(1));
+      expect(series.single.mv, closeTo(10.5, 0.01));
+      expect(series.single.diveId, 'dive_a');
+    });
+
+    test('omits dives outside the cell window', () async {
+      final cellId = await dao.addCell(
+        slot: 1,
+        label: 't',
+        installedDate: DateTime(2025, 1, 1),
+      );
+      await dao.retireCell(cellId, retiredAt: DateTime(2025, 3, 1));
+
+      await _insertDiveWithSamples(
+        db,
+        id: 'dive_outside',
+        dcSerial: 1,
+        startTime: DateTime(2025, 6, 1),
+        depthM: [0.0],
+        cellMv0: [10.0],
+        cellMv1: [0],
+        cellMv2: [0],
+      );
+
+      expect(await dao.surfaceMvSeriesForCell(cellId), isEmpty);
+    });
+
+    test('omits dives whose surface samples are all voted-out', () async {
+      final cellId = await dao.addCell(
+        slot: 1,
+        label: 't',
+        installedDate: DateTime(2025, 1, 1),
+      );
+      await _insertDiveWithSamples(
+        db,
+        id: 'dive_vo',
+        dcSerial: 1,
+        startTime: DateTime(2025, 6, 1),
+        depthM: [0.0, 0.5, 0.0],
+        cellMv0: [2.0, 3.0, 1.0], // all below 5 mV → treated as voted-out
+        cellMv1: [0, 0, 0],
+        cellMv2: [0, 0, 0],
+      );
+
+      expect(await dao.surfaceMvSeriesForCell(cellId), isEmpty);
     });
   });
 }

@@ -8,6 +8,7 @@ library;
 
 import 'package:drift/drift.dart';
 
+import '../sample_codec/column_packer.dart';
 import 'database.dart';
 import 'tables.dart';
 
@@ -201,5 +202,76 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
 
     await (delete(oxygenCells)..where((t) => t.id.equals(id))).go();
     return true;
+  }
+
+  // ── Cell aggregation ─────────────────────────────────────────────────────
+
+  /// Per-dive surface-mV time series for a cell, across all dives in the
+  /// cell's [installedDate, retiredDate) window.
+  ///
+  /// "Surface mV" = mean of `cellMv[slot]` over samples where `depthM < 1.0`
+  /// AND `cellMv >= 5.0` (voted-out heuristic). Dives with no qualifying
+  /// samples are omitted. Slot is 1-based on the table; cellMv channels are
+  /// 0-based in the sample columns (slot 1 → cellMv0, etc).
+  Future<List<({DateTime date, double mv, String diveId})>>
+      surfaceMvSeriesForCell(String cellId) async {
+    final cell = await getCell(cellId);
+    if (cell == null) return const [];
+
+    final mvCol = cell.slot - 1; // 1→0, 2→1, 3→2
+    if (mvCol < 0 || mvCol > 2) return const [];
+
+    final query = select(db.dives);
+    if (cell.installedDate != null) {
+      query.where((t) => t.startTime.isBiggerOrEqualValue(cell.installedDate!));
+    }
+    if (cell.retiredDate != null) {
+      query.where((t) => t.startTime.isSmallerThanValue(cell.retiredDate!));
+    }
+    query.orderBy([(t) => OrderingTerm.asc(t.startTime)]);
+    final dives = await query.get();
+    if (dives.isEmpty) return const [];
+
+    final samplesById = <String, DiveSample>{
+      for (final s in await (select(db.diveSamples)
+                ..where((t) => t.diveId.isIn(dives.map((d) => d.id))))
+              .get())
+        s.diveId: s,
+    };
+
+    final out = <({DateTime date, double mv, String diveId})>[];
+    for (final dive in dives) {
+      final sample = samplesById[dive.id];
+      if (sample == null) continue;
+      final mv = _computeSurfaceMv(sample, mvCol);
+      if (mv == null) continue;
+      out.add((
+        date: DateTime.fromMillisecondsSinceEpoch(dive.startTime),
+        mv: mv,
+        diveId: dive.id,
+      ));
+    }
+    return out;
+  }
+
+  double? _computeSurfaceMv(DiveSample sample, int mvCol) {
+    final depths =
+        ColumnPacker.unpackFloat32(sample.depthBlob, sample.sampleCount);
+    final mvBlob = switch (mvCol) {
+      0 => sample.cellMv0Blob,
+      1 => sample.cellMv1Blob,
+      _ => sample.cellMv2Blob,
+    };
+    final mvs = ColumnPacker.unpackFloat32(mvBlob, sample.sampleCount);
+    var sum = 0.0;
+    var count = 0;
+    for (var i = 0; i < sample.sampleCount; i++) {
+      if (depths[i] >= 1.0) continue;
+      final v = mvs[i];
+      if (v < 5.0) continue;
+      sum += v;
+      count++;
+    }
+    return count == 0 ? null : sum / count;
   }
 }
