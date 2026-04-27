@@ -1,0 +1,104 @@
+import 'package:flutter/material.dart';
+
+import '../../../data/db/equipment_dao.dart';
+
+class EquipmentLandingScreen extends StatefulWidget {
+  final EquipmentDao dao;
+
+  const EquipmentLandingScreen({super.key, required this.dao});
+
+  @override
+  State<EquipmentLandingScreen> createState() => _EquipmentLandingScreenState();
+}
+
+class _EquipmentLandingScreenState extends State<EquipmentLandingScreen> {
+  int _computers = 0;
+  int _cells = 0;
+  int _scrubbers = 0;
+  int _cylinders = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final c = await widget.dao.listDiveComputers();
+    final ce = await widget.dao.listCells();
+    final s = await widget.dao.listScrubberSessions();
+    final cy = await widget.dao.listCylinders();
+    if (!mounted) return;
+    setState(() {
+      _computers = c.length;
+      _cells = ce.length;
+      _scrubbers = s.length;
+      _cylinders = cy.length;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _Card(
+            title: 'Dive Computers',
+            count: _computers,
+            icon: Icons.bluetooth,
+            onTap: () {}, // wired in Task 9
+          ),
+          const SizedBox(height: 12),
+          _Card(
+            title: 'O2 Cells',
+            count: _cells,
+            icon: Icons.science_outlined,
+            onTap: () {}, // wired in Task 11
+          ),
+          const SizedBox(height: 12),
+          _Card(
+            title: 'Scrubbers',
+            count: _scrubbers,
+            icon: Icons.replay_circle_filled_outlined,
+            onTap: () {}, // wired in Task 13
+          ),
+          const SizedBox(height: 12),
+          _Card(
+            title: 'Cylinders',
+            count: _cylinders,
+            icon: Icons.propane_tank_outlined,
+            onTap: () {}, // wired in Task 14
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Card extends StatelessWidget {
+  final String title;
+  final int count;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _Card({
+    required this.title,
+    required this.count,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: Icon(icon),
+        title: Text(title),
+        trailing: Text('$count', style: Theme.of(context).textTheme.titleLarge),
+        onTap: onTap,
+      ),
+    );
+  }
+}

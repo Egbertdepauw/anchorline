@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 
 import '../data/db/database.dart';
 import '../data/db/dive_dao.dart';
+import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
 import 'notifiers/dive_list_notifier.dart';
 import 'notifiers/import_notifier.dart';
 import 'screens/dive_list_screen.dart';
+import 'screens/equipment/equipment_landing_screen.dart';
 import 'screens/import_screen.dart';
 import 'screens/placeholder_screen.dart';
 
@@ -23,6 +25,7 @@ class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
   late final DiveDao _diveDao;
   late final ImportStateDao _importStateDao;
+  late final EquipmentDao _equipmentDao;
   late final DiveListNotifier _diveListNotifier;
   late final ImportNotifier _importNotifier;
 
@@ -31,6 +34,7 @@ class _AppShellState extends State<AppShell> {
     super.initState();
     _diveDao = DiveDao(widget.db);
     _importStateDao = ImportStateDao(widget.db);
+    _equipmentDao = EquipmentDao(widget.db);
     _diveListNotifier = DiveListNotifier(_diveDao);
     _importNotifier = ImportNotifier(
       dao: _diveDao,
@@ -60,7 +64,7 @@ class _AppShellState extends State<AppShell> {
         children: [
           DiveListScreen(notifier: _diveListNotifier, diveDao: _diveDao),
           ImportScreen(notifier: _importNotifier, onViewDives: _onViewDives),
-          const PlaceholderScreen(title: 'Equipment', icon: Icons.build_outlined),
+          EquipmentLandingScreen(dao: _equipmentDao),
           const PlaceholderScreen(title: 'Settings', icon: Icons.settings_outlined),
         ],
       ),
