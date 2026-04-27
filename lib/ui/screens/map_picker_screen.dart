@@ -43,7 +43,10 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
       _pin = p!;
       _initialised = true;
     });
-    _mapController.move(_pin, 13);
+    // Don't call _mapController.move here — FlutterMap hasn't been built
+    // on the first pump (we're inside the `_initialised == false`
+    // branch). MapOptions.initialCenter handles the initial position.
+    // _useCurrent() can move() later because by then the map is rendered.
   }
 
   Future<LatLng?> _currentLocation() async {
