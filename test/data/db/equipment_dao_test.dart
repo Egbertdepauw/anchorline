@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
+import 'package:ccrlogger/data/models/equipment.dart';
 import 'package:ccrlogger/data/sample_codec/column_packer.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -414,6 +415,60 @@ void main() {
       final all = await dao.listScrubberSessions();
       final closed = all.firstWhere((s) => s.id == open);
       expect(closed.totalMinutes, 60);
+    });
+  });
+
+  group('Cylinders', () {
+    test('addCylinder + listCylinders round-trip', () async {
+      final id = await dao.addCylinder(
+        label: 'AL40 stage',
+        role: CylinderRole.bailout,
+        bailoutOrder: 1,
+        volumeLiters: 5.7,
+        workingPressureBar: 207,
+        gasMix: '21/35',
+      );
+      final list = await dao.listCylinders();
+      expect(list, hasLength(1));
+      expect(list.single.id, id);
+      expect(list.single.role, 'bailout');
+      expect(list.single.bailoutOrder, 1);
+    });
+
+    test('updateCylinder clears bailoutOrder when role changes away from bailout',
+        () async {
+      final id = await dao.addCylinder(
+        label: 'BO1',
+        role: CylinderRole.bailout,
+        bailoutOrder: 1,
+        volumeLiters: 5.0,
+        workingPressureBar: 200,
+      );
+      await dao.updateCylinder(id, role: CylinderRole.diluent);
+      final updated = (await dao.listCylinders()).single;
+      expect(updated.role, 'diluent');
+      expect(updated.bailoutOrder, isNull);
+    });
+
+    test('seedStandardCcrCylinders inserts O2, Diluent, Bailout #1', () async {
+      await dao.seedStandardCcrCylinders();
+      final list = await dao.listCylinders();
+      expect(list.map((c) => c.role).toSet(),
+          {'oxygen', 'diluent', 'bailout'});
+      final bailout = list.firstWhere((c) => c.role == 'bailout');
+      expect(bailout.bailoutOrder, 1);
+    });
+
+    test('addCylinder rejects unknown role', () async {
+      expect(
+        () => dao.addCylinder(
+          label: 'x',
+          role: 'rocket-fuel',
+          volumeLiters: 1,
+          workingPressureBar: 200,
+        ),
+        throwsArgumentError,
+      );
     });
   });
 }

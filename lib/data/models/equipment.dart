@@ -85,3 +85,11 @@ class ScrubberSession {
     this.syncStatus = SyncStatus.pending,
   });
 }
+
+class CylinderRole {
+  static const oxygen = 'oxygen';
+  static const diluent = 'diluent';
+  static const bailout = 'bailout';
+  static const offboard = 'offboard';
+  static const all = <String>[oxygen, diluent, bailout, offboard];
+}

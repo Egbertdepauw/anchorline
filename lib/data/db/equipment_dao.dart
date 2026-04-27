@@ -8,6 +8,7 @@ library;
 
 import 'package:drift/drift.dart';
 
+import '../models/equipment.dart' show CylinderRole;
 import '../sample_codec/column_packer.dart';
 import 'database.dart';
 import 'tables.dart';
@@ -406,5 +407,140 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     final totalSeconds =
         dives.fold<int>(0, (sum, d) => sum + d.durationSeconds);
     return totalSeconds ~/ 60;
+  }
+
+  // ── Cylinders ────────────────────────────────────────────────────────────
+
+  Future<String> addCylinder({
+    required String label,
+    required String role,
+    int? bailoutOrder,
+    required double volumeLiters,
+    required int workingPressureBar,
+    String? gasMix,
+    String? notes,
+  }) async {
+    if (!CylinderRole.all.contains(role)) {
+      throw ArgumentError.value(role, 'role',
+          'must be one of ${CylinderRole.all}');
+    }
+    final effectiveOrder =
+        role == CylinderRole.bailout ? bailoutOrder : null;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final id = 'cyl_${now}_$role';
+    await into(cylinders).insert(CylindersCompanion.insert(
+      id: id,
+      label: label,
+      role: role,
+      bailoutOrder: Value(effectiveOrder),
+      volumeLiters: volumeLiters,
+      workingPressureBar: workingPressureBar,
+      gasMix: Value(gasMix),
+      notes: Value(notes),
+      createdAt: now,
+      updatedAt: now,
+    ));
+    return id;
+  }
+
+  Future<List<Cylinder>> listCylinders() async {
+    final rows = await (select(cylinders)
+          ..where((t) => t.deletedAt.isNull()))
+        .get();
+    // Sort by role group order, then bailoutOrder asc, then label asc.
+    const roleOrder = {
+      CylinderRole.oxygen: 0,
+      CylinderRole.diluent: 1,
+      CylinderRole.bailout: 2,
+      CylinderRole.offboard: 3,
+    };
+    rows.sort((a, b) {
+      final ra = roleOrder[a.role] ?? 99;
+      final rb = roleOrder[b.role] ?? 99;
+      if (ra != rb) return ra.compareTo(rb);
+      final oa = a.bailoutOrder ?? 0;
+      final ob = b.bailoutOrder ?? 0;
+      if (oa != ob) return oa.compareTo(ob);
+      return a.label.compareTo(b.label);
+    });
+    return rows;
+  }
+
+  Future<Cylinder?> getCylinder(String id) {
+    return (select(cylinders)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+  }
+
+  Future<void> updateCylinder(
+    String id, {
+    String? label,
+    String? role,
+    int? bailoutOrder,
+    double? volumeLiters,
+    int? workingPressureBar,
+    String? gasMix,
+    String? notes,
+  }) async {
+    if (role != null && !CylinderRole.all.contains(role)) {
+      throw ArgumentError.value(role, 'role');
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // If the role is being moved away from bailout, force-clear bailoutOrder.
+    Value<int?> effectiveBailoutOrder;
+    if (role != null && role != CylinderRole.bailout) {
+      effectiveBailoutOrder = const Value(null);
+    } else if (bailoutOrder != null) {
+      effectiveBailoutOrder = Value(bailoutOrder);
+    } else {
+      effectiveBailoutOrder = const Value.absent();
+    }
+    await (update(cylinders)..where((t) => t.id.equals(id))).write(
+      CylindersCompanion(
+        label: label == null ? const Value.absent() : Value(label),
+        role: role == null ? const Value.absent() : Value(role),
+        bailoutOrder: effectiveBailoutOrder,
+        volumeLiters:
+            volumeLiters == null ? const Value.absent() : Value(volumeLiters),
+        workingPressureBar: workingPressureBar == null
+            ? const Value.absent()
+            : Value(workingPressureBar),
+        gasMix: Value(gasMix),
+        notes: Value(notes),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
+  Future<void> softDeleteCylinder(String id) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await (update(cylinders)..where((t) => t.id.equals(id))).write(
+      CylindersCompanion(
+        deletedAt: Value(now),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
+  Future<void> seedStandardCcrCylinders() async {
+    await addCylinder(
+      label: 'O2',
+      role: CylinderRole.oxygen,
+      volumeLiters: 2.0,
+      workingPressureBar: 207,
+      gasMix: '100',
+    );
+    await addCylinder(
+      label: 'Diluent',
+      role: CylinderRole.diluent,
+      volumeLiters: 3.0,
+      workingPressureBar: 232,
+    );
+    await addCylinder(
+      label: 'Bailout',
+      role: CylinderRole.bailout,
+      bailoutOrder: 1,
+      volumeLiters: 7.0,
+      workingPressureBar: 232,
+    );
   }
 }
