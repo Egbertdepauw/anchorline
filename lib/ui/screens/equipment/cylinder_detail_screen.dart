@@ -32,6 +32,15 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
     if (!_isDraft) _load();
   }
 
+  Future<int> _nextBailoutOrder() async {
+    final cylinders = await widget.dao.listCylinders();
+    final maxOrder = cylinders
+        .where((c) => c.role == CylinderRole.bailout)
+        .map((c) => c.bailoutOrder ?? 0)
+        .fold<int>(0, (a, b) => a > b ? a : b);
+    return maxOrder + 1;
+  }
+
   Future<void> _load() async {
     final c = await widget.dao.getCylinder(widget.id!);
     if (c == null) return;
@@ -120,7 +129,21 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
                     for (final r in CylinderRole.all)
                       DropdownMenuItem(value: r, child: Text(r)),
                   ],
-                  onChanged: (v) => setState(() => _role = v ?? _role),
+                  onChanged: (v) async {
+                    final newRole = v ?? _role;
+                    if (newRole == CylinderRole.bailout &&
+                        _bailoutOrder.text.trim().isEmpty &&
+                        _role != CylinderRole.bailout) {
+                      final next = await _nextBailoutOrder();
+                      if (!mounted) return;
+                      setState(() {
+                        _role = newRole;
+                        _bailoutOrder.text = next.toString();
+                      });
+                    } else {
+                      setState(() => _role = newRole);
+                    }
+                  },
                 ),
                 if (_role == CylinderRole.bailout)
                   TextField(
