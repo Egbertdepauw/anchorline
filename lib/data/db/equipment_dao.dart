@@ -192,10 +192,10 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
           ..where((t) {
             Expression<bool> expr = const Constant(true);
             if (installed != null) {
-              expr = expr & t.startTime.isBiggerOrEqualValue(installed);
+              expr = expr & t.startTime.isBiggerOrEqualValue(installed ~/ 1000);
             }
             if (retired != null) {
-              expr = expr & t.startTime.isSmallerThanValue(retired);
+              expr = expr & t.startTime.isSmallerThanValue(retired ~/ 1000);
             }
             return expr;
           })
@@ -226,10 +226,12 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
 
     final query = select(db.dives);
     if (cell.installedDate != null) {
-      query.where((t) => t.startTime.isBiggerOrEqualValue(cell.installedDate!));
+      query.where(
+          (t) => t.startTime.isBiggerOrEqualValue(cell.installedDate! ~/ 1000));
     }
     if (cell.retiredDate != null) {
-      query.where((t) => t.startTime.isSmallerThanValue(cell.retiredDate!));
+      query.where(
+          (t) => t.startTime.isSmallerThanValue(cell.retiredDate! ~/ 1000));
     }
     query.orderBy([(t) => OrderingTerm.asc(t.startTime)]);
     final dives = await query.get();
@@ -249,7 +251,7 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
       final mv = _computeSurfaceMv(sample, mvCol);
       if (mv == null) continue;
       out.add((
-        date: DateTime.fromMillisecondsSinceEpoch(dive.startTime),
+        date: DateTime.fromMillisecondsSinceEpoch(dive.startTime * 1000),
         mv: mv,
         diveId: dive.id,
       ));
@@ -398,9 +400,10 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
 
     final dives = await (select(db.dives)
           ..where((t) {
-            var expr = t.startTime.isBiggerOrEqualValue(session.startedDate!);
+            var expr = t.startTime
+                .isBiggerOrEqualValue(session.startedDate! ~/ 1000);
             if (endEpoch != null) {
-              expr = expr & t.startTime.isSmallerThanValue(endEpoch);
+              expr = expr & t.startTime.isSmallerThanValue(endEpoch ~/ 1000);
             }
             return expr;
           }))

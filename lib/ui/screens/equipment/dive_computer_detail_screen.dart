@@ -115,8 +115,9 @@ class _DiveComputerDetailScreenState extends State<DiveComputerDetailScreen> {
                     dense: true,
                     title: Text('Dive #${d.dcDiveNumber}'),
                     // Real Dives schema field: startTime (NOT startTimeUtc).
+                    // startTime is Unix seconds UTC; multiply by 1000 for ms.
                     subtitle: Text(DateTime.fromMillisecondsSinceEpoch(
-                            d.startTime)
+                            d.startTime * 1000)
                         .toLocal()
                         .toString()),
                   ),
