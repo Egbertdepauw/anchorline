@@ -41,17 +41,10 @@ class _CylindersListScreenState extends State<CylindersListScreen> {
       appBar: AppBar(title: const Text('Cylinders')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          final id = await _n.add(
-            label: 'New cylinder',
-            role: CylinderRole.bailout,
-            bailoutOrder: 1,
-            volumeLiters: 5,
-            workingPressureBar: 200,
-          );
-          if (!context.mounted) return;
           await Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => CylinderDetailScreen(dao: widget.dao, id: id),
+            builder: (_) => CylinderDetailScreen(dao: widget.dao),
           ));
+          if (!context.mounted) return;
           await _n.load();
         },
         child: const Icon(Icons.add),

@@ -6,9 +6,9 @@ import '../../widgets/cell_mv_chart.dart';
 
 class CellDetailScreen extends StatefulWidget {
   final EquipmentDao dao;
-  final String id;
+  final String? id; // null = create-new draft
 
-  const CellDetailScreen({super.key, required this.dao, required this.id});
+  const CellDetailScreen({super.key, required this.dao, this.id});
 
   @override
   State<CellDetailScreen> createState() => _CellDetailScreenState();
@@ -20,14 +20,16 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
   final _labelCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
 
+  bool get _isDraft => widget.id == null;
+
   @override
   void initState() {
     super.initState();
-    _load();
+    if (!_isDraft) _load();
   }
 
   Future<void> _load() async {
-    final cell = await widget.dao.getCell(widget.id);
+    final cell = await widget.dao.getCell(widget.id!);
     if (cell == null) return;
     final series = await widget.dao.surfaceMvSeriesForCell(cell.id);
     if (!mounted) return;
@@ -40,13 +42,24 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
   }
 
   Future<void> _save() async {
-    if (_cell == null) return;
-    await widget.dao.updateCell(
-      _cell!.id,
-      label: _labelCtrl.text.trim(),
-      notes: _notesCtrl.text.trim(),
-    );
-    await _load();
+    final label = _labelCtrl.text.trim();
+    final notes = _notesCtrl.text.trim();
+    if (_isDraft) {
+      final newId = await widget.dao.addCell(
+        slot: 1,
+        label: label.isEmpty ? null : label,
+        notes: notes.isEmpty ? null : notes,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(newId);
+    } else {
+      await widget.dao.updateCell(
+        _cell!.id,
+        label: label,
+        notes: notes,
+      );
+      await _load();
+    }
   }
 
   Future<void> _retire() async {
@@ -79,17 +92,17 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Cell')),
-      body: _cell == null
+      body: (!_isDraft && _cell == null)
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Text('Slot ${_cell!.slot}',
+                Text('Slot ${_cell?.slot ?? 1}',
                     style: Theme.of(context).textTheme.titleMedium),
-                if (_cell!.installedDate != null)
+                if (_cell?.installedDate != null)
                   Text('Installed: '
                       '${DateTime.fromMillisecondsSinceEpoch(_cell!.installedDate!).toLocal().toString().split(' ').first}'),
-                if (_cell!.retiredDate != null)
+                if (_cell?.retiredDate != null)
                   Text('Retired: '
                       '${DateTime.fromMillisecondsSinceEpoch(_cell!.retiredDate!).toLocal().toString().split(' ').first}'),
                 Text('Dives with mV data: ${_series.length}'),
@@ -111,15 +124,16 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     ElevatedButton(onPressed: _save, child: const Text('Save')),
-                    if (_cell!.retiredDate == null)
+                    if (!_isDraft && _cell?.retiredDate == null)
                       OutlinedButton(
                         onPressed: _retire,
                         child: const Text('Retire'),
                       ),
-                    TextButton(
-                      onPressed: _deleteIfUnused,
-                      child: const Text('Delete'),
-                    ),
+                    if (!_isDraft)
+                      TextButton(
+                        onPressed: _deleteIfUnused,
+                        child: const Text('Delete'),
+                      ),
                   ],
                 ),
               ],

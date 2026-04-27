@@ -40,11 +40,10 @@ class _CellsListScreenState extends State<CellsListScreen> {
       appBar: AppBar(title: const Text('O2 Cells')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          final id = await _n.addCell(slot: 1);
-          if (!context.mounted) return;
           await Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => CellDetailScreen(dao: widget.dao, id: id),
+            builder: (_) => CellDetailScreen(dao: widget.dao),
           ));
+          if (!context.mounted) return;
           await _n.load();
         },
         child: const Icon(Icons.add),

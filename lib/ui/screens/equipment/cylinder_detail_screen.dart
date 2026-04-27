@@ -6,9 +6,9 @@ import '../../../data/models/equipment.dart';
 
 class CylinderDetailScreen extends StatefulWidget {
   final EquipmentDao dao;
-  final String id;
+  final String? id; // null = create-new draft
 
-  const CylinderDetailScreen({super.key, required this.dao, required this.id});
+  const CylinderDetailScreen({super.key, required this.dao, this.id});
 
   @override
   State<CylinderDetailScreen> createState() => _CylinderDetailScreenState();
@@ -24,14 +24,16 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
   final _bailoutOrder = TextEditingController();
   String _role = CylinderRole.bailout;
 
+  bool get _isDraft => widget.id == null;
+
   @override
   void initState() {
     super.initState();
-    _load();
+    if (!_isDraft) _load();
   }
 
   Future<void> _load() async {
-    final c = await widget.dao.getCylinder(widget.id);
+    final c = await widget.dao.getCylinder(widget.id!);
     if (c == null) return;
     if (!mounted) return;
     setState(() {
@@ -47,20 +49,36 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
   }
 
   Future<void> _save() async {
-    if (_c == null) return;
-    await widget.dao.updateCylinder(
-      _c!.id,
-      label: _label.text.trim(),
-      role: _role,
-      bailoutOrder: _role == CylinderRole.bailout
-          ? int.tryParse(_bailoutOrder.text.trim())
-          : null,
-      volumeLiters: double.tryParse(_vol.text.trim()),
-      workingPressureBar: int.tryParse(_press.text.trim()),
-      gasMix: _gas.text.trim(),
-      notes: _notes.text.trim(),
-    );
-    await _load();
+    final label = _label.text.trim();
+    if (_isDraft) {
+      final newId = await widget.dao.addCylinder(
+        label: label.isEmpty ? 'New cylinder' : label,
+        role: _role,
+        bailoutOrder: _role == CylinderRole.bailout
+            ? int.tryParse(_bailoutOrder.text.trim()) ?? 1
+            : null,
+        volumeLiters: double.tryParse(_vol.text.trim()) ?? 5,
+        workingPressureBar: int.tryParse(_press.text.trim()) ?? 200,
+        gasMix: _gas.text.trim(),
+        notes: _notes.text.trim(),
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(newId);
+    } else {
+      await widget.dao.updateCylinder(
+        _c!.id,
+        label: label,
+        role: _role,
+        bailoutOrder: _role == CylinderRole.bailout
+            ? int.tryParse(_bailoutOrder.text.trim())
+            : null,
+        volumeLiters: double.tryParse(_vol.text.trim()),
+        workingPressureBar: int.tryParse(_press.text.trim()),
+        gasMix: _gas.text.trim(),
+        notes: _notes.text.trim(),
+      );
+      await _load();
+    }
   }
 
   Future<void> _delete() async {
@@ -85,7 +103,7 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Cylinder')),
-      body: _c == null
+      body: (!_isDraft && _c == null)
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
@@ -137,8 +155,9 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     ElevatedButton(onPressed: _save, child: const Text('Save')),
-                    TextButton(
-                        onPressed: _delete, child: const Text('Delete')),
+                    if (!_isDraft)
+                      TextButton(
+                          onPressed: _delete, child: const Text('Delete')),
                   ],
                 ),
               ],
