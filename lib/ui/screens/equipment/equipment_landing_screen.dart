@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/db/equipment_dao.dart';
 import 'cells_list_screen.dart';
+import 'cylinders_list_screen.dart';
 import 'dive_computers_list_screen.dart';
 import 'scrubber_sessions_list_screen.dart';
 
@@ -87,7 +88,12 @@ class _EquipmentLandingScreenState extends State<EquipmentLandingScreen> {
             title: 'Cylinders',
             count: _cylinders,
             icon: Icons.propane_tank_outlined,
-            onTap: () {}, // wired in Task 14
+            onTap: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => CylindersListScreen(dao: widget.dao),
+              ));
+              await _refresh();
+            },
           ),
         ],
       ),

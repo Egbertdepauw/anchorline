@@ -148,3 +148,71 @@ class ScrubberSessionsNotifier extends ChangeNotifier {
     await load();
   }
 }
+
+class CylindersNotifier extends ChangeNotifier {
+  final EquipmentDao _dao;
+  CylindersNotifier(this._dao);
+
+  List<Cylinder> _cylinders = [];
+  List<Cylinder> get cylinders => List.unmodifiable(_cylinders);
+
+  Future<void> load() async {
+    _cylinders = await _dao.listCylinders();
+    notifyListeners();
+  }
+
+  Future<String> add({
+    required String label,
+    required String role,
+    int? bailoutOrder,
+    required double volumeLiters,
+    required int workingPressureBar,
+    String? gasMix,
+    String? notes,
+  }) async {
+    final id = await _dao.addCylinder(
+      label: label,
+      role: role,
+      bailoutOrder: bailoutOrder,
+      volumeLiters: volumeLiters,
+      workingPressureBar: workingPressureBar,
+      gasMix: gasMix,
+      notes: notes,
+    );
+    await load();
+    return id;
+  }
+
+  Future<void> update(
+    String id, {
+    String? label,
+    String? role,
+    int? bailoutOrder,
+    double? volumeLiters,
+    int? workingPressureBar,
+    String? gasMix,
+    String? notes,
+  }) async {
+    await _dao.updateCylinder(
+      id,
+      label: label,
+      role: role,
+      bailoutOrder: bailoutOrder,
+      volumeLiters: volumeLiters,
+      workingPressureBar: workingPressureBar,
+      gasMix: gasMix,
+      notes: notes,
+    );
+    await load();
+  }
+
+  Future<void> softDelete(String id) async {
+    await _dao.softDeleteCylinder(id);
+    await load();
+  }
+
+  Future<void> seedStandard() async {
+    await _dao.seedStandardCcrCylinders();
+    await load();
+  }
+}
