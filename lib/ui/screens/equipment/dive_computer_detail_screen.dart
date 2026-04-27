@@ -21,12 +21,16 @@ class DiveComputerDetailScreen extends StatefulWidget {
 class _DiveComputerDetailScreenState extends State<DiveComputerDetailScreen> {
   DiveComputer? _dc;
   List<Dive> _recent = [];
+  List<PressureMapping> _mappings = [];
+  List<Cylinder> _cylinders = [];
   final _nicknameCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _load().then((_) {
+      if (mounted) _loadMappings();
+    });
   }
 
   Future<void> _load() async {
@@ -47,6 +51,27 @@ class _DiveComputerDetailScreenState extends State<DiveComputerDetailScreen> {
     final v = _nicknameCtrl.text.trim();
     await widget.dao.setComputerNickname(_dc!.id, v.isEmpty ? null : v);
     await _load();
+  }
+
+  Future<void> _loadMappings() async {
+    if (_dc == null) return;
+    final mappings = await widget.dao.listPressureMappings(_dc!.id);
+    final cylinders = await widget.dao.listCylinders();
+    if (!mounted) return;
+    setState(() {
+      _mappings = mappings;
+      _cylinders = cylinders;
+    });
+  }
+
+  Future<void> _setMapping(int channel, String? cylinderId) async {
+    if (_dc == null) return;
+    await widget.dao.setPressureMapping(
+      diveComputerId: _dc!.id,
+      channelIndex: channel,
+      cylinderId: cylinderId,
+    );
+    await _loadMappings();
   }
 
   @override
@@ -95,6 +120,50 @@ class _DiveComputerDetailScreenState extends State<DiveComputerDetailScreen> {
                         .toLocal()
                         .toString()),
                   ),
+                const SizedBox(height: 24),
+                const Text('Pressure mapping',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                if (_mappings.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'No pressure channels mapped yet. Add a channel manually for '
+                      'channel 0–3 if your device logs pressure.',
+                    ),
+                  ),
+                for (final m in _mappings)
+                  ListTile(
+                    dense: true,
+                    title: Text('Channel ${m.channelIndex}'),
+                    trailing: DropdownButton<String?>(
+                      value: m.cylinderId,
+                      hint: const Text('unmapped'),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('unmapped'),
+                        ),
+                        for (final c in _cylinders)
+                          DropdownMenuItem<String?>(
+                            value: c.id,
+                            child: Text('${c.label} (${c.role})'),
+                          ),
+                      ],
+                      onChanged: (v) => _setMapping(m.channelIndex, v),
+                    ),
+                  ),
+                TextButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add channel'),
+                  onPressed: () async {
+                    final used = _mappings.map((m) => m.channelIndex).toSet();
+                    var next = 0;
+                    while (used.contains(next)) {
+                      next++;
+                    }
+                    await _setMapping(next, null);
+                  },
+                ),
               ],
             ),
     );

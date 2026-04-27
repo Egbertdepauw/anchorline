@@ -26,4 +26,25 @@ class DiveComputersNotifier extends ChangeNotifier {
     await _dao.setComputerNickname(id, nickname);
     await load();
   }
+
+  List<PressureMapping> _mappings = [];
+  List<PressureMapping> get mappings => List.unmodifiable(_mappings);
+
+  Future<void> loadMappings(String diveComputerId) async {
+    _mappings = await _dao.listPressureMappings(diveComputerId);
+    notifyListeners();
+  }
+
+  Future<void> setMapping(
+    String diveComputerId,
+    int channelIndex,
+    String? cylinderId,
+  ) async {
+    await _dao.setPressureMapping(
+      diveComputerId: diveComputerId,
+      channelIndex: channelIndex,
+      cylinderId: cylinderId,
+    );
+    await loadMappings(diveComputerId);
+  }
 }

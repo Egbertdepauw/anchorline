@@ -19,4 +19,18 @@ void main() {
     expect(n.computers, hasLength(1));
     expect(notified, greaterThan(0));
   });
+
+  test('setMapping persists and reloads mappings', () async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final dao = EquipmentDao(db);
+    await dao.upsertDiveComputer(serial: 1, model: 0xB407);
+    final dcs = await dao.listDiveComputers();
+    final dcId = dcs.single.id;
+
+    final n = DiveComputersNotifier(dao);
+    await n.setMapping(dcId, 0, 'cyl_a');
+    expect(n.mappings, hasLength(1));
+    expect(n.mappings.single.cylinderId, 'cyl_a');
+  });
 }
