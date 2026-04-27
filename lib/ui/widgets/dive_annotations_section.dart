@@ -315,6 +315,14 @@ class _GasMixRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final mixLabel = '${mix.oxygenPercent}/${mix.heliumPercent}';
     final mins = activeSeconds ~/ 60;
+    // Coerce a missing-cylinder id to null for display only — handles the
+    // case where a cylinder mapped to this dive was later soft-deleted from
+    // the cylinders list. Underlying mapping stays in the DB until re-saved.
+    final knownIds = cylinders.map((c) => c.id).toSet();
+    final displayValue =
+        (selectedCylinderId != null && knownIds.contains(selectedCylinderId))
+            ? selectedCylinderId
+            : null;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(children: [
@@ -322,7 +330,7 @@ class _GasMixRow extends StatelessWidget {
           child: Text('Mix ${index + 1} · $mixLabel · ~${mins}m active'),
         ),
         DropdownButton<String?>(
-          value: selectedCylinderId,
+          value: displayValue,
           hint: const Text('—'),
           items: [
             const DropdownMenuItem<String?>(value: null, child: Text('—')),
