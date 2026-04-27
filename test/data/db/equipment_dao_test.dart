@@ -374,5 +374,46 @@ void main() {
       expect(closed.totalMinutes, isNotNull);
       expect(fresh.startedDate, DateTime(2025, 6, 1).millisecondsSinceEpoch);
     });
+
+    test('applyScrubberEvents-closed session has accumulated minutes from dives in window',
+        () async {
+      final open = await dao.addScrubberSession(startedDate: DateTime(2025, 1, 1));
+
+      Future<void> insertDive(String id, DateTime start, int durationSec) async {
+        await db.into(db.dives).insert(DivesCompanion.insert(
+          id: id,
+          dcSerial: 1,
+          dcDiveNumber: int.parse(id.substring(1)),
+          startTime: start.millisecondsSinceEpoch,
+          endTime: start.millisecondsSinceEpoch + durationSec * 1000,
+          durationSeconds: durationSec,
+          maxDepthMm: 0,
+          diveMode: 0,
+          decoModel: 0,
+          atmosphericPressureMbar: 1013,
+          waterDensity: 1030,
+          logVersion: 1,
+          dcModel: 0xB407,
+          sampleIntervalMs: 10000,
+          gasMixesJson: '[]',
+          rawBlob: Uint8List(0),
+          parserVersion: 1,
+          importedAt: 0,
+        ));
+      }
+
+      // Two 30-minute dives in the open session's window → 60 total minutes.
+      await insertDive('d1', DateTime(2025, 2, 1), 30 * 60);
+      await insertDive('d2', DateTime(2025, 3, 1), 30 * 60);
+
+      await dao.applyScrubberEvents(
+        scrubberResetAt: DateTime(2025, 6, 1),
+        dcSerial: 1,
+      );
+
+      final all = await dao.listScrubberSessions();
+      final closed = all.firstWhere((s) => s.id == open);
+      expect(closed.totalMinutes, 60);
+    });
   });
 }

@@ -347,18 +347,21 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     required int dcSerial,
   }) async {
     if (scrubberResetAt == null) return;
-    final open = await (select(scrubberSessions)
-          ..where((t) =>
-              t.deletedAt.isNull() & t.totalMinutes.isNull()))
-        .get();
-    for (final s in open) {
-      await closeScrubberSession(s.id, endedAt: scrubberResetAt);
-    }
-    await addScrubberSession(startedDate: scrubberResetAt);
-    // dcSerial reserved for a future migration that ties scrubber sessions
-    // to a specific dive computer (multi-rig support).
-    // ignore: unused_local_variable
-    final _ = dcSerial;
+
+    await db.transaction(() async {
+      final open = await (select(scrubberSessions)
+            ..where((t) =>
+                t.deletedAt.isNull() & t.totalMinutes.isNull()))
+          .get();
+      for (final s in open) {
+        await closeScrubberSession(s.id, endedAt: scrubberResetAt);
+      }
+      await addScrubberSession(startedDate: scrubberResetAt);
+      // dcSerial reserved for a future migration that ties scrubber sessions
+      // to a specific dive computer (multi-rig support).
+      // ignore: unused_local_variable
+      final _ = dcSerial;
+    });
   }
 
   /// Sum of dive runtimes (in minutes) whose `startTime` falls in
