@@ -274,4 +274,134 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     }
     return count == 0 ? null : sum / count;
   }
+
+  // ── ScrubberSessions ─────────────────────────────────────────────────────
+
+  Future<String> addScrubberSession({
+    required DateTime startedDate,
+    String? mediaType,
+    String? notes,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final id = 'scrub_$now';
+    await into(scrubberSessions).insert(ScrubberSessionsCompanion.insert(
+      id: id,
+      startedDate: Value(startedDate.millisecondsSinceEpoch),
+      mediaType: Value(mediaType),
+      notes: Value(notes),
+      createdAt: now,
+      updatedAt: now,
+    ));
+    return id;
+  }
+
+  Future<List<ScrubberSession>> listScrubberSessions() async {
+    final rows = await (select(scrubberSessions)
+          ..where((t) => t.deletedAt.isNull()))
+        .get();
+    // Active (totalMinutes IS NULL) first; closed sorted by startedDate desc.
+    rows.sort((a, b) {
+      if (a.totalMinutes == null && b.totalMinutes != null) return -1;
+      if (a.totalMinutes != null && b.totalMinutes == null) return 1;
+      return (b.startedDate ?? 0).compareTo(a.startedDate ?? 0);
+    });
+    return rows;
+  }
+
+  Future<ScrubberSession?> getScrubberSession(String id) {
+    return (select(scrubberSessions)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+  }
+
+  Future<void> closeScrubberSession(String id, {required DateTime endedAt}) async {
+    final session = await getScrubberSession(id);
+    if (session == null) return;
+    final minutes = await accumulatedMinutesForSession(
+      id,
+      endBoundOverride: endedAt,
+    );
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await (update(scrubberSessions)..where((t) => t.id.equals(id))).write(
+      ScrubberSessionsCompanion(
+        totalMinutes: Value(minutes),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
+  Future<void> deleteScrubberSession(String id) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await (update(scrubberSessions)..where((t) => t.id.equals(id))).write(
+      ScrubberSessionsCompanion(
+        deletedAt: Value(now),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
+  /// Forward-compatible hook called per imported dive. Currently a no-op
+  /// when [scrubberResetAt] is null; once the parser surfaces a real reset
+  /// timestamp this will close the open session and start a new one.
+  Future<void> applyScrubberEvents({
+    required DateTime? scrubberResetAt,
+    required int dcSerial,
+  }) async {
+    if (scrubberResetAt == null) return;
+    final open = await (select(scrubberSessions)
+          ..where((t) =>
+              t.deletedAt.isNull() & t.totalMinutes.isNull()))
+        .get();
+    for (final s in open) {
+      await closeScrubberSession(s.id, endedAt: scrubberResetAt);
+    }
+    await addScrubberSession(startedDate: scrubberResetAt);
+    // dcSerial reserved for a future migration that ties scrubber sessions
+    // to a specific dive computer (multi-rig support).
+    // ignore: unused_local_variable
+    final _ = dcSerial;
+  }
+
+  /// Sum of dive runtimes (in minutes) whose `startTime` falls in
+  /// [session.startedDate, endBound) where `endBound` is the next session's
+  /// `startedDate` (or [endBoundOverride] if the caller is closing the
+  /// session). MVP fallback: dive runtime over-estimates by surface time;
+  /// replace with per-sample scrubber-on time when the parser exposes it.
+  ///
+  /// Uses real `Dives` schema fields `startTime` and `durationSeconds`
+  /// (NOT the speculative `startTimeUtc`/`runtimeSeconds`).
+  Future<int> accumulatedMinutesForSession(
+    String id, {
+    DateTime? endBoundOverride,
+  }) async {
+    final session = await getScrubberSession(id);
+    if (session == null || session.startedDate == null) return 0;
+
+    int? endEpoch = endBoundOverride?.millisecondsSinceEpoch;
+    if (endEpoch == null) {
+      final later = await (select(scrubberSessions)
+            ..where((t) =>
+                t.deletedAt.isNull() &
+                t.startedDate.isBiggerThanValue(session.startedDate!)))
+          .get();
+      if (later.isNotEmpty) {
+        endEpoch = later
+            .map((s) => s.startedDate!)
+            .reduce((a, b) => a < b ? a : b);
+      }
+    }
+
+    final dives = await (select(db.dives)
+          ..where((t) {
+            var expr = t.startTime.isBiggerOrEqualValue(session.startedDate!);
+            if (endEpoch != null) {
+              expr = expr & t.startTime.isSmallerThanValue(endEpoch);
+            }
+            return expr;
+          }))
+        .get();
+
+    final totalSeconds =
+        dives.fold<int>(0, (sum, d) => sum + d.durationSeconds);
+    return totalSeconds ~/ 60;
+  }
 }

@@ -331,4 +331,48 @@ void main() {
       expect(await dao.surfaceMvSeriesForCell(cellId), isEmpty);
     });
   });
+
+  group('ScrubberSessions', () {
+    test('addScrubberSession + listScrubberSessions round-trip', () async {
+      final id = await dao.addScrubberSession(
+        startedDate: DateTime(2025, 1, 1),
+        mediaType: 'Sofnolime 797',
+        notes: 'fresh',
+      );
+      final list = await dao.listScrubberSessions();
+      expect(list.single.id, id);
+      expect(list.single.mediaType, 'Sofnolime 797');
+    });
+
+    test('listScrubberSessions sorts active first then by date desc', () async {
+      final old = await dao.addScrubberSession(startedDate: DateTime(2024, 1, 1));
+      final active = await dao.addScrubberSession(startedDate: DateTime(2025, 1, 1));
+      await dao.closeScrubberSession(old, endedAt: DateTime(2024, 6, 1));
+
+      final list = await dao.listScrubberSessions();
+      expect(list.map((s) => s.id).toList(), [active, old]);
+    });
+
+    test('applyScrubberEvents is no-op when scrubberResetAt is null', () async {
+      final initial = await dao.listScrubberSessions();
+      await dao.applyScrubberEvents(scrubberResetAt: null, dcSerial: 1);
+      expect(await dao.listScrubberSessions(), initial);
+    });
+
+    test('applyScrubberEvents closes open session and opens a new one', () async {
+      final open = await dao.addScrubberSession(startedDate: DateTime(2025, 1, 1));
+      await dao.applyScrubberEvents(
+        scrubberResetAt: DateTime(2025, 6, 1),
+        dcSerial: 1,
+      );
+
+      final all = await dao.listScrubberSessions();
+      expect(all, hasLength(2));
+      final closed = all.firstWhere((s) => s.id == open);
+      final fresh = all.firstWhere((s) => s.id != open);
+
+      expect(closed.totalMinutes, isNotNull);
+      expect(fresh.startedDate, DateTime(2025, 6, 1).millisecondsSinceEpoch);
+    });
+  });
 }
