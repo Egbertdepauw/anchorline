@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/db/database.dart';
+import '../../../data/db/dive_dao.dart';
 import '../../../data/db/equipment_dao.dart';
 import '../../widgets/cell_mv_chart.dart';
+import '../dive_detail_screen.dart';
 
 class CellDetailScreen extends StatefulWidget {
   final EquipmentDao dao;
+  final DiveDao diveDao;
   final String? id; // null = create-new draft
 
-  const CellDetailScreen({super.key, required this.dao, this.id});
+  const CellDetailScreen({
+    super.key,
+    required this.dao,
+    required this.diveDao,
+    this.id,
+  });
 
   @override
   State<CellDetailScreen> createState() => _CellDetailScreenState();
@@ -68,6 +76,15 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
     await _load();
   }
 
+  Future<void> _openDive(String diveId) async {
+    final dive = await widget.diveDao.getDive(diveId);
+    if (dive == null || !mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) =>
+          DiveDetailScreen(dive: dive, dao: widget.diveDao),
+    ));
+  }
+
   Future<void> _deleteIfUnused() async {
     if (_cell == null) return;
     final ok = await widget.dao.deleteCellIfUnused(_cell!.id);
@@ -107,7 +124,10 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
                       '${DateTime.fromMillisecondsSinceEpoch(_cell!.retiredDate!).toLocal().toString().split(' ').first}'),
                 Text('Dives with mV data: ${_series.length}'),
                 const SizedBox(height: 16),
-                CellMvChart(series: _series),
+                CellMvChart(
+                  series: _series,
+                  onDiveTap: _openDive,
+                ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: _labelCtrl,

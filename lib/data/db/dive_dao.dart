@@ -107,6 +107,12 @@ class DiveDao {
     return query.get();
   }
 
+  /// Get a single dive by ID, or `null` if not found.
+  Future<Dive?> getDive(String id) async {
+    final query = _db.select(_db.dives)..where((d) => d.id.equals(id));
+    return query.getSingleOrNull();
+  }
+
   /// Get the sample data for a dive.
   ///
   /// Returns `null` if the dive or its samples don't exist.

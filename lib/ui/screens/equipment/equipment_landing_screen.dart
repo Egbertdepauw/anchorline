@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../data/db/dive_dao.dart';
 import '../../../data/db/equipment_dao.dart';
 import 'cells_list_screen.dart';
 import 'cylinders_list_screen.dart';
@@ -8,8 +9,13 @@ import 'scrubber_sessions_list_screen.dart';
 
 class EquipmentLandingScreen extends StatefulWidget {
   final EquipmentDao dao;
+  final DiveDao diveDao;
 
-  const EquipmentLandingScreen({super.key, required this.dao});
+  const EquipmentLandingScreen({
+    super.key,
+    required this.dao,
+    required this.diveDao,
+  });
 
   @override
   State<EquipmentLandingScreen> createState() => _EquipmentLandingScreenState();
@@ -66,7 +72,10 @@ class _EquipmentLandingScreenState extends State<EquipmentLandingScreen> {
             icon: Icons.science_outlined,
             onTap: () async {
               await Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => CellsListScreen(dao: widget.dao),
+                builder: (_) => CellsListScreen(
+                  dao: widget.dao,
+                  diveDao: widget.diveDao,
+                ),
               ));
               await _refresh();
             },

@@ -65,7 +65,7 @@ class _AppShellState extends State<AppShell> {
         children: [
           DiveListScreen(notifier: _diveListNotifier, diveDao: _diveDao),
           ImportScreen(notifier: _importNotifier, onViewDives: _onViewDives),
-          EquipmentLandingScreen(dao: _equipmentDao),
+          EquipmentLandingScreen(dao: _equipmentDao, diveDao: _diveDao),
           const PlaceholderScreen(title: 'Settings', icon: Icons.settings_outlined),
         ],
       ),

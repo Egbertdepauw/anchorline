@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/db/database.dart';
+import '../../../data/db/dive_dao.dart';
 import '../../../data/db/equipment_dao.dart';
 import '../../notifiers/equipment_notifiers.dart';
 import 'cell_detail_screen.dart';
 
 class CellsListScreen extends StatefulWidget {
   final EquipmentDao dao;
+  final DiveDao diveDao;
 
-  const CellsListScreen({super.key, required this.dao});
+  const CellsListScreen({
+    super.key,
+    required this.dao,
+    required this.diveDao,
+  });
 
   @override
   State<CellsListScreen> createState() => _CellsListScreenState();
@@ -41,7 +47,10 @@ class _CellsListScreenState extends State<CellsListScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           await Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => CellDetailScreen(dao: widget.dao),
+            builder: (_) => CellDetailScreen(
+              dao: widget.dao,
+              diveDao: widget.diveDao,
+            ),
           ));
           if (!context.mounted) return;
           await _n.load();
@@ -71,6 +80,7 @@ class _CellsListScreenState extends State<CellsListScreen> {
                         await Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => CellDetailScreen(
                             dao: widget.dao,
+                            diveDao: widget.diveDao,
                             id: c.id,
                           ),
                         ));

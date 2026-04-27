@@ -1,4 +1,5 @@
 import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/db/dive_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/ui/screens/equipment/cell_detail_screen.dart';
 import 'package:drift/native.dart';
@@ -10,10 +11,11 @@ void main() {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
     final dao = EquipmentDao(db);
+    final diveDao = DiveDao(db);
     final id = await dao.addCell(slot: 1, label: 'R-22D');
 
     await tester.pumpWidget(MaterialApp(
-      home: CellDetailScreen(dao: dao, id: id),
+      home: CellDetailScreen(dao: dao, diveDao: diveDao, id: id),
     ));
     await tester.pump(); // initial frame
     await tester.pump(); // after _load future resolves
