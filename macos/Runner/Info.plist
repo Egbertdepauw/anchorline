@@ -28,6 +28,8 @@
 	<string>This app communicates with Shearwater dive computers over Bluetooth Low Energy to download dive logs.</string>
 	<key>NSLocationUsageDescription</key>
 	<string>This app uses your location to record where each dive happened.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app uses your location to record where each dive happened.</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
