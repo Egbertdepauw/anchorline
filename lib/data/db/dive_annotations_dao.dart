@@ -72,6 +72,42 @@ class DiveAnnotationsDao extends DatabaseAccessor<AppDatabase>
     return all.toList();
   }
 
+  // ── DiveCylinders ───────────────────────────────────────────────────────
+
+  Future<List<DiveCylinder>> listCylindersForDive(String diveId) {
+    return (select(diveCylinders)
+          ..where((t) => t.diveId.equals(diveId) & t.deletedAt.isNull())
+          ..orderBy([(t) => OrderingTerm.asc(t.gasMixIndex)]))
+        .get();
+  }
+
+  Future<void> setDiveCylinder(
+      String diveId, int gasMixIndex, String? cylinderId) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await into(diveCylinders).insertOnConflictUpdate(
+      DiveCylindersCompanion.insert(
+        diveId: diveId,
+        gasMixIndex: gasMixIndex,
+        cylinderId: Value(cylinderId),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+  }
+
+  /// Writes the annotation row and all dive-cylinder rows atomically.
+  Future<void> saveAll(
+    dom.DiveAnnotation annotation,
+    List<({int gasMixIndex, String? cylinderId})> mappings,
+  ) async {
+    await db.transaction(() async {
+      await upsert(annotation);
+      for (final m in mappings) {
+        await setDiveCylinder(annotation.diveId, m.gasMixIndex, m.cylinderId);
+      }
+    });
+  }
+
   // ── Mapping helpers ─────────────────────────────────────────────────────
 
   /// Maps the Drift-generated row class (named `DiveAnnotation` —

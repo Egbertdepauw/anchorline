@@ -93,4 +93,46 @@ void main() {
       expect((await dao.distinctTags())..sort(), ['drysuit', 'training']);
     });
   });
+
+  group('cylinder linkage', () {
+    test('listCylindersForDive returns rows for the dive', () async {
+      await dao.setDiveCylinder('d1', 0, 'cyl_o2');
+      await dao.setDiveCylinder('d1', 1, 'cyl_dil');
+      final rows = await dao.listCylindersForDive('d1');
+      expect(rows.map((r) => r.gasMixIndex).toList()..sort(), [0, 1]);
+    });
+
+    test('setDiveCylinder upserts on (diveId, gasMixIndex)', () async {
+      await dao.setDiveCylinder('d1', 0, 'cyl_o2');
+      await dao.setDiveCylinder('d1', 0, 'cyl_o2_v2');
+      final rows = await dao.listCylindersForDive('d1');
+      expect(rows, hasLength(1));
+      expect(rows.single.cylinderId, 'cyl_o2_v2');
+    });
+
+    test('setDiveCylinder accepts null (unmapped)', () async {
+      await dao.setDiveCylinder('d1', 0, 'cyl_o2');
+      await dao.setDiveCylinder('d1', 0, null);
+      final rows = await dao.listCylindersForDive('d1');
+      expect(rows.single.cylinderId, isNull);
+    });
+
+    test('saveAll writes annotation + cylinders in one transaction', () async {
+      final now = DateTime.now();
+      final a = DiveAnnotation(
+        diveId: 'dx',
+        siteName: 'Test Site',
+        createdAt: now,
+        updatedAt: now,
+      );
+      await dao.saveAll(a, [
+        (gasMixIndex: 0, cylinderId: 'cyl_o2'),
+        (gasMixIndex: 1, cylinderId: 'cyl_dil'),
+      ]);
+
+      expect((await dao.get('dx'))!.siteName, 'Test Site');
+      final rows = await dao.listCylindersForDive('dx');
+      expect(rows, hasLength(2));
+    });
+  });
 }
