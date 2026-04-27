@@ -471,4 +471,48 @@ void main() {
       );
     });
   });
+
+  group('PressureMappings', () {
+    test('setPressureMapping inserts and round-trips', () async {
+      await dao.setPressureMapping(
+        diveComputerId: 'dc1',
+        channelIndex: 0,
+        cylinderId: 'cyl_a',
+      );
+      final list = await dao.listPressureMappings('dc1');
+      expect(list, hasLength(1));
+      expect(list.single.cylinderId, 'cyl_a');
+    });
+
+    test('setPressureMapping updates existing row', () async {
+      await dao.setPressureMapping(
+        diveComputerId: 'dc1',
+        channelIndex: 0,
+        cylinderId: 'cyl_a',
+      );
+      await dao.setPressureMapping(
+        diveComputerId: 'dc1',
+        channelIndex: 0,
+        cylinderId: 'cyl_b',
+      );
+      final list = await dao.listPressureMappings('dc1');
+      expect(list, hasLength(1));
+      expect(list.single.cylinderId, 'cyl_b');
+    });
+
+    test('setPressureMapping accepts null (unmapped)', () async {
+      await dao.setPressureMapping(
+        diveComputerId: 'dc1',
+        channelIndex: 0,
+        cylinderId: 'cyl_a',
+      );
+      await dao.setPressureMapping(
+        diveComputerId: 'dc1',
+        channelIndex: 0,
+        cylinderId: null,
+      );
+      final list = await dao.listPressureMappings('dc1');
+      expect(list.single.cylinderId, isNull);
+    });
+  });
 }

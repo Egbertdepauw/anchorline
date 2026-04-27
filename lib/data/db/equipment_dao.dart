@@ -523,6 +523,43 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
+  // ── PressureMappings ─────────────────────────────────────────────────────
+
+  Future<List<PressureMapping>> listPressureMappings(String diveComputerId) {
+    return (select(pressureMappings)
+          ..where((t) =>
+              t.diveComputerId.equals(diveComputerId) & t.deletedAt.isNull())
+          ..orderBy([(t) => OrderingTerm.asc(t.channelIndex)]))
+        .get();
+  }
+
+  Future<void> setPressureMapping({
+    required String diveComputerId,
+    required int channelIndex,
+    required String? cylinderId,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await into(pressureMappings).insertOnConflictUpdate(
+      PressureMappingsCompanion.insert(
+        diveComputerId: diveComputerId,
+        channelIndex: channelIndex,
+        cylinderId: Value(cylinderId),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+  }
+
+  /// Best-effort enumeration of pressure-channel indexes the device has
+  /// logged. MVP returns channels that already have a mapping; a parser-
+  /// side "infer from imports" lookup is a follow-up once the per-channel
+  /// pressure series is known to surface in the sample blob.
+  Future<List<int>> pressureChannelsSeenForComputer(
+      String diveComputerId) async {
+    final rows = await listPressureMappings(diveComputerId);
+    return rows.map((r) => r.channelIndex).toList();
+  }
+
   Future<void> seedStandardCcrCylinders() async {
     await addCylinder(
       label: 'O2',
