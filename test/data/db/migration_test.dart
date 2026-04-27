@@ -8,7 +8,7 @@ void main() {
   test('schema v2: has cylinders, pressure_mappings, oxygen_cells.label', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    expect(db.schemaVersion, 2);
+    expect(db.schemaVersion, 3);
 
     // Inserting a row exercises the full schema.
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -81,8 +81,8 @@ void main() {
     // Drift runs the migration here.
     await db.customSelect('SELECT 1').get();
 
-    // Step 4: confirm we're at v2.
-    expect(db.schemaVersion, 2);
+    // Step 4: confirm we're at v3.
+    expect(db.schemaVersion, 3);
 
     // Step 5: verify the seeded oxygen_cells row survived.
     final cells = await db.select(db.oxygenCells).get();
@@ -108,5 +108,69 @@ void main() {
           updatedAt: now,
         ));
     expect((await db.select(db.cylinders).get()).single.id, 'c_after_upgrade');
+  });
+
+  test('v2 → v3 onUpgrade adds dive_cylinders and preserves dive_annotations',
+      () async {
+    // Step 1: open a raw sqlite3 db and seed it as v2 (with dive_annotations
+    // but without dive_cylinders).
+    final raw = sqlite3.openInMemory();
+    addTearDown(raw.close);
+
+    // V2 dive_annotations: same shape as v3.
+    raw.execute('''
+      CREATE TABLE dive_annotations (
+        dive_id TEXT NOT NULL PRIMARY KEY,
+        site_name TEXT,
+        site_latitude_e5 INTEGER,
+        site_longitude_e5 INTEGER,
+        notes TEXT,
+        buddies_json TEXT,
+        tags_json TEXT,
+        rating INTEGER,
+        conditions TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
+    raw.execute('PRAGMA user_version = 2;');
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    raw.execute(
+      'INSERT INTO dive_annotations '
+      '(dive_id, site_name, notes, created_at, updated_at, version, sync_status) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ['dive_v2', 'Black Lagoon', 'pre-upgrade', now, now, 1, 0],
+    );
+
+    // Step 2: open AppDatabase against the seeded raw connection.
+    final db = AppDatabase(NativeDatabase.opened(raw));
+    addTearDown(db.close);
+
+    // Step 3: trigger schema initialization.
+    await db.customSelect('SELECT 1').get();
+
+    // Step 4: confirm we're at v3.
+    expect(db.schemaVersion, 3);
+
+    // Step 5: verify the seeded annotation row survived.
+    final annotations = await db.select(db.diveAnnotations).get();
+    expect(annotations, hasLength(1));
+    expect(annotations.single.siteName, 'Black Lagoon');
+
+    // Step 6: verify dive_cylinders is queryable and accepts inserts.
+    expect(await db.select(db.diveCylinders).get(), isEmpty);
+    await db.into(db.diveCylinders).insert(DiveCylindersCompanion.insert(
+          diveId: 'dive_v2',
+          gasMixIndex: 0,
+          createdAt: now,
+          updatedAt: now,
+        ));
+    final rows = await db.select(db.diveCylinders).get();
+    expect(rows, hasLength(1));
+    expect(rows.single.cylinderId, isNull);
   });
 }

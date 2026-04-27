@@ -200,6 +200,26 @@ class PressureMappings extends Table {
   Set<Column> get primaryKey => {diveComputerId, channelIndex};
 }
 
+/// Per-dive linkage of gas mixes to physical cylinders.
+///
+/// One row per (diveId, gasMixIndex). `gasMixIndex` indexes into
+/// `Dives.gasMixesJson`. `cylinderId` is nullable — null means the user
+/// hasn't yet decided which cylinder held that mix.
+class DiveCylinders extends Table {
+  TextColumn get diveId => text().references(Dives, #id)();
+  IntColumn get gasMixIndex => integer()();
+  TextColumn get cylinderId => text().nullable()();
+
+  IntColumn get createdAt => integer()();
+  IntColumn get updatedAt => integer()();
+  IntColumn get deletedAt => integer().nullable()();
+  IntColumn get version => integer().withDefault(const Constant(1))();
+  IntColumn get syncStatus => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {diveId, gasMixIndex};
+}
+
 /// Import state for incremental sync per dive computer.
 class ImportStates extends Table {
   /// Dive computer serial as string.

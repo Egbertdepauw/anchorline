@@ -18,6 +18,7 @@ part 'database.g.dart';
     ScrubberSessions,
     Cylinders,
     PressureMappings,
+    DiveCylinders,
     ImportStates,
   ],
   daos: [EquipmentDao],
@@ -26,7 +27,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -38,6 +39,9 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(oxygenCells, oxygenCells.label);
             await m.createTable(cylinders);
             await m.createTable(pressureMappings);
+          }
+          if (from < 3) {
+            await m.createTable(diveCylinders);
           }
         },
       );

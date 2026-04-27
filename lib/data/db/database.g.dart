@@ -6198,6 +6198,531 @@ class PressureMappingsCompanion extends UpdateCompanion<PressureMapping> {
   }
 }
 
+class $DiveCylindersTable extends DiveCylinders
+    with TableInfo<$DiveCylindersTable, DiveCylinder> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DiveCylindersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _diveIdMeta = const VerificationMeta('diveId');
+  @override
+  late final GeneratedColumn<String> diveId = GeneratedColumn<String>(
+    'dive_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES dives (id)',
+    ),
+  );
+  static const VerificationMeta _gasMixIndexMeta = const VerificationMeta(
+    'gasMixIndex',
+  );
+  @override
+  late final GeneratedColumn<int> gasMixIndex = GeneratedColumn<int>(
+    'gas_mix_index',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _cylinderIdMeta = const VerificationMeta(
+    'cylinderId',
+  );
+  @override
+  late final GeneratedColumn<String> cylinderId = GeneratedColumn<String>(
+    'cylinder_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _syncStatusMeta = const VerificationMeta(
+    'syncStatus',
+  );
+  @override
+  late final GeneratedColumn<int> syncStatus = GeneratedColumn<int>(
+    'sync_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    diveId,
+    gasMixIndex,
+    cylinderId,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    version,
+    syncStatus,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'dive_cylinders';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DiveCylinder> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('dive_id')) {
+      context.handle(
+        _diveIdMeta,
+        diveId.isAcceptableOrUnknown(data['dive_id']!, _diveIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_diveIdMeta);
+    }
+    if (data.containsKey('gas_mix_index')) {
+      context.handle(
+        _gasMixIndexMeta,
+        gasMixIndex.isAcceptableOrUnknown(
+          data['gas_mix_index']!,
+          _gasMixIndexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_gasMixIndexMeta);
+    }
+    if (data.containsKey('cylinder_id')) {
+      context.handle(
+        _cylinderIdMeta,
+        cylinderId.isAcceptableOrUnknown(data['cylinder_id']!, _cylinderIdMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    }
+    if (data.containsKey('sync_status')) {
+      context.handle(
+        _syncStatusMeta,
+        syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {diveId, gasMixIndex};
+  @override
+  DiveCylinder map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DiveCylinder(
+      diveId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dive_id'],
+      )!,
+      gasMixIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}gas_mix_index'],
+      )!,
+      cylinderId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cylinder_id'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+      syncStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sync_status'],
+      )!,
+    );
+  }
+
+  @override
+  $DiveCylindersTable createAlias(String alias) {
+    return $DiveCylindersTable(attachedDatabase, alias);
+  }
+}
+
+class DiveCylinder extends DataClass implements Insertable<DiveCylinder> {
+  final String diveId;
+  final int gasMixIndex;
+  final String? cylinderId;
+  final int createdAt;
+  final int updatedAt;
+  final int? deletedAt;
+  final int version;
+  final int syncStatus;
+  const DiveCylinder({
+    required this.diveId,
+    required this.gasMixIndex,
+    this.cylinderId,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+    required this.version,
+    required this.syncStatus,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['dive_id'] = Variable<String>(diveId);
+    map['gas_mix_index'] = Variable<int>(gasMixIndex);
+    if (!nullToAbsent || cylinderId != null) {
+      map['cylinder_id'] = Variable<String>(cylinderId);
+    }
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<int>(deletedAt);
+    }
+    map['version'] = Variable<int>(version);
+    map['sync_status'] = Variable<int>(syncStatus);
+    return map;
+  }
+
+  DiveCylindersCompanion toCompanion(bool nullToAbsent) {
+    return DiveCylindersCompanion(
+      diveId: Value(diveId),
+      gasMixIndex: Value(gasMixIndex),
+      cylinderId: cylinderId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cylinderId),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      version: Value(version),
+      syncStatus: Value(syncStatus),
+    );
+  }
+
+  factory DiveCylinder.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DiveCylinder(
+      diveId: serializer.fromJson<String>(json['diveId']),
+      gasMixIndex: serializer.fromJson<int>(json['gasMixIndex']),
+      cylinderId: serializer.fromJson<String?>(json['cylinderId']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
+      version: serializer.fromJson<int>(json['version']),
+      syncStatus: serializer.fromJson<int>(json['syncStatus']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'diveId': serializer.toJson<String>(diveId),
+      'gasMixIndex': serializer.toJson<int>(gasMixIndex),
+      'cylinderId': serializer.toJson<String?>(cylinderId),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'deletedAt': serializer.toJson<int?>(deletedAt),
+      'version': serializer.toJson<int>(version),
+      'syncStatus': serializer.toJson<int>(syncStatus),
+    };
+  }
+
+  DiveCylinder copyWith({
+    String? diveId,
+    int? gasMixIndex,
+    Value<String?> cylinderId = const Value.absent(),
+    int? createdAt,
+    int? updatedAt,
+    Value<int?> deletedAt = const Value.absent(),
+    int? version,
+    int? syncStatus,
+  }) => DiveCylinder(
+    diveId: diveId ?? this.diveId,
+    gasMixIndex: gasMixIndex ?? this.gasMixIndex,
+    cylinderId: cylinderId.present ? cylinderId.value : this.cylinderId,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    version: version ?? this.version,
+    syncStatus: syncStatus ?? this.syncStatus,
+  );
+  DiveCylinder copyWithCompanion(DiveCylindersCompanion data) {
+    return DiveCylinder(
+      diveId: data.diveId.present ? data.diveId.value : this.diveId,
+      gasMixIndex: data.gasMixIndex.present
+          ? data.gasMixIndex.value
+          : this.gasMixIndex,
+      cylinderId: data.cylinderId.present
+          ? data.cylinderId.value
+          : this.cylinderId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      version: data.version.present ? data.version.value : this.version,
+      syncStatus: data.syncStatus.present
+          ? data.syncStatus.value
+          : this.syncStatus,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiveCylinder(')
+          ..write('diveId: $diveId, ')
+          ..write('gasMixIndex: $gasMixIndex, ')
+          ..write('cylinderId: $cylinderId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('version: $version, ')
+          ..write('syncStatus: $syncStatus')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    diveId,
+    gasMixIndex,
+    cylinderId,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    version,
+    syncStatus,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DiveCylinder &&
+          other.diveId == this.diveId &&
+          other.gasMixIndex == this.gasMixIndex &&
+          other.cylinderId == this.cylinderId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.version == this.version &&
+          other.syncStatus == this.syncStatus);
+}
+
+class DiveCylindersCompanion extends UpdateCompanion<DiveCylinder> {
+  final Value<String> diveId;
+  final Value<int> gasMixIndex;
+  final Value<String?> cylinderId;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int?> deletedAt;
+  final Value<int> version;
+  final Value<int> syncStatus;
+  final Value<int> rowid;
+  const DiveCylindersCompanion({
+    this.diveId = const Value.absent(),
+    this.gasMixIndex = const Value.absent(),
+    this.cylinderId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.version = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DiveCylindersCompanion.insert({
+    required String diveId,
+    required int gasMixIndex,
+    this.cylinderId = const Value.absent(),
+    required int createdAt,
+    required int updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.version = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : diveId = Value(diveId),
+       gasMixIndex = Value(gasMixIndex),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<DiveCylinder> custom({
+    Expression<String>? diveId,
+    Expression<int>? gasMixIndex,
+    Expression<String>? cylinderId,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? deletedAt,
+    Expression<int>? version,
+    Expression<int>? syncStatus,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (diveId != null) 'dive_id': diveId,
+      if (gasMixIndex != null) 'gas_mix_index': gasMixIndex,
+      if (cylinderId != null) 'cylinder_id': cylinderId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (version != null) 'version': version,
+      if (syncStatus != null) 'sync_status': syncStatus,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DiveCylindersCompanion copyWith({
+    Value<String>? diveId,
+    Value<int>? gasMixIndex,
+    Value<String?>? cylinderId,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int?>? deletedAt,
+    Value<int>? version,
+    Value<int>? syncStatus,
+    Value<int>? rowid,
+  }) {
+    return DiveCylindersCompanion(
+      diveId: diveId ?? this.diveId,
+      gasMixIndex: gasMixIndex ?? this.gasMixIndex,
+      cylinderId: cylinderId ?? this.cylinderId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      version: version ?? this.version,
+      syncStatus: syncStatus ?? this.syncStatus,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (diveId.present) {
+      map['dive_id'] = Variable<String>(diveId.value);
+    }
+    if (gasMixIndex.present) {
+      map['gas_mix_index'] = Variable<int>(gasMixIndex.value);
+    }
+    if (cylinderId.present) {
+      map['cylinder_id'] = Variable<String>(cylinderId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<int>(deletedAt.value);
+    }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    if (syncStatus.present) {
+      map['sync_status'] = Variable<int>(syncStatus.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiveCylindersCompanion(')
+          ..write('diveId: $diveId, ')
+          ..write('gasMixIndex: $gasMixIndex, ')
+          ..write('cylinderId: $cylinderId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('version: $version, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $ImportStatesTable extends ImportStates
     with TableInfo<$ImportStatesTable, ImportState> {
   @override
@@ -6515,6 +7040,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PressureMappingsTable pressureMappings = $PressureMappingsTable(
     this,
   );
+  late final $DiveCylindersTable diveCylinders = $DiveCylindersTable(this);
   late final $ImportStatesTable importStates = $ImportStatesTable(this);
   late final EquipmentDao equipmentDao = EquipmentDao(this as AppDatabase);
   @override
@@ -6530,6 +7056,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     scrubberSessions,
     cylinders,
     pressureMappings,
+    diveCylinders,
     importStates,
   ];
 }
@@ -6624,6 +7151,24 @@ final class $$DivesTableReferences
     final cache = $_typedResult.readTableOrNull(
       _diveAnnotationsRefsTable($_db),
     );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$DiveCylindersTable, List<DiveCylinder>>
+  _diveCylindersRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.diveCylinders,
+    aliasName: $_aliasNameGenerator(db.dives.id, db.diveCylinders.diveId),
+  );
+
+  $$DiveCylindersTableProcessedTableManager get diveCylindersRefs {
+    final manager = $$DiveCylindersTableTableManager(
+      $_db,
+      $_db.diveCylinders,
+    ).filter((f) => f.diveId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_diveCylindersRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -6789,6 +7334,31 @@ class $$DivesTableFilterComposer extends Composer<_$AppDatabase, $DivesTable> {
           }) => $$DiveAnnotationsTableFilterComposer(
             $db: $db,
             $table: $db.diveAnnotations,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> diveCylindersRefs(
+    Expression<bool> Function($$DiveCylindersTableFilterComposer f) f,
+  ) {
+    final $$DiveCylindersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.diveCylinders,
+      getReferencedColumn: (t) => t.diveId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DiveCylindersTableFilterComposer(
+            $db: $db,
+            $table: $db.diveCylinders,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -7067,6 +7637,31 @@ class $$DivesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> diveCylindersRefs<T extends Object>(
+    Expression<T> Function($$DiveCylindersTableAnnotationComposer a) f,
+  ) {
+    final $$DiveCylindersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.diveCylinders,
+      getReferencedColumn: (t) => t.diveId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DiveCylindersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.diveCylinders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$DivesTableTableManager
@@ -7085,6 +7680,7 @@ class $$DivesTableTableManager
           PrefetchHooks Function({
             bool diveSamplesRefs,
             bool diveAnnotationsRefs,
+            bool diveCylindersRefs,
           })
         > {
   $$DivesTableTableManager(_$AppDatabase db, $DivesTable table)
@@ -7205,12 +7801,17 @@ class $$DivesTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({diveSamplesRefs = false, diveAnnotationsRefs = false}) {
+              ({
+                diveSamplesRefs = false,
+                diveAnnotationsRefs = false,
+                diveCylindersRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (diveSamplesRefs) db.diveSamples,
                     if (diveAnnotationsRefs) db.diveAnnotations,
+                    if (diveCylindersRefs) db.diveCylinders,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -7257,6 +7858,27 @@ class $$DivesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (diveCylindersRefs)
+                        await $_getPrefetchedData<
+                          Dive,
+                          $DivesTable,
+                          DiveCylinder
+                        >(
+                          currentTable: table,
+                          referencedTable: $$DivesTableReferences
+                              ._diveCylindersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$DivesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).diveCylindersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.diveId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -7277,7 +7899,11 @@ typedef $$DivesTableProcessedTableManager =
       $$DivesTableUpdateCompanionBuilder,
       (Dive, $$DivesTableReferences),
       Dive,
-      PrefetchHooks Function({bool diveSamplesRefs, bool diveAnnotationsRefs})
+      PrefetchHooks Function({
+        bool diveSamplesRefs,
+        bool diveAnnotationsRefs,
+        bool diveCylindersRefs,
+      })
     >;
 typedef $$DiveSamplesTableCreateCompanionBuilder =
     DiveSamplesCompanion Function({
@@ -9866,6 +10492,391 @@ typedef $$PressureMappingsTableProcessedTableManager =
       PressureMapping,
       PrefetchHooks Function()
     >;
+typedef $$DiveCylindersTableCreateCompanionBuilder =
+    DiveCylindersCompanion Function({
+      required String diveId,
+      required int gasMixIndex,
+      Value<String?> cylinderId,
+      required int createdAt,
+      required int updatedAt,
+      Value<int?> deletedAt,
+      Value<int> version,
+      Value<int> syncStatus,
+      Value<int> rowid,
+    });
+typedef $$DiveCylindersTableUpdateCompanionBuilder =
+    DiveCylindersCompanion Function({
+      Value<String> diveId,
+      Value<int> gasMixIndex,
+      Value<String?> cylinderId,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int?> deletedAt,
+      Value<int> version,
+      Value<int> syncStatus,
+      Value<int> rowid,
+    });
+
+final class $$DiveCylindersTableReferences
+    extends BaseReferences<_$AppDatabase, $DiveCylindersTable, DiveCylinder> {
+  $$DiveCylindersTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $DivesTable _diveIdTable(_$AppDatabase db) => db.dives.createAlias(
+    $_aliasNameGenerator(db.diveCylinders.diveId, db.dives.id),
+  );
+
+  $$DivesTableProcessedTableManager get diveId {
+    final $_column = $_itemColumn<String>('dive_id')!;
+
+    final manager = $$DivesTableTableManager(
+      $_db,
+      $_db.dives,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_diveIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DiveCylindersTableFilterComposer
+    extends Composer<_$AppDatabase, $DiveCylindersTable> {
+  $$DiveCylindersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get gasMixIndex => $composableBuilder(
+    column: $table.gasMixIndex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get cylinderId => $composableBuilder(
+    column: $table.cylinderId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$DivesTableFilterComposer get diveId {
+    final $$DivesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.diveId,
+      referencedTable: $db.dives,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DivesTableFilterComposer(
+            $db: $db,
+            $table: $db.dives,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DiveCylindersTableOrderingComposer
+    extends Composer<_$AppDatabase, $DiveCylindersTable> {
+  $$DiveCylindersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get gasMixIndex => $composableBuilder(
+    column: $table.gasMixIndex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get cylinderId => $composableBuilder(
+    column: $table.cylinderId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$DivesTableOrderingComposer get diveId {
+    final $$DivesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.diveId,
+      referencedTable: $db.dives,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DivesTableOrderingComposer(
+            $db: $db,
+            $table: $db.dives,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DiveCylindersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DiveCylindersTable> {
+  $$DiveCylindersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get gasMixIndex => $composableBuilder(
+    column: $table.gasMixIndex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get cylinderId => $composableBuilder(
+    column: $table.cylinderId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => column,
+  );
+
+  $$DivesTableAnnotationComposer get diveId {
+    final $$DivesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.diveId,
+      referencedTable: $db.dives,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DivesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.dives,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DiveCylindersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DiveCylindersTable,
+          DiveCylinder,
+          $$DiveCylindersTableFilterComposer,
+          $$DiveCylindersTableOrderingComposer,
+          $$DiveCylindersTableAnnotationComposer,
+          $$DiveCylindersTableCreateCompanionBuilder,
+          $$DiveCylindersTableUpdateCompanionBuilder,
+          (DiveCylinder, $$DiveCylindersTableReferences),
+          DiveCylinder,
+          PrefetchHooks Function({bool diveId})
+        > {
+  $$DiveCylindersTableTableManager(_$AppDatabase db, $DiveCylindersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DiveCylindersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DiveCylindersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DiveCylindersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> diveId = const Value.absent(),
+                Value<int> gasMixIndex = const Value.absent(),
+                Value<String?> cylinderId = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<int> syncStatus = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DiveCylindersCompanion(
+                diveId: diveId,
+                gasMixIndex: gasMixIndex,
+                cylinderId: cylinderId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                version: version,
+                syncStatus: syncStatus,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String diveId,
+                required int gasMixIndex,
+                Value<String?> cylinderId = const Value.absent(),
+                required int createdAt,
+                required int updatedAt,
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<int> syncStatus = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DiveCylindersCompanion.insert(
+                diveId: diveId,
+                gasMixIndex: gasMixIndex,
+                cylinderId: cylinderId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                version: version,
+                syncStatus: syncStatus,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$DiveCylindersTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({diveId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (diveId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.diveId,
+                                referencedTable: $$DiveCylindersTableReferences
+                                    ._diveIdTable(db),
+                                referencedColumn: $$DiveCylindersTableReferences
+                                    ._diveIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DiveCylindersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DiveCylindersTable,
+      DiveCylinder,
+      $$DiveCylindersTableFilterComposer,
+      $$DiveCylindersTableOrderingComposer,
+      $$DiveCylindersTableAnnotationComposer,
+      $$DiveCylindersTableCreateCompanionBuilder,
+      $$DiveCylindersTableUpdateCompanionBuilder,
+      (DiveCylinder, $$DiveCylindersTableReferences),
+      DiveCylinder,
+      PrefetchHooks Function({bool diveId})
+    >;
 typedef $$ImportStatesTableCreateCompanionBuilder =
     ImportStatesCompanion Function({
       required String dcSerial,
@@ -10052,6 +11063,8 @@ class $AppDatabaseManager {
       $$CylindersTableTableManager(_db, _db.cylinders);
   $$PressureMappingsTableTableManager get pressureMappings =>
       $$PressureMappingsTableTableManager(_db, _db.pressureMappings);
+  $$DiveCylindersTableTableManager get diveCylinders =>
+      $$DiveCylindersTableTableManager(_db, _db.diveCylinders);
   $$ImportStatesTableTableManager get importStates =>
       $$ImportStatesTableTableManager(_db, _db.importStates);
 }
