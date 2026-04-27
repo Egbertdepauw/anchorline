@@ -51,6 +51,8 @@
 	<string>CCRLog needs Bluetooth to connect to your Shearwater dive computer and import dive logs.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>CCRLog needs Bluetooth to connect to your Shearwater dive computer and import dive logs.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app uses your location to record where each dive happened.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
