@@ -48,3 +48,66 @@ class DiveComputersNotifier extends ChangeNotifier {
     await loadMappings(diveComputerId);
   }
 }
+
+class CellsNotifier extends ChangeNotifier {
+  final EquipmentDao _dao;
+  CellsNotifier(this._dao);
+
+  List<OxygenCell> _cells = [];
+  List<OxygenCell> get cells => List.unmodifiable(_cells);
+
+  bool _loading = false;
+  bool get loading => _loading;
+
+  Future<void> load() async {
+    _loading = true;
+    notifyListeners();
+    _cells = await _dao.listCells();
+    _loading = false;
+    notifyListeners();
+  }
+
+  Future<String> addCell({
+    required int slot,
+    String? label,
+    DateTime? installedDate,
+    String? notes,
+  }) async {
+    final id = await _dao.addCell(
+      slot: slot,
+      label: label,
+      installedDate: installedDate,
+      notes: notes,
+    );
+    await load();
+    return id;
+  }
+
+  Future<void> updateCell(
+    String id, {
+    int? slot,
+    String? label,
+    DateTime? installedDate,
+    String? notes,
+  }) async {
+    await _dao.updateCell(
+      id,
+      slot: slot,
+      label: label,
+      installedDate: installedDate,
+      notes: notes,
+    );
+    await load();
+  }
+
+  Future<void> retire(String id) async {
+    await _dao.retireCell(id, retiredAt: DateTime.now());
+    await load();
+  }
+
+  Future<bool> deleteIfUnused(String id) async {
+    final ok = await _dao.deleteCellIfUnused(id);
+    await load();
+    return ok;
+  }
+}

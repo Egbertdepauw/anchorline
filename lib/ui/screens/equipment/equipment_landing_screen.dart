@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/db/equipment_dao.dart';
+import 'cells_list_screen.dart';
 import 'dive_computers_list_screen.dart';
 
 class EquipmentLandingScreen extends StatefulWidget {
@@ -61,7 +62,12 @@ class _EquipmentLandingScreenState extends State<EquipmentLandingScreen> {
             title: 'O2 Cells',
             count: _cells,
             icon: Icons.science_outlined,
-            onTap: () {}, // wired in Task 11
+            onTap: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => CellsListScreen(dao: widget.dao),
+              ));
+              await _refresh();
+            },
           ),
           const SizedBox(height: 12),
           _Card(
