@@ -43,8 +43,8 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
     if (_cell == null) return;
     await widget.dao.updateCell(
       _cell!.id,
-      label: _labelCtrl.text.trim().isEmpty ? null : _labelCtrl.text.trim(),
-      notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+      label: _labelCtrl.text.trim(),
+      notes: _notesCtrl.text.trim(),
     );
     await _load();
   }
@@ -92,7 +92,7 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
                 if (_cell!.retiredDate != null)
                   Text('Retired: '
                       '${DateTime.fromMillisecondsSinceEpoch(_cell!.retiredDate!).toLocal().toString().split(' ').first}'),
-                Text('Dives: ${_series.length}'),
+                Text('Dives with mV data: ${_series.length}'),
                 const SizedBox(height: 16),
                 CellMvChart(series: _series),
                 const SizedBox(height: 16),

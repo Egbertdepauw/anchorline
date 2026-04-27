@@ -59,7 +59,11 @@ class _CellsListScreenState extends State<CellsListScreen> {
                     final c = _n.cells[i];
                     final retired = c.retiredDate != null;
                     return ListTile(
-                      title: Text(c.label ?? 'Slot ${c.slot}'),
+                      title: Text(
+                        (c.label != null && c.label!.isNotEmpty)
+                            ? c.label!
+                            : 'Slot ${c.slot}',
+                      ),
                       subtitle: Text(_subtitle(c)),
                       trailing: retired
                           ? const Chip(label: Text('Retired'))
