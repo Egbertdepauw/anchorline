@@ -1,8 +1,9 @@
 /// Data Access Object for dive annotations and per-dive cylinder linkage.
 ///
-/// Owns the `DiveAnnotations` and `DiveCylinders` tables. This file lands
-/// the annotation CRUD half (read, upsert, distinct lookups). The cylinder
-/// linkage methods land in a follow-up task.
+/// Owns the `DiveAnnotations` and `DiveCylinders` tables: annotation CRUD
+/// (read, upsert, distinct lookups for autocomplete pools) plus per-dive
+/// gas-mix-to-cylinder mapping with a transactional `saveAll` that the
+/// notifier uses to persist both halves atomically.
 library;
 
 import 'dart:convert';
