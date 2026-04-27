@@ -86,4 +86,101 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
           ..limit(limit))
         .get();
   }
+
+  // ── OxygenCells ──────────────────────────────────────────────────────────
+
+  Future<String> addCell({
+    required int slot,
+    String? label,
+    DateTime? installedDate,
+    String? notes,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final id = 'cell_${now}_$slot';
+    await into(oxygenCells).insert(OxygenCellsCompanion.insert(
+      id: id,
+      slot: slot,
+      label: Value(label),
+      installedDate: Value(installedDate?.millisecondsSinceEpoch),
+      notes: Value(notes),
+      createdAt: now,
+      updatedAt: now,
+    ));
+    return id;
+  }
+
+  Future<List<OxygenCell>> listCells() async {
+    final rows = await (select(oxygenCells)
+          ..where((t) => t.deletedAt.isNull()))
+        .get();
+    rows.sort((a, b) {
+      if (a.retiredDate == null && b.retiredDate != null) return -1;
+      if (a.retiredDate != null && b.retiredDate == null) return 1;
+      if (a.retiredDate != null && b.retiredDate != null) {
+        return b.retiredDate!.compareTo(a.retiredDate!);
+      }
+      return (b.installedDate ?? 0).compareTo(a.installedDate ?? 0);
+    });
+    return rows;
+  }
+
+  Future<OxygenCell?> getCell(String id) {
+    return (select(oxygenCells)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+  }
+
+  Future<void> updateCell(
+    String id, {
+    int? slot,
+    String? label,
+    DateTime? installedDate,
+    String? notes,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await (update(oxygenCells)..where((t) => t.id.equals(id))).write(
+      OxygenCellsCompanion(
+        slot: slot == null ? const Value.absent() : Value(slot),
+        label: Value(label),
+        installedDate: Value(installedDate?.millisecondsSinceEpoch),
+        notes: Value(notes),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
+  Future<void> retireCell(String id, {required DateTime retiredAt}) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await (update(oxygenCells)..where((t) => t.id.equals(id))).write(
+      OxygenCellsCompanion(
+        retiredDate: Value(retiredAt.millisecondsSinceEpoch),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
+  /// Deletes the cell only if no dives overlap its [installedDate, retiredDate)
+  /// window. Returns true on success, false if the cell has attributable dives.
+  ///
+  /// IMPORTANT: This uses the real `Dives` schema field name `startTime` (not
+  /// the speculative `startTimeUtc` that appeared in the plan's first draft).
+  Future<bool> deleteCellIfUnused(String id) async {
+    final cell = await getCell(id);
+    if (cell == null) return false;
+
+    final overlapping = await (select(db.dives)
+          ..where((t) {
+            var expr = t.startTime.isBiggerOrEqualValue(
+                cell.installedDate ?? 0);
+            if (cell.retiredDate != null) {
+              expr = expr & t.startTime.isSmallerThanValue(cell.retiredDate!);
+            }
+            return expr;
+          })
+          ..limit(1))
+        .get();
+    if (overlapping.isNotEmpty) return false;
+
+    await (delete(oxygenCells)..where((t) => t.id.equals(id))).go();
+    return true;
+  }
 }

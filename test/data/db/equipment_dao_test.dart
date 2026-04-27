@@ -111,4 +111,31 @@ void main() {
       expect(recent.map((d) => d.id).toList(), ['d2', 'd1']);
     });
   });
+
+  group('OxygenCells', () {
+    test('addCell + listCells round-trip', () async {
+      final id = await dao.addCell(slot: 1, label: 'R-22D #001', installedDate: DateTime(2025, 1, 1));
+      final cells = await dao.listCells();
+      expect(cells, hasLength(1));
+      expect(cells.single.id, id);
+      expect(cells.single.slot, 1);
+      expect(cells.single.label, 'R-22D #001');
+    });
+
+    test('listCells sorts active first then retired by retiredDate desc', () async {
+      final a = await dao.addCell(slot: 1, label: 'old', installedDate: DateTime(2024, 1, 1));
+      final b = await dao.addCell(slot: 2, label: 'active', installedDate: DateTime(2025, 1, 1));
+      await dao.retireCell(a, retiredAt: DateTime(2024, 6, 1));
+
+      final cells = await dao.listCells();
+      expect(cells.map((c) => c.id).toList(), [b, a]);
+    });
+
+    test('deleteCellIfUnused succeeds when no dives overlap', () async {
+      final id = await dao.addCell(slot: 1, label: 'unused', installedDate: DateTime(2030, 1, 1));
+      final ok = await dao.deleteCellIfUnused(id);
+      expect(ok, isTrue);
+      expect(await dao.listCells(), isEmpty);
+    });
+  });
 }
