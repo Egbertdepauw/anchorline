@@ -137,5 +137,62 @@ void main() {
       expect(ok, isTrue);
       expect(await dao.listCells(), isEmpty);
     });
+
+    test('deleteCellIfUnused refuses when a dive falls in the cell window',
+        () async {
+      await dao.upsertDiveComputer(serial: 0xAA, model: 0xB407);
+      await db.into(db.dives).insert(DivesCompanion.insert(
+        id: 'd1',
+        dcSerial: 0xAA,
+        dcDiveNumber: 1,
+        startTime: DateTime(2025, 6, 1).millisecondsSinceEpoch,
+        endTime: DateTime(2025, 6, 1).millisecondsSinceEpoch + 3600 * 1000,
+        durationSeconds: 3600,
+        maxDepthMm: 0,
+        diveMode: 0,
+        decoModel: 0,
+        atmosphericPressureMbar: 1013,
+        waterDensity: 1030,
+        logVersion: 1,
+        dcModel: 0xB407,
+        sampleIntervalMs: 10000,
+        gasMixesJson: '[]',
+        rawBlob: Uint8List(0),
+        parserVersion: 1,
+        importedAt: 0,
+      ));
+      final id = await dao.addCell(slot: 1, installedDate: DateTime(2025, 1, 1));
+      final ok = await dao.deleteCellIfUnused(id);
+      expect(ok, isFalse);
+      expect(await dao.listCells(), hasLength(1));
+    });
+
+    test('deleteCellIfUnused allows delete when both dates are null (no window)',
+        () async {
+      await dao.upsertDiveComputer(serial: 0xAA, model: 0xB407);
+      await db.into(db.dives).insert(DivesCompanion.insert(
+        id: 'd2',
+        dcSerial: 0xAA,
+        dcDiveNumber: 2,
+        startTime: DateTime(2025, 6, 1).millisecondsSinceEpoch,
+        endTime: DateTime(2025, 6, 1).millisecondsSinceEpoch + 3600 * 1000,
+        durationSeconds: 3600,
+        maxDepthMm: 0,
+        diveMode: 0,
+        decoModel: 0,
+        atmosphericPressureMbar: 1013,
+        waterDensity: 1030,
+        logVersion: 1,
+        dcModel: 0xB407,
+        sampleIntervalMs: 10000,
+        gasMixesJson: '[]',
+        rawBlob: Uint8List(0),
+        parserVersion: 1,
+        importedAt: 0,
+      ));
+      final id = await dao.addCell(slot: 1); // no installedDate
+      final ok = await dao.deleteCellIfUnused(id);
+      expect(ok, isTrue);
+    });
   });
 }

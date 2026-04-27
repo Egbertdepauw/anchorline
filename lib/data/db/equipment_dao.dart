@@ -158,21 +158,40 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
-  /// Deletes the cell only if no dives overlap its [installedDate, retiredDate)
-  /// window. Returns true on success, false if the cell has attributable dives.
+  /// Deletes the cell only if no dives can be attributed to its
+  /// `[installedDate, retiredDate)` window:
   ///
-  /// IMPORTANT: This uses the real `Dives` schema field name `startTime` (not
-  /// the speculative `startTimeUtc` that appeared in the plan's first draft).
+  /// - If both `installedDate` and `retiredDate` are null, the cell has
+  ///   no window to attribute dives to and is deleted.
+  /// - If `installedDate` is null but `retiredDate` is set, the upper
+  ///   bound alone is used (any dive before retire could have used the cell).
+  /// - Otherwise the inclusive-exclusive window check applies.
+  ///
+  /// Returns true on delete, false if attributable dives exist.
+  ///
+  /// Uses the real `Dives` schema column `startTime` (not the speculative
+  /// `startTimeUtc` that appeared in the plan's first draft).
   Future<bool> deleteCellIfUnused(String id) async {
     final cell = await getCell(id);
     if (cell == null) return false;
 
+    final installed = cell.installedDate;
+    final retired = cell.retiredDate;
+
+    // No window known and no retire date → cell has no possible attributable dives.
+    if (installed == null && retired == null) {
+      await (delete(oxygenCells)..where((t) => t.id.equals(id))).go();
+      return true;
+    }
+
     final overlapping = await (select(db.dives)
           ..where((t) {
-            var expr = t.startTime.isBiggerOrEqualValue(
-                cell.installedDate ?? 0);
-            if (cell.retiredDate != null) {
-              expr = expr & t.startTime.isSmallerThanValue(cell.retiredDate!);
+            Expression<bool> expr = const Constant(true);
+            if (installed != null) {
+              expr = expr & t.startTime.isBiggerOrEqualValue(installed);
+            }
+            if (retired != null) {
+              expr = expr & t.startTime.isSmallerThanValue(retired);
             }
             return expr;
           })
