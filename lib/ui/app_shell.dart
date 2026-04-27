@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../data/db/database.dart';
+import '../data/db/dive_annotations_dao.dart';
 import '../data/db/dive_dao.dart';
 import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
@@ -26,6 +27,7 @@ class _AppShellState extends State<AppShell> {
   late final DiveDao _diveDao;
   late final ImportStateDao _importStateDao;
   late final EquipmentDao _equipmentDao;
+  late final DiveAnnotationsDao _diveAnnotationsDao;
   late final DiveListNotifier _diveListNotifier;
   late final ImportNotifier _importNotifier;
 
@@ -35,6 +37,7 @@ class _AppShellState extends State<AppShell> {
     _diveDao = DiveDao(widget.db);
     _importStateDao = ImportStateDao(widget.db);
     _equipmentDao = EquipmentDao(widget.db);
+    _diveAnnotationsDao = DiveAnnotationsDao(widget.db);
     _diveListNotifier = DiveListNotifier(_diveDao);
     _importNotifier = ImportNotifier(
       dao: _diveDao,
@@ -63,9 +66,18 @@ class _AppShellState extends State<AppShell> {
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          DiveListScreen(notifier: _diveListNotifier, diveDao: _diveDao),
+          DiveListScreen(
+            notifier: _diveListNotifier,
+            diveDao: _diveDao,
+            annotationsDao: _diveAnnotationsDao,
+            equipmentDao: _equipmentDao,
+          ),
           ImportScreen(notifier: _importNotifier, onViewDives: _onViewDives),
-          EquipmentLandingScreen(dao: _equipmentDao, diveDao: _diveDao),
+          EquipmentLandingScreen(
+            dao: _equipmentDao,
+            diveDao: _diveDao,
+            annotationsDao: _diveAnnotationsDao,
+          ),
           const PlaceholderScreen(title: 'Settings', icon: Icons.settings_outlined),
         ],
       ),

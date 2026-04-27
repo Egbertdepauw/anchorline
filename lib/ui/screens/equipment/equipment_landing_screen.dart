@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../data/db/dive_annotations_dao.dart';
 import '../../../data/db/dive_dao.dart';
 import '../../../data/db/equipment_dao.dart';
 import 'cells_list_screen.dart';
@@ -10,11 +11,13 @@ import 'scrubber_sessions_list_screen.dart';
 class EquipmentLandingScreen extends StatefulWidget {
   final EquipmentDao dao;
   final DiveDao diveDao;
+  final DiveAnnotationsDao annotationsDao;
 
   const EquipmentLandingScreen({
     super.key,
     required this.dao,
     required this.diveDao,
+    required this.annotationsDao,
   });
 
   @override
@@ -75,6 +78,7 @@ class _EquipmentLandingScreenState extends State<EquipmentLandingScreen> {
                 builder: (_) => CellsListScreen(
                   dao: widget.dao,
                   diveDao: widget.diveDao,
+                  annotationsDao: widget.annotationsDao,
                 ),
               ));
               await _refresh();

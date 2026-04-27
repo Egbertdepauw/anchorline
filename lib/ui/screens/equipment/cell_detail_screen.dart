@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/db/database.dart';
+import '../../../data/db/dive_annotations_dao.dart';
 import '../../../data/db/dive_dao.dart';
 import '../../../data/db/equipment_dao.dart';
 import '../../widgets/cell_mv_chart.dart';
@@ -9,12 +10,14 @@ import '../dive_detail_screen.dart';
 class CellDetailScreen extends StatefulWidget {
   final EquipmentDao dao;
   final DiveDao diveDao;
+  final DiveAnnotationsDao annotationsDao;
   final String? id; // null = create-new draft
 
   const CellDetailScreen({
     super.key,
     required this.dao,
     required this.diveDao,
+    required this.annotationsDao,
     this.id,
   });
 
@@ -80,8 +83,12 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
     final dive = await widget.diveDao.getDive(diveId);
     if (dive == null || !mounted) return;
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) =>
-          DiveDetailScreen(dive: dive, dao: widget.diveDao),
+      builder: (_) => DiveDetailScreen(
+        dive: dive,
+        dao: widget.diveDao,
+        annotationsDao: widget.annotationsDao,
+        equipmentDao: widget.dao,
+      ),
     ));
   }
 

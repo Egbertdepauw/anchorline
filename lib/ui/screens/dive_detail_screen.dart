@@ -1,20 +1,33 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../data/db/database.dart';
+import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/dive_dao.dart';
+import '../../data/db/equipment_dao.dart';
+import '../../data/models/dive.dart' show DiveGasMix;
+import '../../data/sample_codec/active_per_mix.dart';
 import '../../shearwater/parser/hardware.dart';
 import '../notifiers/dive_detail_notifier.dart';
 import '../util/dive_mode_color.dart';
 import '../util/format.dart';
 import '../widgets/crosshair_overlay.dart';
 import '../widgets/crosshair_tooltip.dart';
+import '../widgets/dive_annotations_section.dart';
 import '../widgets/profile_chart.dart';
 import '../widgets/trace_toggle.dart';
 
 class DiveDetailScreen extends StatefulWidget {
   final Dive dive;
   final DiveDao dao;
-  const DiveDetailScreen({super.key, required this.dive, required this.dao});
+  final DiveAnnotationsDao annotationsDao;
+  final EquipmentDao equipmentDao;
+  const DiveDetailScreen({
+    super.key,
+    required this.dive,
+    required this.dao,
+    required this.annotationsDao,
+    required this.equipmentDao,
+  });
   @override
   State<DiveDetailScreen> createState() => _DiveDetailScreenState();
 }
@@ -149,9 +162,35 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                         onToggle: _notifier.toggleTrace),
                     _buildStatsRow(theme),
                     _buildGasMixes(theme),
+                    _buildAnnotationsSection(),
                   ],
                 ],
               )),
+    );
+  }
+
+  Widget _buildAnnotationsSection() {
+    final samples = _notifier.samples;
+    if (samples == null) return const SizedBox.shrink();
+
+    // Decode gas mixes from the dive's JSON column.
+    final gasMixes = (jsonDecode(widget.dive.gasMixesJson) as List)
+        .map((e) => DiveGasMix.fromJson(e as Map<String, dynamic>))
+        .toList();
+
+    // Active seconds per mix (from already-loaded samples).
+    final activeByMix = activeSecondsPerMix(
+      gasMixIndexes: samples.gasMixIndex,
+      sampleCount: samples.sampleCount,
+      sampleIntervalMs: samples.sampleIntervalMs,
+    );
+
+    return DiveAnnotationsSection(
+      diveId: widget.dive.id,
+      gasMixes: gasMixes,
+      activeSecondsByMix: activeByMix,
+      annotationsDao: widget.annotationsDao,
+      equipmentDao: widget.equipmentDao,
     );
   }
 

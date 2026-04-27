@@ -1,4 +1,5 @@
 import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/ui/screens/equipment/equipment_landing_screen.dart';
@@ -12,9 +13,14 @@ void main() {
     addTearDown(db.close);
     final dao = EquipmentDao(db);
     final diveDao = DiveDao(db);
+    final annotationsDao = DiveAnnotationsDao(db);
 
     await tester.pumpWidget(MaterialApp(
-      home: EquipmentLandingScreen(dao: dao, diveDao: diveDao),
+      home: EquipmentLandingScreen(
+        dao: dao,
+        diveDao: diveDao,
+        annotationsDao: annotationsDao,
+      ),
     ));
     await tester.pump();
 

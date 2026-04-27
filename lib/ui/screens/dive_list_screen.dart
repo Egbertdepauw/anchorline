@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../data/db/database.dart';
+import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/dive_dao.dart';
+import '../../data/db/equipment_dao.dart';
 import '../notifiers/dive_list_notifier.dart';
 import '../widgets/dive_tile.dart';
 import 'dive_detail_screen.dart';
@@ -9,9 +11,16 @@ import 'dive_detail_screen.dart';
 class DiveListScreen extends StatefulWidget {
   final DiveListNotifier notifier;
   final DiveDao diveDao;
+  final DiveAnnotationsDao annotationsDao;
+  final EquipmentDao equipmentDao;
 
-  const DiveListScreen(
-      {super.key, required this.notifier, required this.diveDao});
+  const DiveListScreen({
+    super.key,
+    required this.notifier,
+    required this.diveDao,
+    required this.annotationsDao,
+    required this.equipmentDao,
+  });
 
   @override
   State<DiveListScreen> createState() => _DiveListScreenState();
@@ -92,9 +101,12 @@ class _DiveListScreenState extends State<DiveListScreen> {
                 (context, index) {
                   final dive = entry.value[index];
                   return _DiveTileWithSparkline(
-                      dive: dive,
-                      notifier: notifier,
-                      diveDao: widget.diveDao);
+                    dive: dive,
+                    notifier: notifier,
+                    diveDao: widget.diveDao,
+                    annotationsDao: widget.annotationsDao,
+                    equipmentDao: widget.equipmentDao,
+                  );
                 },
                 childCount: entry.value.length,
               ),
@@ -110,9 +122,16 @@ class _DiveTileWithSparkline extends StatelessWidget {
   final Dive dive;
   final DiveListNotifier notifier;
   final DiveDao diveDao;
+  final DiveAnnotationsDao annotationsDao;
+  final EquipmentDao equipmentDao;
 
-  const _DiveTileWithSparkline(
-      {required this.dive, required this.notifier, required this.diveDao});
+  const _DiveTileWithSparkline({
+    required this.dive,
+    required this.notifier,
+    required this.diveDao,
+    required this.annotationsDao,
+    required this.equipmentDao,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -124,7 +143,12 @@ class _DiveTileWithSparkline extends StatelessWidget {
           sparklineData: snapshot.data,
           onTap: () {
             Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => DiveDetailScreen(dive: dive, dao: diveDao),
+              builder: (_) => DiveDetailScreen(
+                dive: dive,
+                dao: diveDao,
+                annotationsDao: annotationsDao,
+                equipmentDao: equipmentDao,
+              ),
             ));
           },
         );
