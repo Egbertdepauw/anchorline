@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../data/db/database.dart';
 import '../../data/db/dive_annotations_dao.dart';
@@ -97,6 +98,36 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
     _n.setLatLon(result.lat, result.lon);
   }
 
+  Future<void> _useCurrentLocation() async {
+    try {
+      final perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        final req = await Geolocator.requestPermission();
+        if (req != LocationPermission.always &&
+            req != LocationPermission.whileInUse) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Location permission denied'),
+          ));
+          return;
+        }
+      }
+      final pos = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
+      setState(() {
+        _lat.text = pos.latitude.toStringAsFixed(6);
+        _lon.text = pos.longitude.toStringAsFixed(6);
+      });
+      _n.setLatLon(pos.latitude, pos.longitude);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not get current location: $e'),
+      ));
+    }
+  }
+
   Future<void> _save() async {
     _n.setSiteName(_site.text.trim().isEmpty ? null : _site.text.trim());
     _n.setLatLon(
@@ -174,6 +205,12 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
           ]),
           const SizedBox(height: 8),
           Row(children: [
+            TextButton.icon(
+              icon: const Icon(Icons.my_location, size: 18),
+              label: const Text('Use current location'),
+              onPressed: _useCurrentLocation,
+            ),
+            const SizedBox(width: 8),
             TextButton.icon(
               icon: const Icon(Icons.map, size: 18),
               label: const Text('Pick on map'),
