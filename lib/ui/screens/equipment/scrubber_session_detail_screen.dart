@@ -49,6 +49,16 @@ class _ScrubberSessionDetailScreenState
     await _load();
   }
 
+  Future<void> _save() async {
+    if (_session == null) return;
+    await widget.dao.updateScrubberSession(
+      widget.id,
+      mediaType: _mediaCtrl.text.trim(),
+      notes: _notesCtrl.text.trim(),
+    );
+    await _load();
+  }
+
   Future<void> _delete() async {
     await widget.dao.deleteScrubberSession(widget.id);
     if (!mounted) return;
@@ -88,6 +98,7 @@ class _ScrubberSessionDetailScreenState
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    ElevatedButton(onPressed: _save, child: const Text('Save')),
                     if (_session!.totalMinutes == null)
                       OutlinedButton(
                         onPressed: _close,

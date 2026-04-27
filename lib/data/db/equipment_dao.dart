@@ -318,6 +318,25 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
         .getSingleOrNull();
   }
 
+  Future<void> updateScrubberSession(
+    String id, {
+    DateTime? startedDate,
+    String? mediaType,
+    String? notes,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await (update(scrubberSessions)..where((t) => t.id.equals(id))).write(
+      ScrubberSessionsCompanion(
+        startedDate: startedDate == null
+            ? const Value.absent()
+            : Value(startedDate.millisecondsSinceEpoch),
+        mediaType: mediaType == null ? const Value.absent() : Value(mediaType),
+        notes: notes == null ? const Value.absent() : Value(notes),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
   Future<void> closeScrubberSession(String id, {required DateTime endedAt}) async {
     final session = await getScrubberSession(id);
     if (session == null) return;

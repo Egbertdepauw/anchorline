@@ -138,6 +138,21 @@ class ScrubberSessionsNotifier extends ChangeNotifier {
     return id;
   }
 
+  Future<void> updatePack(
+    String id, {
+    DateTime? startedDate,
+    String? mediaType,
+    String? notes,
+  }) async {
+    await _dao.updateScrubberSession(
+      id,
+      startedDate: startedDate,
+      mediaType: mediaType,
+      notes: notes,
+    );
+    await load();
+  }
+
   Future<void> closePack(String id, {required DateTime endedAt}) async {
     await _dao.closeScrubberSession(id, endedAt: endedAt);
     await load();
