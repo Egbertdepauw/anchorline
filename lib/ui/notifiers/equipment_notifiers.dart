@@ -111,3 +111,40 @@ class CellsNotifier extends ChangeNotifier {
     return ok;
   }
 }
+
+class ScrubberSessionsNotifier extends ChangeNotifier {
+  final EquipmentDao _dao;
+  ScrubberSessionsNotifier(this._dao);
+
+  List<ScrubberSession> _sessions = [];
+  List<ScrubberSession> get sessions => List.unmodifiable(_sessions);
+
+  Future<void> load() async {
+    _sessions = await _dao.listScrubberSessions();
+    notifyListeners();
+  }
+
+  Future<String> addPack({
+    required DateTime startedDate,
+    String? mediaType,
+    String? notes,
+  }) async {
+    final id = await _dao.addScrubberSession(
+      startedDate: startedDate,
+      mediaType: mediaType,
+      notes: notes,
+    );
+    await load();
+    return id;
+  }
+
+  Future<void> closePack(String id, {required DateTime endedAt}) async {
+    await _dao.closeScrubberSession(id, endedAt: endedAt);
+    await load();
+  }
+
+  Future<void> deletePack(String id) async {
+    await _dao.deleteScrubberSession(id);
+    await load();
+  }
+}

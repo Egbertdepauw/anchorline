@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../data/db/equipment_dao.dart';
 import 'cells_list_screen.dart';
 import 'dive_computers_list_screen.dart';
+import 'scrubber_sessions_list_screen.dart';
 
 class EquipmentLandingScreen extends StatefulWidget {
   final EquipmentDao dao;
@@ -74,7 +75,12 @@ class _EquipmentLandingScreenState extends State<EquipmentLandingScreen> {
             title: 'Scrubbers',
             count: _scrubbers,
             icon: Icons.replay_circle_filled_outlined,
-            onTap: () {}, // wired in Task 13
+            onTap: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => ScrubberSessionsListScreen(dao: widget.dao),
+              ));
+              await _refresh();
+            },
           ),
           const SizedBox(height: 12),
           _Card(
