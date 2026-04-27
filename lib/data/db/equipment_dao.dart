@@ -142,9 +142,11 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     await (update(oxygenCells)..where((t) => t.id.equals(id))).write(
       OxygenCellsCompanion(
         slot: slot == null ? const Value.absent() : Value(slot),
-        label: Value(label),
-        installedDate: Value(installedDate?.millisecondsSinceEpoch),
-        notes: Value(notes),
+        label: label == null ? const Value.absent() : Value(label),
+        installedDate: installedDate == null
+            ? const Value.absent()
+            : Value(installedDate.millisecondsSinceEpoch),
+        notes: notes == null ? const Value.absent() : Value(notes),
         updatedAt: Value(now),
       ),
     );
@@ -504,8 +506,8 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
         workingPressureBar: workingPressureBar == null
             ? const Value.absent()
             : Value(workingPressureBar),
-        gasMix: Value(gasMix),
-        notes: Value(notes),
+        gasMix: gasMix == null ? const Value.absent() : Value(gasMix),
+        notes: notes == null ? const Value.absent() : Value(notes),
         updatedAt: Value(now),
       ),
     );
