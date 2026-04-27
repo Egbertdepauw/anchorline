@@ -170,7 +170,3 @@ class _DiveComputerDetailScreenState extends State<DiveComputerDetailScreen> {
     );
   }
 }
-
-extension _IterableFirstOrNull<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
-}
