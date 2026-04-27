@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/db/equipment_dao.dart';
+import 'dive_computers_list_screen.dart';
 
 class EquipmentLandingScreen extends StatefulWidget {
   final EquipmentDao dao;
@@ -48,7 +49,12 @@ class _EquipmentLandingScreenState extends State<EquipmentLandingScreen> {
             title: 'Dive Computers',
             count: _computers,
             icon: Icons.bluetooth,
-            onTap: () {}, // wired in Task 9
+            onTap: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => DiveComputersListScreen(dao: widget.dao),
+              ));
+              await _refresh();
+            },
           ),
           const SizedBox(height: 12),
           _Card(
