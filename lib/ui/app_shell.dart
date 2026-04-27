@@ -39,6 +39,7 @@ class _AppShellState extends State<AppShell> {
     _importNotifier = ImportNotifier(
       dao: _diveDao,
       importStateDao: _importStateDao,
+      equipmentDao: _equipmentDao,
       useMock: kDebugMode,
     );
   }

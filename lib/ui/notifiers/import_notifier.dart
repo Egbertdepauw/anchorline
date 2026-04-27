@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../../data/db/dive_dao.dart';
+import '../../data/db/equipment_dao.dart';
 import '../../data/db/import_state_dao.dart';
 import '../../shearwater/ble/ble_io_impl.dart';
 import '../../shearwater/ble/mock_ble_transport.dart';
@@ -40,6 +41,7 @@ enum ImportFlowState {
 class ImportNotifier extends ChangeNotifier {
   final DiveDao _dao;
   final ImportStateDao _importStateDao;
+  final EquipmentDao _equipmentDao;
   final bool useMock;
 
   bool _disposed = false;
@@ -65,9 +67,11 @@ class ImportNotifier extends ChangeNotifier {
   ImportNotifier({
     required DiveDao dao,
     required ImportStateDao importStateDao,
+    required EquipmentDao equipmentDao,
     this.useMock = false,
   })  : _dao = dao,
-        _importStateDao = importStateDao;
+        _importStateDao = importStateDao,
+        _equipmentDao = equipmentDao;
 
   // ── Accessors ──────────────────────────────────────────────────────────────
 
@@ -208,6 +212,15 @@ class ImportNotifier extends ChangeNotifier {
       _realTransport = ShearwaterBleTransport();
       await _realTransport!.connect(device);
       _deviceInfo = await _realTransport!.readDeviceInfo();
+      try {
+        await _equipmentDao.upsertDiveComputer(
+          serial: int.parse(_deviceInfo!.serial, radix: 16),
+          model: _deviceInfo!.hardwareId,
+          firmwareVersion: _parseFirmwareVersion(_deviceInfo!.firmware),
+        );
+      } catch (e) {
+        debugPrint('Failed to upsert DiveComputer row: $e');
+      }
       _state = ImportFlowState.readingManifest;
     } catch (e) {
       _errorMessage = 'Connection failed: $e';
@@ -306,6 +319,15 @@ class ImportNotifier extends ChangeNotifier {
           );
           _failedCount++;
         }
+        // Forward-compatible: parser does not currently surface scrubberResetAt.
+        try {
+          await _equipmentDao.applyScrubberEvents(
+            scrubberResetAt: null,
+            dcSerial: serial,
+          );
+        } catch (e) {
+          debugPrint('Failed to apply scrubber events: $e');
+        }
         notifyListeners();
       }
 
@@ -381,5 +403,11 @@ class ImportNotifier extends ChangeNotifier {
     _discoveredDevices.clear();
     _forceFullReimport = false;
     _stopScan();
+  }
+
+  int? _parseFirmwareVersion(String firmware) {
+    // "V103 DiveCAN" → 103
+    final m = RegExp(r'V(\d+)').firstMatch(firmware);
+    return m == null ? null : int.tryParse(m.group(1)!);
   }
 }

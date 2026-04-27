@@ -1,5 +1,6 @@
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
+import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/data/db/import_state_dao.dart';
 import 'package:ccrlogger/ui/notifiers/import_notifier.dart';
 import 'package:drift/native.dart';
@@ -17,7 +18,12 @@ void main() {
     db = AppDatabase(NativeDatabase.memory());
     dao = DiveDao(db);
     importStateDao = ImportStateDao(db);
-    notifier = ImportNotifier(dao: dao, importStateDao: importStateDao, useMock: true);
+    notifier = ImportNotifier(
+      dao: dao,
+      importStateDao: importStateDao,
+      equipmentDao: EquipmentDao(db),
+      useMock: true,
+    );
   });
 
   tearDown(() async {
