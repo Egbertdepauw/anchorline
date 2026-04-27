@@ -1,6 +1,7 @@
 import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/models/annotation.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -61,8 +62,8 @@ void main() {
     });
 
     test('upsert is idempotent on diveId', () async {
-      await dao.upsert(_blank('dive_b').copyWith(siteName: 'first'));
-      await dao.upsert(_blank('dive_b').copyWith(siteName: 'second'));
+      await dao.upsert(_blank('dive_b').copyWith(siteName: const Value('first')));
+      await dao.upsert(_blank('dive_b').copyWith(siteName: const Value('second')));
       final got = (await dao.get('dive_b'))!;
       expect(got.siteName, 'second');
     });

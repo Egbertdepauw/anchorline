@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart';
 
 import '../../data/db/dive_annotations_dao.dart';
@@ -51,17 +52,20 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   // ── Setters ───────────────────────────────────────────────────────────
 
   void setSiteName(String? v) {
-    _annotation = _annotation?.copyWith(siteName: v);
+    _annotation = _annotation?.copyWith(siteName: Value(v));
     _markDirty();
   }
 
   void setLatLon(double? lat, double? lon) {
-    _annotation = _annotation?.copyWith(siteLatitude: lat, siteLongitude: lon);
+    _annotation = _annotation?.copyWith(
+      siteLatitude: Value(lat),
+      siteLongitude: Value(lon),
+    );
     _markDirty();
   }
 
   void setNotes(String? v) {
-    _annotation = _annotation?.copyWith(notes: v);
+    _annotation = _annotation?.copyWith(notes: Value(v));
     _markDirty();
   }
 
@@ -76,12 +80,12 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   }
 
   void setRating(int? v) {
-    _annotation = _annotation?.copyWith(rating: v);
+    _annotation = _annotation?.copyWith(rating: Value(v));
     _markDirty();
   }
 
   void setConditions(String? v) {
-    _annotation = _annotation?.copyWith(conditions: v);
+    _annotation = _annotation?.copyWith(conditions: Value(v));
     _markDirty();
   }
 

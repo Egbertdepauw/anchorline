@@ -3,6 +3,8 @@
 /// Has sync metadata for future cloud sync (Phase 2).
 library;
 
+import 'package:drift/drift.dart' show Value;
+
 enum SyncStatus { synced, pending, conflict }
 
 class DiveAnnotation {
@@ -42,33 +44,35 @@ class DiveAnnotation {
 
   DiveAnnotation copyWith({
     String? diveId,
-    String? siteName,
-    double? siteLatitude,
-    double? siteLongitude,
-    String? notes,
+    Value<String?>? siteName,
+    Value<double?>? siteLatitude,
+    Value<double?>? siteLongitude,
+    Value<String?>? notes,
     List<String>? buddies,
     List<String>? tags,
-    int? rating,
-    String? conditions,
+    Value<int?>? rating,
+    Value<String?>? conditions,
     DateTime? createdAt,
     DateTime? updatedAt,
-    DateTime? deletedAt,
+    Value<DateTime?>? deletedAt,
     int? version,
     SyncStatus? syncStatus,
   }) =>
       DiveAnnotation(
         diveId: diveId ?? this.diveId,
-        siteName: siteName ?? this.siteName,
-        siteLatitude: siteLatitude ?? this.siteLatitude,
-        siteLongitude: siteLongitude ?? this.siteLongitude,
-        notes: notes ?? this.notes,
+        siteName: siteName == null ? this.siteName : siteName.value,
+        siteLatitude:
+            siteLatitude == null ? this.siteLatitude : siteLatitude.value,
+        siteLongitude:
+            siteLongitude == null ? this.siteLongitude : siteLongitude.value,
+        notes: notes == null ? this.notes : notes.value,
         buddies: buddies ?? this.buddies,
         tags: tags ?? this.tags,
-        rating: rating ?? this.rating,
-        conditions: conditions ?? this.conditions,
+        rating: rating == null ? this.rating : rating.value,
+        conditions: conditions == null ? this.conditions : conditions.value,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
-        deletedAt: deletedAt ?? this.deletedAt,
+        deletedAt: deletedAt == null ? this.deletedAt : deletedAt.value,
         version: version ?? this.version,
         syncStatus: syncStatus ?? this.syncStatus,
       );
