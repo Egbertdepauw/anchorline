@@ -27,7 +27,8 @@ void main() {
     await tester.pump(); // initial frame
     await tester.pump(); // after _load future resolves
 
-    expect(find.text('Slot 1'), findsOneWidget);
+    expect(find.text('Slot'), findsOneWidget);
+    expect(find.byType(DropdownButtonFormField<int>), findsOneWidget);
     expect(find.text('No surface-mV data yet'), findsOneWidget);
   });
 

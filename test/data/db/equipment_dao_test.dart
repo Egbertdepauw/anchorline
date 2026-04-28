@@ -236,6 +236,48 @@ void main() {
       expect(await dao.listCells(), hasLength(1));
     });
 
+    test('addCell throws SlotInUseException when slot already has active cell',
+        () async {
+      await dao.addCell(slot: 2, label: 'first');
+      expect(
+        () => dao.addCell(slot: 2, label: 'second'),
+        throwsA(isA<SlotInUseException>()),
+      );
+    });
+
+    test('updateCell throws SlotInUseException when target slot is occupied',
+        () async {
+      await dao.addCell(slot: 1, label: 'a');
+      final b = await dao.addCell(slot: 2, label: 'b');
+      expect(
+        () => dao.updateCell(b, slot: 1),
+        throwsA(isA<SlotInUseException>()),
+      );
+    });
+
+    test('updateCell allows moving into a slot held only by a retired cell',
+        () async {
+      final retired = await dao.addCell(
+        slot: 1,
+        label: 'retired',
+        installedDate: DateTime(2024, 1, 1),
+      );
+      await dao.retireCell(retired, retiredAt: DateTime(2024, 6, 1));
+      final fresh = await dao.addCell(slot: 2, label: 'fresh');
+      // Should not throw.
+      await dao.updateCell(fresh, slot: 1);
+      final updated = await dao.getCell(fresh);
+      expect(updated!.slot, 1);
+    });
+
+    test('updateCell on same id with same slot does not throw', () async {
+      final id = await dao.addCell(slot: 3, label: 'x');
+      // Slot is unchanged → guard skipped; no exception.
+      await dao.updateCell(id, label: 'renamed');
+      final updated = await dao.getCell(id);
+      expect(updated!.label, 'renamed');
+    });
+
     test('deleteCellIfUnused allows delete when both dates are null (no window)',
         () async {
       await dao.upsertDiveComputer(serial: 0xAA, model: 0xB407);

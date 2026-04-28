@@ -8,7 +8,7 @@ library;
 
 import 'package:drift/drift.dart';
 
-import '../models/equipment.dart' show CylinderRole;
+import '../models/equipment.dart' show CylinderRole, SlotInUseException;
 import '../sample_codec/column_packer.dart';
 import 'database.dart';
 import 'tables.dart';
@@ -97,6 +97,7 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     DateTime? installedDate,
     String? notes,
   }) async {
+    await _assertSlotAvailable(slot);
     final now = DateTime.now().millisecondsSinceEpoch;
     final id = 'cell_${now}_$slot';
     await into(oxygenCells).insert(OxygenCellsCompanion.insert(
@@ -109,6 +110,25 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
       updatedAt: now,
     ));
     return id;
+  }
+
+  Future<void> _assertSlotAvailable(int slot, {String? excludingId}) async {
+    final query = select(oxygenCells)
+      ..where((t) =>
+          t.slot.equals(slot) &
+          t.retiredDate.isNull() &
+          t.deletedAt.isNull());
+    if (excludingId != null) {
+      query.where((t) => t.id.equals(excludingId).not());
+    }
+    final conflict = await query.getSingleOrNull();
+    if (conflict != null) {
+      throw SlotInUseException(
+        slot: slot,
+        otherCellId: conflict.id,
+        otherLabel: conflict.label,
+      );
+    }
   }
 
   Future<List<OxygenCell>> listCells() async {
@@ -138,6 +158,9 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     Value<DateTime?>? installedDate,
     String? notes,
   }) async {
+    if (slot != null) {
+      await _assertSlotAvailable(slot, excludingId: id);
+    }
     final now = DateTime.now().millisecondsSinceEpoch;
     await (update(oxygenCells)..where((t) => t.id.equals(id))).write(
       OxygenCellsCompanion(

@@ -13,3 +13,19 @@ class CylinderRole {
   static const offboard = 'offboard';
   static const all = <String>[oxygen, diluent, bailout, offboard];
 }
+
+class SlotInUseException implements Exception {
+  final int slot;
+  final String otherCellId;
+  final String? otherLabel;
+
+  SlotInUseException({
+    required this.slot,
+    required this.otherCellId,
+    required this.otherLabel,
+  });
+
+  @override
+  String toString() =>
+      'SlotInUseException(slot=$slot, otherCellId=$otherCellId, otherLabel=$otherLabel)';
+}

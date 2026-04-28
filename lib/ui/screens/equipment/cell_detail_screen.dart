@@ -5,6 +5,7 @@ import '../../../data/db/database.dart';
 import '../../../data/db/dive_annotations_dao.dart';
 import '../../../data/db/dive_dao.dart';
 import '../../../data/db/equipment_dao.dart';
+import '../../../data/models/equipment.dart' show SlotInUseException;
 import '../../widgets/cell_mv_chart.dart';
 import '../dive_detail_screen.dart';
 
@@ -32,6 +33,7 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
   final _labelCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   DateTime? _installedDate;
+  int _slot = 1;
 
   bool get _isDraft => widget.id == null;
 
@@ -54,6 +56,7 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
     setState(() {
       _cell = cell;
       _series = series;
+      _slot = cell.slot;
       _labelCtrl.text = cell.label ?? '';
       _notesCtrl.text = cell.notes ?? '';
       _installedDate = cell.installedDate == null
@@ -83,23 +86,35 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
   Future<void> _save() async {
     final label = _labelCtrl.text.trim();
     final notes = _notesCtrl.text.trim();
-    if (_isDraft) {
-      final newId = await widget.dao.addCell(
-        slot: 1,
-        label: label.isEmpty ? null : label,
-        installedDate: _installedDate,
-        notes: notes.isEmpty ? null : notes,
-      );
+    try {
+      if (_isDraft) {
+        final newId = await widget.dao.addCell(
+          slot: _slot,
+          label: label.isEmpty ? null : label,
+          installedDate: _installedDate,
+          notes: notes.isEmpty ? null : notes,
+        );
+        if (!mounted) return;
+        Navigator.of(context).pop(newId);
+      } else {
+        await widget.dao.updateCell(
+          _cell!.id,
+          slot: _slot != _cell!.slot ? _slot : null,
+          label: label,
+          installedDate: Value(_installedDate),
+          notes: notes,
+        );
+        await _load();
+      }
+    } on SlotInUseException catch (e) {
       if (!mounted) return;
-      Navigator.of(context).pop(newId);
-    } else {
-      await widget.dao.updateCell(
-        _cell!.id,
-        label: label,
-        installedDate: Value(_installedDate),
-        notes: notes,
-      );
-      await _load();
+      final otherLabel = (e.otherLabel == null || e.otherLabel!.isEmpty)
+          ? 'unlabeled cell'
+          : e.otherLabel!;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            "Slot ${e.slot} is already in use by '$otherLabel'. Retire that cell first."),
+      ));
     }
   }
 
@@ -175,8 +190,21 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Text('Slot ${_cell?.slot ?? 1}',
-                    style: Theme.of(context).textTheme.titleMedium),
+                // Slot 4 has no per-sample mV trace — Petrel binary only carries 3 cells; longitudinal mV charts will be empty for slot 4 until additional data sources are wired in.
+                DropdownButtonFormField<int>(
+                  initialValue: _slot,
+                  decoration: const InputDecoration(labelText: 'Slot'),
+                  items: const [
+                    DropdownMenuItem(value: 1, child: Text('1')),
+                    DropdownMenuItem(value: 2, child: Text('2')),
+                    DropdownMenuItem(value: 3, child: Text('3')),
+                    DropdownMenuItem(value: 4, child: Text('4')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() => _slot = v);
+                  },
+                ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(_installedDate == null
