@@ -264,15 +264,10 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     final samples = _notifier.samples!;
     final n = samples.sampleCount;
     final ppo2Stats = minAvgMax(samples.ppo2Bar, n);
+    final tempStats = minAvgMax(samples.temperatureCelsius, n);
     var maxCns = 0.0;
     for (var i = 0; i < n; i++) {
       if (samples.cns[i] > maxCns) maxCns = samples.cns[i];
-    }
-    var minTemp = double.infinity;
-    for (var i = 0; i < n; i++) {
-      if (samples.temperatureCelsius[i] < minTemp) {
-        minTemp = samples.temperatureCelsius[i];
-      }
     }
     final gasMixes = _decodeGasMixes();
     final activeByMix = activeSecondsPerMix(
@@ -293,16 +288,17 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         ? '—'
         : '${ppo2Stats.min.toStringAsFixed(2)} / ${ppo2Stats.avg.toStringAsFixed(2)} / ${ppo2Stats.max.toStringAsFixed(2)}';
 
+    final tempLabel = tempStats == null
+        ? '—'
+        : '${tempStats.min.round()}/${tempStats.avg.round()}/${tempStats.max.round()}°C';
+
     return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: Row(children: [
           _statCell('PPO2 min/avg/max', ppo2Label, theme),
           _statCell('CNS', '${(maxCns * 100).toInt()}%', theme),
           if (showOtu) _statCell('OTU', '${otu.round()}', theme),
-          _statCell(
-              'TEMP',
-              '${minTemp.isFinite ? minTemp.toStringAsFixed(0) : '—'}°C',
-              theme),
+          _statCell('TEMP min/avg/max', tempLabel, theme),
           _statCell('GAS', gasLabel, theme),
         ]));
   }
