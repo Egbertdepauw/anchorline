@@ -6,6 +6,7 @@ library;
 import 'package:flutter/foundation.dart';
 import '../../data/db/database.dart';
 import '../../data/db/dive_dao.dart';
+import '../../data/db/equipment_dao.dart';
 import '../../data/models/sample_set.dart';
 import '../../shearwater/parser/constants.dart';
 
@@ -21,14 +22,19 @@ enum TraceType { ppo2, setpoint, deco, cells, tanks }
 class DiveDetailNotifier extends ChangeNotifier {
   final Dive dive;
   final DiveDao _dao;
+  final EquipmentDao? _equipmentDao;
 
   SampleSet? _samples;
+  Map<int, OxygenCell> _activeCells = const {};
   final Set<TraceType> _visibleTraces;
   int? _crosshairIndex;
   bool _loading = false;
 
   /// The loaded sample data, or `null` if [loadSamples] has not completed.
   SampleSet? get samples => _samples;
+
+  /// Slot-keyed map of cells that were active at [dive.startTime].
+  Map<int, OxygenCell> get activeCells => _activeCells;
 
   /// Currently visible trace types.
   Set<TraceType> get visibleTraces => _visibleTraces;
@@ -39,8 +45,12 @@ class DiveDetailNotifier extends ChangeNotifier {
   /// `true` while [loadSamples] is in flight.
   bool get loading => _loading;
 
-  DiveDetailNotifier({required this.dive, required DiveDao dao})
-      : _dao = dao,
+  DiveDetailNotifier({
+    required this.dive,
+    required DiveDao dao,
+    EquipmentDao? equipmentDao,
+  })  : _dao = dao,
+        _equipmentDao = equipmentDao,
         _visibleTraces = _defaultTraces(dive.diveMode);
 
   static Set<TraceType> _defaultTraces(int diveModeValue) {
@@ -56,6 +66,11 @@ class DiveDetailNotifier extends ChangeNotifier {
     _loading = true;
     notifyListeners();
     _samples = await _dao.getSamples(dive.id);
+    if (_equipmentDao != null) {
+      _activeCells = await _equipmentDao.activeCellsAt(
+        DateTime.fromMillisecondsSinceEpoch(dive.startTime * 1000),
+      );
+    }
     _loading = false;
     notifyListeners();
   }

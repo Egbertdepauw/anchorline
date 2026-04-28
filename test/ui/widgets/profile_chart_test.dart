@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/models/sample_set.dart';
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
@@ -79,6 +80,60 @@ void main() {
                     visibleTraces: {},
                     crosshairIndex: null)))));
     expect(find.byType(ProfileChart), findsOneWidget);
+  });
+
+  testWidgets('shows cell label when cellsBySlot is provided', (tester) async {
+    final samples = _loadSamples();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final cell1 = OxygenCell(
+      id: 'c1',
+      slot: 1,
+      label: 'Top R-22D',
+      installedDate: null,
+      retiredDate: null,
+      notes: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      version: 1,
+      syncStatus: 0,
+    );
+    final cell2 = OxygenCell(
+      id: 'c2',
+      slot: 2,
+      label: '',
+      installedDate: null,
+      retiredDate: null,
+      notes: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      version: 1,
+      syncStatus: 0,
+    );
+    final cellsBySlot = {1: cell1, 2: cell2};
+
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 360,
+                height: 250,
+                child: ProfileChart(
+                    samples: samples,
+                    visibleTraces: const {TraceType.cells},
+                    crosshairIndex: null,
+                    cellsBySlot: cellsBySlot)))));
+
+    expect(find.text('Top R-22D'), findsOneWidget);
+    // Empty label falls back to "Slot N".
+    expect(find.text('Slot 2'), findsOneWidget);
+    // No cell at slot 3 → "—".
+    expect(find.text('—'), findsOneWidget);
+  });
+
+  test('cellTraceLabelForSlot fallbacks', () {
+    expect(cellTraceLabelForSlot(null, 1), '—');
+    expect(cellTraceLabelForSlot(const {}, 2), '—');
   });
 
   test('shouldRepaint detects changes', () {

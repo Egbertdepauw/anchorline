@@ -152,6 +152,26 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
         .getSingleOrNull();
   }
 
+  Future<Map<int, OxygenCell>> activeCellsAt(DateTime t) async {
+    final ms = t.millisecondsSinceEpoch;
+    final rows = await (select(oxygenCells)
+          ..where((c) =>
+              c.deletedAt.isNull() &
+              c.installedDate.isNotNull() &
+              c.installedDate.isSmallerOrEqualValue(ms) &
+              (c.retiredDate.isNull() | c.retiredDate.isBiggerThanValue(ms))))
+        .get();
+    final out = <int, OxygenCell>{};
+    for (final c in rows) {
+      final existing = out[c.slot];
+      if (existing == null ||
+          (c.installedDate ?? 0) > (existing.installedDate ?? 0)) {
+        out[c.slot] = c;
+      }
+    }
+    return out;
+  }
+
   Future<void> updateCell(
     String id, {
     int? slot,

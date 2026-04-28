@@ -42,7 +42,11 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _notifier = DiveDetailNotifier(dive: widget.dive, dao: widget.dao);
+    _notifier = DiveDetailNotifier(
+      dive: widget.dive,
+      dao: widget.dao,
+      equipmentDao: widget.equipmentDao,
+    );
     _notifier.addListener(_onChanged);
     _notifier.loadSamples();
 
@@ -236,7 +240,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                               ProfileChart(
                                   samples: _notifier.samples!,
                                   visibleTraces: _notifier.visibleTraces,
-                                  crosshairIndex: _notifier.crosshairIndex),
+                                  crosshairIndex: _notifier.crosshairIndex,
+                                  cellsBySlot: _notifier.activeCells),
                               if (_notifier.crosshairIndex != null)
                                 CrosshairTooltip(
                                   samples: _notifier.samples!,
@@ -249,6 +254,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                                   1)) *
                                           (constraints.maxWidth - 84),
                                   chartWidth: constraints.maxWidth,
+                                  cellsBySlot: _notifier.activeCells,
                                 ),
                             ]),
                           );

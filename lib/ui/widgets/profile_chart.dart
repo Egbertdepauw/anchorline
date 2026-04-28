@@ -9,6 +9,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../data/db/database.dart';
 import '../../data/models/sample_set.dart';
 import '../notifiers/dive_detail_notifier.dart';
 
@@ -50,24 +51,89 @@ class ProfileChart extends StatelessWidget {
   /// default when null/empty or any factor is non-positive.
   final List<double>? cellCalibration;
 
+  /// Slot-keyed (1-indexed) map of physical cells active at the dive's
+  /// start time. Used by [_legend] to label the cell traces.
+  final Map<int, OxygenCell>? cellsBySlot;
+
   const ProfileChart({
     super.key,
     required this.samples,
     required this.visibleTraces,
     required this.crosshairIndex,
     this.cellCalibration,
+    this.cellsBySlot,
   });
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: ProfileChartPainter(
-        samples: samples,
-        visibleTraces: visibleTraces,
-        crosshairIndex: crosshairIndex,
-        cellCalibration: cellCalibration,
+    return Stack(children: [
+      CustomPaint(
+        painter: ProfileChartPainter(
+          samples: samples,
+          visibleTraces: visibleTraces,
+          crosshairIndex: crosshairIndex,
+          cellCalibration: cellCalibration,
+        ),
+        child: const SizedBox.expand(),
       ),
-      child: const SizedBox.expand(),
+      if (visibleTraces.contains(TraceType.cells) &&
+          (cellsBySlot?.isNotEmpty ?? false))
+        Positioned(
+          left: _leftPad + 4,
+          top: _topPad + 2,
+          child: _CellLegend(cellsBySlot: cellsBySlot!),
+        ),
+    ]);
+  }
+}
+
+String cellTraceLabelForSlot(Map<int, OxygenCell>? cellsBySlot, int slot) {
+  final cell = cellsBySlot?[slot];
+  if (cell == null) return '—';
+  final lbl = cell.label?.trim();
+  if (lbl == null || lbl.isEmpty) return 'Slot $slot';
+  return lbl;
+}
+
+class _CellLegend extends StatelessWidget {
+  final Map<int, OxygenCell> cellsBySlot;
+  const _CellLegend({required this.cellsBySlot});
+
+  @override
+  Widget build(BuildContext context) {
+    const colors = [_cell0Color, _cell1Color, _cell2Color];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xC0152238),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var slot = 1; slot <= 3; slot++)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 1),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                        color: colors[slot - 1],
+                        borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 4),
+                Text(
+                  cellTraceLabelForSlot(cellsBySlot, slot),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                  ),
+                ),
+              ]),
+            ),
+        ],
+      ),
     );
   }
 }

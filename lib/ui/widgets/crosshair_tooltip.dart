@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../data/db/database.dart';
 import '../../data/models/sample_set.dart';
 import '../notifiers/dive_detail_notifier.dart';
+import 'profile_chart.dart' show cellTraceLabelForSlot;
 
 class CrosshairTooltip extends StatelessWidget {
   final SampleSet samples;
@@ -8,6 +10,7 @@ class CrosshairTooltip extends StatelessWidget {
   final Set<TraceType> visibleTraces;
   final double chartX;
   final double chartWidth;
+  final Map<int, OxygenCell>? cellsBySlot;
 
   const CrosshairTooltip({
     super.key,
@@ -16,7 +19,13 @@ class CrosshairTooltip extends StatelessWidget {
     required this.visibleTraces,
     required this.chartX,
     required this.chartWidth,
+    this.cellsBySlot,
   });
+
+  String _cellLabelOrFallback(int slot, String fallback) {
+    if (cellsBySlot == null || cellsBySlot!.isEmpty) return fallback;
+    return cellTraceLabelForSlot(cellsBySlot, slot);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,9 +45,12 @@ class CrosshairTooltip extends StatelessWidget {
       rows.add(_Row('SP', '${samples.setpointBar[i].toStringAsFixed(2)} bar'));
     }
     if (visibleTraces.contains(TraceType.cells)) {
-      rows.add(_Row('C1', samples.cellMv0[i].toStringAsFixed(2)));
-      rows.add(_Row('C2', samples.cellMv1[i].toStringAsFixed(2)));
-      rows.add(_Row('C3', samples.cellMv2[i].toStringAsFixed(2)));
+      rows.add(_Row(
+          _cellLabelOrFallback(1, 'C1'), samples.cellMv0[i].toStringAsFixed(2)));
+      rows.add(_Row(
+          _cellLabelOrFallback(2, 'C2'), samples.cellMv1[i].toStringAsFixed(2)));
+      rows.add(_Row(
+          _cellLabelOrFallback(3, 'C3'), samples.cellMv2[i].toStringAsFixed(2)));
     }
     rows.add(_Row('Temp', '${samples.temperatureCelsius[i].toStringAsFixed(1)}°C'));
 
@@ -62,11 +74,14 @@ class CrosshairTooltip extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 1),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  SizedBox(
-                      width: 40,
+                  ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 40, maxWidth: 110),
                       child: Text(row.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                               color: Color(0xFF778899), fontSize: 10))),
+                  const SizedBox(width: 6),
                   Text(row.value,
                       style: const TextStyle(
                           color: Colors.white,
