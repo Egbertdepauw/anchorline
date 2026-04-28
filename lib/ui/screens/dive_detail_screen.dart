@@ -217,12 +217,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     final samples = _notifier.samples;
     if (samples == null) return const SizedBox.shrink();
 
-    // Decode gas mixes from the dive's JSON column.
-    final gasMixes = (jsonDecode(widget.dive.gasMixesJson) as List)
-        .map((e) => DiveGasMix.fromJson(e as Map<String, dynamic>))
-        .toList();
-
-    // Active seconds per mix (from already-loaded samples).
+    final gasMixes = _decodeGasMixes();
     final activeByMix = activeSecondsPerMix(
       gasMixIndexes: samples.gasMixIndex,
       sampleCount: samples.sampleCount,
@@ -236,6 +231,32 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       annotationsDao: widget.annotationsDao,
       equipmentDao: widget.equipmentDao,
     );
+  }
+
+  /// Decode gas mixes from the dive's JSON column.
+  List<DiveGasMix> _decodeGasMixes() {
+    return (jsonDecode(widget.dive.gasMixesJson) as List)
+        .map((e) => DiveGasMix.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Choose the diluent label for the GAS column. Picks the diluent with
+  /// the most active time; tie-breaker is list order. Returns '—' if the
+  /// dive has no diluent (OC dives).
+  String _activeDiluentLabel(
+      List<DiveGasMix> mixes, Map<int, int> activeSecondsByMix) {
+    final diluentEntries = <MapEntry<int, DiveGasMix>>[];
+    for (var i = 0; i < mixes.length; i++) {
+      if (mixes[i].isDiluent) diluentEntries.add(MapEntry(i, mixes[i]));
+    }
+    if (diluentEntries.isEmpty) return '—';
+    diluentEntries.sort((a, b) {
+      final aSec = activeSecondsByMix[a.key] ?? 0;
+      final bSec = activeSecondsByMix[b.key] ?? 0;
+      return bSec.compareTo(aSec);
+    });
+    final winner = diluentEntries.first.value;
+    return '${winner.oxygenPercent}/${winner.heliumPercent}';
   }
 
   Widget _buildStatsRow(ThemeData theme) {
@@ -256,10 +277,13 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         minTemp = samples.temperatureCelsius[i];
       }
     }
-    final gasMixes = _parseGasMixes(widget.dive.gasMixesJson);
-    final gasLabel = gasMixes.isNotEmpty
-        ? formatGasMix(gasMixes[0]['o2'] as int, gasMixes[0]['he'] as int)
-        : '—';
+    final gasMixes = _decodeGasMixes();
+    final activeByMix = activeSecondsPerMix(
+      gasMixIndexes: samples.gasMixIndex,
+      sampleCount: samples.sampleCount,
+      sampleIntervalMs: samples.sampleIntervalMs,
+    );
+    final gasLabel = _activeDiluentLabel(gasMixes, activeByMix);
 
     return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -287,13 +311,5 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
               color:
                   theme.colorScheme.onSurface.withValues(alpha: 0.4))),
     ]));
-  }
-
-  static List<Map<String, dynamic>> _parseGasMixes(String json) {
-    try {
-      return (jsonDecode(json) as List).cast<Map<String, dynamic>>();
-    } catch (_) {
-      return [];
-    }
   }
 }
