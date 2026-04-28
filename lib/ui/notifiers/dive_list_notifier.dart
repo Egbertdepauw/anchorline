@@ -1,18 +1,24 @@
 import 'package:flutter/foundation.dart';
 import '../../data/db/database.dart';
+import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/dive_dao.dart';
+import '../../data/models/annotation.dart' as dom;
 import '../util/format.dart';
 
 class DiveListNotifier extends ChangeNotifier {
   final DiveDao _dao;
+  final DiveAnnotationsDao _annotationsDao;
   List<Dive> _dives = [];
+  Map<String, dom.DiveAnnotation> _annotationsByDiveId = {};
   bool _loading = false;
   final _sparklineCache = _LruCache<String, Float32List>(50);
 
-  DiveListNotifier(this._dao);
+  DiveListNotifier(this._dao, this._annotationsDao);
 
   List<Dive> get dives => _dives;
   bool get loading => _loading;
+  Map<String, dom.DiveAnnotation> get annotationsByDiveId =>
+      Map.unmodifiable(_annotationsByDiveId);
 
   Map<String, List<Dive>> get groupedByMonth {
     final groups = <String, List<Dive>>{};
@@ -27,6 +33,8 @@ class DiveListNotifier extends ChangeNotifier {
     _loading = true;
     notifyListeners();
     _dives = await _dao.getAllDives();
+    _annotationsByDiveId =
+        await _annotationsDao.getAnnotationsForDives(_dives.map((d) => d.id));
     _loading = false;
     notifyListeners();
   }

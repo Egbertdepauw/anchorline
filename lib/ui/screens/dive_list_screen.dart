@@ -141,6 +141,7 @@ class _DiveTileWithSparkline extends StatelessWidget {
         return DiveTile(
           dive: dive,
           sparklineData: snapshot.data,
+          annotation: notifier.annotationsByDiveId[dive.id],
           onTap: () {
             Navigator.of(context).push(MaterialPageRoute(
               builder: (_) => DiveDetailScreen(

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../data/db/database.dart';
+import '../../data/models/annotation.dart' as dom;
 import '../util/dive_mode_color.dart';
 import '../util/format.dart';
 import 'sparkline.dart';
@@ -8,14 +9,22 @@ import 'sparkline.dart';
 class DiveTile extends StatelessWidget {
   final Dive dive;
   final Float32List? sparklineData;
+  final dom.DiveAnnotation? annotation;
   final VoidCallback onTap;
 
-  const DiveTile({super.key, required this.dive, required this.sparklineData, required this.onTap});
+  const DiveTile({
+    super.key,
+    required this.dive,
+    required this.sparklineData,
+    required this.onTap,
+    this.annotation,
+  });
 
   @override
   Widget build(BuildContext context) {
     final modeColor = diveModeColor(dive.diveMode);
     final theme = Theme.of(context);
+    final annotationLine = _buildAnnotationLine();
 
     return InkWell(
       onTap: onTap,
@@ -57,6 +66,20 @@ class DiveTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(_buildStatsLine(),
                     style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.7), fontSize: 12)),
+                  if (annotationLine != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        annotationLine,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.5),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -64,6 +87,20 @@ class DiveTile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String? _buildAnnotationLine() {
+    final ann = annotation;
+    if (ann == null) return null;
+    final site = ann.siteName;
+    final buddies = ann.buddies;
+    final hasSite = site != null && site.isNotEmpty;
+    final hasBuddies = buddies.isNotEmpty;
+    if (!hasSite && !hasBuddies) return null;
+    final parts = <String>[];
+    if (hasSite) parts.add(site);
+    if (hasBuddies) parts.add(buddies.join(', '));
+    return parts.join(' · ');
   }
 
   String _buildStatsLine() {

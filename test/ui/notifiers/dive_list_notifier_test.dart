@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
@@ -11,12 +12,14 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   late AppDatabase db;
   late DiveDao dao;
+  late DiveAnnotationsDao annotationsDao;
   late DiveListNotifier notifier;
 
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
     dao = DiveDao(db);
-    notifier = DiveListNotifier(dao);
+    annotationsDao = DiveAnnotationsDao(db);
+    notifier = DiveListNotifier(dao, annotationsDao);
 
     for (final num in [711, 712, 718]) {
       final data = File('test/fixtures/dives/dive_$num.bin').readAsBytesSync();

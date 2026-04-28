@@ -38,7 +38,7 @@ class _AppShellState extends State<AppShell> {
     _importStateDao = ImportStateDao(widget.db);
     _equipmentDao = EquipmentDao(widget.db);
     _diveAnnotationsDao = DiveAnnotationsDao(widget.db);
-    _diveListNotifier = DiveListNotifier(_diveDao);
+    _diveListNotifier = DiveListNotifier(_diveDao, _diveAnnotationsDao);
     _importNotifier = ImportNotifier(
       dao: _diveDao,
       importStateDao: _importStateDao,
