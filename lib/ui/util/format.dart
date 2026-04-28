@@ -42,6 +42,21 @@ String formatGasMix(int o2, int he) {
   return 'EAN$o2';
 }
 
+/// Format scrubber stack remaining as "H:MM" (e.g. 23777 → "6:36").
+/// Truncates to whole minutes — half a minute is noise on a multi-hour total.
+String formatStackHm(int seconds) {
+  final h = seconds ~/ 3600;
+  final m = (seconds % 3600) ~/ 60;
+  return '$h:${m.toString().padLeft(2, '0')}';
+}
+
+/// Format scrubber per-dive consumption as "M:SS" (e.g. 3484 → "58:04").
+String formatStackUsedMs(int seconds) {
+  final m = seconds ~/ 60;
+  final s = seconds % 60;
+  return '$m:${s.toString().padLeft(2, '0')}';
+}
+
 /// Format a date+time from unix seconds: "19 Apr 2026 · 10:38"
 String formatDateTime(int unixSeconds) {
   final dt = DateTime.fromMillisecondsSinceEpoch(unixSeconds * 1000, isUtc: true);

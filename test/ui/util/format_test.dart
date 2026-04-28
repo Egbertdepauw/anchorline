@@ -46,4 +46,28 @@ void main() {
       expect(formatGf(null, null), equals(''));
     });
   });
+
+  group('formatStackHm', () {
+    test('formats end-of-dive remaining with zero-padded minutes', () {
+      // 20293s → 5h 38m
+      expect(formatStackHm(20293), equals('5:38'));
+    });
+    test('pads single-digit minutes', () {
+      // 7 * 3600 + 4 * 60 = 25440 → 7:04
+      expect(formatStackHm(25440), equals('7:04'));
+    });
+    test('handles exact-hour values', () {
+      expect(formatStackHm(7 * 3600), equals('7:00'));
+    });
+  });
+
+  group('formatStackUsedMs', () {
+    test('formats per-dive consumption as M:SS', () {
+      // 23777 - 20293 = 3484s → 58m 04s
+      expect(formatStackUsedMs(3484), equals('58:04'));
+    });
+    test('pads single-digit seconds', () {
+      expect(formatStackUsedMs(63), equals('1:03'));
+    });
+  });
 }

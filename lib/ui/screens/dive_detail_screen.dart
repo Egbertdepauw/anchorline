@@ -349,6 +349,18 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         ? '—'
         : '${tempStats.min.round()}/${tempStats.avg.round()}/${tempStats.max.round()}°C';
 
+    final dive = widget.dive;
+    final stackEnd = dive.stackRemainingAtEndSeconds;
+    final stackStart = dive.stackRemainingAtStartSeconds;
+    final stackCfg = dive.configuredStackSeconds;
+    final stackLabel = stackEnd == null ? '—' : formatStackHm(stackEnd);
+    String? stackTooltip;
+    if (stackEnd != null && stackStart != null && stackCfg != null) {
+      stackTooltip =
+          'Used: ${formatStackUsedMs(stackStart - stackEnd)} · '
+          'Configured: ${formatStackHm(stackCfg)}';
+    }
+
     return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: Row(children: [
@@ -357,12 +369,13 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
           if (showOtu) _statCell('OTU', '${otu.round()}', theme),
           _statCell('TEMP min/avg/max', tempLabel, theme),
           _statCell('GAS', gasLabel, theme),
+          _statCell('STACK', stackLabel, theme, tooltip: stackTooltip),
         ]));
   }
 
-  Widget _statCell(String label, String value, ThemeData theme) {
-    return Expanded(
-        child: Column(children: [
+  Widget _statCell(String label, String value, ThemeData theme,
+      {String? tooltip}) {
+    final cell = Column(children: [
       Text(value,
           style:
               const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
@@ -372,6 +385,9 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
               fontSize: 9,
               color:
                   theme.colorScheme.onSurface.withValues(alpha: 0.4))),
-    ]));
+    ]);
+    return Expanded(
+      child: tooltip == null ? cell : Tooltip(message: tooltip, child: cell),
+    );
   }
 }
