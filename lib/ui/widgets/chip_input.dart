@@ -51,7 +51,7 @@ class _ChipInputState extends State<ChipInput> {
             deleteIcon: const Icon(Icons.close, size: 16),
           ),
         SizedBox(
-          width: 160,
+          width: 220,
           child: Autocomplete<String>(
             optionsBuilder: (TextEditingValue tev) {
               if (tev.text.isEmpty) return const Iterable<String>.empty();
@@ -65,14 +65,27 @@ class _ChipInputState extends State<ChipInput> {
             },
             fieldViewBuilder:
                 (context, textController, focusNode, onSubmitted) {
-              return TextField(
-                controller: textController,
-                focusNode: focusNode,
-                decoration: InputDecoration(
-                  hintText: widget.hintText,
-                  isDense: true,
-                ),
-                onSubmitted: (v) => _add(v, textController),
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: textController,
+                      focusNode: focusNode,
+                      decoration: InputDecoration(
+                        hintText: widget.hintText,
+                        isDense: true,
+                      ),
+                      onSubmitted: (v) => _add(v, textController),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add, size: 20),
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Add',
+                    onPressed: () => _add(textController.text, textController),
+                  ),
+                ],
               );
             },
           ),

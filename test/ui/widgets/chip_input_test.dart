@@ -43,6 +43,33 @@ void main() {
     expect(captured.last, ['Robin']);
   });
 
+  testWidgets('tap + adds the typed text as a chip', (tester) async {
+    final captured = <List<String>>[];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) {
+            var values = <String>[];
+            return ChipInput(
+              values: values,
+              autocompleteOptions: const [],
+              onChanged: (v) {
+                setState(() => values = v);
+                captured.add(v);
+              },
+            );
+          },
+        ),
+      ),
+    ));
+
+    await tester.enterText(find.byType(TextField), 'Robin');
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pump();
+
+    expect(captured.last, ['Robin']);
+  });
+
   testWidgets('tap chip × removes it', (tester) async {
     final captured = <List<String>>[];
     await tester.pumpWidget(MaterialApp(
