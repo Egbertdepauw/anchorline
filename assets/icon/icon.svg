@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background: deep navy with rounded corners -->
+  <rect width="1024" height="1024" rx="180" ry="180" fill="#0E1828"/>
+
+  <!-- ── Breathing loop: corrugated hose forming a ring ─────────── -->
+  <!-- Solid cyan ring -->
+  <circle cx="512" cy="528" r="332" fill="none" stroke="#5BC9DD" stroke-width="56"/>
+
+  <!-- Corrugation: 24 short navy ticks distributed around the ring,
+       perpendicular to the tangent, breaking the cyan stroke into
+       evenly-spaced "ridges" that read as a flexible hose. -->
+  <defs>
+    <line id="rib" x1="0" y1="-360" x2="0" y2="-304"
+          stroke="#0E1828" stroke-width="7" stroke-linecap="round"/>
+  </defs>
+  <g transform="translate(512 528)" opacity="0.75">
+    <use href="#rib"/>
+    <use href="#rib" transform="rotate(15)"/>
+    <use href="#rib" transform="rotate(30)"/>
+    <use href="#rib" transform="rotate(45)"/>
+    <use href="#rib" transform="rotate(60)"/>
+    <use href="#rib" transform="rotate(75)"/>
+    <use href="#rib" transform="rotate(90)"/>
+    <use href="#rib" transform="rotate(105)"/>
+    <use href="#rib" transform="rotate(120)"/>
+    <use href="#rib" transform="rotate(135)"/>
+    <use href="#rib" transform="rotate(150)"/>
+    <use href="#rib" transform="rotate(165)"/>
+    <use href="#rib" transform="rotate(180)"/>
+    <use href="#rib" transform="rotate(195)"/>
+    <use href="#rib" transform="rotate(210)"/>
+    <use href="#rib" transform="rotate(225)"/>
+    <use href="#rib" transform="rotate(240)"/>
+    <use href="#rib" transform="rotate(255)"/>
+    <use href="#rib" transform="rotate(270)"/>
+    <use href="#rib" transform="rotate(285)"/>
+    <use href="#rib" transform="rotate(300)"/>
+    <use href="#rib" transform="rotate(315)"/>
+    <use href="#rib" transform="rotate(330)"/>
+    <use href="#rib" transform="rotate(345)"/>
+  </g>
+
+  <!-- ── Scrubber canister: vertical pill, centered ─────────────── -->
+  <rect x="430" y="332" width="164" height="392" rx="82" ry="82" fill="#5BC9DD"/>
+
+  <!-- ── Three O2 cells punched into the canister head ──────────── -->
+  <g fill="#0E1828">
+    <circle cx="466" cy="394" r="20"/>
+    <circle cx="512" cy="394" r="20"/>
+    <circle cx="558" cy="394" r="20"/>
+  </g>
+
+  <!-- Subtle horizontal seam mid-canister: cylinder hint -->
+  <line x1="450" y1="528" x2="574" y2="528"
+        stroke="#0E1828" stroke-width="6" stroke-linecap="round" opacity="0.55"/>
+</svg>

@@ -52,6 +52,16 @@ dev_dependencies:
   drift_dev: ^2.24.0
   build_runner: ^2.4.14
   sqlite3: ^3.3.1
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  image_path: "assets/icon/icon-1024.png"
+  android: "launcher_icon"
+  ios: true
+  remove_alpha_ios: true
+  macos:
+    generate: true
+    image_path: "assets/icon/icon-1024.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
