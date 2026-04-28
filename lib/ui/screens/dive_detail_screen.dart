@@ -6,6 +6,7 @@ import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../data/models/dive.dart' show DiveGasMix;
 import '../../data/sample_codec/active_per_mix.dart';
+import '../../data/sample_codec/dive_stats.dart';
 import '../../shearwater/parser/hardware.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import '../notifiers/dive_detail_notifier.dart';
@@ -285,11 +286,19 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     );
     final gasLabel = _activeDiluentLabel(gasMixes, activeByMix);
 
+    final otu = computeOtu(
+      ppo2Bar: samples.ppo2Bar,
+      sampleCount: samples.sampleCount,
+      sampleIntervalMs: samples.sampleIntervalMs,
+    );
+    final showOtu = otu > 0;
+
     return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: Row(children: [
           _statCell('AVG PPO2', avgPpo2.toStringAsFixed(2), theme),
           _statCell('CNS', '${(maxCns * 100).toInt()}%', theme),
+          if (showOtu) _statCell('OTU', '${otu.round()}', theme),
           _statCell(
               'TEMP',
               '${minTemp.isFinite ? minTemp.toStringAsFixed(0) : '—'}°C',
