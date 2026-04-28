@@ -154,7 +154,8 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
                   ),
                 TextField(
                   controller: _vol,
-                  keyboardType: TextInputType.number,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(labelText: 'Volume (L)'),
                 ),
                 TextField(
