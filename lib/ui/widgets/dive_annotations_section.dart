@@ -381,9 +381,26 @@ class _GasMixRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
-            child: Text('Mix ${index + 1} · $mixLabel · ~${mins}m active'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  mixLabel,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                Text(
+                  'Mix ${index + 1} · ~${mins}m active',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.5)),
+                ),
+              ],
+            ),
           ),
           PopupMenuButton<String?>(
             initialValue: displayValue,
@@ -399,18 +416,19 @@ class _GasMixRow extends StatelessWidget {
             ],
             child: Container(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                border: Border.all(
-                    color: Theme.of(context).colorScheme.outline),
-                borderRadius: BorderRadius.circular(6),
-              ),
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(labelFor(displayValue)),
-                  const SizedBox(width: 6),
-                  const Icon(Icons.arrow_drop_down, size: 18),
+                  Text(
+                    labelFor(displayValue),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.primary),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(Icons.arrow_drop_down,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.primary),
                 ],
               ),
             ),
