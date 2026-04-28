@@ -251,19 +251,22 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
             ),
           ]),
           const SizedBox(height: 8),
-          Row(children: [
-            TextButton.icon(
-              icon: const Icon(Icons.my_location, size: 18),
-              label: const Text('Use current location'),
-              onPressed: _useCurrentLocation,
-            ),
-            const SizedBox(width: 8),
-            TextButton.icon(
-              icon: const Icon(Icons.map, size: 18),
-              label: const Text('Pick on map'),
-              onPressed: _pickOnMap,
-            ),
-          ]),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              TextButton.icon(
+                icon: const Icon(Icons.my_location, size: 18),
+                label: const Text('Use current location'),
+                onPressed: _useCurrentLocation,
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.map, size: 18),
+                label: const Text('Pick on map'),
+                onPressed: _pickOnMap,
+              ),
+            ],
+          ),
 
           const SizedBox(height: 16),
 
