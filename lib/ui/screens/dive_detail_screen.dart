@@ -354,14 +354,12 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     final stackStart = dive.stackRemainingAtStartSeconds;
     final stackCfg = dive.configuredStackSeconds;
     final stackLabel = stackEnd == null ? '—' : formatStackHm(stackEnd);
-    // Subtitle shows used + configured permanently — tooltips don't reach
-    // touch users.
-    String stackSubtitle = 'STACK';
-    if (stackEnd != null && stackStart != null && stackCfg != null) {
-      stackSubtitle =
-          'STACK · ${formatStackUsedMs(stackStart - stackEnd)} used · '
-          '${formatStackHm(stackCfg)} cfg';
-    }
+    // Stack cell shows used + configured on their own lines below the
+    // headline remaining-time — tooltips don't reach touch users.
+    final stackUsed = (stackEnd != null && stackStart != null)
+        ? formatStackUsedMs(stackStart - stackEnd)
+        : null;
+    final stackConf = stackCfg != null ? formatStackHm(stackCfg) : null;
 
     return LayoutBuilder(builder: (context, constraints) {
       final cells = <Widget>[
@@ -370,7 +368,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         if (showOtu) _statCell('OTU', '${otu.round()}', theme),
         _statCell('TEMP min/avg/max', tempLabel, theme),
         _statCell('GAS', gasLabel, theme),
-        if (stackEnd != null) _statCell(stackSubtitle, stackLabel, theme),
+        if (stackEnd != null)
+          _stackCell(stackLabel, stackUsed, stackConf, theme),
       ];
       // Width per cell at ~95px keeps even the long "PPO2 min/avg/max" label
       // legible. Below that, wrap to a second line.
@@ -409,6 +408,23 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     ]);
     return Expanded(
       child: tooltip == null ? cell : Tooltip(message: tooltip, child: cell),
+    );
+  }
+
+  Widget _stackCell(
+      String value, String? used, String? configured, ThemeData theme) {
+    final faded =
+        TextStyle(fontSize: 9, color: theme.colorScheme.onSurface.withValues(alpha: 0.4));
+    return Expanded(
+      child: Column(children: [
+        Text(value,
+            style:
+                const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 2),
+        Text('STACK', style: faded),
+        if (used != null) Text('used: $used', style: faded),
+        if (configured != null) Text('conf: $configured', style: faded),
+      ]),
     );
   }
 }

@@ -69,10 +69,11 @@ void main() {
 
     // 20293 / 3600 = 5h 38min → "5:38"
     expect(find.text('5:38'), findsOneWidget);
-    // Subtitle now carries used + configured permanently (no tooltip).
+    // STACK cell is now three label lines below the headline.
+    expect(find.text('STACK'), findsOneWidget);
     // 23777 - 20293 = 3484s = 58:04 used; configured 25200s = 7:00.
-    expect(find.textContaining('58:04 used'), findsOneWidget);
-    expect(find.textContaining('7:00 cfg'), findsOneWidget);
+    expect(find.text('used: 58:04'), findsOneWidget);
+    expect(find.text('conf: 7:00'), findsOneWidget);
   });
 
   testWidgets('hides STACK cell when stack values are null', (tester) async {
