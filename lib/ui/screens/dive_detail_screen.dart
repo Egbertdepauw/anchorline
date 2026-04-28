@@ -161,7 +161,6 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                         visibleTraces: _notifier.visibleTraces,
                         onToggle: _notifier.toggleTrace),
                     _buildStatsRow(theme),
-                    _buildGasMixes(theme),
                     _buildAnnotationsSection(),
                   ],
                 ],
@@ -243,52 +242,6 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
               color:
                   theme.colorScheme.onSurface.withValues(alpha: 0.4))),
     ]));
-  }
-
-  Widget _buildGasMixes(ThemeData theme) {
-    final gasMixes = _parseGasMixes(widget.dive.gasMixesJson);
-    if (gasMixes.isEmpty) return const SizedBox.shrink();
-    return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Gas Mixes',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurface
-                        .withValues(alpha: 0.5))),
-            const SizedBox(height: 8),
-            for (final mix in gasMixes)
-              Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(children: [
-                    Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: (mix['dil'] as bool)
-                                ? const Color(0xFF4FC3F7)
-                                : const Color(0xFFFF9800))),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                        width: 32,
-                        child: Text((mix['dil'] as bool) ? 'DIL' : 'GAS',
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: theme.colorScheme.onSurface
-                                    .withValues(alpha: 0.5)))),
-                    Text(
-                        formatGasMix(
-                            mix['o2'] as int, mix['he'] as int),
-                        style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500)),
-                  ])),
-          ],
-        ));
   }
 
   static List<Map<String, dynamic>> _parseGasMixes(String json) {
