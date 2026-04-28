@@ -368,26 +368,55 @@ class _GasMixRow extends StatelessWidget {
         (selectedCylinderId != null && knownIds.contains(selectedCylinderId))
             ? selectedCylinderId
             : null;
+
+    String labelFor(String? id) {
+      if (id == null) return '—';
+      final c = cylinders.firstWhere(
+        (c) => c.id == id,
+        orElse: () => cylinders.first,
+      );
+      return '${c.label} (${c.role})';
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(children: [
-        Expanded(
-          child: Text('Mix ${index + 1} · $mixLabel · ~${mins}m active'),
-        ),
-        DropdownButton<String?>(
-          value: displayValue,
-          hint: const Text('—'),
-          items: [
-            const DropdownMenuItem<String?>(value: null, child: Text('—')),
-            for (final c in cylinders)
-              DropdownMenuItem<String?>(
-                value: c.id,
-                child: Text('${c.label} (${c.role})'),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text('Mix ${index + 1} · $mixLabel · ~${mins}m active'),
+          ),
+          PopupMenuButton<String?>(
+            initialValue: displayValue,
+            tooltip: 'Pick cylinder',
+            onSelected: onChanged,
+            itemBuilder: (context) => [
+              const PopupMenuItem<String?>(value: null, child: Text('—')),
+              for (final c in cylinders)
+                PopupMenuItem<String?>(
+                  value: c.id,
+                  child: Text('${c.label} (${c.role})'),
+                ),
+            ],
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                border: Border.all(
+                    color: Theme.of(context).colorScheme.outline),
+                borderRadius: BorderRadius.circular(6),
               ),
-          ],
-          onChanged: onChanged,
-        ),
-      ]),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(labelFor(displayValue)),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.arrow_drop_down, size: 18),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
