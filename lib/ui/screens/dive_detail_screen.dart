@@ -7,6 +7,7 @@ import '../../data/db/equipment_dao.dart';
 import '../../data/models/dive.dart' show DiveGasMix;
 import '../../data/sample_codec/active_per_mix.dart';
 import '../../shearwater/parser/hardware.dart';
+import '../notifiers/dive_annotations_notifier.dart';
 import '../notifiers/dive_detail_notifier.dart';
 import '../util/dive_mode_color.dart';
 import '../util/format.dart';
@@ -14,6 +15,7 @@ import '../widgets/crosshair_overlay.dart';
 import '../widgets/crosshair_tooltip.dart';
 import '../widgets/dive_annotations_section.dart';
 import '../widgets/profile_chart.dart';
+import '../widgets/star_rating.dart';
 import '../widgets/trace_toggle.dart';
 
 class DiveDetailScreen extends StatefulWidget {
@@ -34,6 +36,7 @@ class DiveDetailScreen extends StatefulWidget {
 
 class _DiveDetailScreenState extends State<DiveDetailScreen> {
   late final DiveDetailNotifier _notifier;
+  late final DiveAnnotationsNotifier _annotationsNotifier;
 
   @override
   void initState() {
@@ -41,12 +44,18 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     _notifier = DiveDetailNotifier(dive: widget.dive, dao: widget.dao);
     _notifier.addListener(_onChanged);
     _notifier.loadSamples();
+
+    _annotationsNotifier = DiveAnnotationsNotifier(widget.annotationsDao);
+    _annotationsNotifier.addListener(_onChanged);
+    _annotationsNotifier.load(widget.dive.id);
   }
 
   @override
   void dispose() {
     _notifier.removeListener(_onChanged);
     _notifier.dispose();
+    _annotationsNotifier.removeListener(_onChanged);
+    _annotationsNotifier.dispose();
     super.dispose();
   }
 
@@ -70,60 +79,85 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // Header
-                  Container(
-                    color: const Color(0xFF152238),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                              child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                Row(children: [
-                                  Text(diveModeLabel(dive.diveMode),
+                  Builder(builder: (context) {
+                    final siteName = _annotationsNotifier.siteName;
+                    final hasSite =
+                        siteName != null && siteName.isNotEmpty;
+                    return Container(
+                      color: const Color(0xFF152238),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                                child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                  Row(children: [
+                                    Text(diveModeLabel(dive.diveMode),
+                                        style: TextStyle(
+                                            color: modeColor,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600)),
+                                    const SizedBox(width: 6),
+                                    Text('#${dive.dcDiveNumber}',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 16)),
+                                    const SizedBox(width: 8),
+                                    Text(modelName,
+                                        style: TextStyle(
+                                            color: theme
+                                                .colorScheme.onSurface
+                                                .withValues(alpha: 0.4),
+                                            fontSize: 12)),
+                                  ]),
+                                  const SizedBox(height: 4),
+                                  Text(formatDateTime(dive.startTime),
                                       style: TextStyle(
-                                          color: modeColor,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600)),
-                                  const SizedBox(width: 6),
-                                  Text('#${dive.dcDiveNumber}',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 16)),
-                                  const SizedBox(width: 8),
-                                  Text(modelName,
-                                      style: TextStyle(
-                                          color: theme.colorScheme.onSurface
-                                              .withValues(alpha: 0.4),
+                                          color: theme
+                                              .colorScheme.onSurface
+                                              .withValues(alpha: 0.5),
                                           fontSize: 12)),
+                                  if (hasSite) ...[
+                                    const SizedBox(height: 2),
+                                    Text(siteName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                            color: theme
+                                                .colorScheme.onSurface
+                                                .withValues(alpha: 0.7),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500)),
+                                  ],
+                                ])),
+                            Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(formatDepth(dive.maxDepthMm),
+                                      style: TextStyle(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w600,
+                                          color: modeColor)),
+                                  Text(
+                                      '${formatDuration(dive.durationSeconds)} ${formatGf(dive.gfLow, dive.gfHigh)}',
+                                      style: TextStyle(
+                                          color: theme
+                                              .colorScheme.onSurface
+                                              .withValues(alpha: 0.5),
+                                          fontSize: 11)),
+                                  StarRating(
+                                    value: _annotationsNotifier.rating,
+                                    onChanged: (v) =>
+                                        _annotationsNotifier.setRating(v),
+                                  ),
                                 ]),
-                                const SizedBox(height: 4),
-                                Text(formatDateTime(dive.startTime),
-                                    style: TextStyle(
-                                        color: theme.colorScheme.onSurface
-                                            .withValues(alpha: 0.5),
-                                        fontSize: 12)),
-                              ])),
-                          Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(formatDepth(dive.maxDepthMm),
-                                    style: TextStyle(
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.w600,
-                                        color: modeColor)),
-                                Text(
-                                    '${formatDuration(dive.durationSeconds)} ${formatGf(dive.gfLow, dive.gfHigh)}',
-                                    style: TextStyle(
-                                        color: theme.colorScheme.onSurface
-                                            .withValues(alpha: 0.5),
-                                        fontSize: 11)),
-                              ]),
-                        ]),
-                  ),
+                          ]),
+                    );
+                  }),
 
                   // Profile chart
                   if (_notifier.samples != null) ...[
@@ -185,7 +219,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     );
 
     return DiveAnnotationsSection(
-      diveId: widget.dive.id,
+      notifier: _annotationsNotifier,
       gasMixes: gasMixes,
       activeSecondsByMix: activeByMix,
       annotationsDao: widget.annotationsDao,

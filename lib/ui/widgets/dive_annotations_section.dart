@@ -10,7 +10,7 @@ import '../screens/map_picker_screen.dart';
 import 'chip_input.dart';
 
 class DiveAnnotationsSection extends StatefulWidget {
-  final String diveId;
+  final DiveAnnotationsNotifier notifier;
   final List<DiveGasMix> gasMixes;
   final Map<int, int> activeSecondsByMix;
   final DiveAnnotationsDao annotationsDao;
@@ -18,7 +18,7 @@ class DiveAnnotationsSection extends StatefulWidget {
 
   const DiveAnnotationsSection({
     super.key,
-    required this.diveId,
+    required this.notifier,
     required this.gasMixes,
     required this.activeSecondsByMix,
     required this.annotationsDao,
@@ -31,7 +31,7 @@ class DiveAnnotationsSection extends StatefulWidget {
 }
 
 class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
-  late final DiveAnnotationsNotifier _n;
+  DiveAnnotationsNotifier get _n => widget.notifier;
   final _site = TextEditingController();
   final _lat = TextEditingController();
   final _lon = TextEditingController();
@@ -42,36 +42,43 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
   List<String> _buddyOptions = const [];
   List<String> _tagOptions = const [];
   List<Cylinder> _cylinders = const [];
+  bool _controllersHydrated = false;
 
   @override
   void initState() {
     super.initState();
-    _n = DiveAnnotationsNotifier(widget.annotationsDao);
-    _n.addListener(_onChanged);
+    _n.addListener(_onNotifierChanged);
     _bootstrap();
   }
 
   Future<void> _bootstrap() async {
-    await _n.load(widget.diveId);
     _siteOptions = await widget.annotationsDao.distinctSiteNames();
     _buddyOptions = await widget.annotationsDao.distinctBuddies();
     _tagOptions = await widget.annotationsDao.distinctTags();
     _cylinders = await widget.equipmentDao.listCylinders();
     if (!mounted) return;
+    _maybeHydrateControllers();
+    setState(() {});
+  }
+
+  void _maybeHydrateControllers() {
+    if (_controllersHydrated || !_n.loaded) return;
     _site.text = _n.siteName ?? '';
     _lat.text = _n.siteLatitude?.toString() ?? '';
     _lon.text = _n.siteLongitude?.toString() ?? '';
     _notes.text = _n.notes ?? '';
     _conditions.text = _n.conditions ?? '';
-    setState(() {});
+    _controllersHydrated = true;
   }
 
-  void _onChanged() => setState(() {});
+  void _onNotifierChanged() {
+    _maybeHydrateControllers();
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
-    _n.removeListener(_onChanged);
-    _n.dispose();
+    _n.removeListener(_onNotifierChanged);
     _site.dispose();
     _lat.dispose();
     _lon.dispose();

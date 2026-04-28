@@ -1,6 +1,7 @@
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
+import 'package:ccrlogger/ui/notifiers/dive_annotations_notifier.dart';
 import 'package:ccrlogger/ui/widgets/dive_annotations_section.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -13,12 +14,15 @@ void main() {
     addTearDown(db.close);
     final annotationsDao = DiveAnnotationsDao(db);
     final equipmentDao = EquipmentDao(db);
+    final notifier = DiveAnnotationsNotifier(annotationsDao);
+    addTearDown(notifier.dispose);
+    await notifier.load('dive_x');
 
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
           child: DiveAnnotationsSection(
-            diveId: 'dive_x',
+            notifier: notifier,
             gasMixes: const [],
             activeSecondsByMix: const {},
             annotationsDao: annotationsDao,
