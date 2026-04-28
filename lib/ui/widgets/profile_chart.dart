@@ -33,6 +33,10 @@ const Color _gridColor = Color(0xFF1A2A40);
 
 const double _ppo2Max = 2.0;
 
+/// Petrel default per-cell calibration factor when none is available.
+/// Multiplying raw mV by this value yields PPO2 in bar.
+const double _defaultCellCal = 0.021;
+
 // ── Widget ──────────────────────────────────────────────────────
 
 /// A [StatelessWidget] that renders a multi-trace dive profile chart.
@@ -41,11 +45,17 @@ class ProfileChart extends StatelessWidget {
   final Set<TraceType> visibleTraces;
   final int? crosshairIndex;
 
+  /// Per-cell calibration factors (length 3 expected). Used to convert
+  /// raw mV to PPO2 (bar) for the cell traces. Falls back to a Petrel
+  /// default when null/empty or any factor is non-positive.
+  final List<double>? cellCalibration;
+
   const ProfileChart({
     super.key,
     required this.samples,
     required this.visibleTraces,
     required this.crosshairIndex,
+    this.cellCalibration,
   });
 
   @override
@@ -55,6 +65,7 @@ class ProfileChart extends StatelessWidget {
         samples: samples,
         visibleTraces: visibleTraces,
         crosshairIndex: crosshairIndex,
+        cellCalibration: cellCalibration,
       ),
       child: const SizedBox.expand(),
     );
@@ -70,11 +81,13 @@ class ProfileChartPainter extends CustomPainter {
   final SampleSet samples;
   final Set<TraceType> visibleTraces;
   final int? crosshairIndex;
+  final List<double>? cellCalibration;
 
   const ProfileChartPainter({
     required this.samples,
     required this.visibleTraces,
     required this.crosshairIndex,
+    this.cellCalibration,
   });
 
   // ── shouldRepaint ──────────────────────────────────────────────
@@ -230,11 +243,24 @@ class ProfileChartPainter extends CustomPainter {
 
     // ── Cell mV traces ─────────────────────────────────────────────
     if (visibleTraces.contains(TraceType.cells)) {
-      // mV values typically 0-120mV; map to ppo2 axis scaled 0-2 bar → 0-200 mV.
-      double yMv(double mv) => yPpo2(mv / 100.0);
-      _drawSolidTrace(canvas, samples.cellMv0, n, xOf, yMv, _cell0Color, 1.0);
-      _drawSolidTrace(canvas, samples.cellMv1, n, xOf, yMv, _cell1Color, 1.0);
-      _drawSolidTrace(canvas, samples.cellMv2, n, xOf, yMv, _cell2Color, 1.0);
+      // Convert raw mV → PPO2 (bar) using per-cell calibration; fall back
+      // to a Petrel default when calibration is missing or invalid.
+      final cal = cellCalibration;
+      double calOf(int idx) {
+        if (cal == null || idx >= cal.length) return _defaultCellCal;
+        final c = cal[idx];
+        return (c > 0) ? c : _defaultCellCal;
+      }
+
+      final c0 = calOf(0);
+      final c1 = calOf(1);
+      final c2 = calOf(2);
+      _drawSolidTrace(canvas, samples.cellMv0, n, xOf,
+          (mv) => yPpo2(mv * c0), _cell0Color, 1.0);
+      _drawSolidTrace(canvas, samples.cellMv1, n, xOf,
+          (mv) => yPpo2(mv * c1), _cell1Color, 1.0);
+      _drawSolidTrace(canvas, samples.cellMv2, n, xOf,
+          (mv) => yPpo2(mv * c2), _cell2Color, 1.0);
     }
 
     // ── Crosshair ──────────────────────────────────────────────────
