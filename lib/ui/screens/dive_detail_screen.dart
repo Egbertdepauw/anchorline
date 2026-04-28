@@ -71,7 +71,33 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         ? ShearwaterModel.values[dive.dcModel].name
         : 'Unknown';
 
-    return Scaffold(
+    return PopScope(
+      canPop: !_annotationsNotifier.dirty,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldDiscard = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Unsaved changes'),
+            content: const Text(
+                'You have unsaved annotation edits. Discard them and leave?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Stay'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Discard'),
+              ),
+            ],
+          ),
+        );
+        if (shouldDiscard == true && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text('Dive #${dive.dcDiveNumber}'),
         actions: [
@@ -235,6 +261,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                   ],
                 ],
               )),
+      ),
     );
   }
 
