@@ -4,11 +4,41 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+/// Seed a minimal pre-v4 dives table so cumulative ALTERs land somewhere.
+void _seedDivesV3(Database raw) {
+  raw.execute('''
+    CREATE TABLE dives (
+      id TEXT NOT NULL PRIMARY KEY,
+      dc_serial INTEGER NOT NULL,
+      dc_dive_number INTEGER NOT NULL,
+      start_time INTEGER NOT NULL,
+      end_time INTEGER NOT NULL,
+      utc_offset_minutes INTEGER,
+      duration_seconds INTEGER NOT NULL,
+      max_depth_mm INTEGER NOT NULL,
+      dive_mode INTEGER NOT NULL,
+      deco_model INTEGER NOT NULL,
+      gf_low INTEGER,
+      gf_high INTEGER,
+      atmospheric_pressure_mbar INTEGER NOT NULL,
+      water_density INTEGER NOT NULL,
+      log_version INTEGER NOT NULL,
+      dc_model INTEGER NOT NULL,
+      dc_firmware INTEGER,
+      sample_interval_ms INTEGER NOT NULL,
+      gas_mixes_json TEXT NOT NULL,
+      raw_blob BLOB NOT NULL,
+      parser_version INTEGER NOT NULL,
+      imported_at INTEGER NOT NULL
+    );
+  ''');
+}
+
 void main() {
   test('schema v2: has cylinders, pressure_mappings, oxygen_cells.label', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    expect(db.schemaVersion, 3);
+    expect(db.schemaVersion, 4);
 
     // Inserting a row exercises the full schema.
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -46,6 +76,8 @@ void main() {
     final raw = sqlite3.openInMemory();
     addTearDown(raw.close);
 
+    _seedDivesV3(raw);
+
     // V1 oxygen_cells: no `label` column.
     raw.execute('''
       CREATE TABLE oxygen_cells (
@@ -82,7 +114,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 3);
+    expect(db.schemaVersion, 4);
 
     // Step 5: verify the seeded oxygen_cells row survived.
     final cells = await db.select(db.oxygenCells).get();
@@ -116,6 +148,8 @@ void main() {
     // but without dive_cylinders).
     final raw = sqlite3.openInMemory();
     addTearDown(raw.close);
+
+    _seedDivesV3(raw);
 
     // V2 dive_annotations: same shape as v3.
     raw.execute('''
@@ -154,7 +188,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 3);
+    expect(db.schemaVersion, 4);
 
     // Step 5: verify the seeded annotation row survived.
     final annotations = await db.select(db.diveAnnotations).get();
@@ -172,5 +206,42 @@ void main() {
     final rows = await db.select(db.diveCylinders).get();
     expect(rows, hasLength(1));
     expect(rows.single.cylinderId, isNull);
+  });
+
+  test('v3 → v4 onUpgrade adds scrubber stack columns to dives', () async {
+    final raw = sqlite3.openInMemory();
+    addTearDown(raw.close);
+
+    _seedDivesV3(raw);
+    raw.execute('PRAGMA user_version = 3;');
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    raw.execute(
+      'INSERT INTO dives '
+      '(id, dc_serial, dc_dive_number, start_time, end_time, '
+      'duration_seconds, max_depth_mm, dive_mode, deco_model, '
+      'atmospheric_pressure_mbar, water_density, log_version, '
+      'dc_model, sample_interval_ms, gas_mixes_json, raw_blob, '
+      'parser_version, imported_at) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        'dive_v3', 0xB89641E4, 700, now - 3600, now,
+        3600, 30000, 0, 0, 1013, 1025, 17, 0, 10000, '[]', [0], 1, now,
+      ],
+    );
+
+    final db = AppDatabase(NativeDatabase.opened(raw));
+    addTearDown(db.close);
+
+    await db.customSelect('SELECT 1').get();
+    expect(db.schemaVersion, 4);
+
+    final dives = await db.select(db.dives).get();
+    expect(dives, hasLength(1));
+    expect(dives.single.id, 'dive_v3');
+    // The new columns must exist and default to null.
+    expect(dives.single.configuredStackSeconds, isNull);
+    expect(dives.single.stackRemainingAtStartSeconds, isNull);
+    expect(dives.single.stackRemainingAtEndSeconds, isNull);
   });
 }

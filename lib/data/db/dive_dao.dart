@@ -64,6 +64,11 @@ class DiveDao {
             dcModel: dive.dcModel.index,
             sampleIntervalMs: dive.sampleIntervalMs,
             gasMixesJson: gasMixesJson,
+            configuredStackSeconds: Value(dive.configuredStackSeconds),
+            stackRemainingAtStartSeconds:
+                Value(dive.stackRemainingAtStartSeconds),
+            stackRemainingAtEndSeconds:
+                Value(dive.stackRemainingAtEndSeconds),
             rawBlob: rawBlob,
             parserVersion: parserVersion,
             importedAt: now,

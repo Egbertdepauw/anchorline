@@ -76,6 +76,16 @@ class Dive {
   /// Used to derive per-cell PPO2 from raw mV at display time.
   final List<double> sensorCalibration;
 
+  /// Configured scrubber canister capacity in seconds. Null when the
+  /// diver hasn't enabled stack tracking on the unit.
+  final int? configuredStackSeconds;
+
+  /// Scrubber stack remaining at dive start, in seconds.
+  final int? stackRemainingAtStartSeconds;
+
+  /// Scrubber stack remaining at dive end, in seconds.
+  final int? stackRemainingAtEndSeconds;
+
   Dive({
     required this.id,
     required this.dcSerial,
@@ -96,6 +106,9 @@ class Dive {
     required this.gasMixes,
     required this.sampleIntervalMs,
     this.sensorCalibration = const [],
+    this.configuredStackSeconds,
+    this.stackRemainingAtStartSeconds,
+    this.stackRemainingAtEndSeconds,
   });
 }
 

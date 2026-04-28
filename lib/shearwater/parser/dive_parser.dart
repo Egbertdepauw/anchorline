@@ -473,6 +473,21 @@ class _CacheResult {
       sampleIntervalMs = uint16BE(data, opening[5] + 23);
     }
 
+    // ── Scrubber stack time (logVersion >= 11, opening[6] / closing[6]) ──
+    int? configuredStackSeconds;
+    int? stackRemainingAtStartSeconds;
+    int? stackRemainingAtEndSeconds;
+    if (logVersion >= 11 && opening[6] != undefined) {
+      final cfg = uint16BE(data, opening[6] + 1);
+      if (cfg != 0) {
+        configuredStackSeconds = cfg;
+        stackRemainingAtStartSeconds = uint16BE(data, opening[6] + 3);
+        if (closing[6] != undefined) {
+          stackRemainingAtEndSeconds = uint16BE(data, closing[6] + 3);
+        }
+      }
+    }
+
     final header = DiveHeader(
       startTimestamp: uint32BE(data, opening[0] + (pnf ? 12 : 12)),
       diveMode: diveMode,
@@ -490,6 +505,9 @@ class _CacheResult {
           uint16BE(data, opening[1] + (pnf ? 16 : 47)),
       waterDensity: uint16BE(data, opening[3] + (pnf ? 3 : 83)),
       isPnf: pnf,
+      configuredStackSeconds: configuredStackSeconds,
+      stackRemainingAtStartSeconds: stackRemainingAtStartSeconds,
+      stackRemainingAtEndSeconds: stackRemainingAtEndSeconds,
     );
 
     // ── Footer ──

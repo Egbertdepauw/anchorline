@@ -77,6 +77,18 @@ class DiveHeader {
   /// Whether this is PNF (Petrel Native Format).
   final bool isPnf;
 
+  /// Configured scrubber canister capacity in seconds (logVersion >= 11).
+  /// Null when the diver hasn't enabled stack tracking.
+  final int? configuredStackSeconds;
+
+  /// Remaining scrubber stack at dive start, in seconds.
+  /// Null when stack tracking isn't configured.
+  final int? stackRemainingAtStartSeconds;
+
+  /// Remaining scrubber stack at dive end, in seconds.
+  /// Null when stack tracking isn't configured.
+  final int? stackRemainingAtEndSeconds;
+
   DiveHeader({
     required this.startTimestamp,
     required this.diveMode,
@@ -93,6 +105,9 @@ class DiveHeader {
     required this.atmosphericPressureMbar,
     required this.waterDensity,
     required this.isPnf,
+    this.configuredStackSeconds,
+    this.stackRemainingAtStartSeconds,
+    this.stackRemainingAtEndSeconds,
   });
 }
 

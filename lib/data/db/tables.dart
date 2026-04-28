@@ -48,6 +48,12 @@ class Dives extends Table {
   /// Gas mixes as JSON array.
   TextColumn get gasMixesJson => text()();
 
+  /// Scrubber stack time (seconds). All null when the diver hasn't
+  /// enabled stack tracking on the unit.
+  IntColumn get configuredStackSeconds => integer().nullable()();
+  IntColumn get stackRemainingAtStartSeconds => integer().nullable()();
+  IntColumn get stackRemainingAtEndSeconds => integer().nullable()();
+
   /// Original decompressed binary blob (for re-parsing).
   BlobColumn get rawBlob => blob()();
 

@@ -92,6 +92,9 @@ class DiveConverter {
       gasMixes: gasMixes,
       sampleIntervalMs: header.sampleIntervalMs,
       sensorCalibration: List<double>.from(header.sensorCalibration),
+      configuredStackSeconds: header.configuredStackSeconds,
+      stackRemainingAtStartSeconds: header.stackRemainingAtStartSeconds,
+      stackRemainingAtEndSeconds: header.stackRemainingAtEndSeconds,
     );
 
     // ── Samples ──
