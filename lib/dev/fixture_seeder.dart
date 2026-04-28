@@ -9,11 +9,10 @@ import '../shearwater/parser/hardware.dart';
 
 /// Seed the database with fixture dives for development.
 ///
-/// Only runs in debug mode and only if the database is empty.
-/// Loads fixture .bin files from bundled assets.
+/// Runs on any build mode but only when the database is empty.
+/// Pre-public-release we'll gate this behind a --dart-define so a fresh
+/// install in real users' hands doesn't show fake dives.
 Future<void> seedFixtures(AppDatabase db) async {
-  if (!kDebugMode) return;
-
   final dao = DiveDao(db);
   final dives = await dao.getAllDives();
   if (dives.isNotEmpty) return;
