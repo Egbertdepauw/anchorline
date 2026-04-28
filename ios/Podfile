@@ -1,5 +1,6 @@
-# Uncomment this line to define a global platform for your project
-# platform :ios, '13.0'
+# Pin the deployment target. flutter_map / geolocator / flutter_blue_plus
+# all expect a modern iOS minimum.
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -39,5 +40,14 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    # Xcode 26 / macOS 26 workaround: without an explicit SUPPORTED_PLATFORMS
+    # and deployment target on every Pod target, some Pods build as macOS
+    # zippered/macCatalyst by default, which then can't link into an
+    # iOS Simulator binary (the libobjc.A.tbd / "built for macOS macCatalyst
+    # zippered" error).
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      config.build_settings['SUPPORTED_PLATFORMS'] = 'iphoneos iphonesimulator'
+    end
   end
 end
