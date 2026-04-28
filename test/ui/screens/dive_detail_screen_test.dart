@@ -69,18 +69,20 @@ void main() {
 
     // 20293 / 3600 = 5h 38min → "5:38"
     expect(find.text('5:38'), findsOneWidget);
-    expect(find.text('STACK'), findsOneWidget);
+    // Subtitle now carries used + configured permanently (no tooltip).
+    // 23777 - 20293 = 3484s = 58:04 used; configured 25200s = 7:00.
+    expect(find.textContaining('58:04 used'), findsOneWidget);
+    expect(find.textContaining('7:00 cfg'), findsOneWidget);
   });
 
-  testWidgets('shows em-dash when stack values are null', (tester) async {
+  testWidgets('hides STACK cell when stack values are null', (tester) async {
     final s = await _seedDive();
     addTearDown(() async => s.db.close());
 
     await _pumpScreen(tester, s.db, s.dive, s.dao);
 
-    expect(find.text('STACK'), findsOneWidget);
-    // The STACK cell value is the em-dash. (Other cells may also be '—',
-    // so we just confirm STACK is present and the screen rendered.)
+    // No stack data → cell is hidden entirely (no need to display "—").
+    expect(find.textContaining('STACK'), findsNothing);
     expect(find.byType(DiveDetailScreen), findsOneWidget);
   });
 

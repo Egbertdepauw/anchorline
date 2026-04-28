@@ -354,23 +354,44 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     final stackStart = dive.stackRemainingAtStartSeconds;
     final stackCfg = dive.configuredStackSeconds;
     final stackLabel = stackEnd == null ? '—' : formatStackHm(stackEnd);
-    String? stackTooltip;
+    // Subtitle shows used + configured permanently — tooltips don't reach
+    // touch users.
+    String stackSubtitle = 'STACK';
     if (stackEnd != null && stackStart != null && stackCfg != null) {
-      stackTooltip =
-          'Used: ${formatStackUsedMs(stackStart - stackEnd)} · '
-          'Configured: ${formatStackHm(stackCfg)}';
+      stackSubtitle =
+          'STACK · ${formatStackUsedMs(stackStart - stackEnd)} used · '
+          '${formatStackHm(stackCfg)} cfg';
     }
 
-    return Padding(
+    return LayoutBuilder(builder: (context, constraints) {
+      final cells = <Widget>[
+        _statCell('PPO2 min/avg/max', ppo2Label, theme),
+        _statCell('CNS', '${(maxCns * 100).toInt()}%', theme),
+        if (showOtu) _statCell('OTU', '${otu.round()}', theme),
+        _statCell('TEMP min/avg/max', tempLabel, theme),
+        _statCell('GAS', gasLabel, theme),
+        if (stackEnd != null) _statCell(stackSubtitle, stackLabel, theme),
+      ];
+      // Width per cell at ~95px keeps even the long "PPO2 min/avg/max" label
+      // legible. Below that, wrap to a second line.
+      const minCellWidth = 95.0;
+      final cellWidth =
+          (constraints.maxWidth - 16) / cells.length; // 16 = horizontal padding
+      final useWrap = cellWidth < minCellWidth;
+      return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        child: Row(children: [
-          _statCell('PPO2 min/avg/max', ppo2Label, theme),
-          _statCell('CNS', '${(maxCns * 100).toInt()}%', theme),
-          if (showOtu) _statCell('OTU', '${otu.round()}', theme),
-          _statCell('TEMP min/avg/max', tempLabel, theme),
-          _statCell('GAS', gasLabel, theme),
-          _statCell('STACK', stackLabel, theme, tooltip: stackTooltip),
-        ]));
+        child: useWrap
+            ? Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final c in cells)
+                    SizedBox(width: minCellWidth, child: c),
+                ],
+              )
+            : Row(children: cells),
+      );
+    });
   }
 
   Widget _statCell(String label, String value, ThemeData theme,
