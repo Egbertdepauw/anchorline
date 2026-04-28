@@ -8,6 +8,7 @@ library;
 
 import 'package:drift/drift.dart';
 
+import '../../analysis/cell_health.dart';
 import '../models/equipment.dart' show CylinderRole, SlotInUseException;
 import '../sample_codec/column_packer.dart';
 import 'database.dart';
@@ -280,6 +281,83 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
       ));
     }
     return out;
+  }
+
+  Future<CellHealth> evaluateHealthForCell(String cellId,
+      {DateTime? now}) async {
+    final cell = await getCell(cellId);
+    if (cell == null) {
+      return CellHealth(
+        ageMonths: null,
+        diveCount: 0,
+        mvStatus: CellMvStatus.insufficientData,
+        baselinePeakMv: null,
+        recentPeakMv: null,
+      );
+    }
+
+    final mvCol = cell.slot - 1;
+    final installedDate = cell.installedDate == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(cell.installedDate!);
+
+    final divePeaks = <({DateTime start, double peakMv})>[];
+    if (mvCol >= 0 && mvCol <= 2) {
+      final query = select(db.dives);
+      if (cell.installedDate != null) {
+        query.where((t) =>
+            t.startTime.isBiggerOrEqualValue(cell.installedDate! ~/ 1000));
+      }
+      if (cell.retiredDate != null) {
+        query.where(
+            (t) => t.startTime.isSmallerThanValue(cell.retiredDate! ~/ 1000));
+      }
+      query.orderBy([(t) => OrderingTerm.asc(t.startTime)]);
+      final dives = await query.get();
+      if (dives.isNotEmpty) {
+        final samplesById = <String, DiveSample>{
+          for (final s in await (select(db.diveSamples)
+                    ..where((t) => t.diveId.isIn(dives.map((d) => d.id))))
+                  .get())
+            s.diveId: s,
+        };
+        for (final dive in dives) {
+          final sample = samplesById[dive.id];
+          if (sample == null) continue;
+          final peak = _peakMvForSlot(sample, mvCol);
+          if (peak == null) continue;
+          divePeaks.add((
+            start:
+                DateTime.fromMillisecondsSinceEpoch(dive.startTime * 1000),
+            peakMv: peak,
+          ));
+        }
+      }
+    }
+
+    return evaluateCellHealth(
+      now: now ?? DateTime.now(),
+      installedDate: installedDate,
+      divePeaks: divePeaks,
+    );
+  }
+
+  double? _peakMvForSlot(DiveSample sample, int mvCol) {
+    final mvBlob = switch (mvCol) {
+      0 => sample.cellMv0Blob,
+      1 => sample.cellMv1Blob,
+      _ => sample.cellMv2Blob,
+    };
+    final mvs = ColumnPacker.unpackFloat32(mvBlob, sample.sampleCount);
+    var peak = double.negativeInfinity;
+    var any = false;
+    for (var i = 0; i < sample.sampleCount; i++) {
+      final v = mvs[i];
+      if (v < 5.0) continue;
+      if (v > peak) peak = v;
+      any = true;
+    }
+    return any ? peak : null;
   }
 
   double? _computeSurfaceMv(DiveSample sample, int mvCol) {

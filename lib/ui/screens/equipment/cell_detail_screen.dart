@@ -1,11 +1,13 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 
+import '../../../analysis/cell_health.dart';
 import '../../../data/db/database.dart';
 import '../../../data/db/dive_annotations_dao.dart';
 import '../../../data/db/dive_dao.dart';
 import '../../../data/db/equipment_dao.dart';
 import '../../../data/models/equipment.dart' show SlotInUseException;
+import '../../widgets/cell_health_strip.dart';
 import '../../widgets/cell_mv_chart.dart';
 import '../dive_detail_screen.dart';
 
@@ -30,6 +32,7 @@ class CellDetailScreen extends StatefulWidget {
 class _CellDetailScreenState extends State<CellDetailScreen> {
   OxygenCell? _cell;
   List<({DateTime date, double mv, String diveId})> _series = const [];
+  CellHealth? _health;
   final _labelCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   DateTime? _installedDate;
@@ -52,10 +55,12 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
     final cell = await widget.dao.getCell(widget.id!);
     if (cell == null) return;
     final series = await widget.dao.surfaceMvSeriesForCell(cell.id);
+    final health = await widget.dao.evaluateHealthForCell(cell.id);
     if (!mounted) return;
     setState(() {
       _cell = cell;
       _series = series;
+      _health = health;
       _slot = cell.slot;
       _labelCtrl.text = cell.label ?? '';
       _notesCtrl.text = cell.notes ?? '';
@@ -224,6 +229,11 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
                       '${_fmtDate(DateTime.fromMillisecondsSinceEpoch(_cell!.retiredDate!))}'),
                 Text('Dives with mV data: ${_series.length}'),
                 const SizedBox(height: 16),
+                if (_health != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: CellHealthStrip(health: _health!, slot: _slot),
+                  ),
                 CellMvChart(
                   series: _series,
                   onDiveTap: _openDive,
