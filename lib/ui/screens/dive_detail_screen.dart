@@ -133,6 +133,17 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                             fontSize: 12,
                                             fontWeight: FontWeight.w500)),
                                   ],
+                                  if (_annotationsNotifier
+                                      .buddies.isNotEmpty)
+                                    Text(
+                                      _annotationsNotifier.buddies.join(', '),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          color: theme.colorScheme.onSurface
+                                              .withValues(alpha: 0.5),
+                                          fontSize: 11),
+                                    ),
                                 ])),
                             Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
