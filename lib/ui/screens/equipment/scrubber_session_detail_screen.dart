@@ -75,7 +75,27 @@ class _ScrubberSessionDetailScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scrubber Pack')),
+      appBar: AppBar(
+        title: const Text('Scrubber Pack'),
+        actions: [
+          if (_session?.totalMinutes == null)
+            IconButton(
+              tooltip: 'Close pack',
+              icon: const Icon(Icons.lock_outline),
+              onPressed: _close,
+            ),
+          IconButton(
+            tooltip: 'Save',
+            icon: const Icon(Icons.check),
+            onPressed: _save,
+          ),
+          IconButton(
+            tooltip: 'Delete',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: _delete,
+          ),
+        ],
+      ),
       body: _session == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -93,19 +113,6 @@ class _ScrubberSessionDetailScreenState
                   controller: _notesCtrl,
                   decoration: const InputDecoration(labelText: 'Notes'),
                   maxLines: 3,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    ElevatedButton(onPressed: _save, child: const Text('Save')),
-                    if (_session!.totalMinutes == null)
-                      OutlinedButton(
-                        onPressed: _close,
-                        child: const Text('Close'),
-                      ),
-                    TextButton(onPressed: _delete, child: const Text('Delete')),
-                  ],
                 ),
               ],
             ),

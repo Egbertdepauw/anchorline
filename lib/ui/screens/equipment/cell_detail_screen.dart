@@ -115,7 +115,28 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Cell')),
+      appBar: AppBar(
+        title: const Text('Cell'),
+        actions: [
+          if (!_isDraft && _cell?.retiredDate == null)
+            IconButton(
+              tooltip: 'Retire',
+              icon: const Icon(Icons.archive_outlined),
+              onPressed: _retire,
+            ),
+          IconButton(
+            tooltip: 'Save',
+            icon: const Icon(Icons.check),
+            onPressed: _save,
+          ),
+          if (!_isDraft)
+            IconButton(
+              tooltip: 'Delete',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: _deleteIfUnused,
+            ),
+        ],
+      ),
       body: (!_isDraft && _cell == null)
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -145,23 +166,6 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
                   controller: _notesCtrl,
                   decoration: const InputDecoration(labelText: 'Notes'),
                   maxLines: 3,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    ElevatedButton(onPressed: _save, child: const Text('Save')),
-                    if (!_isDraft && _cell?.retiredDate == null)
-                      OutlinedButton(
-                        onPressed: _retire,
-                        child: const Text('Retire'),
-                      ),
-                    if (!_isDraft)
-                      TextButton(
-                        onPressed: _deleteIfUnused,
-                        child: const Text('Delete'),
-                      ),
-                  ],
                 ),
               ],
             ),

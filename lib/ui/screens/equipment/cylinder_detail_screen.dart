@@ -111,7 +111,22 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Cylinder')),
+      appBar: AppBar(
+        title: const Text('Cylinder'),
+        actions: [
+          IconButton(
+            tooltip: 'Save',
+            icon: const Icon(Icons.check),
+            onPressed: _save,
+          ),
+          if (!_isDraft)
+            IconButton(
+              tooltip: 'Delete',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: _delete,
+            ),
+        ],
+      ),
       body: (!_isDraft && _c == null)
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -173,16 +188,6 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
                   controller: _notes,
                   decoration: const InputDecoration(labelText: 'Notes'),
                   maxLines: 3,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    ElevatedButton(onPressed: _save, child: const Text('Save')),
-                    if (!_isDraft)
-                      TextButton(
-                          onPressed: _delete, child: const Text('Delete')),
-                  ],
                 ),
               ],
             ),
