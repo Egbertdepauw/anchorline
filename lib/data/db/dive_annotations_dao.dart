@@ -35,6 +35,38 @@ class DiveAnnotationsDao extends DatabaseAccessor<AppDatabase>
     await into(diveAnnotations).insertOnConflictUpdate(_toCompanion(a));
   }
 
+  /// Returns the most recent (by updatedAt desc) lat/lon recorded for any
+  /// annotation with this site name. Returns null if no match or both
+  /// coords are null.
+  Future<({double? lat, double? lon})?> getLatestSiteCoords(
+      String siteName) async {
+    if (siteName.trim().isEmpty) return null;
+    final row = await (select(diveAnnotations)
+          ..where((t) =>
+              t.siteName.equals(siteName) &
+              t.deletedAt.isNull() &
+              (t.siteLatitudeE5.isNotNull() | t.siteLongitudeE5.isNotNull()))
+          ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)])
+          ..limit(1))
+        .getSingleOrNull();
+    if (row == null) return null;
+    return (
+      lat: row.siteLatitudeE5 == null ? null : row.siteLatitudeE5! / 1e5,
+      lon: row.siteLongitudeE5 == null ? null : row.siteLongitudeE5! / 1e5,
+    );
+  }
+
+  /// Batch-loads annotations for a list of dive ids. Returns a map keyed
+  /// by diveId; dives without an annotation row are absent from the map.
+  Future<Map<String, dom.DiveAnnotation>> getAnnotationsForDives(
+      Iterable<String> diveIds) async {
+    if (diveIds.isEmpty) return const {};
+    final rows = await (select(diveAnnotations)
+          ..where((t) => t.diveId.isIn(diveIds) & t.deletedAt.isNull()))
+        .get();
+    return {for (final r in rows) r.diveId: _toModel(r)};
+  }
+
   Future<List<String>> distinctSiteNames() async {
     final rows = await (selectOnly(diveAnnotations, distinct: true)
           ..addColumns([diveAnnotations.siteName])

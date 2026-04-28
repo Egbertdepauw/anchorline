@@ -95,6 +95,35 @@ void main() {
     });
   });
 
+  group('site coords lookup', () {
+    test('getLatestSiteCoords returns most-recent stored coords', () async {
+      final now = DateTime.now();
+      await dao.upsert(DiveAnnotation(
+        diveId: 'd1',
+        siteName: 'Lagoon',
+        siteLatitude: 51.0,
+        siteLongitude: 4.0,
+        createdAt: now.subtract(const Duration(days: 1)),
+        updatedAt: now.subtract(const Duration(days: 1)),
+      ));
+      await dao.upsert(DiveAnnotation(
+        diveId: 'd2',
+        siteName: 'Lagoon',
+        siteLatitude: 52.5,
+        siteLongitude: 5.5,
+        createdAt: now,
+        updatedAt: now,
+      ));
+      final got = await dao.getLatestSiteCoords('Lagoon');
+      expect(got?.lat, closeTo(52.5, 1e-5));
+      expect(got?.lon, closeTo(5.5, 1e-5));
+    });
+
+    test('getLatestSiteCoords returns null for unknown site', () async {
+      expect(await dao.getLatestSiteCoords('Nowhere'), isNull);
+    });
+  });
+
   group('cylinder linkage', () {
     test('listCylindersForDive returns rows for the dive', () async {
       await dao.setDiveCylinder('d1', 0, 'cyl_o2');
