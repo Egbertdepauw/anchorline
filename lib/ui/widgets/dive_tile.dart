@@ -58,7 +58,31 @@ class DiveTile extends StatelessWidget {
                       const SizedBox(width: 6),
                       Text('#${dive.dcDiveNumber}',
                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                      const Spacer(),
+                      if (annotation?.siteName != null &&
+                          annotation!.siteName!.isNotEmpty) ...[
+                        Text(
+                          ' · ',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.4),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            annotation!.siteName!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ),
+                      ] else
+                        const Spacer(),
+                      const SizedBox(width: 6),
                       Text(formatDateShort(dive.startTime),
                         style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5), fontSize: 11)),
                     ],
@@ -92,15 +116,9 @@ class DiveTile extends StatelessWidget {
   String? _buildAnnotationLine() {
     final ann = annotation;
     if (ann == null) return null;
-    final site = ann.siteName;
     final buddies = ann.buddies;
-    final hasSite = site != null && site.isNotEmpty;
-    final hasBuddies = buddies.isNotEmpty;
-    if (!hasSite && !hasBuddies) return null;
-    final parts = <String>[];
-    if (hasSite) parts.add(site);
-    if (hasBuddies) parts.add(buddies.join(', '));
-    return parts.join(' · ');
+    if (buddies.isEmpty) return null;
+    return buddies.join(', ');
   }
 
   String _buildStatsLine() {
