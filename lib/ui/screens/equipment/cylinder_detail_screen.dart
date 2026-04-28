@@ -66,7 +66,7 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
         bailoutOrder: _role == CylinderRole.bailout
             ? int.tryParse(_bailoutOrder.text.trim()) ?? 1
             : null,
-        volumeLiters: double.tryParse(_vol.text.trim()) ?? 5,
+        volumeLiters: _parseDecimal(_vol.text) ?? 5,
         workingPressureBar: int.tryParse(_press.text.trim()) ?? 200,
         gasMix: _gas.text.trim(),
         notes: _notes.text.trim(),
@@ -81,13 +81,23 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
         bailoutOrder: _role == CylinderRole.bailout
             ? int.tryParse(_bailoutOrder.text.trim())
             : null,
-        volumeLiters: double.tryParse(_vol.text.trim()),
+        volumeLiters: _parseDecimal(_vol.text),
         workingPressureBar: int.tryParse(_press.text.trim()),
         gasMix: _gas.text.trim(),
         notes: _notes.text.trim(),
       );
       await _load();
     }
+  }
+
+  /// Parses a user-typed decimal, accepting `,` as the decimal separator
+  /// (Dutch / German / French locales) in addition to `.`. Empty input
+  /// returns null. `double.tryParse` only accepts `.`, which silently
+  /// drops decimals on iPhone keypads in comma-locale regions.
+  double? _parseDecimal(String s) {
+    final t = s.trim();
+    if (t.isEmpty) return null;
+    return double.tryParse(t.replaceAll(',', '.'));
   }
 
   Future<void> _delete() async {

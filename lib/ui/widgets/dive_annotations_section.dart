@@ -89,12 +89,22 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
     super.dispose();
   }
 
+  /// Parses a user-typed decimal, accepting `,` as the decimal separator
+  /// (Dutch / German / French locales) in addition to `.`. Empty input
+  /// returns null. `double.tryParse` only accepts `.`, which silently
+  /// drops decimals on iPhone keypads in comma-locale regions.
+  double? _parseDecimal(String s) {
+    final t = s.trim();
+    if (t.isEmpty) return null;
+    return double.tryParse(t.replaceAll(',', '.'));
+  }
+
   Future<void> _pickOnMap() async {
     final result = await Navigator.of(context).push<({double lat, double lon})>(
       MaterialPageRoute(
         builder: (_) => MapPickerScreen(
-          initialLat: double.tryParse(_lat.text.trim()),
-          initialLon: double.tryParse(_lon.text.trim()),
+          initialLat: _parseDecimal(_lat.text),
+          initialLon: _parseDecimal(_lon.text),
         ),
       ),
     );
@@ -139,8 +149,8 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
   Future<void> _save() async {
     _n.setSiteName(_site.text.trim().isEmpty ? null : _site.text.trim());
     _n.setLatLon(
-      double.tryParse(_lat.text.trim()),
-      double.tryParse(_lon.text.trim()),
+      _parseDecimal(_lat.text),
+      _parseDecimal(_lon.text),
     );
     _n.setNotes(_notes.text.trim().isEmpty ? null : _notes.text.trim());
     _n.setConditions(
@@ -233,8 +243,8 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
                     decimal: true, signed: true),
                 decoration: const InputDecoration(labelText: 'Latitude'),
                 onChanged: (_) => _n.setLatLon(
-                    double.tryParse(_lat.text.trim()),
-                    double.tryParse(_lon.text.trim())),
+                    _parseDecimal(_lat.text),
+                    _parseDecimal(_lon.text)),
               ),
             ),
             const SizedBox(width: 8),
@@ -245,8 +255,8 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
                     decimal: true, signed: true),
                 decoration: const InputDecoration(labelText: 'Longitude'),
                 onChanged: (_) => _n.setLatLon(
-                    double.tryParse(_lat.text.trim()),
-                    double.tryParse(_lon.text.trim())),
+                    _parseDecimal(_lat.text),
+                    _parseDecimal(_lon.text)),
               ),
             ),
           ]),
