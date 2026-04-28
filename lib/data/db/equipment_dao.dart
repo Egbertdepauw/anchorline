@@ -135,7 +135,7 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     String id, {
     int? slot,
     String? label,
-    DateTime? installedDate,
+    Value<DateTime?>? installedDate,
     String? notes,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -145,7 +145,7 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
         label: label == null ? const Value.absent() : Value(label),
         installedDate: installedDate == null
             ? const Value.absent()
-            : Value(installedDate.millisecondsSinceEpoch),
+            : Value(installedDate.value?.millisecondsSinceEpoch),
         notes: notes == null ? const Value.absent() : Value(notes),
         updatedAt: Value(now),
       ),

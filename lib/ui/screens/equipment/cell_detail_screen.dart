@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 
 import '../../../data/db/database.dart';
@@ -30,13 +31,19 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
   List<({DateTime date, double mv, String diveId})> _series = const [];
   final _labelCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
+  DateTime? _installedDate;
 
   bool get _isDraft => widget.id == null;
 
   @override
   void initState() {
     super.initState();
-    if (!_isDraft) _load();
+    if (_isDraft) {
+      final now = DateTime.now();
+      _installedDate = DateTime(now.year, now.month, now.day);
+    } else {
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -49,7 +56,28 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
       _series = series;
       _labelCtrl.text = cell.label ?? '';
       _notesCtrl.text = cell.notes ?? '';
+      _installedDate = cell.installedDate == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(cell.installedDate!);
     });
+  }
+
+  Future<void> _pickInstalledDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _installedDate ?? now,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(now.year + 1),
+    );
+    if (picked == null) return;
+    setState(() {
+      _installedDate = DateTime(picked.year, picked.month, picked.day);
+    });
+  }
+
+  void _clearInstalledDate() {
+    setState(() => _installedDate = null);
   }
 
   Future<void> _save() async {
@@ -59,6 +87,7 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
       final newId = await widget.dao.addCell(
         slot: 1,
         label: label.isEmpty ? null : label,
+        installedDate: _installedDate,
         notes: notes.isEmpty ? null : notes,
       );
       if (!mounted) return;
@@ -67,6 +96,7 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
       await widget.dao.updateCell(
         _cell!.id,
         label: label,
+        installedDate: Value(_installedDate),
         notes: notes,
       );
       await _load();
@@ -112,6 +142,9 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
     super.dispose();
   }
 
+  String _fmtDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -144,12 +177,23 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
               children: [
                 Text('Slot ${_cell?.slot ?? 1}',
                     style: Theme.of(context).textTheme.titleMedium),
-                if (_cell?.installedDate != null)
-                  Text('Installed: '
-                      '${DateTime.fromMillisecondsSinceEpoch(_cell!.installedDate!).toLocal().toString().split(' ').first}'),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(_installedDate == null
+                      ? 'Installed: —'
+                      : 'Installed: ${_fmtDate(_installedDate!)}'),
+                  trailing: _installedDate == null
+                      ? const Icon(Icons.calendar_today)
+                      : IconButton(
+                          tooltip: 'Clear',
+                          icon: const Icon(Icons.clear),
+                          onPressed: _clearInstalledDate,
+                        ),
+                  onTap: _pickInstalledDate,
+                ),
                 if (_cell?.retiredDate != null)
                   Text('Retired: '
-                      '${DateTime.fromMillisecondsSinceEpoch(_cell!.retiredDate!).toLocal().toString().split(' ').first}'),
+                      '${_fmtDate(DateTime.fromMillisecondsSinceEpoch(_cell!.retiredDate!))}'),
                 Text('Dives with mV data: ${_series.length}'),
                 const SizedBox(height: 16),
                 CellMvChart(

@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart';
 
 import '../../data/db/database.dart';
@@ -87,7 +88,7 @@ class CellsNotifier extends ChangeNotifier {
     String id, {
     int? slot,
     String? label,
-    DateTime? installedDate,
+    Value<DateTime?>? installedDate,
     String? notes,
   }) async {
     await _dao.updateCell(

@@ -30,4 +30,44 @@ void main() {
     expect(find.text('Slot 1'), findsOneWidget);
     expect(find.text('No surface-mV data yet'), findsOneWidget);
   });
+
+  testWidgets('installedDate picker is present and persists selection',
+      (tester) async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final dao = EquipmentDao(db);
+    final diveDao = DiveDao(db);
+    final annotationsDao = DiveAnnotationsDao(db);
+    final installed = DateTime(2025, 3, 12);
+    final id = await dao.addCell(
+      slot: 1,
+      label: 'R-22D',
+      installedDate: installed,
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: CellDetailScreen(
+        dao: dao,
+        diveDao: diveDao,
+        annotationsDao: annotationsDao,
+        id: id,
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Installed: 2025-03-12'), findsOneWidget);
+
+    // Tap clear → save → reload from DB, expect null.
+    await tester.tap(find.byTooltip('Clear'));
+    await tester.pump();
+    expect(find.text('Installed: —'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Save'));
+    await tester.pump();
+    await tester.pump();
+
+    final reloaded = await dao.getCell(id);
+    expect(reloaded?.installedDate, isNull);
+  });
 }
