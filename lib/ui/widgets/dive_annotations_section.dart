@@ -33,6 +33,7 @@ class DiveAnnotationsSection extends StatefulWidget {
 class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
   DiveAnnotationsNotifier get _n => widget.notifier;
   final _site = TextEditingController();
+  final _siteFocus = FocusNode();
   final _lat = TextEditingController();
   final _lon = TextEditingController();
   final _notes = TextEditingController();
@@ -80,6 +81,7 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
   void dispose() {
     _n.removeListener(_onNotifierChanged);
     _site.dispose();
+    _siteFocus.dispose();
     _lat.dispose();
     _lon.dispose();
     _notes.dispose();
@@ -160,8 +162,9 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Site', style: Theme.of(context).textTheme.titleSmall),
-          Autocomplete<String>(
-            initialValue: TextEditingValue(text: _site.text),
+          RawAutocomplete<String>(
+            textEditingController: _site,
+            focusNode: _siteFocus,
             optionsBuilder: (tev) {
               if (tev.text.isEmpty) return const Iterable<String>.empty();
               return _siteOptions.where(
@@ -184,15 +187,40 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
                 }
               }
             },
-            fieldViewBuilder: (_, controller, focusNode, _) {
+            fieldViewBuilder: (context, controller, focusNode, _) {
               return TextField(
-                controller: controller,
-                focusNode: focusNode,
+                controller: controller, // === _site
+                focusNode: focusNode, // === _siteFocus
                 decoration: const InputDecoration(hintText: 'Site name'),
-                onChanged: (v) {
-                  _site.text = v;
-                  _n.setSiteName(v);
-                },
+                onChanged: (v) =>
+                    _n.setSiteName(v.trim().isEmpty ? null : v.trim()),
+              );
+            },
+            optionsViewBuilder: (context, onSelected, options) {
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 4,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                        maxHeight: 200, maxWidth: 320),
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      itemCount: options.length,
+                      itemBuilder: (context, index) {
+                        final option = options.elementAt(index);
+                        return InkWell(
+                          onTap: () => onSelected(option),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Text(option),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
               );
             },
           ),
