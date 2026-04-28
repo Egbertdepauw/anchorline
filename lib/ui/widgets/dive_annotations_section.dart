@@ -146,18 +146,6 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
     }
   }
 
-  Future<void> _save() async {
-    _n.setSiteName(_site.text.trim().isEmpty ? null : _site.text.trim());
-    _n.setLatLon(
-      _parseDecimal(_lat.text),
-      _parseDecimal(_lon.text),
-    );
-    _n.setNotes(_notes.text.trim().isEmpty ? null : _notes.text.trim());
-    _n.setConditions(
-        _conditions.text.trim().isEmpty ? null : _conditions.text.trim());
-    await _n.save();
-  }
-
   @override
   Widget build(BuildContext context) {
     if (!_n.loaded) {
@@ -333,16 +321,7 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
                 onChanged: (cylinderId) =>
                     _n.setCylinderForMix(i, cylinderId),
               ),
-            const SizedBox(height: 16),
           ],
-
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _n.dirty ? _save : null,
-              child: const Text('Save'),
-            ),
-          ),
         ],
       ),
     );

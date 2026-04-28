@@ -72,7 +72,31 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         : 'Unknown';
 
     return Scaffold(
-      appBar: AppBar(title: Text('Dive #${dive.dcDiveNumber}')),
+      appBar: AppBar(
+        title: Text('Dive #${dive.dcDiveNumber}'),
+        actions: [
+          AnimatedBuilder(
+            animation: _annotationsNotifier,
+            builder: (context, _) {
+              final dirty = _annotationsNotifier.dirty;
+              return IconButton(
+                tooltip: dirty ? 'Save (unsaved changes)' : 'Save',
+                icon: Icon(
+                  dirty ? Icons.save : Icons.save_outlined,
+                  color: dirty
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
+                onPressed: dirty
+                    ? () async {
+                        await _annotationsNotifier.save();
+                      }
+                    : null,
+              );
+            },
+          ),
+        ],
+      ),
       body: _notifier.loading && _notifier.samples == null
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(

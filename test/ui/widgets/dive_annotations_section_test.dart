@@ -38,6 +38,8 @@ void main() {
     expect(find.text('Buddies'), findsOneWidget);
     expect(find.text('Tags'), findsOneWidget);
     expect(find.text('Conditions'), findsOneWidget);
-    expect(find.widgetWithText(ElevatedButton, 'Save'), findsOneWidget);
+    // Save lives in the parent screen's AppBar now (see DiveDetailScreen);
+    // the section itself should not render its own Save button.
+    expect(find.widgetWithText(ElevatedButton, 'Save'), findsNothing);
   });
 }
