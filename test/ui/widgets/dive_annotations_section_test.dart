@@ -33,7 +33,6 @@ void main() {
     expect(find.text('Notes'), findsOneWidget);
     expect(find.text('Buddies'), findsOneWidget);
     expect(find.text('Tags'), findsOneWidget);
-    expect(find.text('Rating'), findsOneWidget);
     expect(find.text('Conditions'), findsOneWidget);
     expect(find.widgetWithText(ElevatedButton, 'Save'), findsOneWidget);
   });

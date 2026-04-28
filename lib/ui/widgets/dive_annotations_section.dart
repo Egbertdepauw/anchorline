@@ -8,7 +8,6 @@ import '../../data/models/dive.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import '../screens/map_picker_screen.dart';
 import 'chip_input.dart';
-import 'star_rating.dart';
 
 class DiveAnnotationsSection extends StatefulWidget {
   final String diveId;
@@ -161,9 +160,22 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
               return _siteOptions.where(
                   (o) => o.toLowerCase().contains(tev.text.toLowerCase()));
             },
-            onSelected: (v) {
+            onSelected: (v) async {
               _site.text = v;
               _n.setSiteName(v);
+              // Auto-fill lat/lon from the latest annotation with this site,
+              // but don't overwrite user-typed coords.
+              if (_lat.text.trim().isEmpty && _lon.text.trim().isEmpty) {
+                final coords =
+                    await widget.annotationsDao.getLatestSiteCoords(v);
+                if (coords != null && mounted) {
+                  setState(() {
+                    _lat.text = coords.lat?.toStringAsFixed(6) ?? '';
+                    _lon.text = coords.lon?.toStringAsFixed(6) ?? '';
+                  });
+                  _n.setLatLon(coords.lat, coords.lon);
+                }
+              }
             },
             fieldViewBuilder: (_, controller, focusNode, _) {
               return TextField(
@@ -220,16 +232,6 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
 
           const SizedBox(height: 16),
 
-          Text('Notes', style: Theme.of(context).textTheme.titleSmall),
-          TextField(
-            controller: _notes,
-            maxLines: 4,
-            decoration: const InputDecoration(border: OutlineInputBorder()),
-            onChanged: (v) => _n.setNotes(v.trim().isEmpty ? null : v.trim()),
-          ),
-
-          const SizedBox(height: 16),
-
           Text('Buddies', style: Theme.of(context).textTheme.titleSmall),
           ChipInput(
             initialValues: _n.buddies,
@@ -248,11 +250,6 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
 
           const SizedBox(height: 16),
 
-          Text('Rating', style: Theme.of(context).textTheme.titleSmall),
-          StarRating(value: _n.rating, onChanged: _n.setRating),
-
-          const SizedBox(height: 16),
-
           Text('Conditions', style: Theme.of(context).textTheme.titleSmall),
           TextField(
             controller: _conditions,
@@ -261,6 +258,16 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
             ),
             onChanged: (v) =>
                 _n.setConditions(v.trim().isEmpty ? null : v.trim()),
+          ),
+
+          const SizedBox(height: 16),
+
+          Text('Notes', style: Theme.of(context).textTheme.titleSmall),
+          TextField(
+            controller: _notes,
+            maxLines: 4,
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+            onChanged: (v) => _n.setNotes(v.trim().isEmpty ? null : v.trim()),
           ),
 
           const SizedBox(height: 16),
