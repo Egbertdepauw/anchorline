@@ -3,7 +3,8 @@
 /// Handles:
 /// - Imperial → metric conversion (if header.units == imperial)
 /// - Negative temperature fix (from libdc: add 102, clamp to 0)
-/// - Cell mV calibration
+/// - Cell mV raw values (calibration factors stay on Dive.sensorCalibration;
+///   per-cell PPO2 is derived at display time as raw_mv × cal_factor)
 /// - Tank pressure masking (lower 12 bits × 2 PSI → bar)
 /// - PPO2 and setpoint to bar
 library;
@@ -90,6 +91,7 @@ class DiveConverter {
       dcModel: dcModel,
       gasMixes: gasMixes,
       sampleIntervalMs: header.sampleIntervalMs,
+      sensorCalibration: List<double>.from(header.sensorCalibration),
     );
 
     // ── Samples ──
@@ -107,9 +109,6 @@ class DiveConverter {
     final ttsSeconds = Int32List(n);
     final gasMixIndex = Uint8List(n);
     final statusFlags = Uint8List(n);
-
-    final cal = header.sensorCalibration;
-    final calMask = header.calibratedSensorMask;
 
     for (var i = 0; i < n; i++) {
       final s = parsed.samples[i];
@@ -134,10 +133,10 @@ class DiveConverter {
       // PPO2 (voted average, 1/100 bar)
       ppo2Bar[i] = s.ppo2Raw / 100.0;
 
-      // Cell mV × calibration factor
-      cellMv0[i] = (calMask & 0x01 != 0) ? s.cellMv0 * cal[0] : 0;
-      cellMv1[i] = (calMask & 0x02 != 0) ? s.cellMv1 * cal[1] : 0;
-      cellMv2[i] = (calMask & 0x04 != 0) ? s.cellMv2 * cal[2] : 0;
+      // Cell mV (raw byte = mV directly; calibration factors stay on Dive)
+      cellMv0[i] = s.cellMv0.toDouble();
+      cellMv1[i] = s.cellMv1.toDouble();
+      cellMv2[i] = s.cellMv2.toDouble();
 
       // Setpoint (1/100 bar)
       setpointBar[i] = s.setpointRaw / 100.0;

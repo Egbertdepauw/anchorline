@@ -72,6 +72,10 @@ class Dive {
   /// Sample interval in milliseconds.
   final int sampleIntervalMs;
 
+  /// Per-cell calibration factors (length 3 on CCR; empty on OC).
+  /// Used to derive per-cell PPO2 from raw mV at display time.
+  final List<double> sensorCalibration;
+
   Dive({
     required this.id,
     required this.dcSerial,
@@ -91,6 +95,7 @@ class Dive {
     required this.dcModel,
     required this.gasMixes,
     required this.sampleIntervalMs,
+    this.sensorCalibration = const [],
   });
 }
 
