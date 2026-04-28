@@ -388,10 +388,16 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                     SizedBox(width: minCellWidth, child: c),
                 ],
               )
-            : Row(children: cells),
+            : Row(children: [
+                for (final c in cells) Expanded(child: c),
+              ]),
       );
     });
   }
+
+  // Cell builders return the unexpanded widget. The caller wraps with
+  // Expanded inside a Row, or uses raw inside a Wrap (Expanded only works
+  // inside Flex parents).
 
   Widget _statCell(String label, String value, ThemeData theme,
       {String? tooltip}) {
@@ -406,25 +412,22 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
               color:
                   theme.colorScheme.onSurface.withValues(alpha: 0.4))),
     ]);
-    return Expanded(
-      child: tooltip == null ? cell : Tooltip(message: tooltip, child: cell),
-    );
+    return tooltip == null ? cell : Tooltip(message: tooltip, child: cell);
   }
 
   Widget _stackCell(
       String value, String? used, String? configured, ThemeData theme) {
-    final faded =
-        TextStyle(fontSize: 9, color: theme.colorScheme.onSurface.withValues(alpha: 0.4));
-    return Expanded(
-      child: Column(children: [
-        Text(value,
-            style:
-                const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 2),
-        Text('STACK', style: faded),
-        if (used != null) Text('used: $used', style: faded),
-        if (configured != null) Text('conf: $configured', style: faded),
-      ]),
-    );
+    final faded = TextStyle(
+        fontSize: 9,
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.4));
+    return Column(children: [
+      Text(value,
+          style:
+              const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+      const SizedBox(height: 2),
+      Text('STACK', style: faded),
+      if (used != null) Text('used: $used', style: faded),
+      if (configured != null) Text('conf: $configured', style: faded),
+    ]);
   }
 }
