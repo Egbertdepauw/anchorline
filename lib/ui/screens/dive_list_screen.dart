@@ -142,8 +142,8 @@ class _DiveTileWithSparkline extends StatelessWidget {
           dive: dive,
           sparklineData: snapshot.data,
           annotation: notifier.annotationsByDiveId[dive.id],
-          onTap: () {
-            Navigator.of(context).push(MaterialPageRoute(
+          onTap: () async {
+            await Navigator.of(context).push(MaterialPageRoute(
               builder: (_) => DiveDetailScreen(
                 dive: dive,
                 dao: diveDao,
@@ -151,6 +151,8 @@ class _DiveTileWithSparkline extends StatelessWidget {
                 equipmentDao: equipmentDao,
               ),
             ));
+            if (!context.mounted) return;
+            await notifier.loadDives();
           },
         );
       },
