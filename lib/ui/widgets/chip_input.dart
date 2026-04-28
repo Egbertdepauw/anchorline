@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
 class ChipInput extends StatefulWidget {
-  final List<String> initialValues;
+  final List<String> values;
   final List<String> autocompleteOptions;
   final void Function(List<String> values) onChanged;
   final String hintText;
 
   const ChipInput({
     super.key,
-    required this.initialValues,
+    required this.values,
     required this.autocompleteOptions,
     required this.onChanged,
     this.hintText = 'Add…',
@@ -19,34 +19,24 @@ class ChipInput extends StatefulWidget {
 }
 
 class _ChipInputState extends State<ChipInput> {
-  late List<String> _values;
-
-  @override
-  void initState() {
-    super.initState();
-    _values = [...widget.initialValues];
-  }
-
   void _add(String raw, TextEditingController controller) {
     final v = raw.trim();
-    if (v.isEmpty || _values.contains(v)) {
+    if (v.isEmpty || widget.values.contains(v)) {
       controller.clear();
       return;
     }
-    setState(() => _values.add(v));
+    widget.onChanged([...widget.values, v]);
     controller.clear();
-    widget.onChanged(_values);
   }
 
   void _remove(String v) {
-    setState(() => _values.remove(v));
-    widget.onChanged(_values);
+    widget.onChanged(widget.values.where((x) => x != v).toList());
   }
 
   @override
   Widget build(BuildContext context) {
     final available = widget.autocompleteOptions
-        .where((o) => !_values.contains(o))
+        .where((o) => !widget.values.contains(o))
         .toList();
 
     return Wrap(
@@ -54,7 +44,7 @@ class _ChipInputState extends State<ChipInput> {
       runSpacing: 6,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        for (final v in _values)
+        for (final v in widget.values)
           Chip(
             label: Text(v),
             onDeleted: () => _remove(v),
@@ -69,10 +59,9 @@ class _ChipInputState extends State<ChipInput> {
                   (o) => o.toLowerCase().contains(tev.text.toLowerCase()));
             },
             onSelected: (selected) {
-              setState(() {
-                if (!_values.contains(selected)) _values.add(selected);
-              });
-              widget.onChanged(_values);
+              if (!widget.values.contains(selected)) {
+                widget.onChanged([...widget.values, selected]);
+              }
             },
             fieldViewBuilder:
                 (context, textController, focusNode, onSubmitted) {

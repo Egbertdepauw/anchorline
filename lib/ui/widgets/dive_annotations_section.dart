@@ -269,7 +269,7 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
 
           Text('Buddies', style: Theme.of(context).textTheme.titleSmall),
           ChipInput(
-            initialValues: _n.buddies,
+            values: _n.buddies,
             autocompleteOptions: _buddyOptions,
             onChanged: _n.setBuddies,
           ),
@@ -278,7 +278,7 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
 
           Text('Tags', style: Theme.of(context).textTheme.titleSmall),
           ChipInput(
-            initialValues: _n.tags,
+            values: _n.tags,
             autocompleteOptions: _tagOptions,
             onChanged: _n.setTags,
           ),

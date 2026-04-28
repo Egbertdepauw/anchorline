@@ -7,7 +7,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: ChipInput(
-          initialValues: const ['Alex', 'Sam'],
+          values: const ['Alex', 'Sam'],
           autocompleteOptions: const [],
           onChanged: (_) {},
         ),
@@ -19,12 +19,18 @@ void main() {
 
   testWidgets('typing + Enter promotes text to a chip', (tester) async {
     final captured = <List<String>>[];
+    var values = const <String>[];
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: ChipInput(
-          initialValues: const [],
-          autocompleteOptions: const [],
-          onChanged: captured.add,
+        body: StatefulBuilder(
+          builder: (context, setState) => ChipInput(
+            values: values,
+            autocompleteOptions: const [],
+            onChanged: (v) {
+              captured.add(v);
+              setState(() => values = v);
+            },
+          ),
         ),
       ),
     ));
@@ -42,7 +48,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: ChipInput(
-          initialValues: const ['Alex', 'Sam'],
+          values: const ['Alex', 'Sam'],
           autocompleteOptions: const [],
           onChanged: captured.add,
         ),
