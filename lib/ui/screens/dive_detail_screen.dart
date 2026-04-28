@@ -263,11 +263,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   Widget _buildStatsRow(ThemeData theme) {
     final samples = _notifier.samples!;
     final n = samples.sampleCount;
-    var ppo2Sum = 0.0;
-    for (var i = 0; i < n; i++) {
-      ppo2Sum += samples.ppo2Bar[i];
-    }
-    final avgPpo2 = n > 0 ? ppo2Sum / n : 0.0;
+    final ppo2Stats = minAvgMax(samples.ppo2Bar, n);
     var maxCns = 0.0;
     for (var i = 0; i < n; i++) {
       if (samples.cns[i] > maxCns) maxCns = samples.cns[i];
@@ -293,10 +289,14 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     );
     final showOtu = otu > 0;
 
+    final ppo2Label = ppo2Stats == null
+        ? '—'
+        : '${ppo2Stats.min.toStringAsFixed(2)} / ${ppo2Stats.avg.toStringAsFixed(2)} / ${ppo2Stats.max.toStringAsFixed(2)}';
+
     return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: Row(children: [
-          _statCell('AVG PPO2', avgPpo2.toStringAsFixed(2), theme),
+          _statCell('PPO2 min/avg/max', ppo2Label, theme),
           _statCell('CNS', '${(maxCns * 100).toInt()}%', theme),
           if (showOtu) _statCell('OTU', '${otu.round()}', theme),
           _statCell(
