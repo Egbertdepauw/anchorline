@@ -2721,6 +2721,17 @@ class $DiveAnnotationsTable extends DiveAnnotations
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     diveId,
@@ -2737,6 +2748,7 @@ class $DiveAnnotationsTable extends DiveAnnotations
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2849,6 +2861,12 @@ class $DiveAnnotationsTable extends DiveAnnotations
         syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
       );
     }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    }
     return context;
   }
 
@@ -2914,6 +2932,10 @@ class $DiveAnnotationsTable extends DiveAnnotations
         DriftSqlType.int,
         data['${effectivePrefix}sync_status'],
       )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      ),
     );
   }
 
@@ -2938,6 +2960,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
   final int? deletedAt;
   final int version;
   final int syncStatus;
+  final String? ownerId;
   const DiveAnnotation({
     required this.diveId,
     this.siteName,
@@ -2953,6 +2976,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     this.deletedAt,
     required this.version,
     required this.syncStatus,
+    this.ownerId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2989,6 +3013,9 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     }
     map['version'] = Variable<int>(version);
     map['sync_status'] = Variable<int>(syncStatus);
+    if (!nullToAbsent || ownerId != null) {
+      map['owner_id'] = Variable<String>(ownerId);
+    }
     return map;
   }
 
@@ -3026,6 +3053,9 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
           : Value(deletedAt),
       version: Value(version),
       syncStatus: Value(syncStatus),
+      ownerId: ownerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownerId),
     );
   }
 
@@ -3049,6 +3079,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
       version: serializer.fromJson<int>(json['version']),
       syncStatus: serializer.fromJson<int>(json['syncStatus']),
+      ownerId: serializer.fromJson<String?>(json['ownerId']),
     );
   }
   @override
@@ -3069,6 +3100,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       'deletedAt': serializer.toJson<int?>(deletedAt),
       'version': serializer.toJson<int>(version),
       'syncStatus': serializer.toJson<int>(syncStatus),
+      'ownerId': serializer.toJson<String?>(ownerId),
     };
   }
 
@@ -3087,6 +3119,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     Value<int?> deletedAt = const Value.absent(),
     int? version,
     int? syncStatus,
+    Value<String?> ownerId = const Value.absent(),
   }) => DiveAnnotation(
     diveId: diveId ?? this.diveId,
     siteName: siteName.present ? siteName.value : this.siteName,
@@ -3106,6 +3139,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     version: version ?? this.version,
     syncStatus: syncStatus ?? this.syncStatus,
+    ownerId: ownerId.present ? ownerId.value : this.ownerId,
   );
   DiveAnnotation copyWithCompanion(DiveAnnotationsCompanion data) {
     return DiveAnnotation(
@@ -3133,6 +3167,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       syncStatus: data.syncStatus.present
           ? data.syncStatus.value
           : this.syncStatus,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
     );
   }
 
@@ -3152,7 +3187,8 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
-          ..write('syncStatus: $syncStatus')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId')
           ..write(')'))
         .toString();
   }
@@ -3173,6 +3209,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   );
   @override
   bool operator ==(Object other) =>
@@ -3191,7 +3228,8 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.version == this.version &&
-          other.syncStatus == this.syncStatus);
+          other.syncStatus == this.syncStatus &&
+          other.ownerId == this.ownerId);
 }
 
 class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
@@ -3209,6 +3247,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
   final Value<int?> deletedAt;
   final Value<int> version;
   final Value<int> syncStatus;
+  final Value<String?> ownerId;
   final Value<int> rowid;
   const DiveAnnotationsCompanion({
     this.diveId = const Value.absent(),
@@ -3225,6 +3264,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DiveAnnotationsCompanion.insert({
@@ -3242,6 +3282,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : diveId = Value(diveId),
        createdAt = Value(createdAt),
@@ -3261,6 +3302,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     Expression<int>? deletedAt,
     Expression<int>? version,
     Expression<int>? syncStatus,
+    Expression<String>? ownerId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3278,6 +3320,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (version != null) 'version': version,
       if (syncStatus != null) 'sync_status': syncStatus,
+      if (ownerId != null) 'owner_id': ownerId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3297,6 +3340,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     Value<int?>? deletedAt,
     Value<int>? version,
     Value<int>? syncStatus,
+    Value<String?>? ownerId,
     Value<int>? rowid,
   }) {
     return DiveAnnotationsCompanion(
@@ -3314,6 +3358,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
       deletedAt: deletedAt ?? this.deletedAt,
       version: version ?? this.version,
       syncStatus: syncStatus ?? this.syncStatus,
+      ownerId: ownerId ?? this.ownerId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3363,6 +3408,9 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     if (syncStatus.present) {
       map['sync_status'] = Variable<int>(syncStatus.value);
     }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3386,6 +3434,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
           ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3505,6 +3554,17 @@ class $DiveComputersTable extends DiveComputers
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3517,6 +3577,7 @@ class $DiveComputersTable extends DiveComputers
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3600,6 +3661,12 @@ class $DiveComputersTable extends DiveComputers
         syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
       );
     }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    }
     return context;
   }
 
@@ -3649,6 +3716,10 @@ class $DiveComputersTable extends DiveComputers
         DriftSqlType.int,
         data['${effectivePrefix}sync_status'],
       )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      ),
     );
   }
 
@@ -3669,6 +3740,7 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
   final int? deletedAt;
   final int version;
   final int syncStatus;
+  final String? ownerId;
   const DiveComputer({
     required this.id,
     required this.serial,
@@ -3680,6 +3752,7 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
     this.deletedAt,
     required this.version,
     required this.syncStatus,
+    this.ownerId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3700,6 +3773,9 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
     }
     map['version'] = Variable<int>(version);
     map['sync_status'] = Variable<int>(syncStatus);
+    if (!nullToAbsent || ownerId != null) {
+      map['owner_id'] = Variable<String>(ownerId);
+    }
     return map;
   }
 
@@ -3721,6 +3797,9 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
           : Value(deletedAt),
       version: Value(version),
       syncStatus: Value(syncStatus),
+      ownerId: ownerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownerId),
     );
   }
 
@@ -3740,6 +3819,7 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
       version: serializer.fromJson<int>(json['version']),
       syncStatus: serializer.fromJson<int>(json['syncStatus']),
+      ownerId: serializer.fromJson<String?>(json['ownerId']),
     );
   }
   @override
@@ -3756,6 +3836,7 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
       'deletedAt': serializer.toJson<int?>(deletedAt),
       'version': serializer.toJson<int>(version),
       'syncStatus': serializer.toJson<int>(syncStatus),
+      'ownerId': serializer.toJson<String?>(ownerId),
     };
   }
 
@@ -3770,6 +3851,7 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
     Value<int?> deletedAt = const Value.absent(),
     int? version,
     int? syncStatus,
+    Value<String?> ownerId = const Value.absent(),
   }) => DiveComputer(
     id: id ?? this.id,
     serial: serial ?? this.serial,
@@ -3783,6 +3865,7 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     version: version ?? this.version,
     syncStatus: syncStatus ?? this.syncStatus,
+    ownerId: ownerId.present ? ownerId.value : this.ownerId,
   );
   DiveComputer copyWithCompanion(DiveComputersCompanion data) {
     return DiveComputer(
@@ -3800,6 +3883,7 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
       syncStatus: data.syncStatus.present
           ? data.syncStatus.value
           : this.syncStatus,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
     );
   }
 
@@ -3815,7 +3899,8 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
-          ..write('syncStatus: $syncStatus')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId')
           ..write(')'))
         .toString();
   }
@@ -3832,6 +3917,7 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   );
   @override
   bool operator ==(Object other) =>
@@ -3846,7 +3932,8 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.version == this.version &&
-          other.syncStatus == this.syncStatus);
+          other.syncStatus == this.syncStatus &&
+          other.ownerId == this.ownerId);
 }
 
 class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
@@ -3860,6 +3947,7 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
   final Value<int?> deletedAt;
   final Value<int> version;
   final Value<int> syncStatus;
+  final Value<String?> ownerId;
   final Value<int> rowid;
   const DiveComputersCompanion({
     this.id = const Value.absent(),
@@ -3872,6 +3960,7 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DiveComputersCompanion.insert({
@@ -3885,6 +3974,7 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        serial = Value(serial),
@@ -3902,6 +3992,7 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
     Expression<int>? deletedAt,
     Expression<int>? version,
     Expression<int>? syncStatus,
+    Expression<String>? ownerId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3915,6 +4006,7 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (version != null) 'version': version,
       if (syncStatus != null) 'sync_status': syncStatus,
+      if (ownerId != null) 'owner_id': ownerId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3930,6 +4022,7 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
     Value<int?>? deletedAt,
     Value<int>? version,
     Value<int>? syncStatus,
+    Value<String?>? ownerId,
     Value<int>? rowid,
   }) {
     return DiveComputersCompanion(
@@ -3943,6 +4036,7 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
       deletedAt: deletedAt ?? this.deletedAt,
       version: version ?? this.version,
       syncStatus: syncStatus ?? this.syncStatus,
+      ownerId: ownerId ?? this.ownerId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3980,6 +4074,9 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
     if (syncStatus.present) {
       map['sync_status'] = Variable<int>(syncStatus.value);
     }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3999,6 +4096,7 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
           ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4126,6 +4224,17 @@ class $OxygenCellsTable extends OxygenCells
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -4139,6 +4248,7 @@ class $OxygenCellsTable extends OxygenCells
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4229,6 +4339,12 @@ class $OxygenCellsTable extends OxygenCells
         syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
       );
     }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    }
     return context;
   }
 
@@ -4282,6 +4398,10 @@ class $OxygenCellsTable extends OxygenCells
         DriftSqlType.int,
         data['${effectivePrefix}sync_status'],
       )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      ),
     );
   }
 
@@ -4303,6 +4423,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
   final int? deletedAt;
   final int version;
   final int syncStatus;
+  final String? ownerId;
   const OxygenCell({
     required this.id,
     required this.slot,
@@ -4315,6 +4436,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
     this.deletedAt,
     required this.version,
     required this.syncStatus,
+    this.ownerId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4340,6 +4462,9 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
     }
     map['version'] = Variable<int>(version);
     map['sync_status'] = Variable<int>(syncStatus);
+    if (!nullToAbsent || ownerId != null) {
+      map['owner_id'] = Variable<String>(ownerId);
+    }
     return map;
   }
 
@@ -4366,6 +4491,9 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
           : Value(deletedAt),
       version: Value(version),
       syncStatus: Value(syncStatus),
+      ownerId: ownerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownerId),
     );
   }
 
@@ -4386,6 +4514,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
       version: serializer.fromJson<int>(json['version']),
       syncStatus: serializer.fromJson<int>(json['syncStatus']),
+      ownerId: serializer.fromJson<String?>(json['ownerId']),
     );
   }
   @override
@@ -4403,6 +4532,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
       'deletedAt': serializer.toJson<int?>(deletedAt),
       'version': serializer.toJson<int>(version),
       'syncStatus': serializer.toJson<int>(syncStatus),
+      'ownerId': serializer.toJson<String?>(ownerId),
     };
   }
 
@@ -4418,6 +4548,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
     Value<int?> deletedAt = const Value.absent(),
     int? version,
     int? syncStatus,
+    Value<String?> ownerId = const Value.absent(),
   }) => OxygenCell(
     id: id ?? this.id,
     slot: slot ?? this.slot,
@@ -4432,6 +4563,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     version: version ?? this.version,
     syncStatus: syncStatus ?? this.syncStatus,
+    ownerId: ownerId.present ? ownerId.value : this.ownerId,
   );
   OxygenCell copyWithCompanion(OxygenCellsCompanion data) {
     return OxygenCell(
@@ -4452,6 +4584,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
       syncStatus: data.syncStatus.present
           ? data.syncStatus.value
           : this.syncStatus,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
     );
   }
 
@@ -4468,7 +4601,8 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
-          ..write('syncStatus: $syncStatus')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId')
           ..write(')'))
         .toString();
   }
@@ -4486,6 +4620,7 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   );
   @override
   bool operator ==(Object other) =>
@@ -4501,7 +4636,8 @@ class OxygenCell extends DataClass implements Insertable<OxygenCell> {
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.version == this.version &&
-          other.syncStatus == this.syncStatus);
+          other.syncStatus == this.syncStatus &&
+          other.ownerId == this.ownerId);
 }
 
 class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
@@ -4516,6 +4652,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
   final Value<int?> deletedAt;
   final Value<int> version;
   final Value<int> syncStatus;
+  final Value<String?> ownerId;
   final Value<int> rowid;
   const OxygenCellsCompanion({
     this.id = const Value.absent(),
@@ -4529,6 +4666,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   OxygenCellsCompanion.insert({
@@ -4543,6 +4681,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        slot = Value(slot),
@@ -4560,6 +4699,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
     Expression<int>? deletedAt,
     Expression<int>? version,
     Expression<int>? syncStatus,
+    Expression<String>? ownerId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4574,6 +4714,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (version != null) 'version': version,
       if (syncStatus != null) 'sync_status': syncStatus,
+      if (ownerId != null) 'owner_id': ownerId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4590,6 +4731,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
     Value<int?>? deletedAt,
     Value<int>? version,
     Value<int>? syncStatus,
+    Value<String?>? ownerId,
     Value<int>? rowid,
   }) {
     return OxygenCellsCompanion(
@@ -4604,6 +4746,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
       deletedAt: deletedAt ?? this.deletedAt,
       version: version ?? this.version,
       syncStatus: syncStatus ?? this.syncStatus,
+      ownerId: ownerId ?? this.ownerId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4644,6 +4787,9 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
     if (syncStatus.present) {
       map['sync_status'] = Variable<int>(syncStatus.value);
     }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4664,6 +4810,7 @@ class OxygenCellsCompanion extends UpdateCompanion<OxygenCell> {
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
           ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4784,6 +4931,17 @@ class $ScrubberSessionsTable extends ScrubberSessions
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -4796,6 +4954,7 @@ class $ScrubberSessionsTable extends ScrubberSessions
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4878,6 +5037,12 @@ class $ScrubberSessionsTable extends ScrubberSessions
         syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
       );
     }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    }
     return context;
   }
 
@@ -4927,6 +5092,10 @@ class $ScrubberSessionsTable extends ScrubberSessions
         DriftSqlType.int,
         data['${effectivePrefix}sync_status'],
       )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      ),
     );
   }
 
@@ -4947,6 +5116,7 @@ class ScrubberSession extends DataClass implements Insertable<ScrubberSession> {
   final int? deletedAt;
   final int version;
   final int syncStatus;
+  final String? ownerId;
   const ScrubberSession({
     required this.id,
     this.startedDate,
@@ -4958,6 +5128,7 @@ class ScrubberSession extends DataClass implements Insertable<ScrubberSession> {
     this.deletedAt,
     required this.version,
     required this.syncStatus,
+    this.ownerId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4982,6 +5153,9 @@ class ScrubberSession extends DataClass implements Insertable<ScrubberSession> {
     }
     map['version'] = Variable<int>(version);
     map['sync_status'] = Variable<int>(syncStatus);
+    if (!nullToAbsent || ownerId != null) {
+      map['owner_id'] = Variable<String>(ownerId);
+    }
     return map;
   }
 
@@ -5007,6 +5181,9 @@ class ScrubberSession extends DataClass implements Insertable<ScrubberSession> {
           : Value(deletedAt),
       version: Value(version),
       syncStatus: Value(syncStatus),
+      ownerId: ownerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownerId),
     );
   }
 
@@ -5026,6 +5203,7 @@ class ScrubberSession extends DataClass implements Insertable<ScrubberSession> {
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
       version: serializer.fromJson<int>(json['version']),
       syncStatus: serializer.fromJson<int>(json['syncStatus']),
+      ownerId: serializer.fromJson<String?>(json['ownerId']),
     );
   }
   @override
@@ -5042,6 +5220,7 @@ class ScrubberSession extends DataClass implements Insertable<ScrubberSession> {
       'deletedAt': serializer.toJson<int?>(deletedAt),
       'version': serializer.toJson<int>(version),
       'syncStatus': serializer.toJson<int>(syncStatus),
+      'ownerId': serializer.toJson<String?>(ownerId),
     };
   }
 
@@ -5056,6 +5235,7 @@ class ScrubberSession extends DataClass implements Insertable<ScrubberSession> {
     Value<int?> deletedAt = const Value.absent(),
     int? version,
     int? syncStatus,
+    Value<String?> ownerId = const Value.absent(),
   }) => ScrubberSession(
     id: id ?? this.id,
     startedDate: startedDate.present ? startedDate.value : this.startedDate,
@@ -5067,6 +5247,7 @@ class ScrubberSession extends DataClass implements Insertable<ScrubberSession> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     version: version ?? this.version,
     syncStatus: syncStatus ?? this.syncStatus,
+    ownerId: ownerId.present ? ownerId.value : this.ownerId,
   );
   ScrubberSession copyWithCompanion(ScrubberSessionsCompanion data) {
     return ScrubberSession(
@@ -5086,6 +5267,7 @@ class ScrubberSession extends DataClass implements Insertable<ScrubberSession> {
       syncStatus: data.syncStatus.present
           ? data.syncStatus.value
           : this.syncStatus,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
     );
   }
 
@@ -5101,7 +5283,8 @@ class ScrubberSession extends DataClass implements Insertable<ScrubberSession> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
-          ..write('syncStatus: $syncStatus')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId')
           ..write(')'))
         .toString();
   }
@@ -5118,6 +5301,7 @@ class ScrubberSession extends DataClass implements Insertable<ScrubberSession> {
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   );
   @override
   bool operator ==(Object other) =>
@@ -5132,7 +5316,8 @@ class ScrubberSession extends DataClass implements Insertable<ScrubberSession> {
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.version == this.version &&
-          other.syncStatus == this.syncStatus);
+          other.syncStatus == this.syncStatus &&
+          other.ownerId == this.ownerId);
 }
 
 class ScrubberSessionsCompanion extends UpdateCompanion<ScrubberSession> {
@@ -5146,6 +5331,7 @@ class ScrubberSessionsCompanion extends UpdateCompanion<ScrubberSession> {
   final Value<int?> deletedAt;
   final Value<int> version;
   final Value<int> syncStatus;
+  final Value<String?> ownerId;
   final Value<int> rowid;
   const ScrubberSessionsCompanion({
     this.id = const Value.absent(),
@@ -5158,6 +5344,7 @@ class ScrubberSessionsCompanion extends UpdateCompanion<ScrubberSession> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ScrubberSessionsCompanion.insert({
@@ -5171,6 +5358,7 @@ class ScrubberSessionsCompanion extends UpdateCompanion<ScrubberSession> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        createdAt = Value(createdAt),
@@ -5186,6 +5374,7 @@ class ScrubberSessionsCompanion extends UpdateCompanion<ScrubberSession> {
     Expression<int>? deletedAt,
     Expression<int>? version,
     Expression<int>? syncStatus,
+    Expression<String>? ownerId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -5199,6 +5388,7 @@ class ScrubberSessionsCompanion extends UpdateCompanion<ScrubberSession> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (version != null) 'version': version,
       if (syncStatus != null) 'sync_status': syncStatus,
+      if (ownerId != null) 'owner_id': ownerId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -5214,6 +5404,7 @@ class ScrubberSessionsCompanion extends UpdateCompanion<ScrubberSession> {
     Value<int?>? deletedAt,
     Value<int>? version,
     Value<int>? syncStatus,
+    Value<String?>? ownerId,
     Value<int>? rowid,
   }) {
     return ScrubberSessionsCompanion(
@@ -5227,6 +5418,7 @@ class ScrubberSessionsCompanion extends UpdateCompanion<ScrubberSession> {
       deletedAt: deletedAt ?? this.deletedAt,
       version: version ?? this.version,
       syncStatus: syncStatus ?? this.syncStatus,
+      ownerId: ownerId ?? this.ownerId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -5264,6 +5456,9 @@ class ScrubberSessionsCompanion extends UpdateCompanion<ScrubberSession> {
     if (syncStatus.present) {
       map['sync_status'] = Variable<int>(syncStatus.value);
     }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -5283,6 +5478,7 @@ class ScrubberSessionsCompanion extends UpdateCompanion<ScrubberSession> {
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
           ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -5429,6 +5625,17 @@ class $CylindersTable extends Cylinders
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -5444,6 +5651,7 @@ class $CylindersTable extends Cylinders
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -5555,6 +5763,12 @@ class $CylindersTable extends Cylinders
         syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
       );
     }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    }
     return context;
   }
 
@@ -5616,6 +5830,10 @@ class $CylindersTable extends Cylinders
         DriftSqlType.int,
         data['${effectivePrefix}sync_status'],
       )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      ),
     );
   }
 
@@ -5639,6 +5857,7 @@ class Cylinder extends DataClass implements Insertable<Cylinder> {
   final int? deletedAt;
   final int version;
   final int syncStatus;
+  final String? ownerId;
   const Cylinder({
     required this.id,
     required this.label,
@@ -5653,6 +5872,7 @@ class Cylinder extends DataClass implements Insertable<Cylinder> {
     this.deletedAt,
     required this.version,
     required this.syncStatus,
+    this.ownerId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -5678,6 +5898,9 @@ class Cylinder extends DataClass implements Insertable<Cylinder> {
     }
     map['version'] = Variable<int>(version);
     map['sync_status'] = Variable<int>(syncStatus);
+    if (!nullToAbsent || ownerId != null) {
+      map['owner_id'] = Variable<String>(ownerId);
+    }
     return map;
   }
 
@@ -5704,6 +5927,9 @@ class Cylinder extends DataClass implements Insertable<Cylinder> {
           : Value(deletedAt),
       version: Value(version),
       syncStatus: Value(syncStatus),
+      ownerId: ownerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownerId),
     );
   }
 
@@ -5726,6 +5952,7 @@ class Cylinder extends DataClass implements Insertable<Cylinder> {
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
       version: serializer.fromJson<int>(json['version']),
       syncStatus: serializer.fromJson<int>(json['syncStatus']),
+      ownerId: serializer.fromJson<String?>(json['ownerId']),
     );
   }
   @override
@@ -5745,6 +5972,7 @@ class Cylinder extends DataClass implements Insertable<Cylinder> {
       'deletedAt': serializer.toJson<int?>(deletedAt),
       'version': serializer.toJson<int>(version),
       'syncStatus': serializer.toJson<int>(syncStatus),
+      'ownerId': serializer.toJson<String?>(ownerId),
     };
   }
 
@@ -5762,6 +5990,7 @@ class Cylinder extends DataClass implements Insertable<Cylinder> {
     Value<int?> deletedAt = const Value.absent(),
     int? version,
     int? syncStatus,
+    Value<String?> ownerId = const Value.absent(),
   }) => Cylinder(
     id: id ?? this.id,
     label: label ?? this.label,
@@ -5776,6 +6005,7 @@ class Cylinder extends DataClass implements Insertable<Cylinder> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     version: version ?? this.version,
     syncStatus: syncStatus ?? this.syncStatus,
+    ownerId: ownerId.present ? ownerId.value : this.ownerId,
   );
   Cylinder copyWithCompanion(CylindersCompanion data) {
     return Cylinder(
@@ -5800,6 +6030,7 @@ class Cylinder extends DataClass implements Insertable<Cylinder> {
       syncStatus: data.syncStatus.present
           ? data.syncStatus.value
           : this.syncStatus,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
     );
   }
 
@@ -5818,7 +6049,8 @@ class Cylinder extends DataClass implements Insertable<Cylinder> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
-          ..write('syncStatus: $syncStatus')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId')
           ..write(')'))
         .toString();
   }
@@ -5838,6 +6070,7 @@ class Cylinder extends DataClass implements Insertable<Cylinder> {
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   );
   @override
   bool operator ==(Object other) =>
@@ -5855,7 +6088,8 @@ class Cylinder extends DataClass implements Insertable<Cylinder> {
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.version == this.version &&
-          other.syncStatus == this.syncStatus);
+          other.syncStatus == this.syncStatus &&
+          other.ownerId == this.ownerId);
 }
 
 class CylindersCompanion extends UpdateCompanion<Cylinder> {
@@ -5872,6 +6106,7 @@ class CylindersCompanion extends UpdateCompanion<Cylinder> {
   final Value<int?> deletedAt;
   final Value<int> version;
   final Value<int> syncStatus;
+  final Value<String?> ownerId;
   final Value<int> rowid;
   const CylindersCompanion({
     this.id = const Value.absent(),
@@ -5887,6 +6122,7 @@ class CylindersCompanion extends UpdateCompanion<Cylinder> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CylindersCompanion.insert({
@@ -5903,6 +6139,7 @@ class CylindersCompanion extends UpdateCompanion<Cylinder> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        label = Value(label),
@@ -5925,6 +6162,7 @@ class CylindersCompanion extends UpdateCompanion<Cylinder> {
     Expression<int>? deletedAt,
     Expression<int>? version,
     Expression<int>? syncStatus,
+    Expression<String>? ownerId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -5942,6 +6180,7 @@ class CylindersCompanion extends UpdateCompanion<Cylinder> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (version != null) 'version': version,
       if (syncStatus != null) 'sync_status': syncStatus,
+      if (ownerId != null) 'owner_id': ownerId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -5960,6 +6199,7 @@ class CylindersCompanion extends UpdateCompanion<Cylinder> {
     Value<int?>? deletedAt,
     Value<int>? version,
     Value<int>? syncStatus,
+    Value<String?>? ownerId,
     Value<int>? rowid,
   }) {
     return CylindersCompanion(
@@ -5976,6 +6216,7 @@ class CylindersCompanion extends UpdateCompanion<Cylinder> {
       deletedAt: deletedAt ?? this.deletedAt,
       version: version ?? this.version,
       syncStatus: syncStatus ?? this.syncStatus,
+      ownerId: ownerId ?? this.ownerId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -6022,6 +6263,9 @@ class CylindersCompanion extends UpdateCompanion<Cylinder> {
     if (syncStatus.present) {
       map['sync_status'] = Variable<int>(syncStatus.value);
     }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -6044,6 +6288,7 @@ class CylindersCompanion extends UpdateCompanion<Cylinder> {
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
           ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6146,6 +6391,17 @@ class $PressureMappingsTable extends PressureMappings
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     diveComputerId,
@@ -6156,6 +6412,7 @@ class $PressureMappingsTable extends PressureMappings
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -6231,6 +6488,12 @@ class $PressureMappingsTable extends PressureMappings
         syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
       );
     }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    }
     return context;
   }
 
@@ -6272,6 +6535,10 @@ class $PressureMappingsTable extends PressureMappings
         DriftSqlType.int,
         data['${effectivePrefix}sync_status'],
       )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      ),
     );
   }
 
@@ -6290,6 +6557,7 @@ class PressureMapping extends DataClass implements Insertable<PressureMapping> {
   final int? deletedAt;
   final int version;
   final int syncStatus;
+  final String? ownerId;
   const PressureMapping({
     required this.diveComputerId,
     required this.channelIndex,
@@ -6299,6 +6567,7 @@ class PressureMapping extends DataClass implements Insertable<PressureMapping> {
     this.deletedAt,
     required this.version,
     required this.syncStatus,
+    this.ownerId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -6315,6 +6584,9 @@ class PressureMapping extends DataClass implements Insertable<PressureMapping> {
     }
     map['version'] = Variable<int>(version);
     map['sync_status'] = Variable<int>(syncStatus);
+    if (!nullToAbsent || ownerId != null) {
+      map['owner_id'] = Variable<String>(ownerId);
+    }
     return map;
   }
 
@@ -6332,6 +6604,9 @@ class PressureMapping extends DataClass implements Insertable<PressureMapping> {
           : Value(deletedAt),
       version: Value(version),
       syncStatus: Value(syncStatus),
+      ownerId: ownerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownerId),
     );
   }
 
@@ -6349,6 +6624,7 @@ class PressureMapping extends DataClass implements Insertable<PressureMapping> {
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
       version: serializer.fromJson<int>(json['version']),
       syncStatus: serializer.fromJson<int>(json['syncStatus']),
+      ownerId: serializer.fromJson<String?>(json['ownerId']),
     );
   }
   @override
@@ -6363,6 +6639,7 @@ class PressureMapping extends DataClass implements Insertable<PressureMapping> {
       'deletedAt': serializer.toJson<int?>(deletedAt),
       'version': serializer.toJson<int>(version),
       'syncStatus': serializer.toJson<int>(syncStatus),
+      'ownerId': serializer.toJson<String?>(ownerId),
     };
   }
 
@@ -6375,6 +6652,7 @@ class PressureMapping extends DataClass implements Insertable<PressureMapping> {
     Value<int?> deletedAt = const Value.absent(),
     int? version,
     int? syncStatus,
+    Value<String?> ownerId = const Value.absent(),
   }) => PressureMapping(
     diveComputerId: diveComputerId ?? this.diveComputerId,
     channelIndex: channelIndex ?? this.channelIndex,
@@ -6384,6 +6662,7 @@ class PressureMapping extends DataClass implements Insertable<PressureMapping> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     version: version ?? this.version,
     syncStatus: syncStatus ?? this.syncStatus,
+    ownerId: ownerId.present ? ownerId.value : this.ownerId,
   );
   PressureMapping copyWithCompanion(PressureMappingsCompanion data) {
     return PressureMapping(
@@ -6403,6 +6682,7 @@ class PressureMapping extends DataClass implements Insertable<PressureMapping> {
       syncStatus: data.syncStatus.present
           ? data.syncStatus.value
           : this.syncStatus,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
     );
   }
 
@@ -6416,7 +6696,8 @@ class PressureMapping extends DataClass implements Insertable<PressureMapping> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
-          ..write('syncStatus: $syncStatus')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId')
           ..write(')'))
         .toString();
   }
@@ -6431,6 +6712,7 @@ class PressureMapping extends DataClass implements Insertable<PressureMapping> {
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   );
   @override
   bool operator ==(Object other) =>
@@ -6443,7 +6725,8 @@ class PressureMapping extends DataClass implements Insertable<PressureMapping> {
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.version == this.version &&
-          other.syncStatus == this.syncStatus);
+          other.syncStatus == this.syncStatus &&
+          other.ownerId == this.ownerId);
 }
 
 class PressureMappingsCompanion extends UpdateCompanion<PressureMapping> {
@@ -6455,6 +6738,7 @@ class PressureMappingsCompanion extends UpdateCompanion<PressureMapping> {
   final Value<int?> deletedAt;
   final Value<int> version;
   final Value<int> syncStatus;
+  final Value<String?> ownerId;
   final Value<int> rowid;
   const PressureMappingsCompanion({
     this.diveComputerId = const Value.absent(),
@@ -6465,6 +6749,7 @@ class PressureMappingsCompanion extends UpdateCompanion<PressureMapping> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PressureMappingsCompanion.insert({
@@ -6476,6 +6761,7 @@ class PressureMappingsCompanion extends UpdateCompanion<PressureMapping> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : diveComputerId = Value(diveComputerId),
        channelIndex = Value(channelIndex),
@@ -6490,6 +6776,7 @@ class PressureMappingsCompanion extends UpdateCompanion<PressureMapping> {
     Expression<int>? deletedAt,
     Expression<int>? version,
     Expression<int>? syncStatus,
+    Expression<String>? ownerId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -6501,6 +6788,7 @@ class PressureMappingsCompanion extends UpdateCompanion<PressureMapping> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (version != null) 'version': version,
       if (syncStatus != null) 'sync_status': syncStatus,
+      if (ownerId != null) 'owner_id': ownerId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -6514,6 +6802,7 @@ class PressureMappingsCompanion extends UpdateCompanion<PressureMapping> {
     Value<int?>? deletedAt,
     Value<int>? version,
     Value<int>? syncStatus,
+    Value<String?>? ownerId,
     Value<int>? rowid,
   }) {
     return PressureMappingsCompanion(
@@ -6525,6 +6814,7 @@ class PressureMappingsCompanion extends UpdateCompanion<PressureMapping> {
       deletedAt: deletedAt ?? this.deletedAt,
       version: version ?? this.version,
       syncStatus: syncStatus ?? this.syncStatus,
+      ownerId: ownerId ?? this.ownerId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -6556,6 +6846,9 @@ class PressureMappingsCompanion extends UpdateCompanion<PressureMapping> {
     if (syncStatus.present) {
       map['sync_status'] = Variable<int>(syncStatus.value);
     }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -6573,6 +6866,7 @@ class PressureMappingsCompanion extends UpdateCompanion<PressureMapping> {
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
           ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6676,6 +6970,17 @@ class $DiveCylindersTable extends DiveCylinders
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     diveId,
@@ -6686,6 +6991,7 @@ class $DiveCylindersTable extends DiveCylinders
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -6758,6 +7064,12 @@ class $DiveCylindersTable extends DiveCylinders
         syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
       );
     }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    }
     return context;
   }
 
@@ -6799,6 +7111,10 @@ class $DiveCylindersTable extends DiveCylinders
         DriftSqlType.int,
         data['${effectivePrefix}sync_status'],
       )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      ),
     );
   }
 
@@ -6817,6 +7133,7 @@ class DiveCylinder extends DataClass implements Insertable<DiveCylinder> {
   final int? deletedAt;
   final int version;
   final int syncStatus;
+  final String? ownerId;
   const DiveCylinder({
     required this.diveId,
     required this.gasMixIndex,
@@ -6826,6 +7143,7 @@ class DiveCylinder extends DataClass implements Insertable<DiveCylinder> {
     this.deletedAt,
     required this.version,
     required this.syncStatus,
+    this.ownerId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -6842,6 +7160,9 @@ class DiveCylinder extends DataClass implements Insertable<DiveCylinder> {
     }
     map['version'] = Variable<int>(version);
     map['sync_status'] = Variable<int>(syncStatus);
+    if (!nullToAbsent || ownerId != null) {
+      map['owner_id'] = Variable<String>(ownerId);
+    }
     return map;
   }
 
@@ -6859,6 +7180,9 @@ class DiveCylinder extends DataClass implements Insertable<DiveCylinder> {
           : Value(deletedAt),
       version: Value(version),
       syncStatus: Value(syncStatus),
+      ownerId: ownerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownerId),
     );
   }
 
@@ -6876,6 +7200,7 @@ class DiveCylinder extends DataClass implements Insertable<DiveCylinder> {
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
       version: serializer.fromJson<int>(json['version']),
       syncStatus: serializer.fromJson<int>(json['syncStatus']),
+      ownerId: serializer.fromJson<String?>(json['ownerId']),
     );
   }
   @override
@@ -6890,6 +7215,7 @@ class DiveCylinder extends DataClass implements Insertable<DiveCylinder> {
       'deletedAt': serializer.toJson<int?>(deletedAt),
       'version': serializer.toJson<int>(version),
       'syncStatus': serializer.toJson<int>(syncStatus),
+      'ownerId': serializer.toJson<String?>(ownerId),
     };
   }
 
@@ -6902,6 +7228,7 @@ class DiveCylinder extends DataClass implements Insertable<DiveCylinder> {
     Value<int?> deletedAt = const Value.absent(),
     int? version,
     int? syncStatus,
+    Value<String?> ownerId = const Value.absent(),
   }) => DiveCylinder(
     diveId: diveId ?? this.diveId,
     gasMixIndex: gasMixIndex ?? this.gasMixIndex,
@@ -6911,6 +7238,7 @@ class DiveCylinder extends DataClass implements Insertable<DiveCylinder> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     version: version ?? this.version,
     syncStatus: syncStatus ?? this.syncStatus,
+    ownerId: ownerId.present ? ownerId.value : this.ownerId,
   );
   DiveCylinder copyWithCompanion(DiveCylindersCompanion data) {
     return DiveCylinder(
@@ -6928,6 +7256,7 @@ class DiveCylinder extends DataClass implements Insertable<DiveCylinder> {
       syncStatus: data.syncStatus.present
           ? data.syncStatus.value
           : this.syncStatus,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
     );
   }
 
@@ -6941,7 +7270,8 @@ class DiveCylinder extends DataClass implements Insertable<DiveCylinder> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
-          ..write('syncStatus: $syncStatus')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId')
           ..write(')'))
         .toString();
   }
@@ -6956,6 +7286,7 @@ class DiveCylinder extends DataClass implements Insertable<DiveCylinder> {
     deletedAt,
     version,
     syncStatus,
+    ownerId,
   );
   @override
   bool operator ==(Object other) =>
@@ -6968,7 +7299,8 @@ class DiveCylinder extends DataClass implements Insertable<DiveCylinder> {
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.version == this.version &&
-          other.syncStatus == this.syncStatus);
+          other.syncStatus == this.syncStatus &&
+          other.ownerId == this.ownerId);
 }
 
 class DiveCylindersCompanion extends UpdateCompanion<DiveCylinder> {
@@ -6980,6 +7312,7 @@ class DiveCylindersCompanion extends UpdateCompanion<DiveCylinder> {
   final Value<int?> deletedAt;
   final Value<int> version;
   final Value<int> syncStatus;
+  final Value<String?> ownerId;
   final Value<int> rowid;
   const DiveCylindersCompanion({
     this.diveId = const Value.absent(),
@@ -6990,6 +7323,7 @@ class DiveCylindersCompanion extends UpdateCompanion<DiveCylinder> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DiveCylindersCompanion.insert({
@@ -7001,6 +7335,7 @@ class DiveCylindersCompanion extends UpdateCompanion<DiveCylinder> {
     this.deletedAt = const Value.absent(),
     this.version = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : diveId = Value(diveId),
        gasMixIndex = Value(gasMixIndex),
@@ -7015,6 +7350,7 @@ class DiveCylindersCompanion extends UpdateCompanion<DiveCylinder> {
     Expression<int>? deletedAt,
     Expression<int>? version,
     Expression<int>? syncStatus,
+    Expression<String>? ownerId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -7026,6 +7362,7 @@ class DiveCylindersCompanion extends UpdateCompanion<DiveCylinder> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (version != null) 'version': version,
       if (syncStatus != null) 'sync_status': syncStatus,
+      if (ownerId != null) 'owner_id': ownerId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -7039,6 +7376,7 @@ class DiveCylindersCompanion extends UpdateCompanion<DiveCylinder> {
     Value<int?>? deletedAt,
     Value<int>? version,
     Value<int>? syncStatus,
+    Value<String?>? ownerId,
     Value<int>? rowid,
   }) {
     return DiveCylindersCompanion(
@@ -7050,6 +7388,7 @@ class DiveCylindersCompanion extends UpdateCompanion<DiveCylinder> {
       deletedAt: deletedAt ?? this.deletedAt,
       version: version ?? this.version,
       syncStatus: syncStatus ?? this.syncStatus,
+      ownerId: ownerId ?? this.ownerId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -7081,6 +7420,9 @@ class DiveCylindersCompanion extends UpdateCompanion<DiveCylinder> {
     if (syncStatus.present) {
       map['sync_status'] = Variable<int>(syncStatus.value);
     }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -7098,6 +7440,7 @@ class DiveCylindersCompanion extends UpdateCompanion<DiveCylinder> {
           ..write('deletedAt: $deletedAt, ')
           ..write('version: $version, ')
           ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -8957,6 +9300,7 @@ typedef $$DiveAnnotationsTableCreateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 typedef $$DiveAnnotationsTableUpdateCompanionBuilder =
@@ -8975,6 +9319,7 @@ typedef $$DiveAnnotationsTableUpdateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 
@@ -9080,6 +9425,11 @@ class $$DiveAnnotationsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$DivesTableFilterComposer get diveId {
     final $$DivesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -9178,6 +9528,11 @@ class $$DiveAnnotationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$DivesTableOrderingComposer get diveId {
     final $$DivesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -9260,6 +9615,9 @@ class $$DiveAnnotationsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
+
   $$DivesTableAnnotationComposer get diveId {
     final $$DivesTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -9328,6 +9686,7 @@ class $$DiveAnnotationsTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DiveAnnotationsCompanion(
                 diveId: diveId,
@@ -9344,6 +9703,7 @@ class $$DiveAnnotationsTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -9362,6 +9722,7 @@ class $$DiveAnnotationsTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DiveAnnotationsCompanion.insert(
                 diveId: diveId,
@@ -9378,6 +9739,7 @@ class $$DiveAnnotationsTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -9461,6 +9823,7 @@ typedef $$DiveComputersTableCreateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 typedef $$DiveComputersTableUpdateCompanionBuilder =
@@ -9475,6 +9838,7 @@ typedef $$DiveComputersTableUpdateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 
@@ -9534,6 +9898,11 @@ class $$DiveComputersTableFilterComposer
 
   ColumnFilters<int> get syncStatus => $composableBuilder(
     column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -9596,6 +9965,11 @@ class $$DiveComputersTableOrderingComposer
     column: $table.syncStatus,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$DiveComputersTableAnnotationComposer
@@ -9640,6 +10014,9 @@ class $$DiveComputersTableAnnotationComposer
     column: $table.syncStatus,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
 }
 
 class $$DiveComputersTableTableManager
@@ -9683,6 +10060,7 @@ class $$DiveComputersTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DiveComputersCompanion(
                 id: id,
@@ -9695,6 +10073,7 @@ class $$DiveComputersTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -9709,6 +10088,7 @@ class $$DiveComputersTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DiveComputersCompanion.insert(
                 id: id,
@@ -9721,6 +10101,7 @@ class $$DiveComputersTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -9761,6 +10142,7 @@ typedef $$OxygenCellsTableCreateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 typedef $$OxygenCellsTableUpdateCompanionBuilder =
@@ -9776,6 +10158,7 @@ typedef $$OxygenCellsTableUpdateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 
@@ -9840,6 +10223,11 @@ class $$OxygenCellsTableFilterComposer
 
   ColumnFilters<int> get syncStatus => $composableBuilder(
     column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -9907,6 +10295,11 @@ class $$OxygenCellsTableOrderingComposer
     column: $table.syncStatus,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$OxygenCellsTableAnnotationComposer
@@ -9956,6 +10349,9 @@ class $$OxygenCellsTableAnnotationComposer
     column: $table.syncStatus,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
 }
 
 class $$OxygenCellsTableTableManager
@@ -10000,6 +10396,7 @@ class $$OxygenCellsTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => OxygenCellsCompanion(
                 id: id,
@@ -10013,6 +10410,7 @@ class $$OxygenCellsTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -10028,6 +10426,7 @@ class $$OxygenCellsTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => OxygenCellsCompanion.insert(
                 id: id,
@@ -10041,6 +10440,7 @@ class $$OxygenCellsTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -10080,6 +10480,7 @@ typedef $$ScrubberSessionsTableCreateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 typedef $$ScrubberSessionsTableUpdateCompanionBuilder =
@@ -10094,6 +10495,7 @@ typedef $$ScrubberSessionsTableUpdateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 
@@ -10153,6 +10555,11 @@ class $$ScrubberSessionsTableFilterComposer
 
   ColumnFilters<int> get syncStatus => $composableBuilder(
     column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -10215,6 +10622,11 @@ class $$ScrubberSessionsTableOrderingComposer
     column: $table.syncStatus,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ScrubberSessionsTableAnnotationComposer
@@ -10261,6 +10673,9 @@ class $$ScrubberSessionsTableAnnotationComposer
     column: $table.syncStatus,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
 }
 
 class $$ScrubberSessionsTableTableManager
@@ -10310,6 +10725,7 @@ class $$ScrubberSessionsTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ScrubberSessionsCompanion(
                 id: id,
@@ -10322,6 +10738,7 @@ class $$ScrubberSessionsTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -10336,6 +10753,7 @@ class $$ScrubberSessionsTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ScrubberSessionsCompanion.insert(
                 id: id,
@@ -10348,6 +10766,7 @@ class $$ScrubberSessionsTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -10390,6 +10809,7 @@ typedef $$CylindersTableCreateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 typedef $$CylindersTableUpdateCompanionBuilder =
@@ -10407,6 +10827,7 @@ typedef $$CylindersTableUpdateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 
@@ -10481,6 +10902,11 @@ class $$CylindersTableFilterComposer
 
   ColumnFilters<int> get syncStatus => $composableBuilder(
     column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -10558,6 +10984,11 @@ class $$CylindersTableOrderingComposer
     column: $table.syncStatus,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CylindersTableAnnotationComposer
@@ -10615,6 +11046,9 @@ class $$CylindersTableAnnotationComposer
     column: $table.syncStatus,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
 }
 
 class $$CylindersTableTableManager
@@ -10658,6 +11092,7 @@ class $$CylindersTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CylindersCompanion(
                 id: id,
@@ -10673,6 +11108,7 @@ class $$CylindersTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -10690,6 +11126,7 @@ class $$CylindersTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CylindersCompanion.insert(
                 id: id,
@@ -10705,6 +11142,7 @@ class $$CylindersTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -10739,6 +11177,7 @@ typedef $$PressureMappingsTableCreateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 typedef $$PressureMappingsTableUpdateCompanionBuilder =
@@ -10751,6 +11190,7 @@ typedef $$PressureMappingsTableUpdateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 
@@ -10800,6 +11240,11 @@ class $$PressureMappingsTableFilterComposer
 
   ColumnFilters<int> get syncStatus => $composableBuilder(
     column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -10852,6 +11297,11 @@ class $$PressureMappingsTableOrderingComposer
     column: $table.syncStatus,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PressureMappingsTableAnnotationComposer
@@ -10894,6 +11344,9 @@ class $$PressureMappingsTableAnnotationComposer
     column: $table.syncStatus,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
 }
 
 class $$PressureMappingsTableTableManager
@@ -10941,6 +11394,7 @@ class $$PressureMappingsTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PressureMappingsCompanion(
                 diveComputerId: diveComputerId,
@@ -10951,6 +11405,7 @@ class $$PressureMappingsTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -10963,6 +11418,7 @@ class $$PressureMappingsTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PressureMappingsCompanion.insert(
                 diveComputerId: diveComputerId,
@@ -10973,6 +11429,7 @@ class $$PressureMappingsTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -11010,6 +11467,7 @@ typedef $$DiveCylindersTableCreateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 typedef $$DiveCylindersTableUpdateCompanionBuilder =
@@ -11022,6 +11480,7 @@ typedef $$DiveCylindersTableUpdateCompanionBuilder =
       Value<int?> deletedAt,
       Value<int> version,
       Value<int> syncStatus,
+      Value<String?> ownerId,
       Value<int> rowid,
     });
 
@@ -11096,6 +11555,11 @@ class $$DiveCylindersTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$DivesTableFilterComposer get diveId {
     final $$DivesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -11164,6 +11628,11 @@ class $$DiveCylindersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$DivesTableOrderingComposer get diveId {
     final $$DivesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -11223,6 +11692,9 @@ class $$DiveCylindersTableAnnotationComposer
     column: $table.syncStatus,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
 
   $$DivesTableAnnotationComposer get diveId {
     final $$DivesTableAnnotationComposer composer = $composerBuilder(
@@ -11284,6 +11756,7 @@ class $$DiveCylindersTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DiveCylindersCompanion(
                 diveId: diveId,
@@ -11294,6 +11767,7 @@ class $$DiveCylindersTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -11306,6 +11780,7 @@ class $$DiveCylindersTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DiveCylindersCompanion.insert(
                 diveId: diveId,
@@ -11316,6 +11791,7 @@ class $$DiveCylindersTableTableManager
                 deletedAt: deletedAt,
                 version: version,
                 syncStatus: syncStatus,
+                ownerId: ownerId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

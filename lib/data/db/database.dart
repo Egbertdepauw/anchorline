@@ -28,7 +28,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -57,6 +57,23 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 7) {
             await m.addColumn(dives, dives.subsurfaceUploadedAt);
+          }
+          if (from < 8) {
+            // Tables that existed at v1 always need the column added.
+            await m.addColumn(diveAnnotations, diveAnnotations.ownerId);
+            await m.addColumn(oxygenCells, oxygenCells.ownerId);
+            await m.addColumn(scrubberSessions, scrubberSessions.ownerId);
+            await m.addColumn(diveComputers, diveComputers.ownerId);
+            // Tables created by earlier migration steps in this cascade
+            // are already fresh-with-owner_id; only ALTER if they were
+            // created before this run.
+            if (from >= 2) {
+              await m.addColumn(cylinders, cylinders.ownerId);
+              await m.addColumn(pressureMappings, pressureMappings.ownerId);
+            }
+            if (from >= 3) {
+              await m.addColumn(diveCylinders, diveCylinders.ownerId);
+            }
           }
         },
       );

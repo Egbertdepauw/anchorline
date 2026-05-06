@@ -121,6 +121,7 @@ class DiveAnnotations extends Table {
   IntColumn get deletedAt => integer().nullable()();
   IntColumn get version => integer().withDefault(const Constant(1))();
   IntColumn get syncStatus => integer().withDefault(const Constant(0))();
+  TextColumn get ownerId => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {diveId};
@@ -139,6 +140,7 @@ class DiveComputers extends Table {
   IntColumn get deletedAt => integer().nullable()();
   IntColumn get version => integer().withDefault(const Constant(1))();
   IntColumn get syncStatus => integer().withDefault(const Constant(0))();
+  TextColumn get ownerId => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -158,6 +160,7 @@ class OxygenCells extends Table {
   IntColumn get deletedAt => integer().nullable()();
   IntColumn get version => integer().withDefault(const Constant(1))();
   IntColumn get syncStatus => integer().withDefault(const Constant(0))();
+  TextColumn get ownerId => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -176,6 +179,7 @@ class ScrubberSessions extends Table {
   IntColumn get deletedAt => integer().nullable()();
   IntColumn get version => integer().withDefault(const Constant(1))();
   IntColumn get syncStatus => integer().withDefault(const Constant(0))();
+  TextColumn get ownerId => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -197,6 +201,7 @@ class Cylinders extends Table {
   IntColumn get deletedAt => integer().nullable()();
   IntColumn get version => integer().withDefault(const Constant(1))();
   IntColumn get syncStatus => integer().withDefault(const Constant(0))();
+  TextColumn get ownerId => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -213,6 +218,7 @@ class PressureMappings extends Table {
   IntColumn get deletedAt => integer().nullable()();
   IntColumn get version => integer().withDefault(const Constant(1))();
   IntColumn get syncStatus => integer().withDefault(const Constant(0))();
+  TextColumn get ownerId => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {diveComputerId, channelIndex};
@@ -233,6 +239,7 @@ class DiveCylinders extends Table {
   IntColumn get deletedAt => integer().nullable()();
   IntColumn get version => integer().withDefault(const Constant(1))();
   IntColumn get syncStatus => integer().withDefault(const Constant(0))();
+  TextColumn get ownerId => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {diveId, gasMixIndex};

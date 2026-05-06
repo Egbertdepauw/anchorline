@@ -6,6 +6,132 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+/// Seed the v1-era sync-eligible tables that the v8 migration ALTERs.
+/// Called from legacy tests that don't already create these themselves.
+void _seedV1SyncTables(
+  Database raw, {
+  Set<String> except = const {},
+}) {
+  if (!except.contains('dive_annotations')) {
+    raw.execute('''
+      CREATE TABLE dive_annotations (
+        dive_id TEXT NOT NULL PRIMARY KEY,
+        site_name TEXT,
+        site_latitude_e5 INTEGER,
+        site_longitude_e5 INTEGER,
+        notes TEXT,
+        buddies_json TEXT,
+        tags_json TEXT,
+        rating INTEGER,
+        conditions TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
+  }
+  if (!except.contains('oxygen_cells')) {
+    raw.execute('''
+      CREATE TABLE oxygen_cells (
+        id TEXT NOT NULL PRIMARY KEY,
+        slot INTEGER NOT NULL,
+        label TEXT,
+        installed_date INTEGER,
+        retired_date INTEGER,
+        notes TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
+  }
+  if (!except.contains('scrubber_sessions')) {
+    raw.execute('''
+      CREATE TABLE scrubber_sessions (
+        id TEXT NOT NULL PRIMARY KEY,
+        started_date INTEGER,
+        total_minutes INTEGER,
+        media_type TEXT,
+        notes TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
+  }
+  if (!except.contains('dive_computers')) {
+    raw.execute('''
+      CREATE TABLE dive_computers (
+        id TEXT NOT NULL PRIMARY KEY,
+        serial INTEGER NOT NULL UNIQUE,
+        model INTEGER NOT NULL,
+        firmware_version INTEGER,
+        nickname TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
+  }
+  if (!except.contains('cylinders')) {
+    raw.execute('''
+      CREATE TABLE cylinders (
+        id TEXT NOT NULL PRIMARY KEY,
+        label TEXT NOT NULL,
+        role TEXT NOT NULL,
+        bailout_order INTEGER,
+        volume_liters REAL NOT NULL,
+        working_pressure_bar INTEGER NOT NULL,
+        gas_mix TEXT,
+        notes TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
+  }
+  if (!except.contains('pressure_mappings')) {
+    raw.execute('''
+      CREATE TABLE pressure_mappings (
+        dive_computer_id TEXT NOT NULL,
+        channel_index INTEGER NOT NULL,
+        cylinder_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (dive_computer_id, channel_index)
+      );
+    ''');
+  }
+  if (!except.contains('dive_cylinders')) {
+    raw.execute('''
+      CREATE TABLE dive_cylinders (
+        dive_id TEXT NOT NULL,
+        gas_mix_index INTEGER NOT NULL,
+        cylinder_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (dive_id, gas_mix_index)
+      );
+    ''');
+  }
+}
+
 /// Seed a minimal pre-v4 dives + dive_samples pair so cumulative
 /// ALTERs from any earlier version land on something.
 void _seedDivesV3(Database raw) {
@@ -60,7 +186,7 @@ void main() {
   test('schema v2: has cylinders, pressure_mappings, oxygen_cells.label', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    expect(db.schemaVersion, 7);
+    expect(db.schemaVersion, 8);
 
     // Inserting a row exercises the full schema.
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -99,6 +225,15 @@ void main() {
     addTearDown(raw.close);
 
     _seedDivesV3(raw);
+    // v1-era sibling tables (this test creates oxygen_cells itself; the
+    // 1→2 migration creates cylinders + pressure_mappings; the 2→3
+    // migration creates dive_cylinders).
+    _seedV1SyncTables(raw, except: {
+      'oxygen_cells',
+      'cylinders',
+      'pressure_mappings',
+      'dive_cylinders',
+    });
 
     // V1 oxygen_cells: no `label` column.
     raw.execute('''
@@ -136,7 +271,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 7);
+    expect(db.schemaVersion, 8);
 
     // Step 5: verify the seeded oxygen_cells row survived.
     final cells = await db.select(db.oxygenCells).get();
@@ -172,6 +307,9 @@ void main() {
     addTearDown(raw.close);
 
     _seedDivesV3(raw);
+    // v1-era sibling tables (this test creates dive_annotations itself;
+    // the 2→3 migration creates dive_cylinders).
+    _seedV1SyncTables(raw, except: {'dive_annotations', 'dive_cylinders'});
 
     // V2 dive_annotations: same shape as v3.
     raw.execute('''
@@ -210,7 +348,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 7);
+    expect(db.schemaVersion, 8);
 
     // Step 5: verify the seeded annotation row survived.
     final annotations = await db.select(db.diveAnnotations).get();
@@ -235,6 +373,7 @@ void main() {
     addTearDown(raw.close);
 
     _seedDivesV3(raw);
+    _seedV1SyncTables(raw);
     raw.execute('PRAGMA user_version = 3;');
 
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -256,7 +395,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 7);
+    expect(db.schemaVersion, 8);
 
     final dives = await db.select(db.dives).get();
     expect(dives, hasLength(1));
@@ -273,6 +412,7 @@ void main() {
 
     // Seed v4 dives table: v3 columns + the three scrubber-stack columns.
     _seedDivesV3(raw);
+    _seedV1SyncTables(raw);
     raw.execute('ALTER TABLE dives ADD COLUMN configured_stack_seconds INTEGER');
     raw.execute(
         'ALTER TABLE dives ADD COLUMN stack_remaining_at_start_seconds INTEGER');
@@ -299,7 +439,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 7);
+    expect(db.schemaVersion, 8);
 
     // Migrated row: tanks_json is null on the existing v4 row.
     final migrated = await db.select(db.dives).get();
@@ -346,6 +486,7 @@ void main() {
 
     // Seed v5 dives + dive_samples (without tank_pressures_blob).
     _seedDivesV3(raw);
+    _seedV1SyncTables(raw);
     raw.execute('ALTER TABLE dives ADD COLUMN configured_stack_seconds INTEGER');
     raw.execute(
         'ALTER TABLE dives ADD COLUMN stack_remaining_at_start_seconds INTEGER');
@@ -385,7 +526,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 7);
+    expect(db.schemaVersion, 8);
 
     // The migrated row's tank_pressures_blob is null.
     final migrated = await db.select(db.diveSamples).get();
@@ -447,6 +588,7 @@ void main() {
     // Seed v6 dives + dive_samples (with tank_pressures_blob, without
     // subsurface_uploaded_at).
     _seedDivesV3(raw);
+    _seedV1SyncTables(raw);
     raw.execute('ALTER TABLE dives ADD COLUMN configured_stack_seconds INTEGER');
     raw.execute(
         'ALTER TABLE dives ADD COLUMN stack_remaining_at_start_seconds INTEGER');
@@ -475,7 +617,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 7);
+    expect(db.schemaVersion, 8);
 
     // The migrated row has a null subsurface_uploaded_at.
     final migrated = await db.select(db.dives).get();
@@ -509,5 +651,206 @@ void main() {
           ..where((d) => d.id.equals('dive_v7')))
         .getSingle();
     expect(fresh.subsurfaceUploadedAt, 123456789);
+  });
+
+  test('v7 → v8 onUpgrade adds owner_id to every sync-eligible table',
+      () async {
+    final raw = sqlite3.openInMemory();
+    addTearDown(raw.close);
+
+    // Seed v7: dives table with all v7 columns, plus the seven
+    // sync-eligible tables in their pre-owner_id shape.
+    _seedDivesV3(raw);
+    raw.execute('ALTER TABLE dives ADD COLUMN configured_stack_seconds INTEGER');
+    raw.execute(
+        'ALTER TABLE dives ADD COLUMN stack_remaining_at_start_seconds INTEGER');
+    raw.execute(
+        'ALTER TABLE dives ADD COLUMN stack_remaining_at_end_seconds INTEGER');
+    raw.execute('ALTER TABLE dives ADD COLUMN tanks_json TEXT');
+    raw.execute('ALTER TABLE dive_samples ADD COLUMN tank_pressures_blob BLOB');
+    raw.execute('ALTER TABLE dives ADD COLUMN subsurface_uploaded_at INTEGER');
+
+    raw.execute('''
+      CREATE TABLE dive_annotations (
+        dive_id TEXT NOT NULL PRIMARY KEY,
+        site_name TEXT,
+        site_latitude_e5 INTEGER,
+        site_longitude_e5 INTEGER,
+        notes TEXT,
+        buddies_json TEXT,
+        tags_json TEXT,
+        rating INTEGER,
+        conditions TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
+    raw.execute('''
+      CREATE TABLE cylinders (
+        id TEXT NOT NULL PRIMARY KEY,
+        label TEXT NOT NULL,
+        role TEXT NOT NULL,
+        bailout_order INTEGER,
+        volume_liters REAL NOT NULL,
+        working_pressure_bar INTEGER NOT NULL,
+        gas_mix TEXT,
+        notes TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
+    raw.execute('''
+      CREATE TABLE oxygen_cells (
+        id TEXT NOT NULL PRIMARY KEY,
+        slot INTEGER NOT NULL,
+        label TEXT,
+        installed_date INTEGER,
+        retired_date INTEGER,
+        notes TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
+    raw.execute('''
+      CREATE TABLE scrubber_sessions (
+        id TEXT NOT NULL PRIMARY KEY,
+        started_date INTEGER,
+        total_minutes INTEGER,
+        media_type TEXT,
+        notes TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
+    raw.execute('''
+      CREATE TABLE pressure_mappings (
+        dive_computer_id TEXT NOT NULL,
+        channel_index INTEGER NOT NULL,
+        cylinder_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (dive_computer_id, channel_index)
+      );
+    ''');
+    raw.execute('''
+      CREATE TABLE dive_cylinders (
+        dive_id TEXT NOT NULL,
+        gas_mix_index INTEGER NOT NULL,
+        cylinder_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (dive_id, gas_mix_index)
+      );
+    ''');
+    raw.execute('''
+      CREATE TABLE dive_computers (
+        id TEXT NOT NULL PRIMARY KEY,
+        serial INTEGER NOT NULL UNIQUE,
+        model INTEGER NOT NULL,
+        firmware_version INTEGER,
+        nickname TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
+    raw.execute('PRAGMA user_version = 7;');
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    raw.execute(
+      'INSERT INTO dive_annotations '
+      '(dive_id, site_name, notes, created_at, updated_at, version, sync_status) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ['dive_v7', 'Black Lagoon', 'pre-upgrade', now, now, 1, 0],
+    );
+    raw.execute(
+      'INSERT INTO cylinders '
+      '(id, label, role, volume_liters, working_pressure_bar, '
+      'created_at, updated_at, version, sync_status) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ['cyl_v7', 'AL40', 'bailout', 5.7, 207, now, now, 1, 0],
+    );
+    raw.execute(
+      'INSERT INTO oxygen_cells '
+      '(id, slot, created_at, updated_at, version, sync_status) '
+      'VALUES (?, ?, ?, ?, ?, ?)',
+      ['cell_v7', 1, now, now, 1, 0],
+    );
+    raw.execute(
+      'INSERT INTO scrubber_sessions '
+      '(id, created_at, updated_at, version, sync_status) '
+      'VALUES (?, ?, ?, ?, ?)',
+      ['scrub_v7', now, now, 1, 0],
+    );
+    raw.execute(
+      'INSERT INTO pressure_mappings '
+      '(dive_computer_id, channel_index, created_at, updated_at, version, sync_status) '
+      'VALUES (?, ?, ?, ?, ?, ?)',
+      ['dc_v7', 0, now, now, 1, 0],
+    );
+    raw.execute(
+      'INSERT INTO dive_cylinders '
+      '(dive_id, gas_mix_index, created_at, updated_at, version, sync_status) '
+      'VALUES (?, ?, ?, ?, ?, ?)',
+      ['dive_v7', 0, now, now, 1, 0],
+    );
+    raw.execute(
+      'INSERT INTO dive_computers '
+      '(id, serial, model, created_at, updated_at, version, sync_status) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ['dc_v7', 0xB89641E4, 0, now, now, 1, 0],
+    );
+
+    final db = AppDatabase(NativeDatabase.opened(raw));
+    addTearDown(db.close);
+
+    await db.customSelect('SELECT 1').get();
+    expect(db.schemaVersion, 8);
+
+    // Pre-existing rows survive the migration with owner_id null.
+    expect((await db.select(db.diveAnnotations).get()).single.ownerId, isNull);
+    expect((await db.select(db.cylinders).get()).single.ownerId, isNull);
+    expect((await db.select(db.oxygenCells).get()).single.ownerId, isNull);
+    expect((await db.select(db.scrubberSessions).get()).single.ownerId, isNull);
+    expect((await db.select(db.pressureMappings).get()).single.ownerId, isNull);
+    expect((await db.select(db.diveCylinders).get()).single.ownerId, isNull);
+    expect((await db.select(db.diveComputers).get()).single.ownerId, isNull);
+
+    // Inserting with owner_id populated reads back verbatim.
+    const ownerUuid = '00000000-0000-0000-0000-000000000001';
+    await db.into(db.cylinders).insert(CylindersCompanion.insert(
+          id: 'cyl_v8',
+          label: 'AL80',
+          role: 'bailout',
+          volumeLiters: 11.1,
+          workingPressureBar: 207,
+          createdAt: now,
+          updatedAt: now,
+          ownerId: const Value(ownerUuid),
+        ));
+    final fresh = await (db.select(db.cylinders)
+          ..where((c) => c.id.equals('cyl_v8')))
+        .getSingle();
+    expect(fresh.ownerId, ownerUuid);
   });
 }
