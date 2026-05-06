@@ -10,7 +10,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../data/db/database.dart';
+import '../../data/models/dive.dart' show DiveTank;
 import '../../data/models/sample_set.dart';
+import '../../shearwater/parser/parsed_dive.dart' show TankUsage;
 import '../notifiers/dive_detail_notifier.dart';
 
 // ── Layout constants ────────────────────────────────────────────
@@ -31,6 +33,20 @@ const Color _cell1Color = Color(0xFFFFEE58);
 const Color _cell2Color = Color(0xFF42A5F5);
 const Color _crosshairColor = Color(0x80FFFFFF);
 const Color _gridColor = Color(0xFF1A2A40);
+
+// Tank-trace palette per tank slot. Picked to be distinct from the
+// existing depth/cell/setpoint colours.
+const List<Color> _tankColors = [
+  Color(0xFF80DEEA), // cyan-ish
+  Color(0xFFFFAB91), // peach
+  Color(0xFFCE93D8), // lilac
+  Color(0xFFB0BEC5), // blue grey
+  Color(0xFFA5D6A7), // pale green
+  Color(0xFFFFE082), // pale amber
+];
+
+/// Implicit y-axis range for tank traces, in bar.
+const double _tankBarMax = 300.0;
 
 // ── Speed gradient (Subsurface anchor speeds, smooth interpolation) ──
 //
@@ -100,6 +116,10 @@ class ProfileChart extends StatelessWidget {
   /// as a single solid stroke in [_depthColor] with no overlay.
   final bool useSpeedColoredGraph;
 
+  /// Active tanks for the dive (compacted list, one entry per active
+  /// slot). Drives the legend labels. Same length as [SampleSet.tankPressuresBar].
+  final List<DiveTank>? tanks;
+
   const ProfileChart({
     super.key,
     required this.samples,
@@ -110,10 +130,14 @@ class ProfileChart extends StatelessWidget {
     this.maxDescentEndIndex,
     this.maxAscentEndIndex,
     this.useSpeedColoredGraph = true,
+    this.tanks,
   });
 
   @override
   Widget build(BuildContext context) {
+    final showTanks = visibleTraces.contains(TraceType.tanks) &&
+        (tanks?.isNotEmpty ?? false) &&
+        samples.tankPressuresBar.isNotEmpty;
     return Stack(children: [
       CustomPaint(
         painter: ProfileChartPainter(
@@ -132,7 +156,68 @@ class ProfileChart extends StatelessWidget {
           top: _topPad + 2,
           child: _CellLegend(cellsBySlot: cellsBySlot!),
         ),
+      if (showTanks)
+        Positioned(
+          right: _rightPad + 4,
+          top: _topPad + 2,
+          child: _TankLegend(tanks: tanks!),
+        ),
     ]);
+  }
+}
+
+String tankTraceLabelFor(DiveTank tank) {
+  switch (tank.usage) {
+    case TankUsage.diluent:
+      return 'DIL';
+    case TankUsage.oxygen:
+      return 'O2';
+    case TankUsage.sidemount:
+      return 'BO';
+    case TankUsage.none:
+      return 'T${tank.slot}';
+  }
+}
+
+class _TankLegend extends StatelessWidget {
+  final List<DiveTank> tanks;
+  const _TankLegend({required this.tanks});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xC0152238),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < tanks.length; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 1),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                        color: _tankColors[i % _tankColors.length],
+                        borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 4),
+                Text(
+                  tankTraceLabelFor(tanks[i]),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                  ),
+                ),
+              ]),
+            ),
+        ],
+      ),
+    );
   }
 }
 
@@ -377,6 +462,33 @@ class ProfileChartPainter extends CustomPainter {
         _setpointColor,
         1.0,
       );
+    }
+
+    // ── Tank pressure traces ───────────────────────────────────────
+    if (visibleTraces.contains(TraceType.tanks) &&
+        samples.tankPressuresBar.isNotEmpty) {
+      double yTank(double bar) =>
+          chartBottom - (bar / _tankBarMax) * chartHeight;
+      for (var t = 0; t < samples.tankPressuresBar.length; t++) {
+        final ch = samples.tankPressuresBar[t];
+        var anyNonZero = false;
+        for (var i = 0; i < n; i++) {
+          if (ch[i] > 0) {
+            anyNonZero = true;
+            break;
+          }
+        }
+        if (!anyNonZero) continue;
+        _drawSolidTrace(
+          canvas,
+          ch,
+          n,
+          xOf,
+          yTank,
+          _tankColors[t % _tankColors.length],
+          1.5,
+        );
+      }
     }
 
     // ── Cell mV traces ─────────────────────────────────────────────

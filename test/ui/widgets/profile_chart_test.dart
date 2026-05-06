@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/models/dive.dart' show DiveTank;
 import 'package:ccrlogger/data/models/sample_set.dart';
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
@@ -166,6 +168,88 @@ void main() {
   test('cellTraceLabelForSlot fallbacks', () {
     expect(cellTraceLabelForSlot(null, 1), '—');
     expect(cellTraceLabelForSlot(const {}, 2), '—');
+  });
+
+  testWidgets('renders tank traces and labels them DIL/O2', (tester) async {
+    const n = 60;
+    final ch0 = Float32List(n);
+    final ch1 = Float32List(n);
+    for (var i = 0; i < n; i++) {
+      ch0[i] = 230.0 - 0.5 * i;
+      ch1[i] = 200.0 - 0.7 * i;
+    }
+    final samples = SampleSet(
+      diveId: 't',
+      sampleCount: n,
+      sampleIntervalMs: 10000,
+      depthMeters: Float32List(n),
+      temperatureCelsius: Float32List(n),
+      ppo2Bar: Float32List(n),
+      cellMv0: Float32List(n),
+      cellMv1: Float32List(n),
+      cellMv2: Float32List(n),
+      setpointBar: Float32List(n),
+      cns: Float32List(n),
+      decoStopDepthMeters: Float32List(n),
+      decoTimeSeconds: Int32List(n),
+      ttsSeconds: Int32List(n),
+      gasMixIndex: Uint8List(n),
+      statusFlags: Uint8List(n),
+      tankPressuresBar: [ch0, ch1],
+    );
+    final tanks = [
+      DiveTank(
+        slot: 0,
+        usage: TankUsage.diluent,
+        name: '',
+        serial: 0,
+        beginPressureBar: 230,
+        endPressureBar: 200,
+        pressureMaxBar: 300,
+        pressureReserveBar: 50,
+      ),
+      DiveTank(
+        slot: 1,
+        usage: TankUsage.oxygen,
+        name: '',
+        serial: 0,
+        beginPressureBar: 200,
+        endPressureBar: 160,
+        pressureMaxBar: 300,
+        pressureReserveBar: 40,
+      ),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 360,
+                height: 250,
+                child: ProfileChart(
+                    samples: samples,
+                    visibleTraces: const {TraceType.tanks},
+                    crosshairIndex: null,
+                    tanks: tanks)))));
+    expect(find.byType(ProfileChart), findsOneWidget);
+    expect(find.text('DIL'), findsOneWidget);
+    expect(find.text('O2'), findsOneWidget);
+  });
+
+  test('tankTraceLabelFor maps usage to compact labels', () {
+    DiveTank mk(TankUsage u, {int slot = 0}) => DiveTank(
+          slot: slot,
+          usage: u,
+          name: '',
+          serial: 0,
+          beginPressureBar: 0,
+          endPressureBar: 0,
+          pressureMaxBar: 0,
+          pressureReserveBar: 0,
+        );
+    expect(tankTraceLabelFor(mk(TankUsage.diluent)), 'DIL');
+    expect(tankTraceLabelFor(mk(TankUsage.oxygen)), 'O2');
+    expect(tankTraceLabelFor(mk(TankUsage.sidemount)), 'BO');
+    expect(tankTraceLabelFor(mk(TankUsage.none, slot: 4)), 'T4');
   });
 
   test('shouldRepaint detects changes', () {

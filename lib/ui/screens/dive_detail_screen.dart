@@ -253,6 +253,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                   visibleTraces: _notifier.visibleTraces,
                                   crosshairIndex: _notifier.crosshairIndex,
                                   cellsBySlot: _notifier.activeCells,
+                                  tanks: _decodeTanks(),
                                   useSpeedColoredGraph: useSpeedColored),
                               if (_notifier.crosshairIndex != null)
                                 CrosshairTooltip(
