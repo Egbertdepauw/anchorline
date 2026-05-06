@@ -227,21 +227,36 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
 
                   // Profile chart
                   if (_notifier.samples != null) ...[
-                    SizedBox(
+                    Builder(builder: (context) {
+                      final samples = _notifier.samples!;
+                      final vSpeed = verticalSpeedExtremes(
+                        depthMeters: samples.depthMeters,
+                        sampleCount: samples.sampleCount,
+                        sampleIntervalMs: samples.sampleIntervalMs,
+                      );
+                      final descIdx = vSpeed.maxDescentMpm > 0
+                          ? vSpeed.maxDescentEndIndex
+                          : null;
+                      final ascIdx = vSpeed.maxAscentMpm > 0
+                          ? vSpeed.maxAscentEndIndex
+                          : null;
+                      return SizedBox(
                         height: 250,
                         child: LayoutBuilder(builder: (context, constraints) {
                           return CrosshairOverlay(
-                            sampleCount: _notifier.samples!.sampleCount,
+                            sampleCount: samples.sampleCount,
                             chartLeftPad: 40,
                             chartRightPad: 44,
                             onIndexChanged: _notifier.setCrosshairIndex,
                             onRelease: _notifier.clearCrosshair,
                             child: Stack(children: [
                               ProfileChart(
-                                  samples: _notifier.samples!,
+                                  samples: samples,
                                   visibleTraces: _notifier.visibleTraces,
                                   crosshairIndex: _notifier.crosshairIndex,
-                                  cellsBySlot: _notifier.activeCells),
+                                  cellsBySlot: _notifier.activeCells,
+                                  maxDescentEndIndex: descIdx,
+                                  maxAscentEndIndex: ascIdx),
                               if (_notifier.crosshairIndex != null)
                                 CrosshairTooltip(
                                   samples: _notifier.samples!,
@@ -258,7 +273,9 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                 ),
                             ]),
                           );
-                        })),
+                        }),
+                      );
+                    }),
                     TraceToggleChips(
                         visibleTraces: _notifier.visibleTraces,
                         onToggle: _notifier.toggleTrace),

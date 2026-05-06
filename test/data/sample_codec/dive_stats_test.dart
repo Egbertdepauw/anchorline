@@ -40,6 +40,8 @@ void main() {
           sampleIntervalMs: 10000);
       expect(res.maxAscentMpm, 0.0);
       expect(res.maxDescentMpm, 0.0);
+      expect(res.maxAscentEndIndex, 0);
+      expect(res.maxDescentEndIndex, 0);
     });
 
     test('monotonic descent yields zero ascent', () {
@@ -63,12 +65,15 @@ void main() {
     test('mixed profile picks worst sample-pair', () {
       // 5 samples at 10s. With a 5s window rounded up to 1 sample (10s),
       // each adjacent pair is its own datum. Worst descent: 5m / 10s =
-      // 30 m/min. Worst ascent: 4m / 10s = 24 m/min.
+      // 30 m/min between i=0 and i=1 → endIndex=1. Worst ascent: 4m /
+      // 10s = 24 m/min between i=2 and i=3 → endIndex=3.
       final depth = Float32List.fromList([0, 5, 6, 2, 3]);
       final res = verticalSpeedExtremes(
           depthMeters: depth, sampleCount: 5, sampleIntervalMs: 10000);
       expect(res.maxDescentMpm, closeTo(30.0, 1e-3));
       expect(res.maxAscentMpm, closeTo(24.0, 1e-3));
+      expect(res.maxDescentEndIndex, 1);
+      expect(res.maxAscentEndIndex, 3);
     });
 
     test('single-sample 0.5m spike shows as 6 m/min at 5s sampling', () {
@@ -82,6 +87,9 @@ void main() {
           depthMeters: depth, sampleCount: 13, sampleIntervalMs: 5000);
       expect(res.maxDescentMpm, closeTo(6.0, 1e-3));
       expect(res.maxAscentMpm, closeTo(6.0, 1e-3));
+      // Descent into the blip ends at i=6; ascent back out ends at i=7.
+      expect(res.maxDescentEndIndex, 6);
+      expect(res.maxAscentEndIndex, 7);
     });
   });
 }

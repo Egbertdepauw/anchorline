@@ -31,6 +31,8 @@ const Color _cell1Color = Color(0xFFFFEE58);
 const Color _cell2Color = Color(0xFF42A5F5);
 const Color _crosshairColor = Color(0x80FFFFFF);
 const Color _gridColor = Color(0xFF1A2A40);
+const Color _vSpeedExtremeColor = Colors.redAccent;
+const int _vSpeedExtremeHalfWindow = 3;
 
 const double _ppo2Max = 2.0;
 
@@ -55,6 +57,14 @@ class ProfileChart extends StatelessWidget {
   /// start time. Used by [_legend] to label the cell traces.
   final Map<int, OxygenCell>? cellsBySlot;
 
+  /// Sample index of the worst descent rate. When non-null, a short
+  /// red overlay is drawn on the depth trace around this sample.
+  final int? maxDescentEndIndex;
+
+  /// Sample index of the worst ascent rate. When non-null, a short
+  /// red overlay is drawn on the depth trace around this sample.
+  final int? maxAscentEndIndex;
+
   const ProfileChart({
     super.key,
     required this.samples,
@@ -62,6 +72,8 @@ class ProfileChart extends StatelessWidget {
     required this.crosshairIndex,
     this.cellCalibration,
     this.cellsBySlot,
+    this.maxDescentEndIndex,
+    this.maxAscentEndIndex,
   });
 
   @override
@@ -73,6 +85,8 @@ class ProfileChart extends StatelessWidget {
           visibleTraces: visibleTraces,
           crosshairIndex: crosshairIndex,
           cellCalibration: cellCalibration,
+          maxDescentEndIndex: maxDescentEndIndex,
+          maxAscentEndIndex: maxAscentEndIndex,
         ),
         child: const SizedBox.expand(),
       ),
@@ -148,12 +162,16 @@ class ProfileChartPainter extends CustomPainter {
   final Set<TraceType> visibleTraces;
   final int? crosshairIndex;
   final List<double>? cellCalibration;
+  final int? maxDescentEndIndex;
+  final int? maxAscentEndIndex;
 
   const ProfileChartPainter({
     required this.samples,
     required this.visibleTraces,
     required this.crosshairIndex,
     this.cellCalibration,
+    this.maxDescentEndIndex,
+    this.maxAscentEndIndex,
   });
 
   // ── shouldRepaint ──────────────────────────────────────────────
@@ -162,6 +180,8 @@ class ProfileChartPainter extends CustomPainter {
   bool shouldRepaint(ProfileChartPainter old) {
     return old.crosshairIndex != crosshairIndex ||
         !_setEquals(old.visibleTraces, visibleTraces) ||
+        old.maxDescentEndIndex != maxDescentEndIndex ||
+        old.maxAscentEndIndex != maxAscentEndIndex ||
         !identical(old.samples, samples);
   }
 
@@ -279,6 +299,26 @@ class ProfileChartPainter extends CustomPainter {
 
       canvas.drawPath(fillPath, fillPaint);
       canvas.drawPath(strokePath, strokePaint);
+
+      // ── Vertical-speed extremes (red sub-segments) ────────────────
+      final extremePaint = Paint()
+        ..color = _vSpeedExtremeColor
+        ..strokeWidth = 2.5
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      for (final idx in [maxDescentEndIndex, maxAscentEndIndex]) {
+        if (idx == null) continue;
+        final lo = (idx - _vSpeedExtremeHalfWindow).clamp(0, n - 1);
+        final hi = (idx + _vSpeedExtremeHalfWindow).clamp(0, n - 1);
+        if (hi <= lo) continue;
+        final p = Path()
+          ..moveTo(xOf(lo), yDepth(samples.depthMeters[lo]));
+        for (int i = lo + 1; i <= hi; i++) {
+          p.lineTo(xOf(i), yDepth(samples.depthMeters[i]));
+        }
+        canvas.drawPath(p, extremePaint);
+      }
     }
 
     // ── PPO2 trace ─────────────────────────────────────────────────

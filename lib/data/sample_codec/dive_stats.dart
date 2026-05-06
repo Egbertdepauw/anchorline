@@ -54,16 +54,33 @@ double computeOtu({
 /// at least one interval. This is essentially "instantaneous" — sensor
 /// jitter shows through, but the user explicitly wanted the rawest
 /// available signal so real bursts aren't smoothed out.
-({double maxAscentMpm, double maxDescentMpm}) verticalSpeedExtremes({
+({
+  double maxAscentMpm,
+  int maxAscentEndIndex,
+  double maxDescentMpm,
+  int maxDescentEndIndex,
+}) verticalSpeedExtremes({
   required Float32List depthMeters,
   required int sampleCount,
   required int sampleIntervalMs,
 }) {
   if (sampleCount < 2 || sampleIntervalMs <= 0) {
-    return (maxAscentMpm: 0.0, maxDescentMpm: 0.0);
+    return (
+      maxAscentMpm: 0.0,
+      maxAscentEndIndex: 0,
+      maxDescentMpm: 0.0,
+      maxDescentEndIndex: 0,
+    );
   }
   final n = sampleCount < depthMeters.length ? sampleCount : depthMeters.length;
-  if (n < 2) return (maxAscentMpm: 0.0, maxDescentMpm: 0.0);
+  if (n < 2) {
+    return (
+      maxAscentMpm: 0.0,
+      maxAscentEndIndex: 0,
+      maxDescentMpm: 0.0,
+      maxDescentEndIndex: 0,
+    );
+  }
 
   // Compare each sample to the one ~5s earlier. At ≥5s sampling that
   // collapses to one interval; for short dives the window collapses to
@@ -75,11 +92,24 @@ double computeOtu({
 
   var maxDescent = 0.0;
   var maxAscent = 0.0;
+  var descIdx = 0;
+  var ascIdx = 0;
   for (var i = windowSamples; i < n; i++) {
     final delta = depthMeters[i] - depthMeters[i - windowSamples];
     final rate = delta * perMin;
-    if (rate > maxDescent) maxDescent = rate;
-    if (-rate > maxAscent) maxAscent = -rate;
+    if (rate > maxDescent) {
+      maxDescent = rate;
+      descIdx = i;
+    }
+    if (-rate > maxAscent) {
+      maxAscent = -rate;
+      ascIdx = i;
+    }
   }
-  return (maxAscentMpm: maxAscent, maxDescentMpm: maxDescent);
+  return (
+    maxAscentMpm: maxAscent,
+    maxAscentEndIndex: ascIdx,
+    maxDescentMpm: maxDescent,
+    maxDescentEndIndex: descIdx,
+  );
 }
