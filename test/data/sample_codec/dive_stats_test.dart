@@ -31,4 +31,43 @@ void main() {
   test('minAvgMax returns null on empty input', () {
     expect(minAvgMax(Float32List(0), 0), isNull);
   });
+
+  group('verticalSpeedExtremes', () {
+    test('returns zero when fewer than two samples', () {
+      final res = verticalSpeedExtremes(
+          depthMeters: Float32List.fromList([5.0]),
+          sampleCount: 1,
+          sampleIntervalMs: 10000);
+      expect(res.maxAscentMpm, 0.0);
+      expect(res.maxDescentMpm, 0.0);
+    });
+
+    test('monotonic descent yields zero ascent', () {
+      // 10s interval, depth grows by 3 m/sample → 18 m/min descent.
+      final depth = Float32List.fromList([0, 3, 6, 9, 12]);
+      final res = verticalSpeedExtremes(
+          depthMeters: depth, sampleCount: 5, sampleIntervalMs: 10000);
+      expect(res.maxDescentMpm, closeTo(18.0, 1e-3));
+      expect(res.maxAscentMpm, 0.0);
+    });
+
+    test('monotonic ascent yields zero descent', () {
+      // 10s interval, depth drops by 2 m/sample → 12 m/min ascent.
+      final depth = Float32List.fromList([20, 18, 16, 14, 12]);
+      final res = verticalSpeedExtremes(
+          depthMeters: depth, sampleCount: 5, sampleIntervalMs: 10000);
+      expect(res.maxAscentMpm, closeTo(12.0, 1e-3));
+      expect(res.maxDescentMpm, 0.0);
+    });
+
+    test('mixed profile picks worst of each', () {
+      // 10s interval. Worst descent = 5m / 10s = 30 m/min.
+      // Worst ascent = 4m / 10s = 24 m/min.
+      final depth = Float32List.fromList([0, 5, 6, 2, 3]);
+      final res = verticalSpeedExtremes(
+          depthMeters: depth, sampleCount: 5, sampleIntervalMs: 10000);
+      expect(res.maxDescentMpm, closeTo(30.0, 1e-3));
+      expect(res.maxAscentMpm, closeTo(24.0, 1e-3));
+    });
+  });
 }

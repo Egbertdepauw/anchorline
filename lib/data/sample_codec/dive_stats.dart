@@ -41,3 +41,30 @@ double computeOtu({
   }
   return (min: min, avg: sum / n, max: max);
 }
+
+/// Worst-case vertical speed extremes from the sample depth track.
+///
+/// Returns ascent / descent in m/min as positive magnitudes. Descent is
+/// depth increasing; ascent is depth decreasing. Both default to 0.0 if
+/// fewer than two samples are available.
+({double maxAscentMpm, double maxDescentMpm}) verticalSpeedExtremes({
+  required Float32List depthMeters,
+  required int sampleCount,
+  required int sampleIntervalMs,
+}) {
+  if (sampleCount < 2 || sampleIntervalMs <= 0) {
+    return (maxAscentMpm: 0.0, maxDescentMpm: 0.0);
+  }
+  final n = sampleCount < depthMeters.length ? sampleCount : depthMeters.length;
+  if (n < 2) return (maxAscentMpm: 0.0, maxDescentMpm: 0.0);
+  final perMin = 60000.0 / sampleIntervalMs;
+  var maxDescent = 0.0;
+  var maxAscent = 0.0;
+  for (var i = 1; i < n; i++) {
+    final delta = depthMeters[i] - depthMeters[i - 1];
+    final rate = delta * perMin;
+    if (rate > maxDescent) maxDescent = rate;
+    if (-rate > maxAscent) maxAscent = -rate;
+  }
+  return (maxAscentMpm: maxAscent, maxDescentMpm: maxDescent);
+}

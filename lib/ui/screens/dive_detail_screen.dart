@@ -341,6 +341,12 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     );
     final showOtu = otu > 0;
 
+    final vSpeed = verticalSpeedExtremes(
+      depthMeters: samples.depthMeters,
+      sampleCount: samples.sampleCount,
+      sampleIntervalMs: samples.sampleIntervalMs,
+    );
+
     final dive = widget.dive;
     final stackEnd = dive.stackRemainingAtEndSeconds;
     final stackStart = dive.stackRemainingAtStartSeconds;
@@ -376,6 +382,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
               unit: '°C')
         else
           _statCell('TEMP', '—', theme),
+        _statCell('ASC m/min', '${vSpeed.maxAscentMpm.round()}', theme),
+        _statCell('DESC m/min', '${vSpeed.maxDescentMpm.round()}', theme),
         _statCell('GAS', gasLabel, theme),
         if (stackEnd != null)
           _stackCell(stackLabel, stackUsed, stackConf, theme),
