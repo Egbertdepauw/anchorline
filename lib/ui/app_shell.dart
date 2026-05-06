@@ -7,6 +7,7 @@ import '../data/db/dive_annotations_dao.dart';
 import '../data/db/dive_dao.dart';
 import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
+import '../sync/cloud/auth_service.dart';
 import '../sync/subsurface_export.dart';
 import 'notifiers/dive_list_notifier.dart';
 import 'notifiers/import_notifier.dart';
@@ -19,8 +20,14 @@ import 'screens/settings_screen.dart';
 class AppShell extends StatefulWidget {
   final AppDatabase db;
   final SettingsNotifier settingsNotifier;
+  final AuthService authService;
 
-  const AppShell({super.key, required this.db, required this.settingsNotifier});
+  const AppShell({
+    super.key,
+    required this.db,
+    required this.settingsNotifier,
+    required this.authService,
+  });
 
   @override
   State<AppShell> createState() => _AppShellState();
