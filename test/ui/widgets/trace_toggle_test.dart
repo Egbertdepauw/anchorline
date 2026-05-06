@@ -31,4 +31,25 @@ void main() {
     await tester.tap(find.text('Cells'));
     expect(toggled, equals(TraceType.cells));
   });
+
+  testWidgets('wraps without overflow at iPhone-narrow width', (tester) async {
+    tester.view.physicalSize = const Size(375, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: TraceToggleChips(
+                visibleTraces: const {
+                  TraceType.ppo2,
+                  TraceType.setpoint,
+                  TraceType.deco,
+                },
+                onToggle: (_) {}))));
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Wrap), findsOneWidget);
+    expect(find.text('PPO2'), findsOneWidget);
+    expect(find.text('Tanks'), findsOneWidget);
+  });
 }

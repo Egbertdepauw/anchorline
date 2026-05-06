@@ -1,4 +1,4 @@
-/// Horizontal scrollable row of [FilterChip]s for toggling profile traces.
+/// Wrapping row of [FilterChip]s for toggling profile traces.
 library;
 
 import 'package:flutter/material.dart';
@@ -12,10 +12,12 @@ const _traceChipData = <TraceType, ({String label, Color color})>{
   TraceType.tanks: (label: 'Tanks', color: Color(0xFF90A4AE)),
 };
 
-/// A horizontally scrollable row of [FilterChip] widgets, one per [TraceType].
+/// A [Wrap] of [FilterChip] widgets, one per [TraceType].
 ///
 /// Chips show as selected (coloured) when their [TraceType] is in
 /// [visibleTraces]. Tapping any chip calls [onToggle] with that type.
+/// On narrow widths the chips flow to a second line instead of being
+/// clipped by a horizontal scroll.
 class TraceToggleChips extends StatelessWidget {
   final Set<TraceType> visibleTraces;
   final ValueChanged<TraceType> onToggle;
@@ -28,37 +30,35 @@ class TraceToggleChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 4,
         children: [
           for (final entry in _traceChipData.entries)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: FilterChip(
-                label: Text(entry.value.label),
-                selected: visibleTraces.contains(entry.key),
-                onSelected: (_) => onToggle(entry.key),
-                selectedColor: entry.value.color.withValues(alpha: 0.3),
-                checkmarkColor: entry.value.color,
-                side: BorderSide(
-                  color: visibleTraces.contains(entry.key)
-                      ? entry.value.color
-                      : Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.2),
-                ),
-                labelStyle: TextStyle(
-                  color: visibleTraces.contains(entry.key)
-                      ? entry.value.color
-                      : Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.5),
-                  fontSize: 12,
-                ),
+            FilterChip(
+              label: Text(entry.value.label),
+              selected: visibleTraces.contains(entry.key),
+              onSelected: (_) => onToggle(entry.key),
+              selectedColor: entry.value.color.withValues(alpha: 0.3),
+              checkmarkColor: entry.value.color,
+              side: BorderSide(
+                color: visibleTraces.contains(entry.key)
+                    ? entry.value.color
+                    : Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.2),
+              ),
+              labelStyle: TextStyle(
+                color: visibleTraces.contains(entry.key)
+                    ? entry.value.color
+                    : Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.5),
+                fontSize: 12,
               ),
             ),
         ],
