@@ -11,6 +11,8 @@
 /// `supabase.from(...)` query-builder chain.
 library;
 
+import 'dart:convert';
+
 import 'package:powersync/powersync.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -132,15 +134,45 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
     for (final op in entries) {
       switch (op.op) {
         case UpdateType.put:
-          final data = {...?op.opData, 'id': op.id};
+          final data = {..._decodeJsonColumns(op.table, op.opData), 'id': op.id};
           await _uploader.upsert(op.table, data);
         case UpdateType.patch:
           if (op.opData != null) {
-            await _uploader.update(op.table, op.id, op.opData!);
+            await _uploader.update(
+                op.table, op.id, _decodeJsonColumns(op.table, op.opData));
           }
         case UpdateType.delete:
           await _uploader.delete(op.table, op.id);
       }
     }
   }
+}
+
+/// Per-table set of columns that hold JSON-encoded text in PowerSync's
+/// local SQLite but need to land as parsed objects in Postgres `jsonb`.
+/// Without this, Supabase wraps the string-of-array as a JSON-string
+/// scalar and the value round-trips as a wrapped string — breaking
+/// reads on every other device.
+const Map<String, Set<String>> _jsonbColumns = {
+  'dive_annotations': {'buddies_json', 'tags_json'},
+};
+
+Map<String, dynamic> _decodeJsonColumns(
+    String table, Map<String, dynamic>? data) {
+  if (data == null) return const {};
+  final cols = _jsonbColumns[table];
+  if (cols == null) return Map<String, dynamic>.from(data);
+  final out = Map<String, dynamic>.from(data);
+  for (final c in cols) {
+    final v = out[c];
+    if (v is String) {
+      try {
+        out[c] = jsonDecode(v);
+      } catch (_) {
+        // Leave as-is if parsing fails; Supabase will surface a typed
+        // error rather than silently corrupting the row.
+      }
+    }
+  }
+  return out;
 }

@@ -207,9 +207,7 @@ class DiveAnnotationsDao {
     );
     final all = <String>{};
     for (final r in rows) {
-      final s = r['buddies_json'] as String?;
-      if (s == null) continue;
-      all.addAll((jsonDecode(s) as List).cast<String>());
+      all.addAll(_decodeStringList(r['buddies_json'] as String?));
     }
     return all.toList();
   }
@@ -221,9 +219,7 @@ class DiveAnnotationsDao {
     );
     final all = <String>{};
     for (final r in rows) {
-      final s = r['tags_json'] as String?;
-      if (s == null) continue;
-      all.addAll((jsonDecode(s) as List).cast<String>());
+      all.addAll(_decodeStringList(r['tags_json'] as String?));
     }
     return all.toList();
   }
@@ -243,12 +239,8 @@ class DiveAnnotationsDao {
       siteLatitude: latE5 == null ? null : latE5 / 1e5,
       siteLongitude: lonE5 == null ? null : lonE5 / 1e5,
       notes: row['notes'] as String?,
-      buddies: buddiesJson == null
-          ? const []
-          : (jsonDecode(buddiesJson) as List).cast<String>(),
-      tags: tagsJson == null
-          ? const []
-          : (jsonDecode(tagsJson) as List).cast<String>(),
+      buddies: _decodeStringList(buddiesJson),
+      tags: _decodeStringList(tagsJson),
       rating: row['rating'] as int?,
       conditions: row['conditions'] as String?,
       createdAt:
@@ -261,5 +253,20 @@ class DiveAnnotationsDao {
       version: row['version'] as int? ?? 1,
       syncStatus: SyncStatus.values[syncStatusIdx.clamp(0, SyncStatus.values.length - 1)],
     );
+  }
+
+  /// Decodes a JSON-text-encoded string list. Tolerates legacy rows where
+  /// the value got stored as a wrapped JSON-string scalar (Postgres jsonb
+  /// round-trip without proper decode at upload — see Round 2.2c fix).
+  List<String> _decodeStringList(String? raw) {
+    if (raw == null) return const [];
+    try {
+      var v = jsonDecode(raw);
+      if (v is String) v = jsonDecode(v); // unwrap one level
+      if (v is List) return v.cast<String>();
+    } catch (_) {
+      // fall through to empty
+    }
+    return const [];
   }
 }
