@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
+import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
 import 'package:ccrlogger/data/models/annotation.dart';
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
@@ -14,14 +15,19 @@ import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:powersync/powersync.dart' hide SyncStatus;
 
-Future<({AppDatabase db, DiveDao dao, Dive dive})> _seedDive({
+import '../../_helpers/powersync_test_helper.dart';
+
+Future<({AppDatabase db, PowerSyncDatabase psDb, DiveAnnotationsDao annotationsDao, DiveDao dao, Dive dive})> _seedDive({
   int? configuredStackSeconds,
   int? stackRemainingAtStartSeconds,
   int? stackRemainingAtEndSeconds,
 }) async {
   final db = AppDatabase(NativeDatabase.memory());
   final dao = DiveDao(db);
+  final psDb = await openPowerSyncForTest();
+  final annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
   final data = File('test/fixtures/dives/dive_718.bin').readAsBytesSync();
   final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
   final parsed = parser.parse(data);
@@ -41,16 +47,27 @@ Future<({AppDatabase db, DiveDao dao, Dive dive})> _seedDive({
     ),
   );
   final dive = (await dao.getAllDives()).first;
-  return (db: db, dao: dao, dive: dive);
+  return (
+    db: db,
+    psDb: psDb,
+    annotationsDao: annotationsDao,
+    dao: dao,
+    dive: dive,
+  );
 }
 
-Future<void> _pumpScreen(WidgetTester tester, AppDatabase db, Dive dive,
-    DiveDao dao) async {
+Future<void> _pumpScreen(
+  WidgetTester tester,
+  AppDatabase db,
+  DiveAnnotationsDao annotationsDao,
+  Dive dive,
+  DiveDao dao,
+) async {
   await tester.pumpWidget(MaterialApp(
     home: DiveDetailScreen(
       dive: dive,
       dao: dao,
-      annotationsDao: db.diveAnnotationsDao,
+      annotationsDao: annotationsDao,
       equipmentDao: db.equipmentDao,
     ),
   ));
@@ -68,7 +85,7 @@ void main() {
     );
     addTearDown(() async => s.db.close());
 
-    await _pumpScreen(tester, s.db, s.dive, s.dao);
+    await _pumpScreen(tester, s.db, s.annotationsDao, s.dive, s.dao);
 
     // Icon-prefix layout: ⏱ remaining, ∑ configured, ▽ used, STACK label.
     expect(find.text('⏱ 5:38'), findsOneWidget);
@@ -81,7 +98,7 @@ void main() {
     final s = await _seedDive();
     addTearDown(() async => s.db.close());
 
-    await _pumpScreen(tester, s.db, s.dive, s.dao);
+    await _pumpScreen(tester, s.db, s.annotationsDao, s.dive, s.dao);
 
     // No stack data → cell is hidden entirely (no need to display "—").
     expect(find.textContaining('STACK'), findsNothing);
@@ -93,7 +110,7 @@ void main() {
     final s = await _seedDive();
     addTearDown(() async => s.db.close());
 
-    await _pumpScreen(tester, s.db, s.dive, s.dao);
+    await _pumpScreen(tester, s.db, s.annotationsDao, s.dive, s.dao);
 
     // Three big-white lines (avg / min / max) followed by a faded label.
     expect(find.textContaining(RegExp(r'^⌀ \d\.\d{2}$')), findsOneWidget);
@@ -107,7 +124,7 @@ void main() {
     final s = await _seedDive();
     addTearDown(() async => s.db.close());
 
-    await _pumpScreen(tester, s.db, s.dive, s.dao);
+    await _pumpScreen(tester, s.db, s.annotationsDao, s.dive, s.dao);
 
     // Each value carries the °C suffix; label is just TEMP.
     expect(find.text('TEMP'), findsOneWidget);
@@ -121,7 +138,7 @@ void main() {
     final s = await _seedDive();
     addTearDown(() async => s.db.close());
 
-    await _pumpScreen(tester, s.db, s.dive, s.dao);
+    await _pumpScreen(tester, s.db, s.annotationsDao, s.dive, s.dao);
 
     // One label, two arrow-prefixed values stacked in a single cell.
     expect(find.text('MAX m/min'), findsOneWidget);
@@ -145,7 +162,7 @@ void main() {
         .write(const DivesCompanion(tanksJson: Value(tanksJson)));
     final dive = (await s.dao.getAllDives()).first;
 
-    await _pumpScreen(tester, s.db, dive, s.dao);
+    await _pumpScreen(tester, s.db, s.annotationsDao, dive, s.dao);
 
     expect(find.text('TANKS (bar)'), findsOneWidget);
     expect(find.text('DIL 230→185'), findsOneWidget);
@@ -183,7 +200,7 @@ void main() {
     );
 
     final dive = (await s.dao.getAllDives()).first;
-    await _pumpScreen(tester, s.db, dive, s.dao);
+    await _pumpScreen(tester, s.db, s.annotationsDao, dive, s.dao);
 
     expect(find.text('AL40 EAN21 230→185'), findsOneWidget);
     // Slot 1 (O2) wasn't mapped → falls back to parser-derived label.
@@ -204,7 +221,7 @@ void main() {
         .write(const DivesCompanion(tanksJson: Value(tanksJson)));
     final dive = (await s.dao.getAllDives()).first;
 
-    await _pumpScreen(tester, s.db, dive, s.dao);
+    await _pumpScreen(tester, s.db, s.annotationsDao, dive, s.dao);
 
     // No mappings → parser-derived labels survive.
     expect(find.text('DIL 230→185'), findsOneWidget);
@@ -219,7 +236,7 @@ void main() {
         .write(const DivesCompanion(tanksJson: Value(null)));
     final dive = (await s.dao.getAllDives()).first;
 
-    await _pumpScreen(tester, s.db, dive, s.dao);
+    await _pumpScreen(tester, s.db, s.annotationsDao, dive, s.dao);
 
     expect(find.textContaining('TANKS'), findsNothing);
   });
@@ -231,7 +248,7 @@ void main() {
 
     // Stamp an annotation with coords so the header mini-map renders.
     final now = DateTime.now();
-    await s.db.diveAnnotationsDao.upsert(DiveAnnotation(
+    await s.annotationsDao.upsert(DiveAnnotation(
       diveId: s.dive.id,
       siteName: 'Lagoon',
       siteLatitude: 51.5,
@@ -240,7 +257,7 @@ void main() {
       updatedAt: now,
     ));
 
-    await _pumpScreen(tester, s.db, s.dive, s.dao);
+    await _pumpScreen(tester, s.db, s.annotationsDao, s.dive, s.dao);
     expect(find.byType(SiteMiniMap), findsOneWidget);
     expect(find.byType(SitesMapScreen), findsNothing);
 

@@ -15,11 +15,15 @@ import 'package:ccrlogger/ui/widgets/dive_tile.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:powersync/powersync.dart' hide SyncStatus;
 
-Future<({AppDatabase db, DiveListNotifier notifier})> _seed() async {
+import '../../_helpers/powersync_test_helper.dart';
+
+Future<({AppDatabase db, PowerSyncDatabase psDb, DiveListNotifier notifier, DiveAnnotationsDao annotationsDao})> _seed() async {
   final db = AppDatabase(NativeDatabase.memory());
+  final psDb = await openPowerSyncForTest();
   final dao = DiveDao(db);
-  final annotationsDao = DiveAnnotationsDao(db);
+  final annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
   for (final num in [711, 712, 718]) {
     final data = File('test/fixtures/dives/dive_$num.bin').readAsBytesSync();
     final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
@@ -35,17 +39,21 @@ Future<({AppDatabase db, DiveListNotifier notifier})> _seed() async {
   }
   final notifier = DiveListNotifier(dao, annotationsDao);
   await notifier.loadDives();
-  return (db: db, notifier: notifier);
+  return (db: db, psDb: psDb, notifier: notifier, annotationsDao: annotationsDao);
 }
 
-Future<void> _pump(WidgetTester tester, AppDatabase db,
-    DiveListNotifier notifier) async {
+Future<void> _pump(
+  WidgetTester tester,
+  AppDatabase db,
+  DiveAnnotationsDao annotationsDao,
+  DiveListNotifier notifier,
+) async {
   await tester.pumpWidget(MaterialApp(
     home: Scaffold(
       body: DiveListScreen(
         notifier: notifier,
         diveDao: DiveDao(db),
-        annotationsDao: DiveAnnotationsDao(db),
+        annotationsDao: annotationsDao,
         equipmentDao: EquipmentDao(db),
         settingsNotifier: SettingsNotifier(),
       ),
@@ -55,13 +63,15 @@ Future<void> _pump(WidgetTester tester, AppDatabase db,
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   testWidgets('renders search field', (tester) async {
     final s = await _seed();
     addTearDown(() async {
       s.notifier.dispose();
       await s.db.close();
     });
-    await _pump(tester, s.db, s.notifier);
+    await _pump(tester, s.db, s.annotationsDao, s.notifier);
     expect(find.byType(TextField), findsOneWidget);
     expect(find.text('Search dives'), findsOneWidget);
   });
@@ -72,7 +82,7 @@ void main() {
       s.notifier.dispose();
       await s.db.close();
     });
-    await _pump(tester, s.db, s.notifier);
+    await _pump(tester, s.db, s.annotationsDao, s.notifier);
     expect(find.byType(DiveTile), findsNWidgets(3));
 
     await tester.enterText(find.byType(TextField), '#718');
@@ -92,7 +102,7 @@ void main() {
       s.notifier.dispose();
       await s.db.close();
     });
-    await _pump(tester, s.db, s.notifier);
+    await _pump(tester, s.db, s.annotationsDao, s.notifier);
 
     await tester.enterText(find.byType(TextField), 'nonexistent-zzz');
     await tester.pump(const Duration(milliseconds: 200));
@@ -108,7 +118,7 @@ void main() {
       s.notifier.dispose();
       await s.db.close();
     });
-    await _pump(tester, s.db, s.notifier);
+    await _pump(tester, s.db, s.annotationsDao, s.notifier);
 
     await tester.enterText(find.byType(TextField), '#718');
     await tester.pump(const Duration(milliseconds: 200));
@@ -128,17 +138,16 @@ void main() {
       await s.db.close();
     });
     // Tag exactly one dive with a site name.
-    final annDao = DiveAnnotationsDao(s.db);
     final firstId = s.notifier.dives.first.id;
     final now = DateTime.now();
-    await annDao.upsert(dom.DiveAnnotation(
+    await s.annotationsDao.upsert(dom.DiveAnnotation(
       diveId: firstId,
       siteName: 'Zelandia',
       createdAt: now,
       updatedAt: now,
     ));
     await s.notifier.loadDives();
-    await _pump(tester, s.db, s.notifier);
+    await _pump(tester, s.db, s.annotationsDao, s.notifier);
     expect(find.byType(DiveTile), findsNWidgets(3));
 
     // Open the filter sheet.

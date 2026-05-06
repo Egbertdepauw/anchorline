@@ -9,7 +9,10 @@ import 'package:ccrlogger/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/sync/subsurface_export.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:powersync/powersync.dart' hide SyncStatus;
 import 'package:xml/xml.dart';
+
+import '../_helpers/powersync_test_helper.dart';
 
 ConvertedDive _convertFixture(int diveNumber) {
   final data =
@@ -31,7 +34,10 @@ Future<void> _importFixture(DiveDao dao, int diveNumber) async {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late AppDatabase db;
+  late PowerSyncDatabase psDb;
   late DiveDao diveDao;
   late DiveAnnotationsDao annotationsDao;
   late Directory tmpDir;
@@ -39,8 +45,9 @@ void main() {
 
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
+    psDb = await openPowerSyncForTest();
     diveDao = DiveDao(db);
-    annotationsDao = DiveAnnotationsDao(db);
+    annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
     tmpDir = await Directory.systemTemp.createTemp('ccrlogger_export_');
     exporter = SubsurfaceExporter(
       diveDao: diveDao,

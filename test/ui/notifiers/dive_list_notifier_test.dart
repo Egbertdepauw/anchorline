@@ -8,17 +8,24 @@ import 'package:ccrlogger/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/ui/notifiers/dive_list_notifier.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:powersync/powersync.dart' hide SyncStatus;
+
+import '../../_helpers/powersync_test_helper.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late AppDatabase db;
+  late PowerSyncDatabase psDb;
   late DiveDao dao;
   late DiveAnnotationsDao annotationsDao;
   late DiveListNotifier notifier;
 
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
+    psDb = await openPowerSyncForTest();
     dao = DiveDao(db);
-    annotationsDao = DiveAnnotationsDao(db);
+    annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
     notifier = DiveListNotifier(dao, annotationsDao);
 
     for (final num in [711, 712, 718]) {

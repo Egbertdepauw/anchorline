@@ -7,14 +7,19 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../_helpers/powersync_test_helper.dart';
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   testWidgets('renders all field labels for a fresh (no-row-yet) dive',
       (tester) async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    final annotationsDao = DiveAnnotationsDao(db);
+    final psDb = await openPowerSyncForTest();
+    final annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
     final equipmentDao = EquipmentDao(db);
-    final notifier = DiveAnnotationsNotifier(annotationsDao);
+    final notifier = DiveAnnotationsNotifier(annotationsDao, equipmentDao);
     addTearDown(notifier.dispose);
     await notifier.load('dive_x');
 

@@ -11,6 +11,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../_helpers/powersync_test_helper.dart';
+
 /// 1x1 transparent PNG used to silence map tile requests in widget tests.
 final _stubPng = Uint8List.fromList(const [
   0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, //
@@ -118,7 +120,8 @@ void main() {
     await _withStubbedHttp(() async {
       final db = AppDatabase(NativeDatabase.memory());
       addTearDown(db.close);
-      final dao = DiveAnnotationsDao(db);
+      final psDb = await openPowerSyncForTest();
+      final dao = DiveAnnotationsDao(psDb, FakeSessionSource());
 
       final now = DateTime.now();
       await dao.upsert(DiveAnnotation(
@@ -154,7 +157,8 @@ void main() {
     await _withStubbedHttp(() async {
       final db = AppDatabase(NativeDatabase.memory());
       addTearDown(db.close);
-      final dao = DiveAnnotationsDao(db);
+      final psDb = await openPowerSyncForTest();
+      final dao = DiveAnnotationsDao(psDb, FakeSessionSource());
 
       await tester.pumpWidget(MaterialApp(
         home: SitesMapScreen(dao: dao, currentLat: null, currentLon: null),

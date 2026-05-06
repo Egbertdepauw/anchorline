@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:powersync/powersync.dart';
+import 'package:powersync/powersync.dart' hide SyncStatus;
 import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/db/database.dart';
 import '../data/db/dive_annotations_dao.dart';
@@ -9,6 +10,7 @@ import '../data/db/dive_dao.dart';
 import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
 import '../sync/cloud/auth_service.dart';
+import '../sync/cloud/ccrlogger_backend_connector.dart' show SupabaseAuthSessionSource;
 import '../sync/cloud/sync_status_source.dart';
 import '../sync/subsurface_export.dart';
 import 'notifiers/dive_list_notifier.dart';
@@ -55,7 +57,10 @@ class _AppShellState extends State<AppShell> {
     _diveDao = DiveDao(widget.db);
     _importStateDao = ImportStateDao(widget.db);
     _equipmentDao = EquipmentDao(widget.db);
-    _diveAnnotationsDao = DiveAnnotationsDao(widget.db);
+    _diveAnnotationsDao = DiveAnnotationsDao(
+      widget.powerSyncDb,
+      SupabaseAuthSessionSource(Supabase.instance.client),
+    );
     _diveListNotifier = DiveListNotifier(_diveDao, _diveAnnotationsDao);
     _importNotifier = ImportNotifier(
       dao: _diveDao,

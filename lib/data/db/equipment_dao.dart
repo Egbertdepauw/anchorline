@@ -22,10 +22,51 @@ part 'equipment_dao.g.dart';
   ScrubberSessions,
   Cylinders,
   PressureMappings,
+  DiveCylinders,
 ])
 class EquipmentDao extends DatabaseAccessor<AppDatabase>
     with _$EquipmentDaoMixin {
   EquipmentDao(super.db);
+
+  // ── DiveCylinders (per-dive gas-mix → cylinder mapping) ─────────────────
+  //
+  // Lives on Drift through Phase 2.2 even though `dive_cylinders` is a
+  // sync-eligible table — Phase 2.3 repoints it to PowerSync alongside
+  // the other six. Until then, callers see a Drift-backed API.
+
+  Future<List<DiveCylinder>> listCylindersForDive(String diveId) {
+    return (select(diveCylinders)
+          ..where((t) => t.diveId.equals(diveId) & t.deletedAt.isNull())
+          ..orderBy([(t) => OrderingTerm.asc(t.gasMixIndex)]))
+        .get();
+  }
+
+  Future<void> setDiveCylinder(
+      String diveId, int gasMixIndex, String? cylinderId) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await into(diveCylinders).insertOnConflictUpdate(
+      DiveCylindersCompanion.insert(
+        diveId: diveId,
+        gasMixIndex: gasMixIndex,
+        cylinderId: Value(cylinderId),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+  }
+
+  /// Persists a batch of (gasMixIndex, cylinderId) mappings for a single
+  /// dive in one Drift transaction.
+  Future<void> setDiveCylinders(
+    String diveId,
+    List<({int gasMixIndex, String? cylinderId})> mappings,
+  ) async {
+    await db.transaction(() async {
+      for (final m in mappings) {
+        await setDiveCylinder(diveId, m.gasMixIndex, m.cylinderId);
+      }
+    });
+  }
 
   // ── DiveComputers ────────────────────────────────────────────────────────
 

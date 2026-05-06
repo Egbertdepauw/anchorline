@@ -75,9 +75,19 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   Future<PowerSyncCredentials?> fetchCredentials() async {
     final session = _sessions.currentSession;
     if (session == null) return null;
+    // Without expiresAt PowerSync never asks for a refreshed token, so the
+    // first request after the JWT expires fails permanently with
+    // "Authorization error". Pass it explicitly. userId is also passed for
+    // diagnostics — surfaces in PowerSync's debug log.
+    final expiresAtSec = session.expiresAt;
     return PowerSyncCredentials(
       endpoint: _endpoint,
       token: session.accessToken,
+      userId: session.user.id,
+      expiresAt: expiresAtSec == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(expiresAtSec * 1000,
+              isUtc: true),
     );
   }
 

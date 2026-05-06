@@ -11,6 +11,8 @@ mixin _$EquipmentDaoMixin on DatabaseAccessor<AppDatabase> {
   $CylindersTable get cylinders => attachedDatabase.cylinders;
   $PressureMappingsTable get pressureMappings =>
       attachedDatabase.pressureMappings;
+  $DivesTable get dives => attachedDatabase.dives;
+  $DiveCylindersTable get diveCylinders => attachedDatabase.diveCylinders;
   EquipmentDaoManager get managers => EquipmentDaoManager(this);
 }
 
@@ -33,4 +35,8 @@ class EquipmentDaoManager {
         _db.attachedDatabase,
         _db.pressureMappings,
       );
+  $$DivesTableTableManager get dives =>
+      $$DivesTableTableManager(_db.attachedDatabase, _db.dives);
+  $$DiveCylindersTableTableManager get diveCylinders =>
+      $$DiveCylindersTableTableManager(_db.attachedDatabase, _db.diveCylinders);
 }

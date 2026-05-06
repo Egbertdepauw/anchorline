@@ -57,7 +57,10 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     _notifier.addListener(_onChanged);
     _notifier.loadSamples();
 
-    _annotationsNotifier = DiveAnnotationsNotifier(widget.annotationsDao);
+    _annotationsNotifier = DiveAnnotationsNotifier(
+      widget.annotationsDao,
+      widget.equipmentDao,
+    );
     _annotationsNotifier.addListener(_onChanged);
     _annotationsNotifier.load(widget.dive.id);
 

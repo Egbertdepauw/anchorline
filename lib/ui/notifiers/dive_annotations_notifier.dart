@@ -2,12 +2,14 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart';
 
 import '../../data/db/dive_annotations_dao.dart';
+import '../../data/db/equipment_dao.dart';
 import '../../data/models/annotation.dart';
 
 class DiveAnnotationsNotifier extends ChangeNotifier {
-  final DiveAnnotationsDao _dao;
+  final DiveAnnotationsDao _annotationsDao;
+  final EquipmentDao _equipmentDao;
 
-  DiveAnnotationsNotifier(this._dao);
+  DiveAnnotationsNotifier(this._annotationsDao, this._equipmentDao);
 
   String? _diveId;
   DiveAnnotation? _annotation;
@@ -32,7 +34,7 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
 
   Future<void> load(String diveId) async {
     _diveId = diveId;
-    final existing = await _dao.get(diveId);
+    final existing = await _annotationsDao.get(diveId);
     if (existing != null) {
       _annotation = existing;
     } else {
@@ -43,7 +45,7 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
         updatedAt: now,
       );
     }
-    final cylinders = await _dao.listCylindersForDive(diveId);
+    final cylinders = await _equipmentDao.listCylindersForDive(diveId);
     _cylinderByMix = {for (final c in cylinders) c.gasMixIndex: c.cylinderId};
     _dirty = false;
     notifyListeners();
@@ -101,12 +103,18 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
 
   // ── Save ──────────────────────────────────────────────────────────────
 
+  /// Saves the annotation (PowerSync) and the per-mix cylinder mappings
+  /// (Drift) sequentially. The two DBs can't share a transaction, so a
+  /// crash between them leaves the annotation written and the mappings
+  /// not — fine for now because mappings are user-recoverable, and the
+  /// dive_cylinders table moves to PowerSync in Phase 2.3 anyway.
   Future<void> save() async {
     if (_annotation == null || _diveId == null) return;
+    await _annotationsDao.upsert(_annotation!);
     final mappings = _cylinderByMix.entries
         .map((e) => (gasMixIndex: e.key, cylinderId: e.value))
         .toList();
-    await _dao.saveAll(_annotation!, mappings);
+    await _equipmentDao.setDiveCylinders(_annotation!.diveId, mappings);
     _dirty = false;
     notifyListeners();
   }

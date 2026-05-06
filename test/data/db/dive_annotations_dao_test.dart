@@ -1,11 +1,14 @@
-import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
+import 'dart:io';
+
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/models/annotation.dart';
+import 'package:ccrlogger/sync/cloud/powersync_schema.dart';
 import 'package:drift/drift.dart' show Value;
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+import 'package:powersync/powersync.dart' hide SyncStatus;
 
-AppDatabase _db() => AppDatabase(NativeDatabase.memory());
+import '../../_helpers/powersync_test_helper.dart';
 
 DiveAnnotation _blank(String diveId) {
   final now = DateTime.now();
@@ -17,16 +20,27 @@ DiveAnnotation _blank(String diveId) {
 }
 
 void main() {
-  late AppDatabase db;
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late Directory tmpDir;
+  late PowerSyncDatabase db;
   late DiveAnnotationsDao dao;
 
-  setUp(() {
-    db = _db();
-    dao = DiveAnnotationsDao(db);
+  setUp(() async {
+    tmpDir = await Directory.systemTemp.createTemp('ccrlogger_psync_');
+    db = PowerSyncDatabase(
+      schema: appSchema,
+      path: p.join(tmpDir.path, 'powersync.db'),
+    );
+    await db.initialize();
+    dao = DiveAnnotationsDao(db, FakeSessionSource());
   });
 
   tearDown(() async {
     await db.close();
+    if (await tmpDir.exists()) {
+      await tmpDir.delete(recursive: true);
+    }
   });
 
   group('annotation CRUD', () {
@@ -61,11 +75,56 @@ void main() {
       expect(got.conditions, '8m viz, no current');
     });
 
-    test('upsert is idempotent on diveId', () async {
-      await dao.upsert(_blank('dive_b').copyWith(siteName: const Value('first')));
-      await dao.upsert(_blank('dive_b').copyWith(siteName: const Value('second')));
+    test('upsert sets created_at/updated_at to sane millis-since-epoch',
+        () async {
+      final before = DateTime.now().millisecondsSinceEpoch;
+      await dao.upsert(_blank('dive_t'));
+      final got = (await dao.get('dive_t'))!;
+      final after = DateTime.now().millisecondsSinceEpoch;
+      expect(got.createdAt.millisecondsSinceEpoch,
+          greaterThanOrEqualTo(before - 1));
+      expect(got.updatedAt.millisecondsSinceEpoch,
+          inInclusiveRange(before - 1, after + 1));
+    });
+
+    test('upsert is idempotent on diveId and bumps version', () async {
+      await dao
+          .upsert(_blank('dive_b').copyWith(siteName: const Value('first')));
+      final v1 = (await dao.get('dive_b'))!.version;
+
+      await dao
+          .upsert(_blank('dive_b').copyWith(siteName: const Value('second')));
       final got = (await dao.get('dive_b'))!;
+
       expect(got.siteName, 'second');
+      expect(got.version, greaterThan(v1));
+    });
+
+    test('upsert without session leaves owner_id null in local DB', () async {
+      await dao.upsert(_blank('dive_no_owner'));
+      final row = await db.get(
+          'SELECT owner_id FROM dive_annotations WHERE dive_id = ?',
+          ['dive_no_owner']);
+      expect(row['owner_id'], isNull);
+    });
+  });
+
+  group('batch lookups', () {
+    test('getAnnotationsForDives returns a map keyed by diveId', () async {
+      final now = DateTime.now();
+      await dao.upsert(DiveAnnotation(
+          diveId: 'd1', siteName: 'A', createdAt: now, updatedAt: now));
+      await dao.upsert(DiveAnnotation(
+          diveId: 'd2', siteName: 'B', createdAt: now, updatedAt: now));
+
+      final map = await dao.getAnnotationsForDives(['d1', 'd2', 'unknown']);
+      expect(map.keys.toSet(), {'d1', 'd2'});
+      expect(map['d1']!.siteName, 'A');
+      expect(map['d2']!.siteName, 'B');
+    });
+
+    test('getAnnotationsForDives is empty for empty input', () async {
+      expect(await dao.getAnnotationsForDives(const []), isEmpty);
     });
   });
 
@@ -106,6 +165,8 @@ void main() {
         createdAt: now.subtract(const Duration(days: 1)),
         updatedAt: now.subtract(const Duration(days: 1)),
       ));
+      // Sleep briefly so the second upsert's updated_at is strictly later.
+      await Future<void>.delayed(const Duration(milliseconds: 5));
       await dao.upsert(DiveAnnotation(
         diveId: 'd2',
         siteName: 'Lagoon',
@@ -126,8 +187,6 @@ void main() {
     test('distinctSiteCoords dedups by 5dp and keeps named/unnamed entries',
         () async {
       final now = DateTime.now();
-      // Two distinct coord pairs across three rows; the first two share
-      // (lat, lon) at 5dp precision so should collapse to one entry.
       await dao.upsert(DiveAnnotation(
         diveId: 'd1',
         siteName: 'Lagoon',
@@ -136,6 +195,7 @@ void main() {
         createdAt: now.subtract(const Duration(days: 1)),
         updatedAt: now.subtract(const Duration(days: 1)),
       ));
+      await Future<void>.delayed(const Duration(milliseconds: 5));
       await dao.upsert(DiveAnnotation(
         diveId: 'd2',
         siteName: 'Lagoon',
@@ -144,6 +204,7 @@ void main() {
         createdAt: now,
         updatedAt: now,
       ));
+      await Future<void>.delayed(const Duration(milliseconds: 5));
       await dao.upsert(DiveAnnotation(
         diveId: 'd3',
         siteName: null,
@@ -173,48 +234,6 @@ void main() {
         updatedAt: now,
       ));
       expect(await dao.distinctSiteCoords(), isEmpty);
-    });
-  });
-
-  group('cylinder linkage', () {
-    test('listCylindersForDive returns rows for the dive', () async {
-      await dao.setDiveCylinder('d1', 0, 'cyl_o2');
-      await dao.setDiveCylinder('d1', 1, 'cyl_dil');
-      final rows = await dao.listCylindersForDive('d1');
-      expect(rows.map((r) => r.gasMixIndex).toList()..sort(), [0, 1]);
-    });
-
-    test('setDiveCylinder upserts on (diveId, gasMixIndex)', () async {
-      await dao.setDiveCylinder('d1', 0, 'cyl_o2');
-      await dao.setDiveCylinder('d1', 0, 'cyl_o2_v2');
-      final rows = await dao.listCylindersForDive('d1');
-      expect(rows, hasLength(1));
-      expect(rows.single.cylinderId, 'cyl_o2_v2');
-    });
-
-    test('setDiveCylinder accepts null (unmapped)', () async {
-      await dao.setDiveCylinder('d1', 0, 'cyl_o2');
-      await dao.setDiveCylinder('d1', 0, null);
-      final rows = await dao.listCylindersForDive('d1');
-      expect(rows.single.cylinderId, isNull);
-    });
-
-    test('saveAll writes annotation + cylinders in one transaction', () async {
-      final now = DateTime.now();
-      final a = DiveAnnotation(
-        diveId: 'dx',
-        siteName: 'Test Site',
-        createdAt: now,
-        updatedAt: now,
-      );
-      await dao.saveAll(a, [
-        (gasMixIndex: 0, cylinderId: 'cyl_o2'),
-        (gasMixIndex: 1, cylinderId: 'cyl_dil'),
-      ]);
-
-      expect((await dao.get('dx'))!.siteName, 'Test Site');
-      final rows = await dao.listCylindersForDive('dx');
-      expect(rows, hasLength(2));
     });
   });
 }
