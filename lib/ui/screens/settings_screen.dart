@@ -129,14 +129,15 @@ class _SignedInTile extends StatelessWidget {
 }
 
 Future<void> _openAuthSheet(BuildContext context, AuthService auth) {
-  return showModalBottomSheet<void>(
+  // Dialog (rather than modal bottom sheet) avoids a macOS Flutter focus
+  // quirk that prevents text-field keyboard input inside a bottom sheet.
+  return showDialog<void>(
     context: context,
-    isScrollControlled: true,
-    builder: (sheetCtx) => Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(sheetCtx).viewInsets.bottom,
+    builder: (dialogCtx) => Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: _AuthSheet(authService: auth),
       ),
-      child: _AuthSheet(authService: auth),
     ),
   );
 }
@@ -188,6 +189,12 @@ class _AuthSheetState extends State<_AuthSheet> {
   }
 
   Future<void> _run(Future<AuthResult> Function() op) async {
+    final email = _emailCtrl.text.trim();
+    final password = _passwordCtrl.text;
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => _error = 'Email and password are both required');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -225,10 +232,12 @@ class _AuthSheetState extends State<_AuthSheet> {
           const SizedBox(height: 16),
           TextField(
             controller: _emailCtrl,
+            autofocus: true,
             keyboardType: TextInputType.emailAddress,
             autofillHints: const [AutofillHints.email],
             decoration: const InputDecoration(labelText: 'Email'),
             enabled: !_busy,
+            textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 8),
           TextField(
@@ -237,6 +246,7 @@ class _AuthSheetState extends State<_AuthSheet> {
             autofillHints: const [AutofillHints.password],
             decoration: const InputDecoration(labelText: 'Password'),
             enabled: !_busy,
+            textInputAction: TextInputAction.done,
           ),
           if (_error != null) ...[
             const SizedBox(height: 8),
