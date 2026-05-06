@@ -341,14 +341,6 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     );
     final showOtu = otu > 0;
 
-    final ppo2Label = ppo2Stats == null
-        ? '—'
-        : '${ppo2Stats.min.toStringAsFixed(2)} / ${ppo2Stats.avg.toStringAsFixed(2)} / ${ppo2Stats.max.toStringAsFixed(2)}';
-
-    final tempLabel = tempStats == null
-        ? '—'
-        : '${tempStats.min.round()}/${tempStats.avg.round()}/${tempStats.max.round()}°C';
-
     final dive = widget.dive;
     final stackEnd = dive.stackRemainingAtEndSeconds;
     final stackStart = dive.stackRemainingAtStartSeconds;
@@ -363,10 +355,27 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
 
     return LayoutBuilder(builder: (context, constraints) {
       final cells = <Widget>[
-        _statCell('PPO2 min/avg/max', ppo2Label, theme),
+        if (ppo2Stats != null)
+          _avgMinMaxCell(
+              'PPO2',
+              ppo2Stats.avg.toStringAsFixed(2),
+              ppo2Stats.min.toStringAsFixed(2),
+              ppo2Stats.max.toStringAsFixed(2),
+              theme)
+        else
+          _statCell('PPO2', '—', theme),
         _statCell('CNS', '${(maxCns * 100).toInt()}%', theme),
         if (showOtu) _statCell('OTU', '${otu.round()}', theme),
-        _statCell('TEMP min/avg/max', tempLabel, theme),
+        if (tempStats != null)
+          _avgMinMaxCell(
+              'TEMP',
+              '${tempStats.avg.round()}',
+              '${tempStats.min.round()}',
+              '${tempStats.max.round()}',
+              theme,
+              unit: '°C')
+        else
+          _statCell('TEMP', '—', theme),
         _statCell('GAS', gasLabel, theme),
         if (stackEnd != null)
           _stackCell(stackLabel, stackUsed, stackConf, theme),
@@ -428,6 +437,23 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       Text('STACK', style: faded),
       if (used != null) Text('used: $used', style: faded),
       if (configured != null) Text('conf: $configured', style: faded),
+    ]);
+  }
+
+  Widget _avgMinMaxCell(
+      String label, String avg, String min, String max, ThemeData theme,
+      {String unit = ''}) {
+    final faded = TextStyle(
+        fontSize: 9,
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.4));
+    return Column(children: [
+      Text('$avg$unit',
+          style:
+              const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+      const SizedBox(height: 2),
+      Text(label, style: faded),
+      Text('min: $min', style: faded),
+      Text('max: $max', style: faded),
     ]);
   }
 }

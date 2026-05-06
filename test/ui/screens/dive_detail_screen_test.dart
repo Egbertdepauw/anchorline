@@ -87,6 +87,35 @@ void main() {
     expect(find.byType(DiveDetailScreen), findsOneWidget);
   });
 
+  testWidgets('PPO2 cell shows avg headline with min/max underneath',
+      (tester) async {
+    final s = await _seedDive();
+    addTearDown(() async => s.db.close());
+
+    await _pumpScreen(tester, s.db, s.dive, s.dao);
+
+    // "PPO2" appears both as a trace-toggle chip label and the stats
+    // cell label.
+    expect(find.text('PPO2'), findsNWidgets(2));
+    // Avg headline is two-decimal formatted; min/max prefixed and on
+    // their own lines.
+    expect(find.textContaining(RegExp(r'^min: \d\.\d{2}$')), findsWidgets);
+    expect(find.textContaining(RegExp(r'^max: \d\.\d{2}$')), findsWidgets);
+  });
+
+  testWidgets('TEMP cell shows avg in white with °C suffix', (tester) async {
+    final s = await _seedDive();
+    addTearDown(() async => s.db.close());
+
+    await _pumpScreen(tester, s.db, s.dive, s.dao);
+
+    expect(find.text('TEMP'), findsOneWidget);
+    // Whole-number rounding + °C unit on the headline.
+    expect(find.textContaining(RegExp(r'^-?\d+°C$')), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^min: -?\d+$')), findsWidgets);
+    expect(find.textContaining(RegExp(r'^max: -?\d+$')), findsWidgets);
+  });
+
   testWidgets('survives with sentinel raw blob (smoke)', (tester) async {
     // Independent smoke check: even if loadSamples shortcuts, screen builds.
     final db = AppDatabase(NativeDatabase.memory());
