@@ -70,6 +70,8 @@ class _FakeSessions implements SessionSource {
   Session? session;
   @override
   Session? get currentSession => session;
+  @override
+  Future<void> refreshSession() async {}
 }
 
 class _NoopUploader implements SupabaseRestUploader {

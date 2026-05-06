@@ -5,8 +5,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class _FakeSessions implements SessionSource {
   Session? session;
+  int refreshCount = 0;
   @override
   Session? get currentSession => session;
+  @override
+  Future<void> refreshSession() async {
+    refreshCount++;
+  }
 }
 
 sealed class _Call {

@@ -16,6 +16,8 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Session;
 class _FakeSessionSource implements SessionSource {
   @override
   Session? get currentSession => null;
+  @override
+  Future<void> refreshSession() async {}
 }
 
 void main() {

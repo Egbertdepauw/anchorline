@@ -35,6 +35,8 @@ class FakeSessionSource implements SessionSource {
 
   @override
   Session? get currentSession => _session;
+  @override
+  Future<void> refreshSession() async {}
 }
 
 /// Opens a fresh PowerSync database in a unique tmpdir and registers

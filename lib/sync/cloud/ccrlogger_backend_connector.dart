@@ -41,6 +41,11 @@ class SupabaseClientRestUploader implements SupabaseRestUploader {
 
 abstract class SessionSource {
   Session? get currentSession;
+
+  /// Forces a token refresh. Tests may no-op this. Real implementations
+  /// call into Supabase's GoTrue refresh endpoint; on success
+  /// [currentSession] returns a fresh token.
+  Future<void> refreshSession();
 }
 
 class SupabaseAuthSessionSource implements SessionSource {
@@ -48,6 +53,10 @@ class SupabaseAuthSessionSource implements SessionSource {
   SupabaseAuthSessionSource(this._client);
   @override
   Session? get currentSession => _client.auth.currentSession;
+  @override
+  Future<void> refreshSession() async {
+    await _client.auth.refreshSession();
+  }
 }
 
 class CcrloggerBackendConnector extends PowerSyncBackendConnector {
@@ -73,12 +82,30 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
 
   @override
   Future<PowerSyncCredentials?> fetchCredentials() async {
-    final session = _sessions.currentSession;
-    if (session == null) return null;
-    // Without expiresAt PowerSync never asks for a refreshed token, so the
-    // first request after the JWT expires fails permanently with
-    // "Authorization error". Pass it explicitly. userId is also passed for
-    // diagnostics — surfaces in PowerSync's debug log.
+    final initial = _sessions.currentSession;
+    if (initial == null) return null;
+    // Force a refresh when the cached token is past expiry. Supabase's
+    // background auto-refresh isn't always reliable on desktop after long
+    // gaps; without this, the connector would hand PowerSync an already-
+    // expired JWT and every sync request would fail with 401.
+    final now = DateTime.now().toUtc();
+    final initialExpiry = initial.expiresAt == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(
+            initial.expiresAt! * 1000, isUtc: true);
+    Session session = initial;
+    if (initialExpiry != null &&
+        initialExpiry.isBefore(now.add(const Duration(seconds: 30)))) {
+      try {
+        await _sessions.refreshSession();
+        final refreshed = _sessions.currentSession;
+        if (refreshed != null) session = refreshed;
+      } catch (_) {
+        // Refresh failed (network down, refresh token revoked). Return
+        // whatever we have — PowerSync will retry, and if the user
+        // re-signs-in via the UI we'll pick that up next round.
+      }
+    }
     final expiresAtSec = session.expiresAt;
     return PowerSyncCredentials(
       endpoint: _endpoint,
