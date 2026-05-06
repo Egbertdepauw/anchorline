@@ -193,12 +193,16 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                             fontWeight: FontWeight.w600,
                                             fontSize: 16)),
                                     const SizedBox(width: 8),
-                                    Text(modelName,
-                                        style: TextStyle(
-                                            color: theme
-                                                .colorScheme.onSurface
-                                                .withValues(alpha: 0.4),
-                                            fontSize: 12)),
+                                    Flexible(
+                                      child: Text(modelName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                              color: theme
+                                                  .colorScheme.onSurface
+                                                  .withValues(alpha: 0.4),
+                                              fontSize: 12)),
+                                    ),
                                   ]),
                                   const SizedBox(height: 4),
                                   Text(formatDateTime(dive.startTime),
