@@ -135,15 +135,15 @@ class SubsurfaceXmlEncoder {
         b.element('notes', nest: notes);
       }
 
-      _writeCylinders(b, dive);
+      _writeCylinders(b, dive, d.samples);
       _writeDiveComputer(b, d);
     });
   }
 
-  void _writeCylinders(XmlBuilder b, Dive dive) {
+  void _writeCylinders(XmlBuilder b, Dive dive, SampleSet? samples) {
     final ordered = _cylinderOrder(dive.tanks);
     for (final t in ordered) {
-      final mix = _mixForTank(dive, t);
+      final mix = _mixForTank(dive, t, samples);
       b.element('cylinder', nest: () {
         b.attribute('size', '${_fmt1(0)} l');
         b.attribute('workpressure', '${_fmt1(t.pressureMaxBar.toDouble())} bar');
@@ -308,7 +308,14 @@ class SubsurfaceXmlEncoder {
   }
 
   /// Best-effort mix lookup for a tank.
-  DiveGasMix? _mixForTank(Dive dive, DiveTank t) {
+  ///
+  /// Diluent: prefer the gas the diver was actually breathing at the start
+  /// of the dive (samples[0].gasMixIndex), since the parser tags every
+  /// gas breathed in CCR mode as `isDiluent` — including deco gases the
+  /// diver may have switched to during the dive. Falls back to the lowest
+  /// O2% diluent (typical bottom dil is air or trimix), then to any
+  /// `isDiluent` gas.
+  DiveGasMix? _mixForTank(Dive dive, DiveTank t, SampleSet? samples) {
     if (dive.gasMixes.isEmpty) return null;
     if (t.usage == TankUsage.oxygen) {
       for (final m in dive.gasMixes) {
@@ -316,9 +323,21 @@ class SubsurfaceXmlEncoder {
       }
     }
     if (t.usage == TankUsage.diluent) {
-      for (final m in dive.gasMixes) {
-        if (m.isDiluent) return m;
+      if (samples != null && samples.sampleCount > 0) {
+        final idx = samples.gasMixIndex[0];
+        if (idx < dive.gasMixes.length) {
+          final m = dive.gasMixes[idx];
+          if (m.isDiluent) return m;
+        }
       }
+      DiveGasMix? leanest;
+      for (final m in dive.gasMixes) {
+        if (!m.isDiluent) continue;
+        if (leanest == null || m.oxygenPercent < leanest.oxygenPercent) {
+          leanest = m;
+        }
+      }
+      return leanest;
     }
     return null;
   }
