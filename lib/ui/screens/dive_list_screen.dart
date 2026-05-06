@@ -5,6 +5,7 @@ import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../notifiers/dive_list_notifier.dart';
+import '../notifiers/settings_notifier.dart';
 import '../widgets/dive_tile.dart';
 import 'dive_detail_screen.dart';
 
@@ -13,6 +14,7 @@ class DiveListScreen extends StatefulWidget {
   final DiveDao diveDao;
   final DiveAnnotationsDao annotationsDao;
   final EquipmentDao equipmentDao;
+  final SettingsNotifier settingsNotifier;
 
   const DiveListScreen({
     super.key,
@@ -20,6 +22,7 @@ class DiveListScreen extends StatefulWidget {
     required this.diveDao,
     required this.annotationsDao,
     required this.equipmentDao,
+    required this.settingsNotifier,
   });
 
   @override

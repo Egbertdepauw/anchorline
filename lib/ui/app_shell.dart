@@ -8,15 +8,17 @@ import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
 import 'notifiers/dive_list_notifier.dart';
 import 'notifiers/import_notifier.dart';
+import 'notifiers/settings_notifier.dart';
 import 'screens/dive_list_screen.dart';
 import 'screens/equipment/equipment_landing_screen.dart';
 import 'screens/import_screen.dart';
-import 'screens/placeholder_screen.dart';
+import 'screens/settings_screen.dart';
 
 class AppShell extends StatefulWidget {
   final AppDatabase db;
+  final SettingsNotifier settingsNotifier;
 
-  const AppShell({super.key, required this.db});
+  const AppShell({super.key, required this.db, required this.settingsNotifier});
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -62,7 +64,22 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('CCRLog')),
+      appBar: AppBar(
+        title: const Text('CCRLog'),
+        actions: [
+          if (_currentIndex == 0)
+            IconButton(
+              tooltip: 'Settings',
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) =>
+                      SettingsScreen(notifier: widget.settingsNotifier),
+                ));
+              },
+            ),
+        ],
+      ),
       body: IndexedStack(
         index: _currentIndex,
         children: [
@@ -71,6 +88,7 @@ class _AppShellState extends State<AppShell> {
             diveDao: _diveDao,
             annotationsDao: _diveAnnotationsDao,
             equipmentDao: _equipmentDao,
+            settingsNotifier: widget.settingsNotifier,
           ),
           ImportScreen(notifier: _importNotifier, onViewDives: _onViewDives),
           EquipmentLandingScreen(
@@ -78,7 +96,7 @@ class _AppShellState extends State<AppShell> {
             diveDao: _diveDao,
             annotationsDao: _diveAnnotationsDao,
           ),
-          const PlaceholderScreen(title: 'Settings', icon: Icons.settings_outlined),
+          SettingsScreen(notifier: widget.settingsNotifier),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(

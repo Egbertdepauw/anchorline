@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'data/db/database.dart';
 import 'dev/fixture_seeder.dart';
 import 'ui/app_shell.dart';
+import 'ui/notifiers/settings_notifier.dart';
 import 'ui/theme/app_theme.dart';
 
 void main() async {
@@ -19,20 +20,24 @@ void main() async {
 
   await seedFixtures(db);
 
-  runApp(CCRLogApp(db: db));
+  final settings = SettingsNotifier();
+  await settings.load();
+
+  runApp(CCRLogApp(db: db, settings: settings));
 }
 
 class CCRLogApp extends StatelessWidget {
   final AppDatabase db;
+  final SettingsNotifier settings;
 
-  const CCRLogApp({super.key, required this.db});
+  const CCRLogApp({super.key, required this.db, required this.settings});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'CCRLog',
       theme: AppTheme.dark(),
-      home: AppShell(db: db),
+      home: AppShell(db: db, settingsNotifier: settings),
       debugShowCheckedModeBanner: false,
     );
   }
