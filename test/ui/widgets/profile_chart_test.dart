@@ -82,6 +82,38 @@ void main() {
     expect(find.byType(ProfileChart), findsOneWidget);
   });
 
+  testWidgets('ProfileChart renders with speed-coloured graph on',
+      (tester) async {
+    final samples = _loadSamples();
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 360,
+                height: 250,
+                child: ProfileChart(
+                    samples: samples,
+                    visibleTraces: const {},
+                    crosshairIndex: null,
+                    useSpeedColoredGraph: true)))));
+    expect(find.byType(ProfileChart), findsOneWidget);
+  });
+
+  testWidgets('ProfileChart renders with speed-coloured graph off',
+      (tester) async {
+    final samples = _loadSamples();
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 360,
+                height: 250,
+                child: ProfileChart(
+                    samples: samples,
+                    visibleTraces: const {},
+                    crosshairIndex: null,
+                    useSpeedColoredGraph: false)))));
+    expect(find.byType(ProfileChart), findsOneWidget);
+  });
+
   testWidgets('shows cell label when cellsBySlot is provided', (tester) async {
     final samples = _loadSamples();
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -150,8 +182,14 @@ void main() {
         samples: samples,
         visibleTraces: {TraceType.ppo2},
         crosshairIndex: 10);
+    final p4 = ProfileChartPainter(
+        samples: samples,
+        visibleTraces: {TraceType.ppo2},
+        crosshairIndex: null,
+        useSpeedColoredGraph: false);
     expect(p1.shouldRepaint(p2), isTrue);
     expect(p1.shouldRepaint(p3), isTrue);
+    expect(p1.shouldRepaint(p4), isTrue);
     expect(p1.shouldRepaint(p1), isFalse);
   });
 }

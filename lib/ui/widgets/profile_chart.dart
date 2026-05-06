@@ -32,7 +32,15 @@ const Color _cell2Color = Color(0xFF42A5F5);
 const Color _crosshairColor = Color(0x80FFFFFF);
 const Color _gridColor = Color(0xFF1A2A40);
 const Color _vSpeedExtremeColor = Colors.redAccent;
-const int _vSpeedExtremeHalfWindow = 3;
+
+// ── Speed-gradient thresholds (m/min, magnitude) ────────────────
+//
+// Below the lower threshold the depth trace is rendered in the neutral
+// [_depthColor]. From the lower threshold up to the upper threshold the
+// colour interpolates linearly toward [_vSpeedExtremeColor]. At and above
+// the upper threshold the trace is fully red.
+const double _speedGradientLowMpm = 9.0;
+const double _speedGradientHighMpm = 30.0;
 
 const double _ppo2Max = 2.0;
 
@@ -57,13 +65,17 @@ class ProfileChart extends StatelessWidget {
   /// start time. Used by [_legend] to label the cell traces.
   final Map<int, OxygenCell>? cellsBySlot;
 
-  /// Sample index of the worst descent rate. When non-null, a short
-  /// red overlay is drawn on the depth trace around this sample.
+  /// Retained for API compatibility; the chart no longer paints this
+  /// overlay (the speed-gradient subsumes it).
   final int? maxDescentEndIndex;
 
-  /// Sample index of the worst ascent rate. When non-null, a short
-  /// red overlay is drawn on the depth trace around this sample.
+  /// Retained for API compatibility; see [maxDescentEndIndex].
   final int? maxAscentEndIndex;
+
+  /// When true, the depth trace is drawn as per-segment line pieces
+  /// coloured by local vertical speed. When false, the trace is drawn
+  /// as a single solid stroke in [_depthColor] with no overlay.
+  final bool useSpeedColoredGraph;
 
   const ProfileChart({
     super.key,
@@ -74,6 +86,7 @@ class ProfileChart extends StatelessWidget {
     this.cellsBySlot,
     this.maxDescentEndIndex,
     this.maxAscentEndIndex,
+    this.useSpeedColoredGraph = true,
   });
 
   @override
@@ -85,8 +98,7 @@ class ProfileChart extends StatelessWidget {
           visibleTraces: visibleTraces,
           crosshairIndex: crosshairIndex,
           cellCalibration: cellCalibration,
-          maxDescentEndIndex: maxDescentEndIndex,
-          maxAscentEndIndex: maxAscentEndIndex,
+          useSpeedColoredGraph: useSpeedColoredGraph,
         ),
         child: const SizedBox.expand(),
       ),
@@ -162,16 +174,14 @@ class ProfileChartPainter extends CustomPainter {
   final Set<TraceType> visibleTraces;
   final int? crosshairIndex;
   final List<double>? cellCalibration;
-  final int? maxDescentEndIndex;
-  final int? maxAscentEndIndex;
+  final bool useSpeedColoredGraph;
 
   const ProfileChartPainter({
     required this.samples,
     required this.visibleTraces,
     required this.crosshairIndex,
     this.cellCalibration,
-    this.maxDescentEndIndex,
-    this.maxAscentEndIndex,
+    this.useSpeedColoredGraph = true,
   });
 
   // ── shouldRepaint ──────────────────────────────────────────────
@@ -180,8 +190,7 @@ class ProfileChartPainter extends CustomPainter {
   bool shouldRepaint(ProfileChartPainter old) {
     return old.crosshairIndex != crosshairIndex ||
         !_setEquals(old.visibleTraces, visibleTraces) ||
-        old.maxDescentEndIndex != maxDescentEndIndex ||
-        old.maxAscentEndIndex != maxAscentEndIndex ||
+        old.useSpeedColoredGraph != useSpeedColoredGraph ||
         !identical(old.samples, samples);
   }
 
@@ -270,54 +279,54 @@ class ProfileChartPainter extends CustomPainter {
       }
     }
 
-    // ── Depth fill ─────────────────────────────────────────────────
+    // ── Depth fill + trace ─────────────────────────────────────────
     {
       final fillPaint = Paint()
         ..color = _depthColor.withValues(alpha: 0.10)
         ..style = PaintingStyle.fill;
-      final strokePaint = Paint()
-        ..color = _depthColor
-        ..strokeWidth = 2.0
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round;
 
       final fillPath = Path();
-      final strokePath = Path();
-
       fillPath.moveTo(xOf(0), chartBottom);
       fillPath.lineTo(xOf(0), yDepth(samples.depthMeters[0]));
-      strokePath.moveTo(xOf(0), yDepth(samples.depthMeters[0]));
-
       for (int i = 1; i < n; i++) {
-        final y = yDepth(samples.depthMeters[i]);
-        fillPath.lineTo(xOf(i), y);
-        strokePath.lineTo(xOf(i), y);
+        fillPath.lineTo(xOf(i), yDepth(samples.depthMeters[i]));
       }
       fillPath.lineTo(xOf(n - 1), chartBottom);
       fillPath.close();
-
       canvas.drawPath(fillPath, fillPaint);
-      canvas.drawPath(strokePath, strokePaint);
 
-      // ── Vertical-speed extremes (red sub-segments) ────────────────
-      final extremePaint = Paint()
-        ..color = _vSpeedExtremeColor
-        ..strokeWidth = 2.5
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round;
-      for (final idx in [maxDescentEndIndex, maxAscentEndIndex]) {
-        if (idx == null) continue;
-        final lo = (idx - _vSpeedExtremeHalfWindow).clamp(0, n - 1);
-        final hi = (idx + _vSpeedExtremeHalfWindow).clamp(0, n - 1);
-        if (hi <= lo) continue;
-        final p = Path()
-          ..moveTo(xOf(lo), yDepth(samples.depthMeters[lo]));
-        for (int i = lo + 1; i <= hi; i++) {
-          p.lineTo(xOf(i), yDepth(samples.depthMeters[i]));
+      if (useSpeedColoredGraph) {
+        // Per-segment line pieces, coloured by local vertical speed.
+        final segPaint = Paint()
+          ..strokeWidth = 2.0
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+        final mpmPerSample = 60000.0 / samples.sampleIntervalMs;
+        for (int i = 1; i < n; i++) {
+          final rate =
+              (samples.depthMeters[i] - samples.depthMeters[i - 1]) *
+                  mpmPerSample;
+          segPaint.color = _colorForRate(rate);
+          canvas.drawLine(
+            Offset(xOf(i - 1), yDepth(samples.depthMeters[i - 1])),
+            Offset(xOf(i), yDepth(samples.depthMeters[i])),
+            segPaint,
+          );
         }
-        canvas.drawPath(p, extremePaint);
+      } else {
+        final strokePaint = Paint()
+          ..color = _depthColor
+          ..strokeWidth = 2.0
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+        final strokePath = Path();
+        strokePath.moveTo(xOf(0), yDepth(samples.depthMeters[0]));
+        for (int i = 1; i < n; i++) {
+          strokePath.lineTo(xOf(i), yDepth(samples.depthMeters[i]));
+        }
+        canvas.drawPath(strokePath, strokePaint);
       }
     }
 
@@ -388,6 +397,15 @@ class ProfileChartPainter extends CustomPainter {
   }
 
   // ── Trace helpers ──────────────────────────────────────────────
+
+  Color _colorForRate(double mPerMin) {
+    final mag = mPerMin.abs();
+    if (mag <= _speedGradientLowMpm) return _depthColor;
+    final t = ((mag - _speedGradientLowMpm) /
+            (_speedGradientHighMpm - _speedGradientLowMpm))
+        .clamp(0.0, 1.0);
+    return Color.lerp(_depthColor, _vSpeedExtremeColor, t)!;
+  }
 
   void _drawSolidTrace(
     Canvas canvas,

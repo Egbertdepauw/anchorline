@@ -10,6 +10,7 @@ import '../../data/sample_codec/dive_stats.dart';
 import '../../shearwater/parser/hardware.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import '../notifiers/dive_detail_notifier.dart';
+import '../notifiers/settings_notifier.dart';
 import '../util/dive_mode_color.dart';
 import '../util/format.dart';
 import '../widgets/crosshair_overlay.dart';
@@ -24,12 +25,14 @@ class DiveDetailScreen extends StatefulWidget {
   final DiveDao dao;
   final DiveAnnotationsDao annotationsDao;
   final EquipmentDao equipmentDao;
+  final SettingsNotifier? settingsNotifier;
   const DiveDetailScreen({
     super.key,
     required this.dive,
     required this.dao,
     required this.annotationsDao,
     required this.equipmentDao,
+    this.settingsNotifier,
   });
   @override
   State<DiveDetailScreen> createState() => _DiveDetailScreenState();
@@ -53,6 +56,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     _annotationsNotifier = DiveAnnotationsNotifier(widget.annotationsDao);
     _annotationsNotifier.addListener(_onChanged);
     _annotationsNotifier.load(widget.dive.id);
+
+    widget.settingsNotifier?.addListener(_onChanged);
   }
 
   @override
@@ -61,6 +66,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     _notifier.dispose();
     _annotationsNotifier.removeListener(_onChanged);
     _annotationsNotifier.dispose();
+    widget.settingsNotifier?.removeListener(_onChanged);
     super.dispose();
   }
 
@@ -229,17 +235,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                   if (_notifier.samples != null) ...[
                     Builder(builder: (context) {
                       final samples = _notifier.samples!;
-                      final vSpeed = verticalSpeedExtremes(
-                        depthMeters: samples.depthMeters,
-                        sampleCount: samples.sampleCount,
-                        sampleIntervalMs: samples.sampleIntervalMs,
-                      );
-                      final descIdx = vSpeed.maxDescentMpm > 0
-                          ? vSpeed.maxDescentEndIndex
-                          : null;
-                      final ascIdx = vSpeed.maxAscentMpm > 0
-                          ? vSpeed.maxAscentEndIndex
-                          : null;
+                      final useSpeedColored =
+                          widget.settingsNotifier?.useSpeedColoredGraph ?? true;
                       return SizedBox(
                         height: 250,
                         child: LayoutBuilder(builder: (context, constraints) {
@@ -255,8 +252,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                   visibleTraces: _notifier.visibleTraces,
                                   crosshairIndex: _notifier.crosshairIndex,
                                   cellsBySlot: _notifier.activeCells,
-                                  maxDescentEndIndex: descIdx,
-                                  maxAscentEndIndex: ascIdx),
+                                  useSpeedColoredGraph: useSpeedColored),
                               if (_notifier.crosshairIndex != null)
                                 CrosshairTooltip(
                                   samples: _notifier.samples!,

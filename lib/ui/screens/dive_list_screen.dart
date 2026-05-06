@@ -109,6 +109,7 @@ class _DiveListScreenState extends State<DiveListScreen> {
                     diveDao: widget.diveDao,
                     annotationsDao: widget.annotationsDao,
                     equipmentDao: widget.equipmentDao,
+                    settingsNotifier: widget.settingsNotifier,
                   );
                 },
                 childCount: entry.value.length,
@@ -127,6 +128,7 @@ class _DiveTileWithSparkline extends StatelessWidget {
   final DiveDao diveDao;
   final DiveAnnotationsDao annotationsDao;
   final EquipmentDao equipmentDao;
+  final SettingsNotifier settingsNotifier;
 
   const _DiveTileWithSparkline({
     required this.dive,
@@ -134,6 +136,7 @@ class _DiveTileWithSparkline extends StatelessWidget {
     required this.diveDao,
     required this.annotationsDao,
     required this.equipmentDao,
+    required this.settingsNotifier,
   });
 
   @override
@@ -152,6 +155,7 @@ class _DiveTileWithSparkline extends StatelessWidget {
                 dao: diveDao,
                 annotationsDao: annotationsDao,
                 equipmentDao: equipmentDao,
+                settingsNotifier: settingsNotifier,
               ),
             ));
             if (!context.mounted) return;
