@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:powersync/powersync.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../data/db/database.dart';
@@ -19,12 +20,14 @@ import 'screens/settings_screen.dart';
 
 class AppShell extends StatefulWidget {
   final AppDatabase db;
+  final PowerSyncDatabase powerSyncDb;
   final SettingsNotifier settingsNotifier;
   final AuthService authService;
 
   const AppShell({
     super.key,
     required this.db,
+    required this.powerSyncDb,
     required this.settingsNotifier,
     required this.authService,
   });
