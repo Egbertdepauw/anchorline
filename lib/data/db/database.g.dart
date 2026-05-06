@@ -1704,6 +1704,18 @@ class $DiveSamplesTable extends DiveSamples
     type: DriftSqlType.blob,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _tankPressuresBlobMeta = const VerificationMeta(
+    'tankPressuresBlob',
+  );
+  @override
+  late final GeneratedColumn<Uint8List> tankPressuresBlob =
+      GeneratedColumn<Uint8List>(
+        'tank_pressures_blob',
+        aliasedName,
+        true,
+        type: DriftSqlType.blob,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     diveId,
@@ -1721,6 +1733,7 @@ class $DiveSamplesTable extends DiveSamples
     ttsBlob,
     gasMixIdxBlob,
     statusBlob,
+    tankPressuresBlob,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1881,6 +1894,15 @@ class $DiveSamplesTable extends DiveSamples
     } else if (isInserting) {
       context.missing(_statusBlobMeta);
     }
+    if (data.containsKey('tank_pressures_blob')) {
+      context.handle(
+        _tankPressuresBlobMeta,
+        tankPressuresBlob.isAcceptableOrUnknown(
+          data['tank_pressures_blob']!,
+          _tankPressuresBlobMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1950,6 +1972,10 @@ class $DiveSamplesTable extends DiveSamples
         DriftSqlType.blob,
         data['${effectivePrefix}status_blob'],
       )!,
+      tankPressuresBlob: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}tank_pressures_blob'],
+      ),
     );
   }
 
@@ -1975,6 +2001,10 @@ class DiveSample extends DataClass implements Insertable<DiveSample> {
   final Uint8List ttsBlob;
   final Uint8List gasMixIdxBlob;
   final Uint8List statusBlob;
+
+  /// Combined per-tank pressure trace blob (gzipped Float32 channels with
+  /// a small header). Null for OC dives and pre-v6 imports.
+  final Uint8List? tankPressuresBlob;
   const DiveSample({
     required this.diveId,
     required this.sampleCount,
@@ -1991,6 +2021,7 @@ class DiveSample extends DataClass implements Insertable<DiveSample> {
     required this.ttsBlob,
     required this.gasMixIdxBlob,
     required this.statusBlob,
+    this.tankPressuresBlob,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2010,6 +2041,9 @@ class DiveSample extends DataClass implements Insertable<DiveSample> {
     map['tts_blob'] = Variable<Uint8List>(ttsBlob);
     map['gas_mix_idx_blob'] = Variable<Uint8List>(gasMixIdxBlob);
     map['status_blob'] = Variable<Uint8List>(statusBlob);
+    if (!nullToAbsent || tankPressuresBlob != null) {
+      map['tank_pressures_blob'] = Variable<Uint8List>(tankPressuresBlob);
+    }
     return map;
   }
 
@@ -2030,6 +2064,9 @@ class DiveSample extends DataClass implements Insertable<DiveSample> {
       ttsBlob: Value(ttsBlob),
       gasMixIdxBlob: Value(gasMixIdxBlob),
       statusBlob: Value(statusBlob),
+      tankPressuresBlob: tankPressuresBlob == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tankPressuresBlob),
     );
   }
 
@@ -2054,6 +2091,9 @@ class DiveSample extends DataClass implements Insertable<DiveSample> {
       ttsBlob: serializer.fromJson<Uint8List>(json['ttsBlob']),
       gasMixIdxBlob: serializer.fromJson<Uint8List>(json['gasMixIdxBlob']),
       statusBlob: serializer.fromJson<Uint8List>(json['statusBlob']),
+      tankPressuresBlob: serializer.fromJson<Uint8List?>(
+        json['tankPressuresBlob'],
+      ),
     );
   }
   @override
@@ -2075,6 +2115,7 @@ class DiveSample extends DataClass implements Insertable<DiveSample> {
       'ttsBlob': serializer.toJson<Uint8List>(ttsBlob),
       'gasMixIdxBlob': serializer.toJson<Uint8List>(gasMixIdxBlob),
       'statusBlob': serializer.toJson<Uint8List>(statusBlob),
+      'tankPressuresBlob': serializer.toJson<Uint8List?>(tankPressuresBlob),
     };
   }
 
@@ -2094,6 +2135,7 @@ class DiveSample extends DataClass implements Insertable<DiveSample> {
     Uint8List? ttsBlob,
     Uint8List? gasMixIdxBlob,
     Uint8List? statusBlob,
+    Value<Uint8List?> tankPressuresBlob = const Value.absent(),
   }) => DiveSample(
     diveId: diveId ?? this.diveId,
     sampleCount: sampleCount ?? this.sampleCount,
@@ -2110,6 +2152,9 @@ class DiveSample extends DataClass implements Insertable<DiveSample> {
     ttsBlob: ttsBlob ?? this.ttsBlob,
     gasMixIdxBlob: gasMixIdxBlob ?? this.gasMixIdxBlob,
     statusBlob: statusBlob ?? this.statusBlob,
+    tankPressuresBlob: tankPressuresBlob.present
+        ? tankPressuresBlob.value
+        : this.tankPressuresBlob,
   );
   DiveSample copyWithCompanion(DiveSamplesCompanion data) {
     return DiveSample(
@@ -2148,6 +2193,9 @@ class DiveSample extends DataClass implements Insertable<DiveSample> {
       statusBlob: data.statusBlob.present
           ? data.statusBlob.value
           : this.statusBlob,
+      tankPressuresBlob: data.tankPressuresBlob.present
+          ? data.tankPressuresBlob.value
+          : this.tankPressuresBlob,
     );
   }
 
@@ -2168,7 +2216,8 @@ class DiveSample extends DataClass implements Insertable<DiveSample> {
           ..write('decoTimeBlob: $decoTimeBlob, ')
           ..write('ttsBlob: $ttsBlob, ')
           ..write('gasMixIdxBlob: $gasMixIdxBlob, ')
-          ..write('statusBlob: $statusBlob')
+          ..write('statusBlob: $statusBlob, ')
+          ..write('tankPressuresBlob: $tankPressuresBlob')
           ..write(')'))
         .toString();
   }
@@ -2190,6 +2239,7 @@ class DiveSample extends DataClass implements Insertable<DiveSample> {
     $driftBlobEquality.hash(ttsBlob),
     $driftBlobEquality.hash(gasMixIdxBlob),
     $driftBlobEquality.hash(statusBlob),
+    $driftBlobEquality.hash(tankPressuresBlob),
   );
   @override
   bool operator ==(Object other) =>
@@ -2212,7 +2262,11 @@ class DiveSample extends DataClass implements Insertable<DiveSample> {
           $driftBlobEquality.equals(other.decoTimeBlob, this.decoTimeBlob) &&
           $driftBlobEquality.equals(other.ttsBlob, this.ttsBlob) &&
           $driftBlobEquality.equals(other.gasMixIdxBlob, this.gasMixIdxBlob) &&
-          $driftBlobEquality.equals(other.statusBlob, this.statusBlob));
+          $driftBlobEquality.equals(other.statusBlob, this.statusBlob) &&
+          $driftBlobEquality.equals(
+            other.tankPressuresBlob,
+            this.tankPressuresBlob,
+          ));
 }
 
 class DiveSamplesCompanion extends UpdateCompanion<DiveSample> {
@@ -2231,6 +2285,7 @@ class DiveSamplesCompanion extends UpdateCompanion<DiveSample> {
   final Value<Uint8List> ttsBlob;
   final Value<Uint8List> gasMixIdxBlob;
   final Value<Uint8List> statusBlob;
+  final Value<Uint8List?> tankPressuresBlob;
   final Value<int> rowid;
   const DiveSamplesCompanion({
     this.diveId = const Value.absent(),
@@ -2248,6 +2303,7 @@ class DiveSamplesCompanion extends UpdateCompanion<DiveSample> {
     this.ttsBlob = const Value.absent(),
     this.gasMixIdxBlob = const Value.absent(),
     this.statusBlob = const Value.absent(),
+    this.tankPressuresBlob = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DiveSamplesCompanion.insert({
@@ -2266,6 +2322,7 @@ class DiveSamplesCompanion extends UpdateCompanion<DiveSample> {
     required Uint8List ttsBlob,
     required Uint8List gasMixIdxBlob,
     required Uint8List statusBlob,
+    this.tankPressuresBlob = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : diveId = Value(diveId),
        sampleCount = Value(sampleCount),
@@ -2298,6 +2355,7 @@ class DiveSamplesCompanion extends UpdateCompanion<DiveSample> {
     Expression<Uint8List>? ttsBlob,
     Expression<Uint8List>? gasMixIdxBlob,
     Expression<Uint8List>? statusBlob,
+    Expression<Uint8List>? tankPressuresBlob,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2316,6 +2374,7 @@ class DiveSamplesCompanion extends UpdateCompanion<DiveSample> {
       if (ttsBlob != null) 'tts_blob': ttsBlob,
       if (gasMixIdxBlob != null) 'gas_mix_idx_blob': gasMixIdxBlob,
       if (statusBlob != null) 'status_blob': statusBlob,
+      if (tankPressuresBlob != null) 'tank_pressures_blob': tankPressuresBlob,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2336,6 +2395,7 @@ class DiveSamplesCompanion extends UpdateCompanion<DiveSample> {
     Value<Uint8List>? ttsBlob,
     Value<Uint8List>? gasMixIdxBlob,
     Value<Uint8List>? statusBlob,
+    Value<Uint8List?>? tankPressuresBlob,
     Value<int>? rowid,
   }) {
     return DiveSamplesCompanion(
@@ -2354,6 +2414,7 @@ class DiveSamplesCompanion extends UpdateCompanion<DiveSample> {
       ttsBlob: ttsBlob ?? this.ttsBlob,
       gasMixIdxBlob: gasMixIdxBlob ?? this.gasMixIdxBlob,
       statusBlob: statusBlob ?? this.statusBlob,
+      tankPressuresBlob: tankPressuresBlob ?? this.tankPressuresBlob,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2406,6 +2467,9 @@ class DiveSamplesCompanion extends UpdateCompanion<DiveSample> {
     if (statusBlob.present) {
       map['status_blob'] = Variable<Uint8List>(statusBlob.value);
     }
+    if (tankPressuresBlob.present) {
+      map['tank_pressures_blob'] = Variable<Uint8List>(tankPressuresBlob.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2430,6 +2494,7 @@ class DiveSamplesCompanion extends UpdateCompanion<DiveSample> {
           ..write('ttsBlob: $ttsBlob, ')
           ..write('gasMixIdxBlob: $gasMixIdxBlob, ')
           ..write('statusBlob: $statusBlob, ')
+          ..write('tankPressuresBlob: $tankPressuresBlob, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -8262,6 +8327,7 @@ typedef $$DiveSamplesTableCreateCompanionBuilder =
       required Uint8List ttsBlob,
       required Uint8List gasMixIdxBlob,
       required Uint8List statusBlob,
+      Value<Uint8List?> tankPressuresBlob,
       Value<int> rowid,
     });
 typedef $$DiveSamplesTableUpdateCompanionBuilder =
@@ -8281,6 +8347,7 @@ typedef $$DiveSamplesTableUpdateCompanionBuilder =
       Value<Uint8List> ttsBlob,
       Value<Uint8List> gasMixIdxBlob,
       Value<Uint8List> statusBlob,
+      Value<Uint8List?> tankPressuresBlob,
       Value<int> rowid,
     });
 
@@ -8383,6 +8450,11 @@ class $$DiveSamplesTableFilterComposer
 
   ColumnFilters<Uint8List> get statusBlob => $composableBuilder(
     column: $table.statusBlob,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get tankPressuresBlob => $composableBuilder(
+    column: $table.tankPressuresBlob,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8489,6 +8561,11 @@ class $$DiveSamplesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<Uint8List> get tankPressuresBlob => $composableBuilder(
+    column: $table.tankPressuresBlob,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$DivesTableOrderingComposer get diveId {
     final $$DivesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -8584,6 +8661,11 @@ class $$DiveSamplesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<Uint8List> get tankPressuresBlob => $composableBuilder(
+    column: $table.tankPressuresBlob,
+    builder: (column) => column,
+  );
+
   $$DivesTableAnnotationComposer get diveId {
     final $$DivesTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -8651,6 +8733,7 @@ class $$DiveSamplesTableTableManager
                 Value<Uint8List> ttsBlob = const Value.absent(),
                 Value<Uint8List> gasMixIdxBlob = const Value.absent(),
                 Value<Uint8List> statusBlob = const Value.absent(),
+                Value<Uint8List?> tankPressuresBlob = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DiveSamplesCompanion(
                 diveId: diveId,
@@ -8668,6 +8751,7 @@ class $$DiveSamplesTableTableManager
                 ttsBlob: ttsBlob,
                 gasMixIdxBlob: gasMixIdxBlob,
                 statusBlob: statusBlob,
+                tankPressuresBlob: tankPressuresBlob,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -8687,6 +8771,7 @@ class $$DiveSamplesTableTableManager
                 required Uint8List ttsBlob,
                 required Uint8List gasMixIdxBlob,
                 required Uint8List statusBlob,
+                Value<Uint8List?> tankPressuresBlob = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DiveSamplesCompanion.insert(
                 diveId: diveId,
@@ -8704,6 +8789,7 @@ class $$DiveSamplesTableTableManager
                 ttsBlob: ttsBlob,
                 gasMixIdxBlob: gasMixIdxBlob,
                 statusBlob: statusBlob,
+                tankPressuresBlob: tankPressuresBlob,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

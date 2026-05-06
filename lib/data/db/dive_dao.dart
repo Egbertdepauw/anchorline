@@ -96,6 +96,7 @@ class DiveDao {
             ttsBlob: sampleBlobs['tts']!,
             gasMixIdxBlob: sampleBlobs['gasMixIdx']!,
             statusBlob: sampleBlobs['status']!,
+            tankPressuresBlob: Value(sampleBlobs['tankPressures']),
           ));
     });
 
@@ -154,6 +155,8 @@ class DiveDao {
         'tts': row.ttsBlob,
         'gasMixIdx': row.gasMixIdxBlob,
         'status': row.statusBlob,
+        if (row.tankPressuresBlob != null)
+          'tankPressures': row.tankPressuresBlob!,
       },
       diveId: diveId,
       sampleCount: row.sampleCount,

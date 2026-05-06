@@ -88,6 +88,88 @@ void main() {
     });
   });
 
+  group('SampleCodec tank pressures', () {
+    test('round-trips a SampleSet with two tank channels', () {
+      const n = 100;
+      // Two descending pressure curves: tank 0 from 200→150 bar,
+      // tank 1 from 180→120 bar.
+      final ch0 = Float32List(n);
+      final ch1 = Float32List(n);
+      for (var i = 0; i < n; i++) {
+        ch0[i] = 200.0 - (50.0 * i / (n - 1));
+        ch1[i] = 180.0 - (60.0 * i / (n - 1));
+      }
+      final original = SampleSet(
+        diveId: 'tanks',
+        sampleCount: n,
+        sampleIntervalMs: 10000,
+        depthMeters: Float32List(n),
+        temperatureCelsius: Float32List(n),
+        ppo2Bar: Float32List(n),
+        cellMv0: Float32List(n),
+        cellMv1: Float32List(n),
+        cellMv2: Float32List(n),
+        setpointBar: Float32List(n),
+        cns: Float32List(n),
+        decoStopDepthMeters: Float32List(n),
+        decoTimeSeconds: Int32List(n),
+        ttsSeconds: Int32List(n),
+        gasMixIndex: Uint8List(n),
+        statusFlags: Uint8List(n),
+        tankPressuresBar: [ch0, ch1],
+      );
+
+      final blobs = SampleCodec.encode(original);
+      expect(blobs.containsKey('tankPressures'), isTrue);
+
+      final decoded = SampleCodec.decode(
+        blobs: blobs,
+        diveId: 'tanks',
+        sampleCount: n,
+        sampleIntervalMs: 10000,
+      );
+
+      expect(decoded.tankPressuresBar, hasLength(2));
+      expect(decoded.tankPressuresBar[0], hasLength(n));
+      expect(decoded.tankPressuresBar[1], hasLength(n));
+      for (var i = 0; i < n; i++) {
+        expect(decoded.tankPressuresBar[0][i], closeTo(ch0[i], 1e-3));
+        expect(decoded.tankPressuresBar[1][i], closeTo(ch1[i], 1e-3));
+      }
+    });
+
+    test('omits tankPressures key when no tanks', () {
+      final original = SampleSet(
+        diveId: 'oc',
+        sampleCount: 1,
+        sampleIntervalMs: 10000,
+        depthMeters: Float32List(1),
+        temperatureCelsius: Float32List(1),
+        ppo2Bar: Float32List(1),
+        cellMv0: Float32List(1),
+        cellMv1: Float32List(1),
+        cellMv2: Float32List(1),
+        setpointBar: Float32List(1),
+        cns: Float32List(1),
+        decoStopDepthMeters: Float32List(1),
+        decoTimeSeconds: Int32List(1),
+        ttsSeconds: Int32List(1),
+        gasMixIndex: Uint8List(1),
+        statusFlags: Uint8List(1),
+      );
+      final blobs = SampleCodec.encode(original);
+      expect(blobs.containsKey('tankPressures'), isFalse);
+
+      final decoded = SampleCodec.decode(
+        blobs: blobs,
+        diveId: 'oc',
+        sampleCount: 1,
+        sampleIntervalMs: 10000,
+      );
+      expect(decoded.tankPressuresBar, isEmpty);
+    });
+  });
+
   group('SampleCodec edge cases', () {
     test('handles single-sample dive', () {
       final single = SampleSet(

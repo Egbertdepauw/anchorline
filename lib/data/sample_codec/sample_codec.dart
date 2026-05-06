@@ -11,8 +11,11 @@ import 'column_packer.dart';
 
 class SampleCodec {
   /// Encode a [SampleSet] into a map of column name → gzipped blob.
+  ///
+  /// `tankPressures` is only present when the SampleSet has at least one
+  /// tank channel; absent for OC dives and older imports.
   static Map<String, Uint8List> encode(SampleSet samples) {
-    return {
+    final out = <String, Uint8List>{
       'depth': ColumnPacker.packFloat32(samples.depthMeters),
       'temperature': ColumnPacker.packFloat32(samples.temperatureCelsius),
       'ppo2': ColumnPacker.packFloat32(samples.ppo2Bar),
@@ -27,6 +30,10 @@ class SampleCodec {
       'gasMixIdx': ColumnPacker.packUint8(samples.gasMixIndex),
       'status': ColumnPacker.packUint8(samples.statusFlags),
     };
+    if (samples.tankPressuresBar.isNotEmpty) {
+      out['tankPressures'] = _packTankPressures(samples.tankPressuresBar);
+    }
+    return out;
   }
 
   /// Decode column blobs back into a [SampleSet].
@@ -36,6 +43,7 @@ class SampleCodec {
     required int sampleCount,
     required int sampleIntervalMs,
   }) {
+    final tankBlob = blobs['tankPressures'];
     return SampleSet(
       diveId: diveId,
       sampleCount: sampleCount,
@@ -59,7 +67,51 @@ class SampleCodec {
           ColumnPacker.unpackUint8(blobs['gasMixIdx']!, sampleCount),
       statusFlags:
           ColumnPacker.unpackUint8(blobs['status']!, sampleCount),
+      tankPressuresBar: tankBlob == null
+          ? const []
+          : _unpackTankPressures(tankBlob, sampleCount),
     );
+  }
+
+  // Tank-pressure blob layout (all big-endian for portability):
+  //   uint8  numTanks
+  //   for each tank:
+  //     uint32 packedLen
+  //     bytes  ColumnPacker.packFloat32(channel)
+  static Uint8List _packTankPressures(List<Float32List> channels) {
+    final packed = channels.map(ColumnPacker.packFloat32).toList();
+    var totalLen = 1;
+    for (final p in packed) {
+      totalLen += 4 + p.length;
+    }
+    final out = Uint8List(totalLen);
+    final view = ByteData.sublistView(out);
+    out[0] = channels.length;
+    var offset = 1;
+    for (final p in packed) {
+      view.setUint32(offset, p.length, Endian.big);
+      offset += 4;
+      out.setRange(offset, offset + p.length, p);
+      offset += p.length;
+    }
+    return out;
+  }
+
+  static List<Float32List> _unpackTankPressures(Uint8List blob, int count) {
+    if (blob.isEmpty) return const [];
+    final n = blob[0];
+    if (n == 0) return const [];
+    final view = ByteData.sublistView(blob);
+    final out = <Float32List>[];
+    var offset = 1;
+    for (var i = 0; i < n; i++) {
+      final len = view.getUint32(offset, Endian.big);
+      offset += 4;
+      final slice = Uint8List.sublistView(blob, offset, offset + len);
+      out.add(ColumnPacker.unpackFloat32(slice, count));
+      offset += len;
+    }
+    return out;
   }
 
   /// Decode only the depth column (for lightweight profile rendering).

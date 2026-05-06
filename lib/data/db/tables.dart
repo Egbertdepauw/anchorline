@@ -91,6 +91,10 @@ class DiveSamples extends Table {
   BlobColumn get gasMixIdxBlob => blob()();
   BlobColumn get statusBlob => blob()();
 
+  /// Combined per-tank pressure trace blob (gzipped Float32 channels with
+  /// a small header). Null for OC dives and pre-v6 imports.
+  BlobColumn get tankPressuresBlob => blob().nullable()();
+
   @override
   Set<Column> get primaryKey => {diveId};
 }

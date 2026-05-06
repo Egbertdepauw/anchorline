@@ -49,6 +49,12 @@ class SampleSet {
   /// Status flags per sample.
   final Uint8List statusFlags;
 
+  /// Per-tank pressure traces in bar. Outer length matches
+  /// `Dive.tanks.length` (one channel per active tank slot); each inner
+  /// list has [sampleCount] entries. A zero entry means "no reading at
+  /// that sample for that tank". Empty list when the dive has no tanks.
+  final List<Float32List> tankPressuresBar;
+
   SampleSet({
     required this.diveId,
     required this.sampleCount,
@@ -66,5 +72,6 @@ class SampleSet {
     required this.ttsSeconds,
     required this.gasMixIndex,
     required this.statusFlags,
+    this.tankPressuresBar = const [],
   });
 }

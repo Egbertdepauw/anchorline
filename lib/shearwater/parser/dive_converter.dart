@@ -134,6 +134,13 @@ class DiveConverter {
     final ttsSeconds = Int32List(n);
     final gasMixIndex = Uint8List(n);
     final statusFlags = Uint8List(n);
+    final tankPressuresBar = parsed.tanks.isEmpty
+        ? const <Float32List>[]
+        : List<Float32List>.generate(tanks.length, (_) => Float32List(n),
+            growable: false);
+    final slotForTankIndex = <int, int>{
+      for (var i = 0; i < tanks.length; i++) tanks[i].slot: i,
+    };
 
     for (var i = 0; i < n; i++) {
       final s = parsed.samples[i];
@@ -184,6 +191,17 @@ class DiveConverter {
       gasMixIndex[i] = _findGasMixIndex(parsed.gasMixes, s.o2Percent, s.hePercent);
 
       statusFlags[i] = s.statusFlags;
+
+      // Per-sample tank pressures: map parser tankIndex (raw slot) to the
+      // compacted DiveTank position via slotForTankIndex. Samples that
+      // omit a tank stay at 0 in that channel (Float32List default).
+      if (tankPressuresBar.isNotEmpty && s.tankPressures.isNotEmpty) {
+        for (final p in s.tankPressures) {
+          final ch = slotForTankIndex[p.tankIndex];
+          if (ch == null) continue;
+          tankPressuresBar[ch][i] = p.pressureRaw * tankPressureRawToBar;
+        }
+      }
     }
 
     final samples = SampleSet(
@@ -203,6 +221,7 @@ class DiveConverter {
       ttsSeconds: ttsSeconds,
       gasMixIndex: gasMixIndex,
       statusFlags: statusFlags,
+      tankPressuresBar: tankPressuresBar,
     );
 
     return ConvertedDive(dive: dive, samples: samples);
