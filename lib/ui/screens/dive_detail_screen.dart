@@ -19,6 +19,7 @@ import '../widgets/crosshair_overlay.dart';
 import '../widgets/crosshair_tooltip.dart';
 import '../widgets/dive_annotations_section.dart';
 import '../widgets/profile_chart.dart';
+import '../widgets/site_mini_map.dart';
 import '../widgets/star_rating.dart';
 import '../widgets/trace_toggle.dart';
 
@@ -146,6 +147,9 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                     final siteName = _annotationsNotifier.siteName;
                     final hasSite =
                         siteName != null && siteName.isNotEmpty;
+                    final lat = _annotationsNotifier.siteLatitude;
+                    final lon = _annotationsNotifier.siteLongitude;
+                    final hasCoords = lat != null && lon != null;
                     return Container(
                       color: const Color(0xFF152238),
                       padding: const EdgeInsets.symmetric(
@@ -153,6 +157,10 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                       child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            if (hasCoords) ...[
+                              SiteMiniMap(lat: lat, lon: lon, size: 72),
+                              const SizedBox(width: 12),
+                            ],
                             Expanded(
                                 child: Column(
                                     crossAxisAlignment:
