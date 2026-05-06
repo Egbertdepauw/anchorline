@@ -67,13 +67,11 @@ void main() {
 
     await _pumpScreen(tester, s.db, s.dive, s.dao);
 
-    // 20293 / 3600 = 5h 38min → "5:38"
-    expect(find.text('5:38'), findsOneWidget);
-    // STACK cell is now three label lines below the headline.
+    // Icon-prefix layout: ⏱ remaining, ∑ configured, ▽ used, STACK label.
+    expect(find.text('⏱ 5:38'), findsOneWidget);
+    expect(find.text('∑ 7:00'), findsOneWidget);
+    expect(find.text('▽ 58:04'), findsOneWidget);
     expect(find.text('STACK'), findsOneWidget);
-    // 23777 - 20293 = 3484s = 58:04 used; configured 25200s = 7:00.
-    expect(find.text('used: 58:04'), findsOneWidget);
-    expect(find.text('conf: 7:00'), findsOneWidget);
   });
 
   testWidgets('hides STACK cell when stack values are null', (tester) async {
@@ -87,33 +85,32 @@ void main() {
     expect(find.byType(DiveDetailScreen), findsOneWidget);
   });
 
-  testWidgets('PPO2 cell shows avg headline with min/max underneath',
+  testWidgets('PPO2 cell shows three icon-prefixed values with bar label',
       (tester) async {
     final s = await _seedDive();
     addTearDown(() async => s.db.close());
 
     await _pumpScreen(tester, s.db, s.dive, s.dao);
 
-    // "PPO2" appears both as a trace-toggle chip label and the stats
-    // cell label.
-    expect(find.text('PPO2'), findsNWidgets(2));
-    // Avg headline is two-decimal formatted; min/max prefixed and on
-    // their own lines.
-    expect(find.textContaining(RegExp(r'^min: \d\.\d{2}$')), findsWidgets);
-    expect(find.textContaining(RegExp(r'^max: \d\.\d{2}$')), findsWidgets);
+    // Three big-white lines (avg / min / max) followed by a faded label.
+    expect(find.textContaining(RegExp(r'^⌀ \d\.\d{2}$')), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^↓ \d\.\d{2}$')), findsWidgets);
+    expect(find.textContaining(RegExp(r'^↑ \d\.\d{2}$')), findsWidgets);
+    expect(find.text('PPO2 (bar)'), findsOneWidget);
   });
 
-  testWidgets('TEMP cell shows avg in white with °C suffix', (tester) async {
+  testWidgets('TEMP cell shows three icon-prefixed values with °C suffix',
+      (tester) async {
     final s = await _seedDive();
     addTearDown(() async => s.db.close());
 
     await _pumpScreen(tester, s.db, s.dive, s.dao);
 
+    // Each value carries the °C suffix; label is just TEMP.
     expect(find.text('TEMP'), findsOneWidget);
-    // Whole-number rounding + °C unit on the headline.
-    expect(find.textContaining(RegExp(r'^-?\d+°C$')), findsOneWidget);
-    expect(find.textContaining(RegExp(r'^min: -?\d+$')), findsWidgets);
-    expect(find.textContaining(RegExp(r'^max: -?\d+$')), findsWidgets);
+    expect(find.textContaining(RegExp(r'^⌀ -?\d+°C$')), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^↓ -?\d+°C$')), findsWidgets);
+    expect(find.textContaining(RegExp(r'^↑ -?\d+°C$')), findsWidgets);
   });
 
   testWidgets('shows MAX m/min cell with descent + ascent stacked',

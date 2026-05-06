@@ -352,8 +352,6 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     final stackStart = dive.stackRemainingAtStartSeconds;
     final stackCfg = dive.configuredStackSeconds;
     final stackLabel = stackEnd == null ? '—' : formatStackHm(stackEnd);
-    // Stack cell shows used + configured on their own lines below the
-    // headline remaining-time — tooltips don't reach touch users.
     final stackUsed = (stackEnd != null && stackStart != null)
         ? formatStackUsedMs(stackStart - stackEnd)
         : null;
@@ -363,7 +361,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       final cells = <Widget>[
         if (ppo2Stats != null)
           _avgMinMaxCell(
-              'PPO2',
+              'PPO2 (bar)',
               ppo2Stats.avg.toStringAsFixed(2),
               ppo2Stats.min.toStringAsFixed(2),
               ppo2Stats.max.toStringAsFixed(2),
@@ -434,34 +432,34 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
 
   Widget _stackCell(
       String value, String? used, String? configured, ThemeData theme) {
+    const valueStyle =
+        TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
     final faded = TextStyle(
         fontSize: 9,
         color: theme.colorScheme.onSurface.withValues(alpha: 0.4));
     return Column(children: [
-      Text(value,
-          style:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+      Text('⏱ $value', style: valueStyle),
+      if (configured != null) Text('∑ $configured', style: valueStyle),
+      if (used != null) Text('▽ $used', style: valueStyle),
       const SizedBox(height: 2),
       Text('STACK', style: faded),
-      if (used != null) Text('used: $used', style: faded),
-      if (configured != null) Text('conf: $configured', style: faded),
     ]);
   }
 
   Widget _avgMinMaxCell(
       String label, String avg, String min, String max, ThemeData theme,
       {String unit = ''}) {
+    const valueStyle =
+        TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
     final faded = TextStyle(
         fontSize: 9,
         color: theme.colorScheme.onSurface.withValues(alpha: 0.4));
     return Column(children: [
-      Text('$avg$unit',
-          style:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+      Text('⌀ $avg$unit', style: valueStyle),
+      Text('↓ $min$unit', style: valueStyle),
+      Text('↑ $max$unit', style: valueStyle),
       const SizedBox(height: 2),
       Text(label, style: faded),
-      Text('min: $min', style: faded),
-      Text('max: $max', style: faded),
     ]);
   }
 
