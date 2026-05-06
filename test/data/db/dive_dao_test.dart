@@ -147,4 +147,49 @@ void main() {
       expect(stored, equals(originalBlob));
     });
   });
+
+  group('subsurface upload tracking', () {
+    setUp(() async {
+      for (final num in [711, 712, 718]) {
+        final converted = _convertFixture(num);
+        final rawBlob =
+            File('test/fixtures/dives/dive_$num.bin').readAsBytesSync();
+        await dao.importDive(
+          converted: converted,
+          rawBlob: rawBlob,
+          parserVersion: 1,
+        );
+      }
+    });
+
+    test('all imports start as pending uploads', () async {
+      final pending = await dao.getPendingSubsurfaceUploads();
+      expect(pending, hasLength(3));
+      // Ascending by start time.
+      for (var i = 1; i < pending.length; i++) {
+        expect(pending[i].startTime,
+            greaterThanOrEqualTo(pending[i - 1].startTime));
+      }
+    });
+
+    test('markSubsurfaceUploaded removes them from pending', () async {
+      final marked = _convertFixture(718).dive.id;
+      await dao.markSubsurfaceUploaded([marked], 1700000000);
+
+      final pending = await dao.getPendingSubsurfaceUploads();
+      expect(pending, hasLength(2));
+      expect(pending.every((d) => d.id != marked), isTrue);
+      // Ordering preserved.
+      for (var i = 1; i < pending.length; i++) {
+        expect(pending[i].startTime,
+            greaterThanOrEqualTo(pending[i - 1].startTime));
+      }
+    });
+
+    test('markSubsurfaceUploaded with empty list is a no-op', () async {
+      await dao.markSubsurfaceUploaded(const [], 1700000000);
+      final pending = await dao.getPendingSubsurfaceUploads();
+      expect(pending, hasLength(3));
+    });
+  });
 }

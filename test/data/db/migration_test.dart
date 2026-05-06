@@ -60,7 +60,7 @@ void main() {
   test('schema v2: has cylinders, pressure_mappings, oxygen_cells.label', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    expect(db.schemaVersion, 6);
+    expect(db.schemaVersion, 7);
 
     // Inserting a row exercises the full schema.
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -136,7 +136,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 6);
+    expect(db.schemaVersion, 7);
 
     // Step 5: verify the seeded oxygen_cells row survived.
     final cells = await db.select(db.oxygenCells).get();
@@ -210,7 +210,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 6);
+    expect(db.schemaVersion, 7);
 
     // Step 5: verify the seeded annotation row survived.
     final annotations = await db.select(db.diveAnnotations).get();
@@ -256,7 +256,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 6);
+    expect(db.schemaVersion, 7);
 
     final dives = await db.select(db.dives).get();
     expect(dives, hasLength(1));
@@ -299,7 +299,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 6);
+    expect(db.schemaVersion, 7);
 
     // Migrated row: tanks_json is null on the existing v4 row.
     final migrated = await db.select(db.dives).get();
@@ -385,7 +385,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 6);
+    expect(db.schemaVersion, 7);
 
     // The migrated row's tank_pressures_blob is null.
     final migrated = await db.select(db.diveSamples).get();
@@ -437,5 +437,77 @@ void main() {
           ..where((s) => s.diveId.equals('dive_v6')))
         .getSingle();
     expect(fresh.tankPressuresBlob, equals(tankBlob));
+  });
+
+  test('v6 → v7 onUpgrade adds subsurface_uploaded_at column to dives',
+      () async {
+    final raw = sqlite3.openInMemory();
+    addTearDown(raw.close);
+
+    // Seed v6 dives + dive_samples (with tank_pressures_blob, without
+    // subsurface_uploaded_at).
+    _seedDivesV3(raw);
+    raw.execute('ALTER TABLE dives ADD COLUMN configured_stack_seconds INTEGER');
+    raw.execute(
+        'ALTER TABLE dives ADD COLUMN stack_remaining_at_start_seconds INTEGER');
+    raw.execute(
+        'ALTER TABLE dives ADD COLUMN stack_remaining_at_end_seconds INTEGER');
+    raw.execute('ALTER TABLE dives ADD COLUMN tanks_json TEXT');
+    raw.execute('ALTER TABLE dive_samples ADD COLUMN tank_pressures_blob BLOB');
+    raw.execute('PRAGMA user_version = 6;');
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    raw.execute(
+      'INSERT INTO dives '
+      '(id, dc_serial, dc_dive_number, start_time, end_time, '
+      'duration_seconds, max_depth_mm, dive_mode, deco_model, '
+      'atmospheric_pressure_mbar, water_density, log_version, '
+      'dc_model, sample_interval_ms, gas_mixes_json, raw_blob, '
+      'parser_version, imported_at) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        'dive_v6', 0xB89641E4, 700, now - 3600, now,
+        3600, 30000, 0, 0, 1013, 1025, 17, 0, 10000, '[]', [0], 1, now,
+      ],
+    );
+
+    final db = AppDatabase(NativeDatabase.opened(raw));
+    addTearDown(db.close);
+
+    await db.customSelect('SELECT 1').get();
+    expect(db.schemaVersion, 7);
+
+    // The migrated row has a null subsurface_uploaded_at.
+    final migrated = await db.select(db.dives).get();
+    expect(migrated, hasLength(1));
+    expect(migrated.single.id, 'dive_v6');
+    expect(migrated.single.subsurfaceUploadedAt, isNull);
+
+    // A fresh insert populating the column reads back verbatim.
+    await db.into(db.dives).insert(DivesCompanion.insert(
+          id: 'dive_v7',
+          dcSerial: 0xB89641E4,
+          dcDiveNumber: 800,
+          startTime: now,
+          endTime: now + 60,
+          durationSeconds: 60,
+          maxDepthMm: 5000,
+          diveMode: 0,
+          decoModel: 0,
+          atmosphericPressureMbar: 1013,
+          waterDensity: 1025,
+          logVersion: 17,
+          dcModel: 0,
+          sampleIntervalMs: 10000,
+          gasMixesJson: '[]',
+          rawBlob: Uint8List(0),
+          parserVersion: 1,
+          importedAt: now,
+          subsurfaceUploadedAt: const Value(123456789),
+        ));
+    final fresh = await (db.select(db.dives)
+          ..where((d) => d.id.equals('dive_v7')))
+        .getSingle();
+    expect(fresh.subsurfaceUploadedAt, 123456789);
   });
 }

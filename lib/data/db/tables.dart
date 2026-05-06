@@ -67,6 +67,10 @@ class Dives extends Table {
   /// When this dive was imported.
   IntColumn get importedAt => integer()();
 
+  /// When this dive was last exported to a Subsurface .ssrf file
+  /// (unix seconds). Null = pending.
+  IntColumn get subsurfaceUploadedAt => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

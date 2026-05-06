@@ -171,4 +171,23 @@ class DiveDao {
     final row = await query.getSingleOrNull();
     return row?.rawBlob;
   }
+
+  /// Dives that haven't been exported to a Subsurface XML file yet,
+  /// ordered by start time ascending.
+  Future<List<Dive>> getPendingSubsurfaceUploads() async {
+    final query = _db.select(_db.dives)
+      ..where((d) => d.subsurfaceUploadedAt.isNull())
+      ..orderBy([(d) => OrderingTerm.asc(d.startTime)]);
+    return query.get();
+  }
+
+  /// Stamps `subsurfaceUploadedAt` on the given dives in one statement.
+  Future<void> markSubsurfaceUploaded(
+      Iterable<String> diveIds, int whenSeconds) async {
+    final ids = diveIds.toList(growable: false);
+    if (ids.isEmpty) return;
+    await (_db.update(_db.dives)..where((d) => d.id.isIn(ids))).write(
+      DivesCompanion(subsurfaceUploadedAt: Value(whenSeconds)),
+    );
+  }
 }

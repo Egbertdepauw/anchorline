@@ -287,6 +287,16 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _subsurfaceUploadedAtMeta =
+      const VerificationMeta('subsurfaceUploadedAt');
+  @override
+  late final GeneratedColumn<int> subsurfaceUploadedAt = GeneratedColumn<int>(
+    'subsurface_uploaded_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -315,6 +325,7 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
     rawBlob,
     parserVersion,
     importedAt,
+    subsurfaceUploadedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -553,6 +564,15 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
     } else if (isInserting) {
       context.missing(_importedAtMeta);
     }
+    if (data.containsKey('subsurface_uploaded_at')) {
+      context.handle(
+        _subsurfaceUploadedAtMeta,
+        subsurfaceUploadedAt.isAcceptableOrUnknown(
+          data['subsurface_uploaded_at']!,
+          _subsurfaceUploadedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -666,6 +686,10 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
         DriftSqlType.int,
         data['${effectivePrefix}imported_at'],
       )!,
+      subsurfaceUploadedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}subsurface_uploaded_at'],
+      ),
     );
   }
 
@@ -729,6 +753,10 @@ class Dive extends DataClass implements Insertable<Dive> {
 
   /// When this dive was imported.
   final int importedAt;
+
+  /// When this dive was last exported to a Subsurface .ssrf file
+  /// (unix seconds). Null = pending.
+  final int? subsurfaceUploadedAt;
   const Dive({
     required this.id,
     required this.dcSerial,
@@ -756,6 +784,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     required this.rawBlob,
     required this.parserVersion,
     required this.importedAt,
+    this.subsurfaceUploadedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -806,6 +835,9 @@ class Dive extends DataClass implements Insertable<Dive> {
     map['raw_blob'] = Variable<Uint8List>(rawBlob);
     map['parser_version'] = Variable<int>(parserVersion);
     map['imported_at'] = Variable<int>(importedAt);
+    if (!nullToAbsent || subsurfaceUploadedAt != null) {
+      map['subsurface_uploaded_at'] = Variable<int>(subsurfaceUploadedAt);
+    }
     return map;
   }
 
@@ -855,6 +887,9 @@ class Dive extends DataClass implements Insertable<Dive> {
       rawBlob: Value(rawBlob),
       parserVersion: Value(parserVersion),
       importedAt: Value(importedAt),
+      subsurfaceUploadedAt: subsurfaceUploadedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(subsurfaceUploadedAt),
     );
   }
 
@@ -898,6 +933,9 @@ class Dive extends DataClass implements Insertable<Dive> {
       rawBlob: serializer.fromJson<Uint8List>(json['rawBlob']),
       parserVersion: serializer.fromJson<int>(json['parserVersion']),
       importedAt: serializer.fromJson<int>(json['importedAt']),
+      subsurfaceUploadedAt: serializer.fromJson<int?>(
+        json['subsurfaceUploadedAt'],
+      ),
     );
   }
   @override
@@ -936,6 +974,7 @@ class Dive extends DataClass implements Insertable<Dive> {
       'rawBlob': serializer.toJson<Uint8List>(rawBlob),
       'parserVersion': serializer.toJson<int>(parserVersion),
       'importedAt': serializer.toJson<int>(importedAt),
+      'subsurfaceUploadedAt': serializer.toJson<int?>(subsurfaceUploadedAt),
     };
   }
 
@@ -966,6 +1005,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     Uint8List? rawBlob,
     int? parserVersion,
     int? importedAt,
+    Value<int?> subsurfaceUploadedAt = const Value.absent(),
   }) => Dive(
     id: id ?? this.id,
     dcSerial: dcSerial ?? this.dcSerial,
@@ -1002,6 +1042,9 @@ class Dive extends DataClass implements Insertable<Dive> {
     rawBlob: rawBlob ?? this.rawBlob,
     parserVersion: parserVersion ?? this.parserVersion,
     importedAt: importedAt ?? this.importedAt,
+    subsurfaceUploadedAt: subsurfaceUploadedAt.present
+        ? subsurfaceUploadedAt.value
+        : this.subsurfaceUploadedAt,
   );
   Dive copyWithCompanion(DivesCompanion data) {
     return Dive(
@@ -1061,6 +1104,9 @@ class Dive extends DataClass implements Insertable<Dive> {
       importedAt: data.importedAt.present
           ? data.importedAt.value
           : this.importedAt,
+      subsurfaceUploadedAt: data.subsurfaceUploadedAt.present
+          ? data.subsurfaceUploadedAt.value
+          : this.subsurfaceUploadedAt,
     );
   }
 
@@ -1094,7 +1140,8 @@ class Dive extends DataClass implements Insertable<Dive> {
           ..write('stackRemainingAtEndSeconds: $stackRemainingAtEndSeconds, ')
           ..write('rawBlob: $rawBlob, ')
           ..write('parserVersion: $parserVersion, ')
-          ..write('importedAt: $importedAt')
+          ..write('importedAt: $importedAt, ')
+          ..write('subsurfaceUploadedAt: $subsurfaceUploadedAt')
           ..write(')'))
         .toString();
   }
@@ -1127,6 +1174,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     $driftBlobEquality.hash(rawBlob),
     parserVersion,
     importedAt,
+    subsurfaceUploadedAt,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -1158,7 +1206,8 @@ class Dive extends DataClass implements Insertable<Dive> {
           other.stackRemainingAtEndSeconds == this.stackRemainingAtEndSeconds &&
           $driftBlobEquality.equals(other.rawBlob, this.rawBlob) &&
           other.parserVersion == this.parserVersion &&
-          other.importedAt == this.importedAt);
+          other.importedAt == this.importedAt &&
+          other.subsurfaceUploadedAt == this.subsurfaceUploadedAt);
 }
 
 class DivesCompanion extends UpdateCompanion<Dive> {
@@ -1188,6 +1237,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
   final Value<Uint8List> rawBlob;
   final Value<int> parserVersion;
   final Value<int> importedAt;
+  final Value<int?> subsurfaceUploadedAt;
   final Value<int> rowid;
   const DivesCompanion({
     this.id = const Value.absent(),
@@ -1216,6 +1266,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     this.rawBlob = const Value.absent(),
     this.parserVersion = const Value.absent(),
     this.importedAt = const Value.absent(),
+    this.subsurfaceUploadedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DivesCompanion.insert({
@@ -1245,6 +1296,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     required Uint8List rawBlob,
     required int parserVersion,
     required int importedAt,
+    this.subsurfaceUploadedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        dcSerial = Value(dcSerial),
@@ -1291,6 +1343,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     Expression<Uint8List>? rawBlob,
     Expression<int>? parserVersion,
     Expression<int>? importedAt,
+    Expression<int>? subsurfaceUploadedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1324,6 +1377,8 @@ class DivesCompanion extends UpdateCompanion<Dive> {
       if (rawBlob != null) 'raw_blob': rawBlob,
       if (parserVersion != null) 'parser_version': parserVersion,
       if (importedAt != null) 'imported_at': importedAt,
+      if (subsurfaceUploadedAt != null)
+        'subsurface_uploaded_at': subsurfaceUploadedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1355,6 +1410,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     Value<Uint8List>? rawBlob,
     Value<int>? parserVersion,
     Value<int>? importedAt,
+    Value<int?>? subsurfaceUploadedAt,
     Value<int>? rowid,
   }) {
     return DivesCompanion(
@@ -1388,6 +1444,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
       rawBlob: rawBlob ?? this.rawBlob,
       parserVersion: parserVersion ?? this.parserVersion,
       importedAt: importedAt ?? this.importedAt,
+      subsurfaceUploadedAt: subsurfaceUploadedAt ?? this.subsurfaceUploadedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1481,6 +1538,9 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     if (importedAt.present) {
       map['imported_at'] = Variable<int>(importedAt.value);
     }
+    if (subsurfaceUploadedAt.present) {
+      map['subsurface_uploaded_at'] = Variable<int>(subsurfaceUploadedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1518,6 +1578,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
           ..write('rawBlob: $rawBlob, ')
           ..write('parserVersion: $parserVersion, ')
           ..write('importedAt: $importedAt, ')
+          ..write('subsurfaceUploadedAt: $subsurfaceUploadedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -7412,6 +7473,7 @@ typedef $$DivesTableCreateCompanionBuilder =
       required Uint8List rawBlob,
       required int parserVersion,
       required int importedAt,
+      Value<int?> subsurfaceUploadedAt,
       Value<int> rowid,
     });
 typedef $$DivesTableUpdateCompanionBuilder =
@@ -7442,6 +7504,7 @@ typedef $$DivesTableUpdateCompanionBuilder =
       Value<Uint8List> rawBlob,
       Value<int> parserVersion,
       Value<int> importedAt,
+      Value<int?> subsurfaceUploadedAt,
       Value<int> rowid,
     });
 
@@ -7641,6 +7704,11 @@ class $$DivesTableFilterComposer extends Composer<_$AppDatabase, $DivesTable> {
 
   ColumnFilters<int> get importedAt => $composableBuilder(
     column: $table.importedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get subsurfaceUploadedAt => $composableBuilder(
+    column: $table.subsurfaceUploadedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7858,6 +7926,11 @@ class $$DivesTableOrderingComposer
     column: $table.importedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get subsurfaceUploadedAt => $composableBuilder(
+    column: $table.subsurfaceUploadedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$DivesTableAnnotationComposer
@@ -7974,6 +8047,11 @@ class $$DivesTableAnnotationComposer
 
   GeneratedColumn<int> get importedAt => $composableBuilder(
     column: $table.importedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get subsurfaceUploadedAt => $composableBuilder(
+    column: $table.subsurfaceUploadedAt,
     builder: (column) => column,
   );
 
@@ -8111,6 +8189,7 @@ class $$DivesTableTableManager
                 Value<Uint8List> rawBlob = const Value.absent(),
                 Value<int> parserVersion = const Value.absent(),
                 Value<int> importedAt = const Value.absent(),
+                Value<int?> subsurfaceUploadedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DivesCompanion(
                 id: id,
@@ -8139,6 +8218,7 @@ class $$DivesTableTableManager
                 rawBlob: rawBlob,
                 parserVersion: parserVersion,
                 importedAt: importedAt,
+                subsurfaceUploadedAt: subsurfaceUploadedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -8169,6 +8249,7 @@ class $$DivesTableTableManager
                 required Uint8List rawBlob,
                 required int parserVersion,
                 required int importedAt,
+                Value<int?> subsurfaceUploadedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DivesCompanion.insert(
                 id: id,
@@ -8197,6 +8278,7 @@ class $$DivesTableTableManager
                 rawBlob: rawBlob,
                 parserVersion: parserVersion,
                 importedAt: importedAt,
+                subsurfaceUploadedAt: subsurfaceUploadedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
