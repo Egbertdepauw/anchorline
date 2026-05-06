@@ -28,7 +28,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -48,6 +48,9 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(dives, dives.configuredStackSeconds);
             await m.addColumn(dives, dives.stackRemainingAtStartSeconds);
             await m.addColumn(dives, dives.stackRemainingAtEndSeconds);
+          }
+          if (from < 5) {
+            await m.addColumn(dives, dives.tanksJson);
           }
         },
       );

@@ -145,6 +145,10 @@ class GasMix {
       'GasMix(O2=$oxygenPercent He=$heliumPercent${isDiluent ? ' dil' : ''})';
 }
 
+/// Conversion factor from raw tank pressure (units of 2 PSI) to bar:
+/// `bar = raw × 2 / 14.5037 ≈ raw × 0.13789…`. Single source of truth.
+const double tankPressureRawToBar = 2.0 / 14.5037;
+
 /// Tank summary info gathered during the cache pass.
 class TankInfo {
   final int beginPressureRaw; // units of 2 PSI (lower 12 bits)

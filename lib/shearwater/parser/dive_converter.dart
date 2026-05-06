@@ -73,6 +73,27 @@ class DiveConverter {
             ))
         .toList();
 
+    // ── Tanks ──
+    final tanks = <DiveTank>[];
+    for (var i = 0; i < parsed.tanks.length; i++) {
+      final t = parsed.tanks[i];
+      if (t.usage == TankUsage.none &&
+          t.beginPressureRaw == 0 &&
+          t.endPressureRaw == 0) {
+        continue;
+      }
+      tanks.add(DiveTank(
+        slot: i,
+        usage: t.usage,
+        name: t.name,
+        serial: t.serial,
+        beginPressureBar: t.beginPressureRaw * tankPressureRawToBar,
+        endPressureBar: t.endPressureRaw * tankPressureRawToBar,
+        pressureMaxBar: t.pressureMax,
+        pressureReserveBar: t.pressureReserve,
+      ));
+    }
+
     final dive = Dive(
       id: diveId,
       dcSerial: dcSerial,
@@ -90,6 +111,7 @@ class DiveConverter {
       logVersion: header.logVersion,
       dcModel: dcModel,
       gasMixes: gasMixes,
+      tanks: tanks,
       sampleIntervalMs: header.sampleIntervalMs,
       sensorCalibration: List<double>.from(header.sensorCalibration),
       configuredStackSeconds: header.configuredStackSeconds,

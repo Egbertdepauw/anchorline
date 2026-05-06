@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
@@ -38,7 +40,7 @@ void main() {
   test('schema v2: has cylinders, pressure_mappings, oxygen_cells.label', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    expect(db.schemaVersion, 4);
+    expect(db.schemaVersion, 5);
 
     // Inserting a row exercises the full schema.
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -114,7 +116,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 4);
+    expect(db.schemaVersion, 5);
 
     // Step 5: verify the seeded oxygen_cells row survived.
     final cells = await db.select(db.oxygenCells).get();
@@ -188,7 +190,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 4);
+    expect(db.schemaVersion, 5);
 
     // Step 5: verify the seeded annotation row survived.
     final annotations = await db.select(db.diveAnnotations).get();
@@ -234,7 +236,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 4);
+    expect(db.schemaVersion, 5);
 
     final dives = await db.select(db.dives).get();
     expect(dives, hasLength(1));
@@ -243,5 +245,77 @@ void main() {
     expect(dives.single.configuredStackSeconds, isNull);
     expect(dives.single.stackRemainingAtStartSeconds, isNull);
     expect(dives.single.stackRemainingAtEndSeconds, isNull);
+  });
+
+  test('v4 → v5 onUpgrade adds tanks_json column to dives', () async {
+    final raw = sqlite3.openInMemory();
+    addTearDown(raw.close);
+
+    // Seed v4 dives table: v3 columns + the three scrubber-stack columns.
+    _seedDivesV3(raw);
+    raw.execute('ALTER TABLE dives ADD COLUMN configured_stack_seconds INTEGER');
+    raw.execute(
+        'ALTER TABLE dives ADD COLUMN stack_remaining_at_start_seconds INTEGER');
+    raw.execute(
+        'ALTER TABLE dives ADD COLUMN stack_remaining_at_end_seconds INTEGER');
+    raw.execute('PRAGMA user_version = 4;');
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    raw.execute(
+      'INSERT INTO dives '
+      '(id, dc_serial, dc_dive_number, start_time, end_time, '
+      'duration_seconds, max_depth_mm, dive_mode, deco_model, '
+      'atmospheric_pressure_mbar, water_density, log_version, '
+      'dc_model, sample_interval_ms, gas_mixes_json, raw_blob, '
+      'parser_version, imported_at) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        'dive_v4', 0xB89641E4, 700, now - 3600, now,
+        3600, 30000, 0, 0, 1013, 1025, 17, 0, 10000, '[]', [0], 1, now,
+      ],
+    );
+
+    final db = AppDatabase(NativeDatabase.opened(raw));
+    addTearDown(db.close);
+
+    await db.customSelect('SELECT 1').get();
+    expect(db.schemaVersion, 5);
+
+    // Migrated row: tanks_json is null on the existing v4 row.
+    final migrated = await db.select(db.dives).get();
+    expect(migrated, hasLength(1));
+    expect(migrated.single.id, 'dive_v4');
+    expect(migrated.single.tanksJson, isNull);
+
+    // A fresh insert with tanks_json populated reads back verbatim.
+    const tanksJson =
+        '[{"slot":0,"usage":3,"name":"DI","serial":0,"beginBar":230.0,'
+        '"endBar":185.0,"maxBar":300,"reserveBar":50}]';
+    await db.into(db.dives).insert(DivesCompanion.insert(
+          id: 'dive_v5',
+          dcSerial: 0xB89641E4,
+          dcDiveNumber: 800,
+          startTime: now,
+          endTime: now + 60,
+          durationSeconds: 60,
+          maxDepthMm: 5000,
+          diveMode: 0,
+          decoModel: 0,
+          atmosphericPressureMbar: 1013,
+          waterDensity: 1025,
+          logVersion: 17,
+          dcModel: 0,
+          sampleIntervalMs: 10000,
+          gasMixesJson: '[]',
+          tanksJson: const Value(tanksJson),
+          rawBlob: Uint8List(0),
+          parserVersion: 1,
+          importedAt: now,
+        ));
+
+    final fresh = await (db.select(db.dives)
+          ..where((d) => d.id.equals('dive_v5')))
+        .getSingle();
+    expect(fresh.tanksJson, tanksJson);
   });
 }

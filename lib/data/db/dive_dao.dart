@@ -41,6 +41,11 @@ class DiveDao {
     final gasMixesJson =
         jsonEncode(dive.gasMixes.map((g) => g.toJson()).toList());
 
+    // Tanks to JSON (null when no tanks logged).
+    final tanksJson = dive.tanks.isEmpty
+        ? null
+        : jsonEncode(dive.tanks.map((t) => t.toJson()).toList());
+
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
     // Atomic transaction: dive row + sample blobs.
@@ -64,6 +69,7 @@ class DiveDao {
             dcModel: dive.dcModel.index,
             sampleIntervalMs: dive.sampleIntervalMs,
             gasMixesJson: gasMixesJson,
+            tanksJson: Value(tanksJson),
             configuredStackSeconds: Value(dive.configuredStackSeconds),
             stackRemainingAtStartSeconds:
                 Value(dive.stackRemainingAtStartSeconds),

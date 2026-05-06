@@ -211,6 +211,17 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _tanksJsonMeta = const VerificationMeta(
+    'tanksJson',
+  );
+  @override
+  late final GeneratedColumn<String> tanksJson = GeneratedColumn<String>(
+    'tanks_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _configuredStackSecondsMeta =
       const VerificationMeta('configuredStackSeconds');
   @override
@@ -297,6 +308,7 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
     dcFirmware,
     sampleIntervalMs,
     gasMixesJson,
+    tanksJson,
     configuredStackSeconds,
     stackRemainingAtStartSeconds,
     stackRemainingAtEndSeconds,
@@ -481,6 +493,12 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
     } else if (isInserting) {
       context.missing(_gasMixesJsonMeta);
     }
+    if (data.containsKey('tanks_json')) {
+      context.handle(
+        _tanksJsonMeta,
+        tanksJson.isAcceptableOrUnknown(data['tanks_json']!, _tanksJsonMeta),
+      );
+    }
     if (data.containsKey('configured_stack_seconds')) {
       context.handle(
         _configuredStackSecondsMeta,
@@ -620,6 +638,10 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
         DriftSqlType.string,
         data['${effectivePrefix}gas_mixes_json'],
       )!,
+      tanksJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tanks_json'],
+      ),
       configuredStackSeconds: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}configured_stack_seconds'],
@@ -689,6 +711,10 @@ class Dive extends DataClass implements Insertable<Dive> {
   /// Gas mixes as JSON array.
   final String gasMixesJson;
 
+  /// Tanks as JSON array. Null when the parser produced no tank metadata
+  /// (no AI configured, OC dives without tank pressure, etc).
+  final String? tanksJson;
+
   /// Scrubber stack time (seconds). All null when the diver hasn't
   /// enabled stack tracking on the unit.
   final int? configuredStackSeconds;
@@ -723,6 +749,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     this.dcFirmware,
     required this.sampleIntervalMs,
     required this.gasMixesJson,
+    this.tanksJson,
     this.configuredStackSeconds,
     this.stackRemainingAtStartSeconds,
     this.stackRemainingAtEndSeconds,
@@ -760,6 +787,9 @@ class Dive extends DataClass implements Insertable<Dive> {
     }
     map['sample_interval_ms'] = Variable<int>(sampleIntervalMs);
     map['gas_mixes_json'] = Variable<String>(gasMixesJson);
+    if (!nullToAbsent || tanksJson != null) {
+      map['tanks_json'] = Variable<String>(tanksJson);
+    }
     if (!nullToAbsent || configuredStackSeconds != null) {
       map['configured_stack_seconds'] = Variable<int>(configuredStackSeconds);
     }
@@ -808,6 +838,9 @@ class Dive extends DataClass implements Insertable<Dive> {
           : Value(dcFirmware),
       sampleIntervalMs: Value(sampleIntervalMs),
       gasMixesJson: Value(gasMixesJson),
+      tanksJson: tanksJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tanksJson),
       configuredStackSeconds: configuredStackSeconds == null && nullToAbsent
           ? const Value.absent()
           : Value(configuredStackSeconds),
@@ -852,6 +885,7 @@ class Dive extends DataClass implements Insertable<Dive> {
       dcFirmware: serializer.fromJson<int?>(json['dcFirmware']),
       sampleIntervalMs: serializer.fromJson<int>(json['sampleIntervalMs']),
       gasMixesJson: serializer.fromJson<String>(json['gasMixesJson']),
+      tanksJson: serializer.fromJson<String?>(json['tanksJson']),
       configuredStackSeconds: serializer.fromJson<int?>(
         json['configuredStackSeconds'],
       ),
@@ -891,6 +925,7 @@ class Dive extends DataClass implements Insertable<Dive> {
       'dcFirmware': serializer.toJson<int?>(dcFirmware),
       'sampleIntervalMs': serializer.toJson<int>(sampleIntervalMs),
       'gasMixesJson': serializer.toJson<String>(gasMixesJson),
+      'tanksJson': serializer.toJson<String?>(tanksJson),
       'configuredStackSeconds': serializer.toJson<int?>(configuredStackSeconds),
       'stackRemainingAtStartSeconds': serializer.toJson<int?>(
         stackRemainingAtStartSeconds,
@@ -924,6 +959,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     Value<int?> dcFirmware = const Value.absent(),
     int? sampleIntervalMs,
     String? gasMixesJson,
+    Value<String?> tanksJson = const Value.absent(),
     Value<int?> configuredStackSeconds = const Value.absent(),
     Value<int?> stackRemainingAtStartSeconds = const Value.absent(),
     Value<int?> stackRemainingAtEndSeconds = const Value.absent(),
@@ -953,6 +989,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     dcFirmware: dcFirmware.present ? dcFirmware.value : this.dcFirmware,
     sampleIntervalMs: sampleIntervalMs ?? this.sampleIntervalMs,
     gasMixesJson: gasMixesJson ?? this.gasMixesJson,
+    tanksJson: tanksJson.present ? tanksJson.value : this.tanksJson,
     configuredStackSeconds: configuredStackSeconds.present
         ? configuredStackSeconds.value
         : this.configuredStackSeconds,
@@ -1007,6 +1044,7 @@ class Dive extends DataClass implements Insertable<Dive> {
       gasMixesJson: data.gasMixesJson.present
           ? data.gasMixesJson.value
           : this.gasMixesJson,
+      tanksJson: data.tanksJson.present ? data.tanksJson.value : this.tanksJson,
       configuredStackSeconds: data.configuredStackSeconds.present
           ? data.configuredStackSeconds.value
           : this.configuredStackSeconds,
@@ -1048,6 +1086,7 @@ class Dive extends DataClass implements Insertable<Dive> {
           ..write('dcFirmware: $dcFirmware, ')
           ..write('sampleIntervalMs: $sampleIntervalMs, ')
           ..write('gasMixesJson: $gasMixesJson, ')
+          ..write('tanksJson: $tanksJson, ')
           ..write('configuredStackSeconds: $configuredStackSeconds, ')
           ..write(
             'stackRemainingAtStartSeconds: $stackRemainingAtStartSeconds, ',
@@ -1081,6 +1120,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     dcFirmware,
     sampleIntervalMs,
     gasMixesJson,
+    tanksJson,
     configuredStackSeconds,
     stackRemainingAtStartSeconds,
     stackRemainingAtEndSeconds,
@@ -1111,6 +1151,7 @@ class Dive extends DataClass implements Insertable<Dive> {
           other.dcFirmware == this.dcFirmware &&
           other.sampleIntervalMs == this.sampleIntervalMs &&
           other.gasMixesJson == this.gasMixesJson &&
+          other.tanksJson == this.tanksJson &&
           other.configuredStackSeconds == this.configuredStackSeconds &&
           other.stackRemainingAtStartSeconds ==
               this.stackRemainingAtStartSeconds &&
@@ -1140,6 +1181,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
   final Value<int?> dcFirmware;
   final Value<int> sampleIntervalMs;
   final Value<String> gasMixesJson;
+  final Value<String?> tanksJson;
   final Value<int?> configuredStackSeconds;
   final Value<int?> stackRemainingAtStartSeconds;
   final Value<int?> stackRemainingAtEndSeconds;
@@ -1167,6 +1209,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     this.dcFirmware = const Value.absent(),
     this.sampleIntervalMs = const Value.absent(),
     this.gasMixesJson = const Value.absent(),
+    this.tanksJson = const Value.absent(),
     this.configuredStackSeconds = const Value.absent(),
     this.stackRemainingAtStartSeconds = const Value.absent(),
     this.stackRemainingAtEndSeconds = const Value.absent(),
@@ -1195,6 +1238,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     this.dcFirmware = const Value.absent(),
     required int sampleIntervalMs,
     required String gasMixesJson,
+    this.tanksJson = const Value.absent(),
     this.configuredStackSeconds = const Value.absent(),
     this.stackRemainingAtStartSeconds = const Value.absent(),
     this.stackRemainingAtEndSeconds = const Value.absent(),
@@ -1240,6 +1284,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     Expression<int>? dcFirmware,
     Expression<int>? sampleIntervalMs,
     Expression<String>? gasMixesJson,
+    Expression<String>? tanksJson,
     Expression<int>? configuredStackSeconds,
     Expression<int>? stackRemainingAtStartSeconds,
     Expression<int>? stackRemainingAtEndSeconds,
@@ -1269,6 +1314,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
       if (dcFirmware != null) 'dc_firmware': dcFirmware,
       if (sampleIntervalMs != null) 'sample_interval_ms': sampleIntervalMs,
       if (gasMixesJson != null) 'gas_mixes_json': gasMixesJson,
+      if (tanksJson != null) 'tanks_json': tanksJson,
       if (configuredStackSeconds != null)
         'configured_stack_seconds': configuredStackSeconds,
       if (stackRemainingAtStartSeconds != null)
@@ -1302,6 +1348,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     Value<int?>? dcFirmware,
     Value<int>? sampleIntervalMs,
     Value<String>? gasMixesJson,
+    Value<String?>? tanksJson,
     Value<int?>? configuredStackSeconds,
     Value<int?>? stackRemainingAtStartSeconds,
     Value<int?>? stackRemainingAtEndSeconds,
@@ -1331,6 +1378,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
       dcFirmware: dcFirmware ?? this.dcFirmware,
       sampleIntervalMs: sampleIntervalMs ?? this.sampleIntervalMs,
       gasMixesJson: gasMixesJson ?? this.gasMixesJson,
+      tanksJson: tanksJson ?? this.tanksJson,
       configuredStackSeconds:
           configuredStackSeconds ?? this.configuredStackSeconds,
       stackRemainingAtStartSeconds:
@@ -1406,6 +1454,9 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     if (gasMixesJson.present) {
       map['gas_mixes_json'] = Variable<String>(gasMixesJson.value);
     }
+    if (tanksJson.present) {
+      map['tanks_json'] = Variable<String>(tanksJson.value);
+    }
     if (configuredStackSeconds.present) {
       map['configured_stack_seconds'] = Variable<int>(
         configuredStackSeconds.value,
@@ -1458,6 +1509,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
           ..write('dcFirmware: $dcFirmware, ')
           ..write('sampleIntervalMs: $sampleIntervalMs, ')
           ..write('gasMixesJson: $gasMixesJson, ')
+          ..write('tanksJson: $tanksJson, ')
           ..write('configuredStackSeconds: $configuredStackSeconds, ')
           ..write(
             'stackRemainingAtStartSeconds: $stackRemainingAtStartSeconds, ',
@@ -7288,6 +7340,7 @@ typedef $$DivesTableCreateCompanionBuilder =
       Value<int?> dcFirmware,
       required int sampleIntervalMs,
       required String gasMixesJson,
+      Value<String?> tanksJson,
       Value<int?> configuredStackSeconds,
       Value<int?> stackRemainingAtStartSeconds,
       Value<int?> stackRemainingAtEndSeconds,
@@ -7317,6 +7370,7 @@ typedef $$DivesTableUpdateCompanionBuilder =
       Value<int?> dcFirmware,
       Value<int> sampleIntervalMs,
       Value<String> gasMixesJson,
+      Value<String?> tanksJson,
       Value<int?> configuredStackSeconds,
       Value<int?> stackRemainingAtStartSeconds,
       Value<int?> stackRemainingAtEndSeconds,
@@ -7487,6 +7541,11 @@ class $$DivesTableFilterComposer extends Composer<_$AppDatabase, $DivesTable> {
 
   ColumnFilters<String> get gasMixesJson => $composableBuilder(
     column: $table.gasMixesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tanksJson => $composableBuilder(
+    column: $table.tanksJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7700,6 +7759,11 @@ class $$DivesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get tanksJson => $composableBuilder(
+    column: $table.tanksJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get configuredStackSeconds => $composableBuilder(
     column: $table.configuredStackSeconds,
     builder: (column) => ColumnOrderings(column),
@@ -7816,6 +7880,9 @@ class $$DivesTableAnnotationComposer
     column: $table.gasMixesJson,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get tanksJson =>
+      $composableBuilder(column: $table.tanksJson, builder: (column) => column);
 
   GeneratedColumn<int> get configuredStackSeconds => $composableBuilder(
     column: $table.configuredStackSeconds,
@@ -7972,6 +8039,7 @@ class $$DivesTableTableManager
                 Value<int?> dcFirmware = const Value.absent(),
                 Value<int> sampleIntervalMs = const Value.absent(),
                 Value<String> gasMixesJson = const Value.absent(),
+                Value<String?> tanksJson = const Value.absent(),
                 Value<int?> configuredStackSeconds = const Value.absent(),
                 Value<int?> stackRemainingAtStartSeconds = const Value.absent(),
                 Value<int?> stackRemainingAtEndSeconds = const Value.absent(),
@@ -7999,6 +8067,7 @@ class $$DivesTableTableManager
                 dcFirmware: dcFirmware,
                 sampleIntervalMs: sampleIntervalMs,
                 gasMixesJson: gasMixesJson,
+                tanksJson: tanksJson,
                 configuredStackSeconds: configuredStackSeconds,
                 stackRemainingAtStartSeconds: stackRemainingAtStartSeconds,
                 stackRemainingAtEndSeconds: stackRemainingAtEndSeconds,
@@ -8028,6 +8097,7 @@ class $$DivesTableTableManager
                 Value<int?> dcFirmware = const Value.absent(),
                 required int sampleIntervalMs,
                 required String gasMixesJson,
+                Value<String?> tanksJson = const Value.absent(),
                 Value<int?> configuredStackSeconds = const Value.absent(),
                 Value<int?> stackRemainingAtStartSeconds = const Value.absent(),
                 Value<int?> stackRemainingAtEndSeconds = const Value.absent(),
@@ -8055,6 +8125,7 @@ class $$DivesTableTableManager
                 dcFirmware: dcFirmware,
                 sampleIntervalMs: sampleIntervalMs,
                 gasMixesJson: gasMixesJson,
+                tanksJson: tanksJson,
                 configuredStackSeconds: configuredStackSeconds,
                 stackRemainingAtStartSeconds: stackRemainingAtStartSeconds,
                 stackRemainingAtEndSeconds: stackRemainingAtEndSeconds,

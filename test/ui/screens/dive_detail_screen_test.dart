@@ -126,6 +126,42 @@ void main() {
     expect(find.textContaining(RegExp(r'^↑ \d+$')), findsOneWidget);
   });
 
+  testWidgets('TANKS cell renders one row per active tank with start→end',
+      (tester) async {
+    final s = await _seedDive();
+    addTearDown(() async => s.db.close());
+
+    // Inject a known tanks JSON onto the seeded row so we can assert
+    // exact values regardless of fixture parser output.
+    const tanksJson =
+        '[{"slot":0,"usage":3,"name":"DI","serial":0,"beginBar":230.0,'
+        '"endBar":185.0,"maxBar":300,"reserveBar":50},'
+        '{"slot":1,"usage":2,"name":"O2","serial":0,"beginBar":195.0,'
+        '"endBar":145.0,"maxBar":300,"reserveBar":40}]';
+    await (s.db.update(s.db.dives)..where((t) => t.id.equals(s.dive.id)))
+        .write(const DivesCompanion(tanksJson: Value(tanksJson)));
+    final dive = (await s.dao.getAllDives()).first;
+
+    await _pumpScreen(tester, s.db, dive, s.dao);
+
+    expect(find.text('TANKS (bar)'), findsOneWidget);
+    expect(find.text('DIL 230→185'), findsOneWidget);
+    expect(find.text('O2  195→145'), findsOneWidget);
+  });
+
+  testWidgets('TANKS cell hides when no tanks logged', (tester) async {
+    final s = await _seedDive();
+    addTearDown(() async => s.db.close());
+
+    await (s.db.update(s.db.dives)..where((t) => t.id.equals(s.dive.id)))
+        .write(const DivesCompanion(tanksJson: Value(null)));
+    final dive = (await s.dao.getAllDives()).first;
+
+    await _pumpScreen(tester, s.db, dive, s.dao);
+
+    expect(find.textContaining('TANKS'), findsNothing);
+  });
+
   testWidgets('survives with sentinel raw blob (smoke)', (tester) async {
     // Independent smoke check: even if loadSamples shortcuts, screen builds.
     final db = AppDatabase(NativeDatabase.memory());

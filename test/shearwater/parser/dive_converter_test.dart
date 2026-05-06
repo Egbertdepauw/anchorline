@@ -75,6 +75,45 @@ void main() {
       expect(dive718.diveMode, equals(parsed718.header.diveMode));
     });
 
+    test('populates tanks from parsed.tanks (diluent first, oxygen second)',
+        () {
+      // dive_718 is a JJ-CCR with two tanks logged: diluent on slot 0,
+      // oxygen on slot 1, both with realistic begin/end pressures.
+      expect(dive718.tanks, hasLength(parsed718.tanks.length));
+      expect(dive718.tanks, isNotEmpty);
+      // Order in the tanks list mirrors the parser's compacted order; for
+      // dive_718 that is [diluent, oxygen].
+      expect(dive718.tanks.first.usage, TankUsage.diluent);
+      expect(dive718.tanks[1].usage, TankUsage.oxygen);
+
+      // Round-trip raw → bar via the single conversion constant.
+      for (var i = 0; i < dive718.tanks.length; i++) {
+        final raw = parsed718.tanks[i];
+        final dom = dive718.tanks[i];
+        expect(dom.slot, equals(i));
+        expect(dom.beginPressureBar,
+            closeTo(raw.beginPressureRaw * tankPressureRawToBar, 1e-9));
+        expect(dom.endPressureBar,
+            closeTo(raw.endPressureRaw * tankPressureRawToBar, 1e-9));
+        expect(dom.pressureMaxBar, equals(raw.pressureMax));
+        expect(dom.pressureReserveBar, equals(raw.pressureReserve));
+        expect(dom.serial, equals(raw.serial));
+        expect(dom.name, equals(raw.name));
+      }
+
+      // JSON round-trip preserves every field.
+      final encoded = dive718.tanks.map((t) => t.toJson()).toList();
+      final decoded = encoded.map(DiveTank.fromJson).toList();
+      for (var i = 0; i < decoded.length; i++) {
+        expect(decoded[i].slot, equals(dive718.tanks[i].slot));
+        expect(decoded[i].usage, equals(dive718.tanks[i].usage));
+        expect(decoded[i].beginPressureBar,
+            equals(dive718.tanks[i].beginPressureBar));
+        expect(decoded[i].endPressureBar,
+            equals(dive718.tanks[i].endPressureBar));
+      }
+    });
+
     test('preserves gas mixes', () {
       expect(dive718.gasMixes.length, equals(parsed718.gasMixes.length));
       for (var i = 0; i < dive718.gasMixes.length; i++) {

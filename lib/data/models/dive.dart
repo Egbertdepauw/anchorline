@@ -10,6 +10,7 @@ import 'package:crypto/crypto.dart';
 
 import '../../shearwater/parser/constants.dart';
 import '../../shearwater/parser/hardware.dart';
+import '../../shearwater/parser/parsed_dive.dart' show TankUsage;
 
 /// Generate a stable dive ID from device serial, dive number, and timestamp.
 ///
@@ -69,6 +70,9 @@ class Dive {
   /// Gas mixes used in this dive.
   final List<DiveGasMix> gasMixes;
 
+  /// Tanks logged for this dive (compacted: only active slots, max 6).
+  final List<DiveTank> tanks;
+
   /// Sample interval in milliseconds.
   final int sampleIntervalMs;
 
@@ -104,12 +108,59 @@ class Dive {
     required this.logVersion,
     required this.dcModel,
     required this.gasMixes,
+    this.tanks = const [],
     required this.sampleIntervalMs,
     this.sensorCalibration = const [],
     this.configuredStackSeconds,
     this.stackRemainingAtStartSeconds,
     this.stackRemainingAtEndSeconds,
   });
+}
+
+/// Per-dive tank (compacted: only slots that were actually logged).
+class DiveTank {
+  /// Compacted tank index (0..5) — matches `TankPressureReading.tankIndex`.
+  final int slot;
+  final TankUsage usage;
+  final String name;
+  final int serial;
+  final double beginPressureBar;
+  final double endPressureBar;
+  final int pressureMaxBar;
+  final int pressureReserveBar;
+
+  DiveTank({
+    required this.slot,
+    required this.usage,
+    required this.name,
+    required this.serial,
+    required this.beginPressureBar,
+    required this.endPressureBar,
+    required this.pressureMaxBar,
+    required this.pressureReserveBar,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'slot': slot,
+        'usage': usage.index,
+        'name': name,
+        'serial': serial,
+        'beginBar': beginPressureBar,
+        'endBar': endPressureBar,
+        'maxBar': pressureMaxBar,
+        'reserveBar': pressureReserveBar,
+      };
+
+  factory DiveTank.fromJson(Map<String, dynamic> json) => DiveTank(
+        slot: json['slot'] as int,
+        usage: TankUsage.values[json['usage'] as int],
+        name: json['name'] as String,
+        serial: json['serial'] as int,
+        beginPressureBar: (json['beginBar'] as num).toDouble(),
+        endPressureBar: (json['endBar'] as num).toDouble(),
+        pressureMaxBar: json['maxBar'] as int,
+        pressureReserveBar: json['reserveBar'] as int,
+      );
 }
 
 /// Gas mix with percentages.

@@ -4,7 +4,8 @@ import '../../data/db/database.dart';
 import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
-import '../../data/models/dive.dart' show DiveGasMix;
+import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
+import '../../shearwater/parser/parsed_dive.dart' show TankUsage;
 import '../../data/sample_codec/active_per_mix.dart';
 import '../../data/sample_codec/dive_stats.dart';
 import '../../shearwater/parser/hardware.dart';
@@ -311,6 +312,15 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         .toList();
   }
 
+  /// Decode tanks from the dive's JSON column. Returns `[]` when null.
+  List<DiveTank> _decodeTanks() {
+    final raw = widget.dive.tanksJson;
+    if (raw == null || raw.isEmpty) return const [];
+    return (jsonDecode(raw) as List)
+        .map((e) => DiveTank.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   /// Choose the diluent label for the GAS column. Picks the diluent with
   /// the most active time; tie-breaker is list order. Returns '—' if the
   /// dive has no diluent (OC dives).
@@ -396,6 +406,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         _descAscCell(vSpeed.maxDescentMpm.round(),
             vSpeed.maxAscentMpm.round(), theme),
         _statCell('GAS', gasLabel, theme),
+        if (_activeTanks().isNotEmpty) _tanksCell(_activeTanks(), theme),
         if (stackEnd != null)
           _stackCell(stackLabel, stackUsed, stackConf, theme),
       ];
@@ -473,6 +484,51 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       Text('↑ $max$unit', style: valueStyle),
       const SizedBox(height: 2),
       Text(label, style: faded),
+    ]);
+  }
+
+  /// Active tanks (those with non-zero start or end pressure), sorted
+  /// diluent → oxygen → other.
+  List<DiveTank> _activeTanks() {
+    final list = _decodeTanks()
+        .where((t) => t.beginPressureBar > 0 || t.endPressureBar > 0)
+        .toList();
+    int rank(TankUsage u) => switch (u) {
+          TankUsage.diluent => 0,
+          TankUsage.oxygen => 1,
+          TankUsage.sidemount => 2,
+          TankUsage.none => 3,
+        };
+    list.sort((a, b) => rank(a.usage).compareTo(rank(b.usage)));
+    return list;
+  }
+
+  String _tankLabel(DiveTank t) {
+    switch (t.usage) {
+      case TankUsage.diluent:
+        return 'DIL';
+      case TankUsage.oxygen:
+        return 'O2 ';
+      case TankUsage.sidemount:
+        return 'BO ';
+      case TankUsage.none:
+        return 'T${t.slot}';
+    }
+  }
+
+  Widget _tanksCell(List<DiveTank> tanks, ThemeData theme) {
+    const valueStyle =
+        TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
+    final faded = TextStyle(
+        fontSize: 9,
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.4));
+    return Column(children: [
+      for (final t in tanks)
+        Text(
+            '${_tankLabel(t)} ${t.beginPressureBar.round()}→${t.endPressureBar.round()}',
+            style: valueStyle),
+      const SizedBox(height: 2),
+      Text('TANKS (bar)', style: faded),
     ]);
   }
 

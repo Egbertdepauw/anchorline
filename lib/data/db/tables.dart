@@ -48,6 +48,10 @@ class Dives extends Table {
   /// Gas mixes as JSON array.
   TextColumn get gasMixesJson => text()();
 
+  /// Tanks as JSON array. Null when the parser produced no tank metadata
+  /// (no AI configured, OC dives without tank pressure, etc).
+  TextColumn get tanksJson => text().nullable()();
+
   /// Scrubber stack time (seconds). All null when the diver hasn't
   /// enabled stack tracking on the unit.
   IntColumn get configuredStackSeconds => integer().nullable()();
