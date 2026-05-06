@@ -1,0 +1,11 @@
+bucket_definitions:
+  user_data:
+    parameters: SELECT request.user_id() as user_id
+    data:
+      - SELECT * FROM dive_annotations WHERE owner_id = bucket.user_id
+      - SELECT * FROM cylinders WHERE owner_id = bucket.user_id
+      - SELECT * FROM oxygen_cells WHERE owner_id = bucket.user_id
+      - SELECT * FROM scrubber_sessions WHERE owner_id = bucket.user_id
+      - SELECT * FROM pressure_mappings WHERE owner_id = bucket.user_id
+      - SELECT * FROM dive_cylinders WHERE owner_id = bucket.user_id
+      - SELECT * FROM dive_computers WHERE owner_id = bucket.user_id
