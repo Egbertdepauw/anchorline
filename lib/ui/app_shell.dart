@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../data/db/database.dart';
 import '../data/db/dive_annotations_dao.dart';
 import '../data/db/dive_dao.dart';
 import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
+import '../sync/subsurface_export.dart';
 import 'notifiers/dive_list_notifier.dart';
 import 'notifiers/import_notifier.dart';
 import 'notifiers/settings_notifier.dart';
@@ -32,6 +34,8 @@ class _AppShellState extends State<AppShell> {
   late final DiveAnnotationsDao _diveAnnotationsDao;
   late final DiveListNotifier _diveListNotifier;
   late final ImportNotifier _importNotifier;
+  late final SubsurfaceExporter _subsurfaceExporter;
+  bool _uploading = false;
 
   @override
   void initState() {
@@ -47,6 +51,10 @@ class _AppShellState extends State<AppShell> {
       equipmentDao: _equipmentDao,
       useMock: kDebugMode,
     );
+    _subsurfaceExporter = SubsurfaceExporter(
+      diveDao: _diveDao,
+      annotationsDao: _diveAnnotationsDao,
+    );
   }
 
   @override
@@ -61,12 +69,59 @@ class _AppShellState extends State<AppShell> {
     _diveListNotifier.loadDives();
   }
 
+  Future<void> _onUploadToSubsurface() async {
+    if (_uploading) return;
+    setState(() => _uploading = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await _subsurfaceExporter.exportPending();
+      if (!mounted) return;
+      if (result == null) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('No new dives to upload.')),
+        );
+        return;
+      }
+      final share = await Share.shareXFiles(
+        [XFile(result.filePath)],
+        text: 'CCRLog dives (${result.diveCount})',
+      );
+      if (!mounted) return;
+      if (share.status == ShareResultStatus.success) {
+        await _subsurfaceExporter.markExported(result.diveIds);
+        if (!mounted) return;
+        messenger.showSnackBar(
+          SnackBar(content: Text('Uploaded ${result.diveCount} dives.')),
+        );
+        await _diveListNotifier.loadDives();
+      } else {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Upload cancelled.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('CCRLog'),
         actions: [
+          if (_currentIndex == 0)
+            IconButton(
+              tooltip: 'Upload to Subsurface',
+              icon: _uploading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.cloud_upload),
+              onPressed: _uploading ? null : _onUploadToSubsurface,
+            ),
           if (_currentIndex == 0)
             IconButton(
               tooltip: 'Settings',
