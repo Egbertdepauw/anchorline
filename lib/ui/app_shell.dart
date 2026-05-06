@@ -151,8 +151,10 @@ class _AppShellState extends State<AppShell> {
               icon: const Icon(Icons.settings_outlined),
               onPressed: () {
                 Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) =>
-                      SettingsScreen(notifier: widget.settingsNotifier),
+                  builder: (_) => SettingsScreen(
+                    notifier: widget.settingsNotifier,
+                    authService: widget.authService,
+                  ),
                 ));
               },
             ),
@@ -174,7 +176,10 @@ class _AppShellState extends State<AppShell> {
             diveDao: _diveDao,
             annotationsDao: _diveAnnotationsDao,
           ),
-          SettingsScreen(notifier: widget.settingsNotifier),
+          SettingsScreen(
+            notifier: widget.settingsNotifier,
+            authService: widget.authService,
+          ),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
