@@ -4,6 +4,7 @@ import '../../data/db/database.dart';
 import '../../data/models/annotation.dart' as dom;
 import '../util/dive_mode_color.dart';
 import '../util/format.dart';
+import 'site_mini_map.dart';
 import 'sparkline.dart';
 
 class DiveTile extends StatelessWidget {
@@ -35,6 +36,16 @@ class DiveTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
+            if (annotation?.siteLatitude != null &&
+                annotation?.siteLongitude != null)
+              SiteMiniMap(
+                lat: annotation!.siteLatitude!,
+                lon: annotation!.siteLongitude!,
+                size: 56,
+              )
+            else
+              const SizedBox(width: 56),
+            const SizedBox(width: 12),
             SizedBox(
               width: 56, height: 36,
               child: sparklineData != null && sparklineData!.isNotEmpty

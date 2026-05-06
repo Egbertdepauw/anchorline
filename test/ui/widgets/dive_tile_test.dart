@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/models/annotation.dart' as dom;
 import 'package:ccrlogger/shearwater/parser/constants.dart';
 import 'package:ccrlogger/ui/widgets/dive_tile.dart';
+import 'package:ccrlogger/ui/widgets/site_mini_map.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -67,5 +69,46 @@ void main() {
       )),
     ));
     expect(find.byType(DiveTile), findsOneWidget);
+  });
+
+  testWidgets('DiveTile shows mini map when annotation has coords',
+      (tester) async {
+    final now = DateTime.now();
+    final ann = dom.DiveAnnotation(
+      diveId: 'test-dive-id',
+      siteLatitude: 51.5,
+      siteLongitude: 3.7,
+      createdAt: now,
+      updatedAt: now,
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: DiveTile(
+        dive: _makeDive(),
+        sparklineData: Float32List.fromList([0, 10, 0]),
+        annotation: ann,
+        onTap: () {},
+      )),
+    ));
+    expect(find.byType(SiteMiniMap), findsOneWidget);
+  });
+
+  testWidgets('DiveTile omits mini map when annotation lacks coords',
+      (tester) async {
+    final now = DateTime.now();
+    final ann = dom.DiveAnnotation(
+      diveId: 'test-dive-id',
+      siteName: 'Some Site',
+      createdAt: now,
+      updatedAt: now,
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: DiveTile(
+        dive: _makeDive(),
+        sparklineData: Float32List.fromList([0, 10, 0]),
+        annotation: ann,
+        onTap: () {},
+      )),
+    ));
+    expect(find.byType(SiteMiniMap), findsNothing);
   });
 }
