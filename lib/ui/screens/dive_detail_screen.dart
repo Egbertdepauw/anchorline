@@ -246,15 +246,23 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                               .colorScheme.onSurface
                                               .withValues(alpha: 0.5),
                                           fontSize: 11)),
-                                  StarRating(
-                                    value: _annotationsNotifier.rating,
-                                    onChanged: (v) =>
-                                        _annotationsNotifier.setRating(v),
-                                  ),
                                 ]),
                           ]),
                     );
                   }),
+
+                  // Star rating: own row so the header text column isn't
+                  // squeezed by 5 stars on narrow screens.
+                  Container(
+                    color: const Color(0xFF152238),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    alignment: Alignment.centerRight,
+                    child: StarRating(
+                      value: _annotationsNotifier.rating,
+                      onChanged: (v) =>
+                          _annotationsNotifier.setRating(v),
+                    ),
+                  ),
 
                   // Profile chart
                   if (_notifier.samples != null) ...[
