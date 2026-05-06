@@ -179,10 +179,11 @@ class SubsurfaceXmlEncoder {
         );
       });
       b.element('water', nest: () {
-        b.attribute(
-          'salinity',
-          '${_fmt3(dive.waterDensityKgM3 / 1000.0)} kg/l',
-        );
+        // Subsurface's parser scales the numeric × 10 internally; matching
+        // upstream's g/l unit is the only way the value lands correctly
+        // (1025 g/l → 10250 internal density). 1.025 kg/l would parse as
+        // 10.25 — an order of magnitude wrong.
+        b.attribute('salinity', '${dive.waterDensityKgM3} g/l');
       });
 
       // Scrubber stack as extradata (Subsurface displays unknown extradata
@@ -221,7 +222,11 @@ class SubsurfaceXmlEncoder {
         }
         final ppo2 = s.ppo2Bar[i];
         if (ppo2 > 0) {
-          b.attribute('ppo2', '${_fmt2(ppo2)} bar');
+          // dc_supplied_ppo2 = the DC's own voted PPO2. Plain `ppo2`
+          // increments Subsurface's per-cell index, so emitting it here
+          // would land the voted value into cell-0's slot rather than
+          // marking it as the DC's voted output.
+          b.attribute('dc_supplied_ppo2', '${_fmt2(ppo2)} bar');
         }
         if (!isOc) {
           final sp = s.setpointBar[i];
