@@ -382,8 +382,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
               unit: '°C')
         else
           _statCell('TEMP', '—', theme),
-        _statCell('MAX ASC m/min', '${vSpeed.maxAscentMpm.round()}', theme),
-        _statCell('MAX DESC m/min', '${vSpeed.maxDescentMpm.round()}', theme),
+        _descAscCell(vSpeed.maxDescentMpm.round(),
+            vSpeed.maxAscentMpm.round(), theme),
         _statCell('GAS', gasLabel, theme),
         if (stackEnd != null)
           _stackCell(stackLabel, stackUsed, stackConf, theme),
@@ -462,6 +462,20 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       Text(label, style: faded),
       Text('min: $min', style: faded),
       Text('max: $max', style: faded),
+    ]);
+  }
+
+  Widget _descAscCell(int desc, int asc, ThemeData theme) {
+    const value =
+        TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
+    final faded = TextStyle(
+        fontSize: 9,
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.4));
+    return Column(children: [
+      Text('↓ $desc', style: value),
+      Text('↑ $asc', style: value),
+      const SizedBox(height: 2),
+      Text('MAX m/min', style: faded),
     ]);
   }
 }

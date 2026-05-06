@@ -116,23 +116,17 @@ void main() {
     expect(find.textContaining(RegExp(r'^max: -?\d+$')), findsWidgets);
   });
 
-  testWidgets('shows max ASC and DESC m/min stats', (tester) async {
+  testWidgets('shows MAX m/min cell with descent + ascent stacked',
+      (tester) async {
     final s = await _seedDive();
     addTearDown(() async => s.db.close());
 
     await _pumpScreen(tester, s.db, s.dive, s.dao);
 
-    expect(find.text('MAX ASC m/min'), findsOneWidget);
-    expect(find.text('MAX DESC m/min'), findsOneWidget);
-    // A real CCR profile must produce at least some non-zero rate; we
-    // don't pin an exact integer here because the parser's depth
-    // resolution can drift slightly.
-    final ascValue = tester
-        .widgetList<Text>(find.descendant(
-            of: find.byType(Column), matching: find.byType(Text)))
-        .where((t) => RegExp(r'^\d+$').hasMatch(t.data ?? ''))
-        .toList();
-    expect(ascValue, isNotEmpty);
+    // One label, two arrow-prefixed values stacked in a single cell.
+    expect(find.text('MAX m/min'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^↓ \d+$')), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^↑ \d+$')), findsOneWidget);
   });
 
   testWidgets('survives with sentinel raw blob (smoke)', (tester) async {

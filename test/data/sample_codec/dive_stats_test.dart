@@ -60,28 +60,28 @@ void main() {
       expect(res.maxDescentMpm, 0.0);
     });
 
-    test('mixed profile picks worst burst within the window', () {
-      // 5 samples at 10s. With a 15s window rounded up to 2 samples
-      // (20s), worst descent is the [0..2] segment: 6m / 20s = 18 m/min.
-      // Worst ascent is segments [2..3] or [2..4]: 3m / 20s = 9 m/min.
+    test('mixed profile picks worst sample-pair', () {
+      // 5 samples at 10s. With a 5s window rounded up to 1 sample (10s),
+      // each adjacent pair is its own datum. Worst descent: 5m / 10s =
+      // 30 m/min. Worst ascent: 4m / 10s = 24 m/min.
       final depth = Float32List.fromList([0, 5, 6, 2, 3]);
       final res = verticalSpeedExtremes(
           depthMeters: depth, sampleCount: 5, sampleIntervalMs: 10000);
-      expect(res.maxDescentMpm, closeTo(18.0, 1e-3));
-      expect(res.maxAscentMpm, closeTo(9.0, 1e-3));
+      expect(res.maxDescentMpm, closeTo(30.0, 1e-3));
+      expect(res.maxAscentMpm, closeTo(24.0, 1e-3));
     });
 
-    test('single-sample spike is smoothed (1/3 of un-windowed rate)', () {
-      // 13 samples at 5s. A 0.5m blip at i=6 — un-windowed math would
-      // report 0.5m/5s = 6 m/min. With a 15s window (3 samples), the
-      // same blip shows as 0.5m/15s = 2 m/min — smoothed by 3×.
+    test('single-sample 0.5m spike shows as 6 m/min at 5s sampling', () {
+      // 13 samples at 5s. With the 5s window collapsed to one sample
+      // interval, a 0.5m blip at i=6 reads at 0.5m/5s = 6 m/min in
+      // both directions (descend into the blip, ascend back out).
       final depth = Float32List.fromList([
         10, 10, 10, 10, 10, 10, 10.5, 10, 10, 10, 10, 10, 10,
       ]);
       final res = verticalSpeedExtremes(
           depthMeters: depth, sampleCount: 13, sampleIntervalMs: 5000);
-      expect(res.maxDescentMpm, closeTo(2.0, 1e-3));
-      expect(res.maxAscentMpm, closeTo(2.0, 1e-3));
+      expect(res.maxDescentMpm, closeTo(6.0, 1e-3));
+      expect(res.maxAscentMpm, closeTo(6.0, 1e-3));
     });
   });
 }
