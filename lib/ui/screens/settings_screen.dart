@@ -178,13 +178,28 @@ class _AuthSheet extends StatefulWidget {
 class _AuthSheetState extends State<_AuthSheet> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  final _emailFocus = FocusNode();
+  final _passwordFocus = FocusNode();
   bool _busy = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // macOS Flutter has a known race where TextFields inside dialogs
+    // don't establish keyboard focus on first paint. Forcing it after
+    // the frame settles is the standard workaround.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _emailFocus.requestFocus();
+    });
+  }
 
   @override
   void dispose() {
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -232,16 +247,18 @@ class _AuthSheetState extends State<_AuthSheet> {
           const SizedBox(height: 16),
           TextField(
             controller: _emailCtrl,
-            autofocus: true,
+            focusNode: _emailFocus,
             keyboardType: TextInputType.emailAddress,
             autofillHints: const [AutofillHints.email],
             decoration: const InputDecoration(labelText: 'Email'),
             enabled: !_busy,
             textInputAction: TextInputAction.next,
+            onSubmitted: (_) => _passwordFocus.requestFocus(),
           ),
           const SizedBox(height: 8),
           TextField(
             controller: _passwordCtrl,
+            focusNode: _passwordFocus,
             obscureText: true,
             autofillHints: const [AutofillHints.password],
             decoration: const InputDecoration(labelText: 'Password'),
