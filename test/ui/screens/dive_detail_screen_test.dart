@@ -1,12 +1,15 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
 import 'package:ccrlogger/data/db/dive_dao.dart';
+import 'package:ccrlogger/data/models/annotation.dart';
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
 import 'package:ccrlogger/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/ui/screens/dive_detail_screen.dart';
+import 'package:ccrlogger/ui/screens/sites_map_screen.dart';
+import 'package:ccrlogger/ui/widgets/site_mini_map.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -219,6 +222,33 @@ void main() {
     await _pumpScreen(tester, s.db, dive, s.dao);
 
     expect(find.textContaining('TANKS'), findsNothing);
+  });
+
+  testWidgets('tapping the header mini-map opens SitesMapScreen',
+      (tester) async {
+    final s = await _seedDive();
+    addTearDown(() async => s.db.close());
+
+    // Stamp an annotation with coords so the header mini-map renders.
+    final now = DateTime.now();
+    await s.db.diveAnnotationsDao.upsert(DiveAnnotation(
+      diveId: s.dive.id,
+      siteName: 'Lagoon',
+      siteLatitude: 51.5,
+      siteLongitude: 4.0,
+      createdAt: now,
+      updatedAt: now,
+    ));
+
+    await _pumpScreen(tester, s.db, s.dive, s.dao);
+    expect(find.byType(SiteMiniMap), findsOneWidget);
+    expect(find.byType(SitesMapScreen), findsNothing);
+
+    await tester.tap(find.byType(SiteMiniMap));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SitesMapScreen), findsOneWidget);
+    expect(find.text('Dive sites'), findsOneWidget);
   });
 
   testWidgets('survives with sentinel raw blob (smoke)', (tester) async {

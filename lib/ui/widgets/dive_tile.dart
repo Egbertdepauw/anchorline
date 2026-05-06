@@ -12,6 +12,7 @@ class DiveTile extends StatelessWidget {
   final Float32List? sparklineData;
   final dom.DiveAnnotation? annotation;
   final VoidCallback onTap;
+  final VoidCallback? onMiniMapTap;
 
   const DiveTile({
     super.key,
@@ -19,6 +20,7 @@ class DiveTile extends StatelessWidget {
     required this.sparklineData,
     required this.onTap,
     this.annotation,
+    this.onMiniMapTap,
   });
 
   @override
@@ -38,10 +40,16 @@ class DiveTile extends StatelessWidget {
           children: [
             if (annotation?.siteLatitude != null &&
                 annotation?.siteLongitude != null)
-              SiteMiniMap(
-                lat: annotation!.siteLatitude!,
-                lon: annotation!.siteLongitude!,
-                size: 56,
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onMiniMapTap,
+                child: IgnorePointer(
+                  child: SiteMiniMap(
+                    lat: annotation!.siteLatitude!,
+                    lon: annotation!.siteLongitude!,
+                    size: 56,
+                  ),
+                ),
               )
             else
               const SizedBox(width: 56),

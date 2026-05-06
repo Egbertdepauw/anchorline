@@ -20,6 +20,7 @@ import '../widgets/crosshair_tooltip.dart';
 import '../widgets/dive_annotations_section.dart';
 import '../widgets/profile_chart.dart';
 import '../widgets/site_mini_map.dart';
+import 'sites_map_screen.dart';
 import '../widgets/star_rating.dart';
 import '../widgets/trace_toggle.dart';
 
@@ -158,7 +159,21 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (hasCoords) ...[
-                              SiteMiniMap(lat: lat, lon: lon, size: 72),
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () =>
+                                    Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (_) => SitesMapScreen(
+                                    dao: widget.annotationsDao,
+                                    currentLat: lat,
+                                    currentLon: lon,
+                                  ),
+                                )),
+                                child: IgnorePointer(
+                                  child: SiteMiniMap(
+                                      lat: lat, lon: lon, size: 72),
+                                ),
+                              ),
                               const SizedBox(width: 12),
                             ],
                             Expanded(

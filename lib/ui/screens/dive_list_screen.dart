@@ -14,6 +14,7 @@ import '../util/format.dart';
 import '../widgets/dive_filter_sheet.dart';
 import '../widgets/dive_tile.dart';
 import 'dive_detail_screen.dart';
+import 'sites_map_screen.dart';
 
 class DiveListScreen extends StatefulWidget {
   final DiveListNotifier notifier;
@@ -315,10 +316,18 @@ class _DiveTileWithSparkline extends StatelessWidget {
     return FutureBuilder(
       future: notifier.getSparklineData(dive.id),
       builder: (context, snapshot) {
+        final ann = notifier.annotationsByDiveId[dive.id];
         return DiveTile(
           dive: dive,
           sparklineData: snapshot.data,
-          annotation: notifier.annotationsByDiveId[dive.id],
+          annotation: ann,
+          onMiniMapTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => SitesMapScreen(
+              dao: annotationsDao,
+              currentLat: ann?.siteLatitude,
+              currentLon: ann?.siteLongitude,
+            ),
+          )),
           onTap: () async {
             await Navigator.of(context).push(MaterialPageRoute(
               builder: (_) => DiveDetailScreen(

@@ -122,6 +122,58 @@ void main() {
     test('getLatestSiteCoords returns null for unknown site', () async {
       expect(await dao.getLatestSiteCoords('Nowhere'), isNull);
     });
+
+    test('distinctSiteCoords dedups by 5dp and keeps named/unnamed entries',
+        () async {
+      final now = DateTime.now();
+      // Two distinct coord pairs across three rows; the first two share
+      // (lat, lon) at 5dp precision so should collapse to one entry.
+      await dao.upsert(DiveAnnotation(
+        diveId: 'd1',
+        siteName: 'Lagoon',
+        siteLatitude: 51.92345,
+        siteLongitude: 4.47812,
+        createdAt: now.subtract(const Duration(days: 1)),
+        updatedAt: now.subtract(const Duration(days: 1)),
+      ));
+      await dao.upsert(DiveAnnotation(
+        diveId: 'd2',
+        siteName: 'Lagoon',
+        siteLatitude: 51.923451, // collapses to 51.92345 at 5dp
+        siteLongitude: 4.478124,
+        createdAt: now,
+        updatedAt: now,
+      ));
+      await dao.upsert(DiveAnnotation(
+        diveId: 'd3',
+        siteName: null,
+        siteLatitude: 52.5,
+        siteLongitude: 5.5,
+        createdAt: now,
+        updatedAt: now,
+      ));
+
+      final got = await dao.distinctSiteCoords();
+      expect(got, hasLength(2));
+      // Named entry sorts first; null-named entry last.
+      expect(got[0].siteName, 'Lagoon');
+      expect(got[0].lat, closeTo(51.92345, 1e-5));
+      expect(got[0].lon, closeTo(4.47812, 1e-5));
+      expect(got[1].siteName, isNull);
+      expect(got[1].lat, closeTo(52.5, 1e-5));
+      expect(got[1].lon, closeTo(5.5, 1e-5));
+    });
+
+    test('distinctSiteCoords skips coordless rows', () async {
+      final now = DateTime.now();
+      await dao.upsert(DiveAnnotation(
+        diveId: 'd1',
+        siteName: 'No coords',
+        createdAt: now,
+        updatedAt: now,
+      ));
+      expect(await dao.distinctSiteCoords(), isEmpty);
+    });
   });
 
   group('cylinder linkage', () {

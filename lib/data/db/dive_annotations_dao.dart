@@ -67,6 +67,38 @@ class DiveAnnotationsDao extends DatabaseAccessor<AppDatabase>
     return {for (final r in rows) r.diveId: _toModel(r)};
   }
 
+  /// Returns one entry per distinct (lat, lon) pair across all non-deleted
+  /// annotations where both coords are non-null. Coords are rounded to 5dp
+  /// before deduping (matches the storage precision). Site name is taken
+  /// from the most-recent annotation at those coords (may be null).
+  /// Sorted alphabetically by site name with null-named entries last.
+  Future<List<({String? siteName, double lat, double lon})>>
+      distinctSiteCoords() async {
+    final rows = await (select(diveAnnotations)
+          ..where((t) =>
+              t.deletedAt.isNull() &
+              t.siteLatitudeE5.isNotNull() &
+              t.siteLongitudeE5.isNotNull())
+          ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)]))
+        .get();
+    final byKey = <String, ({String? siteName, double lat, double lon})>{};
+    for (final r in rows) {
+      final lat = r.siteLatitudeE5! / 1e5;
+      final lon = r.siteLongitudeE5! / 1e5;
+      final key = '${lat.toStringAsFixed(5)},${lon.toStringAsFixed(5)}';
+      byKey.putIfAbsent(
+          key, () => (siteName: r.siteName, lat: lat, lon: lon));
+    }
+    final list = byKey.values.toList();
+    list.sort((a, b) {
+      if (a.siteName == null && b.siteName == null) return 0;
+      if (a.siteName == null) return 1;
+      if (b.siteName == null) return -1;
+      return a.siteName!.toLowerCase().compareTo(b.siteName!.toLowerCase());
+    });
+    return list;
+  }
+
   Future<List<String>> distinctSiteNames() async {
     final rows = await (selectOnly(diveAnnotations, distinct: true)
           ..addColumns([diveAnnotations.siteName])
