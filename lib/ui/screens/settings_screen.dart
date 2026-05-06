@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../sync/cloud/auth_service.dart';
+import '../../sync/cloud/sync_status_source.dart';
 import '../notifiers/settings_notifier.dart';
 
 class SettingsScreen extends StatefulWidget {
   final SettingsNotifier notifier;
   final AuthService? authService;
+  final SyncStatusSource? syncStatusSource;
 
   const SettingsScreen({
     super.key,
     required this.notifier,
     this.authService,
+    this.syncStatusSource,
   });
 
   @override
@@ -42,7 +46,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (auth != null)
             ListenableBuilder(
               listenable: auth,
-              builder: (_, _) => _AccountSection(authService: auth),
+              builder: (_, _) => _AccountSection(
+                authService: auth,
+                syncStatusSource: widget.syncStatusSource,
+              ),
             ),
           SwitchListTile(
             title: const Text('Use speed coloured graph'),
@@ -59,7 +66,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 class _AccountSection extends StatelessWidget {
   final AuthService authService;
-  const _AccountSection({required this.authService});
+  final SyncStatusSource? syncStatusSource;
+  const _AccountSection({
+    required this.authService,
+    this.syncStatusSource,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +83,10 @@ class _AccountSection extends StatelessWidget {
           const SizedBox(height: 8),
           Card(
             child: authService.isSignedIn
-                ? _SignedInTile(authService: authService)
+                ? _SignedInTile(
+                    authService: authService,
+                    syncStatusSource: syncStatusSource,
+                  )
                 : _SignInTile(authService: authService),
           ),
         ],
@@ -99,17 +113,24 @@ class _SignInTile extends StatelessWidget {
 
 class _SignedInTile extends StatelessWidget {
   final AuthService authService;
-  const _SignedInTile({required this.authService});
+  final SyncStatusSource? syncStatusSource;
+  const _SignedInTile({
+    required this.authService,
+    this.syncStatusSource,
+  });
 
   @override
   Widget build(BuildContext context) {
     final email = authService.currentUser?.email ?? '(unknown)';
+    final source = syncStatusSource;
     return Column(
       children: [
         ListTile(
           leading: const Icon(Icons.cloud_done_outlined),
           title: Text(email),
-          subtitle: const Text('Last synced: never'),
+          subtitle: source == null
+              ? const Text('Last synced: never')
+              : _SyncStatusRow(source: source),
         ),
         const Divider(height: 0),
         Padding(
@@ -126,6 +147,53 @@ class _SignedInTile extends StatelessWidget {
       ],
     );
   }
+}
+
+class _SyncStatusRow extends StatelessWidget {
+  final SyncStatusSource source;
+  const _SyncStatusRow({required this.source});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<SyncStatusSnapshot>(
+      stream: source.statusStream,
+      initialData: source.currentStatus,
+      builder: (_, snapshot) {
+        final s = snapshot.data ?? source.currentStatus;
+        return Text(_formatSyncStatus(s));
+      },
+    );
+  }
+}
+
+String _formatSyncStatus(SyncStatusSnapshot s) {
+  final state = _statusLabel(s);
+  final last = s.lastSyncedAt;
+  if (last == null) return state;
+  return '$state  Last synced: ${_relativeTime(last, DateTime.now())}';
+}
+
+String _statusLabel(SyncStatusSnapshot s) {
+  if (!s.connected) return '🔴 Offline';
+  if (s.uploading || s.downloading) return '🟡 Syncing…';
+  return '🟢 Synced';
+}
+
+/// Compact relative-time formatting suitable for a status row. Falls back
+/// to an absolute date once we cross a day boundary.
+String _relativeTime(DateTime when, DateTime now) {
+  final diff = now.difference(when);
+  if (diff.inSeconds < 45) return 'just now';
+  if (diff.inMinutes < 1) return '${diff.inSeconds} sec ago';
+  if (diff.inMinutes < 60) {
+    final m = diff.inMinutes;
+    return '$m min ago';
+  }
+  if (diff.inHours < 24) {
+    final h = diff.inHours;
+    return h == 1 ? '1 hour ago' : '$h hours ago';
+  }
+  return DateFormat.yMd().add_Hm().format(when);
 }
 
 Future<void> _openAuthSheet(BuildContext context, AuthService auth) {

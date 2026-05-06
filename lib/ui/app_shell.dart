@@ -9,6 +9,7 @@ import '../data/db/dive_dao.dart';
 import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
 import '../sync/cloud/auth_service.dart';
+import '../sync/cloud/sync_status_source.dart';
 import '../sync/subsurface_export.dart';
 import 'notifiers/dive_list_notifier.dart';
 import 'notifiers/import_notifier.dart';
@@ -45,6 +46,7 @@ class _AppShellState extends State<AppShell> {
   late final DiveListNotifier _diveListNotifier;
   late final ImportNotifier _importNotifier;
   late final SubsurfaceExporter _subsurfaceExporter;
+  late final SyncStatusSource _syncStatusSource;
   bool _uploading = false;
 
   @override
@@ -65,6 +67,7 @@ class _AppShellState extends State<AppShell> {
       diveDao: _diveDao,
       annotationsDao: _diveAnnotationsDao,
     );
+    _syncStatusSource = PowerSyncStatusSource(widget.powerSyncDb);
   }
 
   @override
@@ -157,6 +160,7 @@ class _AppShellState extends State<AppShell> {
                   builder: (_) => SettingsScreen(
                     notifier: widget.settingsNotifier,
                     authService: widget.authService,
+                    syncStatusSource: _syncStatusSource,
                   ),
                 ));
               },
@@ -182,6 +186,7 @@ class _AppShellState extends State<AppShell> {
           SettingsScreen(
             notifier: widget.settingsNotifier,
             authService: widget.authService,
+            syncStatusSource: _syncStatusSource,
           ),
         ],
       ),
