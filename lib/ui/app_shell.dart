@@ -73,6 +73,12 @@ class _AppShellState extends State<AppShell> {
     if (_uploading) return;
     setState(() => _uploading = true);
     final messenger = ScaffoldMessenger.of(context);
+    // iOS popover anchor — required on iPad, harmless on iPhone, prevents
+    // Share.shareXFiles from no-op-failing on some iOS configurations.
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box != null
+        ? box.localToGlobal(Offset.zero) & box.size
+        : null;
     try {
       final result = await _subsurfaceExporter.exportPending();
       if (!mounted) return;
@@ -82,9 +88,12 @@ class _AppShellState extends State<AppShell> {
         );
         return;
       }
+      debugPrint(
+          'Subsurface export wrote ${result.diveCount} dives to ${result.filePath}');
       final share = await Share.shareXFiles(
         [XFile(result.filePath)],
         text: 'CCRLog dives (${result.diveCount})',
+        sharePositionOrigin: origin,
       );
       if (!mounted) return;
       if (share.status == ShareResultStatus.success) {
@@ -97,6 +106,13 @@ class _AppShellState extends State<AppShell> {
       } else {
         messenger.showSnackBar(
           const SnackBar(content: Text('Upload cancelled.')),
+        );
+      }
+    } catch (e, st) {
+      debugPrint('Subsurface upload failed: $e\n$st');
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Upload failed: $e')),
         );
       }
     } finally {
