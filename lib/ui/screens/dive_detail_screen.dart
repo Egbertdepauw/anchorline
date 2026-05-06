@@ -382,8 +382,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
               unit: '°C')
         else
           _statCell('TEMP', '—', theme),
-        _statCell('ASC m/min', '${vSpeed.maxAscentMpm.round()}', theme),
-        _statCell('DESC m/min', '${vSpeed.maxDescentMpm.round()}', theme),
+        _statCell('MAX ASC m/min', '${vSpeed.maxAscentMpm.round()}', theme),
+        _statCell('MAX DESC m/min', '${vSpeed.maxDescentMpm.round()}', theme),
         _statCell('GAS', gasLabel, theme),
         if (stackEnd != null)
           _stackCell(stackLabel, stackUsed, stackConf, theme),

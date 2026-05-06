@@ -122,8 +122,8 @@ void main() {
 
     await _pumpScreen(tester, s.db, s.dive, s.dao);
 
-    expect(find.text('ASC m/min'), findsOneWidget);
-    expect(find.text('DESC m/min'), findsOneWidget);
+    expect(find.text('MAX ASC m/min'), findsOneWidget);
+    expect(find.text('MAX DESC m/min'), findsOneWidget);
     // A real CCR profile must produce at least some non-zero rate; we
     // don't pin an exact integer here because the parser's depth
     // resolution can drift slightly.

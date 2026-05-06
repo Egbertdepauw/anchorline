@@ -42,11 +42,19 @@ double computeOtu({
   return (min: min, avg: sum / n, max: max);
 }
 
-/// Worst-case vertical speed extremes from the sample depth track.
+/// Worst-case vertical speed extremes from the sample depth track,
+/// computed over a 60-second rolling window.
 ///
 /// Returns ascent / descent in m/min as positive magnitudes. Descent is
 /// depth increasing; ascent is depth decreasing. Both default to 0.0 if
 /// fewer than two samples are available.
+///
+/// The 60s window matches Subsurface and the Petrel's own ascent-rate
+/// display. Sample-to-sample deltas are noise: at typical 5s sampling,
+/// 0.1m of depth-sensor jitter produces 1.2 m/min spikes that are not
+/// real diver motion. Averaging across a minute filters that out and
+/// surfaces sustained ascent/descent rates that actually matter for
+/// safety.
 ({double maxAscentMpm, double maxDescentMpm}) verticalSpeedExtremes({
   required Float32List depthMeters,
   required int sampleCount,
@@ -57,11 +65,18 @@ double computeOtu({
   }
   final n = sampleCount < depthMeters.length ? sampleCount : depthMeters.length;
   if (n < 2) return (maxAscentMpm: 0.0, maxDescentMpm: 0.0);
-  final perMin = 60000.0 / sampleIntervalMs;
+
+  // Compare each sample to the one ~60s earlier. For dives shorter than
+  // a minute the window collapses to whatever's available.
+  final windowSamples =
+      math.max(1, math.min(n - 1, (60000 / sampleIntervalMs).ceil()));
+  final windowSeconds = windowSamples * sampleIntervalMs / 1000.0;
+  final perMin = 60.0 / windowSeconds;
+
   var maxDescent = 0.0;
   var maxAscent = 0.0;
-  for (var i = 1; i < n; i++) {
-    final delta = depthMeters[i] - depthMeters[i - 1];
+  for (var i = windowSamples; i < n; i++) {
+    final delta = depthMeters[i] - depthMeters[i - windowSamples];
     final rate = delta * perMin;
     if (rate > maxDescent) maxDescent = rate;
     if (-rate > maxAscent) maxAscent = -rate;
