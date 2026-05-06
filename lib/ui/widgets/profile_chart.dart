@@ -39,7 +39,11 @@ const Color _vSpeedExtremeColor = Colors.redAccent;
 // [_depthColor]. From the lower threshold up to the upper threshold the
 // colour interpolates linearly toward [_vSpeedExtremeColor]. At and above
 // the upper threshold the trace is fully red.
-const double _speedGradientLowMpm = 9.0;
+// Below the low threshold the trace renders in plain neutral colour
+// (filters out the sub-meter-per-minute noise of sitting at depth).
+// From the low threshold up to the high threshold colour interpolates
+// linearly toward the extreme colour; at and above high it's saturated.
+const double _speedGradientLowMpm = 1.0;
 const double _speedGradientHighMpm = 30.0;
 
 const double _ppo2Max = 2.0;
