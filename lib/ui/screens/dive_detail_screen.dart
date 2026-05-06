@@ -14,6 +14,7 @@ import '../notifiers/dive_detail_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import '../util/dive_mode_color.dart';
 import '../util/format.dart';
+import '../util/tank_labels.dart';
 import '../widgets/crosshair_overlay.dart';
 import '../widgets/crosshair_tooltip.dart';
 import '../widgets/dive_annotations_section.dart';
@@ -254,6 +255,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                   crosshairIndex: _notifier.crosshairIndex,
                                   cellsBySlot: _notifier.activeCells,
                                   tanks: _decodeTanks(),
+                                  mappedCylinders: _notifier.mappedCylinders,
                                   useSpeedColoredGraph: useSpeedColored),
                               if (_notifier.crosshairIndex != null)
                                 CrosshairTooltip(
@@ -269,6 +271,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                   chartWidth: constraints.maxWidth,
                                   cellsBySlot: _notifier.activeCells,
                                   tanks: _decodeTanks(),
+                                  mappedCylinders: _notifier.mappedCylinders,
                                 ),
                             ]),
                           );
@@ -505,19 +508,6 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     return list;
   }
 
-  String _tankLabel(DiveTank t) {
-    switch (t.usage) {
-      case TankUsage.diluent:
-        return 'DIL';
-      case TankUsage.oxygen:
-        return 'O2 ';
-      case TankUsage.sidemount:
-        return 'BO ';
-      case TankUsage.none:
-        return 'T${t.slot}';
-    }
-  }
-
   Widget _tanksCell(List<DiveTank> tanks, ThemeData theme) {
     const valueStyle =
         TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
@@ -527,7 +517,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     return Column(children: [
       for (final t in tanks)
         Text(
-            '${_tankLabel(t)} ${t.beginPressureBar.round()}→${t.endPressureBar.round()}',
+            '${labelForTank(t, _notifier.mappedCylinders)} ${t.beginPressureBar.round()}→${t.endPressureBar.round()}',
             style: valueStyle),
       const SizedBox(height: 2),
       Text('TANKS (bar)', style: faded),

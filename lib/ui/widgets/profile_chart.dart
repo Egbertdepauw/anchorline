@@ -12,8 +12,8 @@ import 'package:flutter/material.dart';
 import '../../data/db/database.dart';
 import '../../data/models/dive.dart' show DiveTank;
 import '../../data/models/sample_set.dart';
-import '../../shearwater/parser/parsed_dive.dart' show TankUsage;
 import '../notifiers/dive_detail_notifier.dart';
+import '../util/tank_labels.dart';
 
 // ── Layout constants ────────────────────────────────────────────
 
@@ -120,6 +120,10 @@ class ProfileChart extends StatelessWidget {
   /// slot). Drives the legend labels. Same length as [SampleSet.tankPressuresBar].
   final List<DiveTank>? tanks;
 
+  /// Channel-keyed cylinders mapped via the user's `PressureMappings`.
+  /// When present, overrides the parser-derived legend label per tank.
+  final Map<int, Cylinder>? mappedCylinders;
+
   const ProfileChart({
     super.key,
     required this.samples,
@@ -131,6 +135,7 @@ class ProfileChart extends StatelessWidget {
     this.maxAscentEndIndex,
     this.useSpeedColoredGraph = true,
     this.tanks,
+    this.mappedCylinders,
   });
 
   @override
@@ -160,28 +165,17 @@ class ProfileChart extends StatelessWidget {
         Positioned(
           right: _rightPad + 4,
           top: _topPad + 2,
-          child: _TankLegend(tanks: tanks!),
+          child: _TankLegend(
+              tanks: tanks!, mappedCylinders: mappedCylinders),
         ),
     ]);
   }
 }
 
-String tankTraceLabelFor(DiveTank tank) {
-  switch (tank.usage) {
-    case TankUsage.diluent:
-      return 'DIL';
-    case TankUsage.oxygen:
-      return 'O2';
-    case TankUsage.sidemount:
-      return 'BO';
-    case TankUsage.none:
-      return 'T${tank.slot}';
-  }
-}
-
 class _TankLegend extends StatelessWidget {
   final List<DiveTank> tanks;
-  const _TankLegend({required this.tanks});
+  final Map<int, Cylinder>? mappedCylinders;
+  const _TankLegend({required this.tanks, this.mappedCylinders});
 
   @override
   Widget build(BuildContext context) {
@@ -207,7 +201,7 @@ class _TankLegend extends StatelessWidget {
                         borderRadius: BorderRadius.circular(2))),
                 const SizedBox(width: 4),
                 Text(
-                  tankTraceLabelFor(tanks[i]),
+                  labelForTank(tanks[i], mappedCylinders),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 10,

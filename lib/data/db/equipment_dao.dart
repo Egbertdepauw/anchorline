@@ -71,6 +71,11 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
         .get();
   }
 
+  Future<DiveComputer?> getDiveComputerBySerial(int serial) {
+    return (select(diveComputers)..where((t) => t.serial.equals(serial)))
+        .getSingleOrNull();
+  }
+
   Future<void> setComputerNickname(String id, String? nickname) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await (update(diveComputers)..where((t) => t.id.equals(id))).write(

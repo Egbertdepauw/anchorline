@@ -7,6 +7,7 @@ import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
 import 'package:ccrlogger/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/ui/notifiers/dive_detail_notifier.dart';
+import 'package:ccrlogger/ui/util/tank_labels.dart';
 import 'package:ccrlogger/ui/widgets/profile_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

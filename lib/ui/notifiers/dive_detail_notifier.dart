@@ -26,6 +26,7 @@ class DiveDetailNotifier extends ChangeNotifier {
 
   SampleSet? _samples;
   Map<int, OxygenCell> _activeCells = const {};
+  Map<int, Cylinder> _mappedCylinders = const {};
   final Set<TraceType> _visibleTraces;
   int? _crosshairIndex;
   bool _loading = false;
@@ -35,6 +36,10 @@ class DiveDetailNotifier extends ChangeNotifier {
 
   /// Slot-keyed map of cells that were active at [dive.startTime].
   Map<int, OxygenCell> get activeCells => _activeCells;
+
+  /// Channel-keyed cylinders mapped via [PressureMappings] for this dive's
+  /// dive computer. Empty when no mappings exist.
+  Map<int, Cylinder> get mappedCylinders => _mappedCylinders;
 
   /// Currently visible trace types.
   Set<TraceType> get visibleTraces => _visibleTraces;
@@ -70,9 +75,26 @@ class DiveDetailNotifier extends ChangeNotifier {
       _activeCells = await _equipmentDao.activeCellsAt(
         DateTime.fromMillisecondsSinceEpoch(dive.startTime * 1000),
       );
+      _mappedCylinders = await _loadMappedCylinders(_equipmentDao, dive.dcSerial);
     }
     _loading = false;
     notifyListeners();
+  }
+
+  static Future<Map<int, Cylinder>> _loadMappedCylinders(
+      EquipmentDao dao, int dcSerial) async {
+    final dc = await dao.getDiveComputerBySerial(dcSerial);
+    if (dc == null) return const {};
+    final mappings = await dao.listPressureMappings(dc.id);
+    final out = <int, Cylinder>{};
+    for (final m in mappings) {
+      final cylId = m.cylinderId;
+      if (cylId == null) continue;
+      final c = await dao.getCylinder(cylId);
+      if (c == null || c.deletedAt != null) continue;
+      out[m.channelIndex] = c;
+    }
+    return out;
   }
 
   /// Toggle the visibility of [trace] and notify listeners.

@@ -146,7 +146,66 @@ void main() {
 
     expect(find.text('TANKS (bar)'), findsOneWidget);
     expect(find.text('DIL 230→185'), findsOneWidget);
-    expect(find.text('O2  195→145'), findsOneWidget);
+    expect(find.text('O2 195→145'), findsOneWidget);
+  });
+
+  testWidgets('TANKS cell prefers PressureMapping cylinder label',
+      (tester) async {
+    final s = await _seedDive();
+    addTearDown(() async => s.db.close());
+
+    const tanksJson =
+        '[{"slot":0,"usage":3,"name":"DI","serial":0,"beginBar":230.0,'
+        '"endBar":185.0,"maxBar":300,"reserveBar":50},'
+        '{"slot":1,"usage":2,"name":"O2","serial":0,"beginBar":195.0,'
+        '"endBar":145.0,"maxBar":300,"reserveBar":40}]';
+    await (s.db.update(s.db.dives)..where((t) => t.id.equals(s.dive.id)))
+        .write(const DivesCompanion(tanksJson: Value(tanksJson)));
+
+    // Register the dive computer and a cylinder, then map channel 0.
+    final dcId = await s.db.equipmentDao.upsertDiveComputer(
+      serial: 0xB89641E4,
+      model: 0,
+    );
+    final cylId = await s.db.equipmentDao.addCylinder(
+      label: 'AL40 EAN21',
+      role: 'diluent',
+      volumeLiters: 5.7,
+      workingPressureBar: 232,
+    );
+    await s.db.equipmentDao.setPressureMapping(
+      diveComputerId: dcId,
+      channelIndex: 0,
+      cylinderId: cylId,
+    );
+
+    final dive = (await s.dao.getAllDives()).first;
+    await _pumpScreen(tester, s.db, dive, s.dao);
+
+    expect(find.text('AL40 EAN21 230→185'), findsOneWidget);
+    // Slot 1 (O2) wasn't mapped → falls back to parser-derived label.
+    expect(find.text('O2 195→145'), findsOneWidget);
+  });
+
+  testWidgets('TANKS cell falls back to parser labels with no mappings',
+      (tester) async {
+    final s = await _seedDive();
+    addTearDown(() async => s.db.close());
+
+    const tanksJson =
+        '[{"slot":0,"usage":3,"name":"DI","serial":0,"beginBar":230.0,'
+        '"endBar":185.0,"maxBar":300,"reserveBar":50},'
+        '{"slot":1,"usage":2,"name":"O2","serial":0,"beginBar":195.0,'
+        '"endBar":145.0,"maxBar":300,"reserveBar":40}]';
+    await (s.db.update(s.db.dives)..where((t) => t.id.equals(s.dive.id)))
+        .write(const DivesCompanion(tanksJson: Value(tanksJson)));
+    final dive = (await s.dao.getAllDives()).first;
+
+    await _pumpScreen(tester, s.db, dive, s.dao);
+
+    // No mappings → parser-derived labels survive.
+    expect(find.text('DIL 230→185'), findsOneWidget);
+    expect(find.text('O2 195→145'), findsOneWidget);
   });
 
   testWidgets('TANKS cell hides when no tanks logged', (tester) async {
