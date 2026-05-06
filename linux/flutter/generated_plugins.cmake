@@ -3,7 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  sqlite3_flutter_libs
+  gtk
   url_launcher_linux
 )
 
