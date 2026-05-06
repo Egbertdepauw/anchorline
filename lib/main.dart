@@ -4,14 +4,15 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:powersync/powersync.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'data/db/database.dart';
 import 'dev/fixture_seeder.dart';
 import 'sync/cloud/auth_service.dart';
+import 'sync/cloud/ccrlogger_backend_connector.dart';
 import 'sync/cloud/cloud_config.dart';
+import 'sync/cloud/cloud_sync_coordinator.dart';
 import 'sync/cloud/powersync_database.dart';
 import 'ui/app_shell.dart';
 import 'ui/notifiers/settings_notifier.dart';
@@ -37,6 +38,13 @@ void main() async {
   await settings.load();
 
   final authService = AuthService(backfiller: OwnerIdBackfiller(db));
+
+  // Held for the app lifetime; tear-down happens at process exit.
+  CloudSyncCoordinator(
+    database: powerSyncDb,
+    connector: CcrloggerBackendConnector(Supabase.instance.client),
+    authService: authService,
+  ).start();
 
   runApp(CCRLogApp(
     db: db,
