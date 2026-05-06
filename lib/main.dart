@@ -31,7 +31,7 @@ void main() async {
   final settings = SettingsNotifier();
   await settings.load();
 
-  final authService = AuthService();
+  final authService = AuthService(backfiller: OwnerIdBackfiller(db));
 
   runApp(CCRLogApp(db: db, settings: settings, authService: authService));
 }

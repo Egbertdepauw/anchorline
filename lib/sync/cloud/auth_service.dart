@@ -13,6 +13,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'owner_id_backfiller.dart';
+
+export 'owner_id_backfiller.dart' show OwnerIdBackfiller;
+
 /// Result of a sign-in / sign-up attempt.
 sealed class AuthResult {
   const AuthResult();
@@ -174,9 +178,3 @@ class AuthService extends ChangeNotifier {
   }
 }
 
-/// Stamps `owner_id` on rows that lack one after a user signs in for the
-/// first time. Phase 2.1 only counts and logs — actual writing is wired
-/// up in Phase 2.2 once PowerSync is live.
-class OwnerIdBackfiller {
-  Future<int> backfillIfNeeded(String userId) async => 0;
-}
