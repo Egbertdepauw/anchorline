@@ -31,20 +31,39 @@ const Color _cell1Color = Color(0xFFFFEE58);
 const Color _cell2Color = Color(0xFF42A5F5);
 const Color _crosshairColor = Color(0x80FFFFFF);
 const Color _gridColor = Color(0xFF1A2A40);
-const Color _vSpeedExtremeColor = Colors.redAccent;
 
-// ── Speed-gradient thresholds (m/min, magnitude) ────────────────
+// ── Speed gradient (Subsurface anchor speeds, smooth interpolation) ──
 //
-// Below the lower threshold the depth trace is rendered in the neutral
-// [_depthColor]. From the lower threshold up to the upper threshold the
-// colour interpolates linearly toward [_vSpeedExtremeColor]. At and above
-// the upper threshold the trace is fully red.
-// Below the low threshold the trace renders in plain neutral colour
-// (filters out the sub-meter-per-minute noise of sitting at depth).
-// From the low threshold up to the high threshold colour interpolates
-// linearly toward the extreme colour; at and above high it's saturated.
-const double _speedGradientLowMpm = 0.5;
-const double _speedGradientHighMpm = 20.0;
+// Subsurface uses 5 discrete velocity buckets (STABLE/SLOW/MODERATE/FAST/
+// CRAZY) with asymmetric thresholds (ascent flagged earlier than descent
+// because DCS risk is on the way up). We use the same anchor speeds, but
+// interpolate Color.lerp between consecutive anchors so the trace reads
+// as a continuous gradient rather than five sharp colour bands.
+//
+// Speed convention: signed m/min. Negative = ascent (depth decreasing),
+// positive = descent (depth increasing). STABLE keeps the existing depth
+// blue so a calm dive looks the way it always has.
+const Color _vSpeedStableColor = _depthColor;            // light blue
+const Color _vSpeedSlowColor = Color(0xFFA8D957);        // lime
+const Color _vSpeedModerateColor = Color(0xFFE5C73F);    // amber
+const Color _vSpeedFastColor = Color(0xFFEC8A3D);        // orange
+const Color _vSpeedCrazyColor = Color(0xFFE65656);       // red
+
+// Anchor table sorted by speed ascending. _colorForRate finds the bracket
+// containing the segment's signed rate and lerps between the two anchors.
+const List<({double speed, Color color})> _vSpeedAnchors = [
+  (speed: -30.0, color: _vSpeedCrazyColor),
+  (speed: -18.2, color: _vSpeedCrazyColor),
+  (speed: -9.1, color: _vSpeedFastColor),
+  (speed: -4.6, color: _vSpeedModerateColor),
+  (speed: -1.5, color: _vSpeedSlowColor),
+  (speed: 0.0, color: _vSpeedStableColor),
+  (speed: 1.5, color: _vSpeedSlowColor),
+  (speed: 9.1, color: _vSpeedModerateColor),
+  (speed: 18.2, color: _vSpeedFastColor),
+  (speed: 30.4, color: _vSpeedCrazyColor),
+  (speed: 60.0, color: _vSpeedCrazyColor),
+];
 
 const double _ppo2Max = 2.0;
 
@@ -403,12 +422,21 @@ class ProfileChartPainter extends CustomPainter {
   // ── Trace helpers ──────────────────────────────────────────────
 
   Color _colorForRate(double mPerMin) {
-    final mag = mPerMin.abs();
-    if (mag <= _speedGradientLowMpm) return _depthColor;
-    final t = ((mag - _speedGradientLowMpm) /
-            (_speedGradientHighMpm - _speedGradientLowMpm))
-        .clamp(0.0, 1.0);
-    return Color.lerp(_depthColor, _vSpeedExtremeColor, t)!;
+    if (mPerMin <= _vSpeedAnchors.first.speed) {
+      return _vSpeedAnchors.first.color;
+    }
+    if (mPerMin >= _vSpeedAnchors.last.speed) {
+      return _vSpeedAnchors.last.color;
+    }
+    for (var i = 0; i < _vSpeedAnchors.length - 1; i++) {
+      final a = _vSpeedAnchors[i];
+      final b = _vSpeedAnchors[i + 1];
+      if (mPerMin >= a.speed && mPerMin <= b.speed) {
+        final t = (mPerMin - a.speed) / (b.speed - a.speed);
+        return Color.lerp(a.color, b.color, t)!;
+      }
+    }
+    return _vSpeedStableColor;
   }
 
   void _drawSolidTrace(
