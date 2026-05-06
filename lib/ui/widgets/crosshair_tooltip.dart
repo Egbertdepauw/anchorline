@@ -27,6 +27,18 @@ class CrosshairTooltip extends StatelessWidget {
     return cellTraceLabelForSlot(cellsBySlot, slot);
   }
 
+  /// Instantaneous vertical-speed at [i], computed from the previous
+  /// sample. Returns "—" for the very first sample, "0 m/min" when
+  /// effectively flat, otherwise an arrow-prefixed rate.
+  String _verticalRateAt(int i) {
+    if (i == 0) return '—';
+    final delta = samples.depthMeters[i] - samples.depthMeters[i - 1];
+    final rate = delta * 60000.0 / samples.sampleIntervalMs;
+    if (rate.round() == 0) return '0 m/min';
+    if (rate > 0) return '↓ ${rate.round()} m/min';
+    return '↑ ${(-rate).round()} m/min';
+  }
+
   @override
   Widget build(BuildContext context) {
     final i = sampleIndex.clamp(0, samples.sampleCount - 1);
@@ -37,6 +49,7 @@ class CrosshairTooltip extends StatelessWidget {
     final rows = <_Row>[
       _Row('Time', '$minutes:${seconds.toString().padLeft(2, '0')}'),
       _Row('Depth', '${samples.depthMeters[i].toStringAsFixed(1)}m'),
+      _Row('Rate', _verticalRateAt(i)),
     ];
     if (visibleTraces.contains(TraceType.ppo2)) {
       rows.add(_Row('PPO2', '${samples.ppo2Bar[i].toStringAsFixed(2)} bar'));

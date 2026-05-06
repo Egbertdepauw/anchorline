@@ -8,13 +8,13 @@ import 'package:ccrlogger/ui/widgets/crosshair_tooltip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-SampleSet _stubSamples() {
+SampleSet _stubSamples({Float32List? depth}) {
   Float32List f(double v) => Float32List.fromList(List.filled(3, v));
   return SampleSet(
     diveId: 'd1',
     sampleCount: 3,
     sampleIntervalMs: 10000,
-    depthMeters: f(5.0),
+    depthMeters: depth ?? f(5.0),
     temperatureCelsius: f(20.0),
     ppo2Bar: f(1.0),
     cellMv0: f(50.0),
@@ -77,6 +77,26 @@ void main() {
     expect(find.text('Top R-22D'), findsOneWidget);
     expect(find.text('Slot 2'), findsOneWidget);
     expect(find.text('—'), findsOneWidget);
+  });
+
+  testWidgets('CrosshairTooltip shows instantaneous descent rate',
+      (tester) async {
+    // 10s interval, depth 0 → 3 → 6 m/sample → 18 m/min descent.
+    final samples = _stubSamples(
+        depth: Float32List.fromList([0.0, 3.0, 6.0]));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 300,
+                height: 200,
+                child: CrosshairTooltip(
+                    samples: samples,
+                    sampleIndex: 1,
+                    visibleTraces: const {},
+                    chartX: 50,
+                    chartWidth: 300)))));
+    expect(find.text('Rate'), findsOneWidget);
+    expect(find.text('↓ 18 m/min'), findsOneWidget);
   });
 
   testWidgets('CrosshairTooltip falls back to C1/C2/C3 when no cellsBySlot',
