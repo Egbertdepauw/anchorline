@@ -268,6 +268,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                           (constraints.maxWidth - 84),
                                   chartWidth: constraints.maxWidth,
                                   cellsBySlot: _notifier.activeCells,
+                                  tanks: _decodeTanks(),
                                 ),
                             ]),
                           );

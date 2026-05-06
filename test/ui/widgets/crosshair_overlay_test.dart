@@ -1,14 +1,19 @@
 import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/models/dive.dart' show DiveTank;
 import 'package:ccrlogger/data/models/sample_set.dart';
+import 'package:ccrlogger/shearwater/parser/parsed_dive.dart' show TankUsage;
 import 'package:ccrlogger/ui/notifiers/dive_detail_notifier.dart';
 import 'package:ccrlogger/ui/widgets/crosshair_overlay.dart';
 import 'package:ccrlogger/ui/widgets/crosshair_tooltip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-SampleSet _stubSamples({Float32List? depth}) {
+SampleSet _stubSamples({
+  Float32List? depth,
+  List<Float32List> tankPressuresBar = const [],
+}) {
   Float32List f(double v) => Float32List.fromList(List.filled(3, v));
   return SampleSet(
     diveId: 'd1',
@@ -27,8 +32,20 @@ SampleSet _stubSamples({Float32List? depth}) {
     ttsSeconds: Int32List.fromList([0, 0, 0]),
     gasMixIndex: Uint8List.fromList([0, 0, 0]),
     statusFlags: Uint8List.fromList([0, 0, 0]),
+    tankPressuresBar: tankPressuresBar,
   );
 }
+
+DiveTank _tank(int slot, TankUsage usage) => DiveTank(
+      slot: slot,
+      usage: usage,
+      name: '',
+      serial: 0,
+      beginPressureBar: 0,
+      endPressureBar: 0,
+      pressureMaxBar: 300,
+      pressureReserveBar: 50,
+    );
 
 OxygenCell _cell(int slot, String? label) => OxygenCell(
       id: 'c$slot',
@@ -116,6 +133,52 @@ void main() {
     expect(find.text('C1'), findsOneWidget);
     expect(find.text('C2'), findsOneWidget);
     expect(find.text('C3'), findsOneWidget);
+  });
+
+  testWidgets('CrosshairTooltip shows per-tank pressures at hovered sample',
+      (tester) async {
+    final samples = _stubSamples(tankPressuresBar: [
+      Float32List.fromList([0.0, 165.0, 160.0]),
+      Float32List.fromList([0.0, 140.0, 138.0]),
+    ]);
+    final tanks = [_tank(0, TankUsage.diluent), _tank(1, TankUsage.oxygen)];
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 300,
+                height: 200,
+                child: CrosshairTooltip(
+                    samples: samples,
+                    sampleIndex: 1,
+                    visibleTraces: const {},
+                    chartX: 50,
+                    chartWidth: 300,
+                    tanks: tanks)))));
+    expect(find.text('DIL'), findsOneWidget);
+    expect(find.text('165 bar'), findsOneWidget);
+    expect(find.text('O2'), findsOneWidget);
+    expect(find.text('140 bar'), findsOneWidget);
+  });
+
+  testWidgets('CrosshairTooltip hides tanks section when all tanks read zero',
+      (tester) async {
+    final samples = _stubSamples(tankPressuresBar: [
+      Float32List.fromList([0.0, 0.0, 0.0]),
+    ]);
+    final tanks = [_tank(0, TankUsage.diluent)];
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 300,
+                height: 200,
+                child: CrosshairTooltip(
+                    samples: samples,
+                    sampleIndex: 1,
+                    visibleTraces: const {},
+                    chartX: 50,
+                    chartWidth: 300,
+                    tanks: tanks)))));
+    expect(find.text('DIL'), findsNothing);
   });
 
   testWidgets('long press triggers callback', (tester) async {

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../data/db/database.dart';
+import '../../data/models/dive.dart' show DiveTank;
 import '../../data/models/sample_set.dart';
 import '../notifiers/dive_detail_notifier.dart';
+import '../util/tank_labels.dart';
 import 'profile_chart.dart' show cellTraceLabelForSlot;
 
 class CrosshairTooltip extends StatelessWidget {
@@ -11,6 +13,8 @@ class CrosshairTooltip extends StatelessWidget {
   final double chartX;
   final double chartWidth;
   final Map<int, OxygenCell>? cellsBySlot;
+  final List<DiveTank>? tanks;
+  final Map<int, Cylinder>? mappedCylinders;
 
   const CrosshairTooltip({
     super.key,
@@ -20,6 +24,8 @@ class CrosshairTooltip extends StatelessWidget {
     required this.chartX,
     required this.chartWidth,
     this.cellsBySlot,
+    this.tanks,
+    this.mappedCylinders,
   });
 
   String _cellLabelOrFallback(int slot, String fallback) {
@@ -66,6 +72,24 @@ class CrosshairTooltip extends StatelessWidget {
           _cellLabelOrFallback(3, 'C3'), samples.cellMv2[i].toStringAsFixed(2)));
     }
     rows.add(_Row('Temp', '${samples.temperatureCelsius[i].toStringAsFixed(1)}°C'));
+
+    if (tanks != null &&
+        tanks!.isNotEmpty &&
+        samples.tankPressuresBar.isNotEmpty) {
+      final tankRows = <_Row>[];
+      final n = tanks!.length < samples.tankPressuresBar.length
+          ? tanks!.length
+          : samples.tankPressuresBar.length;
+      for (var t = 0; t < n; t++) {
+        final ch = samples.tankPressuresBar[t];
+        if (i >= ch.length) continue;
+        final p = ch[i];
+        if (p == 0) continue;
+        tankRows.add(
+            _Row(labelForTank(tanks![t], mappedCylinders), '${p.round()} bar'));
+      }
+      rows.addAll(tankRows);
+    }
 
     final onRightSide = chartX > chartWidth / 2;
 
