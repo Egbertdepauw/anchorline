@@ -43,18 +43,17 @@ double computeOtu({
 }
 
 /// Worst-case vertical speed extremes from the sample depth track,
-/// computed over a 60-second rolling window.
+/// computed over a 15-second rolling window.
 ///
 /// Returns ascent / descent in m/min as positive magnitudes. Descent is
 /// depth increasing; ascent is depth decreasing. Both default to 0.0 if
 /// fewer than two samples are available.
 ///
-/// The 60s window matches Subsurface and the Petrel's own ascent-rate
-/// display. Sample-to-sample deltas are noise: at typical 5s sampling,
-/// 0.1m of depth-sensor jitter produces 1.2 m/min spikes that are not
-/// real diver motion. Averaging across a minute filters that out and
-/// surfaces sustained ascent/descent rates that actually matter for
-/// safety.
+/// The 15s window is short enough that a real ascent burst still shows
+/// through (a 60s window dilutes a 30s burst by half) but long enough
+/// to reject per-sample sensor jitter. At 5s sampling that's 3 samples
+/// → 3× smoothing; instantaneous deltas would otherwise turn 0.1m of
+/// depth-sensor noise into 1.2 m/min spikes that aren't real motion.
 ({double maxAscentMpm, double maxDescentMpm}) verticalSpeedExtremes({
   required Float32List depthMeters,
   required int sampleCount,
@@ -66,10 +65,10 @@ double computeOtu({
   final n = sampleCount < depthMeters.length ? sampleCount : depthMeters.length;
   if (n < 2) return (maxAscentMpm: 0.0, maxDescentMpm: 0.0);
 
-  // Compare each sample to the one ~60s earlier. For dives shorter than
-  // a minute the window collapses to whatever's available.
+  // Compare each sample to the one ~15s earlier. For dives shorter than
+  // 15s the window collapses to whatever's available.
   final windowSamples =
-      math.max(1, math.min(n - 1, (60000 / sampleIntervalMs).ceil()));
+      math.max(1, math.min(n - 1, (15000 / sampleIntervalMs).ceil()));
   final windowSeconds = windowSamples * sampleIntervalMs / 1000.0;
   final perMin = 60.0 / windowSeconds;
 

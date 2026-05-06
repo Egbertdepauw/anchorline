@@ -60,29 +60,28 @@ void main() {
       expect(res.maxDescentMpm, 0.0);
     });
 
-    test('mixed profile uses net delta across the window', () {
-      // 5 samples at 10s = 40s window. Net change is 0 → 3 m = +3 m,
-      // i.e. 4.5 m/min descent. Within-window peaks (depth=6 at i=2)
-      // do NOT drive the result — that's the point of windowing,
-      // matching the way Subsurface and the Petrel display the rate.
+    test('mixed profile picks worst burst within the window', () {
+      // 5 samples at 10s. With a 15s window rounded up to 2 samples
+      // (20s), worst descent is the [0..2] segment: 6m / 20s = 18 m/min.
+      // Worst ascent is segments [2..3] or [2..4]: 3m / 20s = 9 m/min.
       final depth = Float32List.fromList([0, 5, 6, 2, 3]);
       final res = verticalSpeedExtremes(
           depthMeters: depth, sampleCount: 5, sampleIntervalMs: 10000);
-      expect(res.maxDescentMpm, closeTo(4.5, 1e-3));
-      expect(res.maxAscentMpm, 0.0);
+      expect(res.maxDescentMpm, closeTo(18.0, 1e-3));
+      expect(res.maxAscentMpm, closeTo(9.0, 1e-3));
     });
 
-    test('single-sample spike does not dominate over the window', () {
-      // 13 samples at 5s = 60s. Mostly flat at 10m with a 0.5m spike at
-      // i=6. Net delta over the full 60s window is 0, so the function
-      // returns 0 m/min — sensor jitter is filtered out.
+    test('single-sample spike is smoothed (1/3 of un-windowed rate)', () {
+      // 13 samples at 5s. A 0.5m blip at i=6 — un-windowed math would
+      // report 0.5m/5s = 6 m/min. With a 15s window (3 samples), the
+      // same blip shows as 0.5m/15s = 2 m/min — smoothed by 3×.
       final depth = Float32List.fromList([
         10, 10, 10, 10, 10, 10, 10.5, 10, 10, 10, 10, 10, 10,
       ]);
       final res = verticalSpeedExtremes(
           depthMeters: depth, sampleCount: 13, sampleIntervalMs: 5000);
-      expect(res.maxDescentMpm, 0.0);
-      expect(res.maxAscentMpm, 0.0);
+      expect(res.maxDescentMpm, closeTo(2.0, 1e-3));
+      expect(res.maxAscentMpm, closeTo(2.0, 1e-3));
     });
   });
 }
