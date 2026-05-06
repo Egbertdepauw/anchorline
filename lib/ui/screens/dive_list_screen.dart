@@ -8,8 +8,10 @@ import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../notifiers/dive_list_notifier.dart';
 import '../notifiers/settings_notifier.dart';
+import '../util/dive_mode_color.dart';
 import '../util/dive_search.dart';
 import '../util/format.dart';
+import '../widgets/dive_filter_sheet.dart';
 import '../widgets/dive_tile.dart';
 import 'dive_detail_screen.dart';
 
@@ -37,6 +39,7 @@ class _DiveListScreenState extends State<DiveListScreen> {
   final _searchController = TextEditingController();
   String _query = '';
   Timer? _debounce;
+  DiveFilterSelection _filters = const DiveFilterSelection();
 
   @override
   void initState() {
@@ -65,11 +68,69 @@ class _DiveListScreenState extends State<DiveListScreen> {
 
   List<Dive> get _filteredDives {
     final notifier = widget.notifier;
-    if (_query.trim().isEmpty) return notifier.dives;
-    return notifier.dives
-        .where((d) => diveMatchesQuery(
-            d, notifier.annotationsByDiveId[d.id], _query))
-        .toList();
+    final hasQuery = _query.trim().isNotEmpty;
+    final hasFilters = !_filters.isEmpty;
+    if (!hasQuery && !hasFilters) return notifier.dives;
+    return notifier.dives.where((d) {
+      final ann = notifier.annotationsByDiveId[d.id];
+      if (hasQuery && !diveMatchesQuery(d, ann, _query)) return false;
+      if (hasFilters &&
+          !diveMatchesFilters(d, ann,
+              mode: _filters.mode,
+              sites: _filters.sites,
+              buddies: _filters.buddies,
+              tags: _filters.tags)) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  DiveFilterFacets _buildFacets() {
+    final notifier = widget.notifier;
+    final modes = distinctModesIn(notifier.dives.map((d) => d.diveMode));
+    final sites = <String>{};
+    final buddies = <String>{};
+    final tags = <String>{};
+    for (final d in notifier.dives) {
+      final ann = notifier.annotationsByDiveId[d.id];
+      if (ann == null) continue;
+      final s = ann.siteName;
+      if (s != null && s.trim().isNotEmpty) sites.add(s);
+      buddies.addAll(ann.buddies.where((b) => b.trim().isNotEmpty));
+      tags.addAll(ann.tags.where((t) => t.trim().isNotEmpty));
+    }
+    final siteList = sites.toList()..sort();
+    final buddyList = buddies.toList()..sort();
+    final tagList = tags.toList()..sort();
+    return DiveFilterFacets(
+      modes: modes, sites: siteList, buddies: buddyList, tags: tagList,
+    );
+  }
+
+  Future<void> _openFilterSheet() async {
+    final result = await showDiveFilterSheet(
+      context,
+      initial: _filters,
+      facets: _buildFacets(),
+    );
+    if (result != null) {
+      setState(() => _filters = result);
+    }
+  }
+
+  void _removeMode() => setState(() => _filters = _filters.copyWith(clearMode: true));
+  void _removeSite(String v) {
+    final next = {..._filters.sites}..remove(v);
+    setState(() => _filters = _filters.copyWith(sites: next));
+  }
+  void _removeBuddy(String v) {
+    final next = {..._filters.buddies}..remove(v);
+    setState(() => _filters = _filters.copyWith(buddies: next));
+  }
+  void _removeTag(String v) {
+    final next = {..._filters.tags}..remove(v);
+    setState(() => _filters = _filters.copyWith(tags: next));
   }
 
   Map<String, List<Dive>> _groupByMonth(List<Dive> dives) {
@@ -119,28 +180,69 @@ class _DiveListScreenState extends State<DiveListScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-          child: TextField(
-            controller: _searchController,
-            onChanged: _onQueryChanged,
-            decoration: InputDecoration(
-              hintText: 'Search dives',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchController.text.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.close),
-                      tooltip: 'Clear search',
-                      onPressed: () {
-                        _searchController.clear();
-                        _debounce?.cancel();
-                        setState(() => _query = '');
-                      },
-                    ),
-              isDense: true,
-              border: const OutlineInputBorder(),
-            ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: _onQueryChanged,
+                  decoration: InputDecoration(
+                    hintText: 'Search dives',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close),
+                            tooltip: 'Clear search',
+                            onPressed: () {
+                              _searchController.clear();
+                              _debounce?.cancel();
+                              setState(() => _query = '');
+                            },
+                          ),
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.outlined(
+                icon: const Icon(Icons.tune),
+                tooltip: 'Filters',
+                onPressed: _openFilterSheet,
+              ),
+            ],
           ),
         ),
+        if (!_filters.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            child: Wrap(
+              spacing: 6, runSpacing: 4,
+              children: [
+                if (_filters.mode != null)
+                  InputChip(
+                    label: Text('Mode: ${diveModeLabel(_filters.mode!)}'),
+                    onDeleted: _removeMode,
+                  ),
+                for (final s in _filters.sites)
+                  InputChip(
+                    label: Text('Site: $s'),
+                    onDeleted: () => _removeSite(s),
+                  ),
+                for (final b in _filters.buddies)
+                  InputChip(
+                    label: Text('Buddy: $b'),
+                    onDeleted: () => _removeBuddy(b),
+                  ),
+                for (final t in _filters.tags)
+                  InputChip(
+                    label: Text('Tag: $t'),
+                    onDeleted: () => _removeTag(t),
+                  ),
+              ],
+            ),
+          ),
         Expanded(
           child: filtered.isEmpty
               ? const Center(child: Text('No dives match.'))

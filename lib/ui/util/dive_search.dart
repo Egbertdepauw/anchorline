@@ -20,3 +20,29 @@ bool diveMatchesQuery(Dive dive, dom.DiveAnnotation? ann, String q) {
   }
   return parts.join(' ').toLowerCase().contains(needle);
 }
+
+/// Facet-AND, value-OR within facet. `mode == null` skips the mode filter;
+/// empty/null sets skip their facet. Pure: no Flutter or DB deps.
+bool diveMatchesFilters(
+  Dive dive,
+  dom.DiveAnnotation? ann, {
+  int? mode,
+  Set<String>? sites,
+  Set<String>? buddies,
+  Set<String>? tags,
+}) {
+  if (mode != null && dive.diveMode != mode) return false;
+  if (sites != null && sites.isNotEmpty) {
+    final s = ann?.siteName;
+    if (s == null || !sites.contains(s)) return false;
+  }
+  if (buddies != null && buddies.isNotEmpty) {
+    final list = ann?.buddies ?? const <String>[];
+    if (!list.any(buddies.contains)) return false;
+  }
+  if (tags != null && tags.isNotEmpty) {
+    final list = ann?.tags ?? const <String>[];
+    if (!list.any(tags.contains)) return false;
+  }
+  return true;
+}
