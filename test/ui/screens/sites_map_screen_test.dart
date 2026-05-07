@@ -114,39 +114,43 @@ class _StubHeaders implements HttpHeaders {
   noSuchMethod(Invocation invocation) {}
 }
 
-// Phase 2.3 follow-up: PowerSync + flutter_test fake-async deadlock.
-const _skipPowerSyncWidget = true;
-
 void main() {
-  testWidgets('SitesMapScreen builds with markers and AppBar title', skip: _skipPowerSyncWidget,
+  testWidgets('SitesMapScreen builds with markers and AppBar title',
       (tester) async {
     await _withStubbedHttp(() async {
       final db = AppDatabase(NativeDatabase.memory());
       addTearDown(db.close);
-      final psDb = await openPowerSyncForTest();
-      final dao = DiveAnnotationsDao(psDb, FakeSessionSource());
 
-      final now = DateTime.now();
-      await dao.upsert(DiveAnnotation(
-        diveId: 'd1',
-        siteName: 'Lagoon',
-        siteLatitude: 51.5,
-        siteLongitude: 4.0,
-        createdAt: now,
-        updatedAt: now,
-      ));
-      await dao.upsert(DiveAnnotation(
-        diveId: 'd2',
-        siteName: 'Reef',
-        siteLatitude: 52.5,
-        siteLongitude: 5.0,
-        createdAt: now,
-        updatedAt: now,
-      ));
+      late final DiveAnnotationsDao dao;
+      await tester.runAsync(() async {
+        final psDb = await openPowerSyncForTest();
+        dao = DiveAnnotationsDao(psDb, FakeSessionSource());
+        final now = DateTime.now();
+        await dao.upsert(DiveAnnotation(
+          diveId: 'd1',
+          siteName: 'Lagoon',
+          siteLatitude: 51.5,
+          siteLongitude: 4.0,
+          createdAt: now,
+          updatedAt: now,
+        ));
+        await dao.upsert(DiveAnnotation(
+          diveId: 'd2',
+          siteName: 'Reef',
+          siteLatitude: 52.5,
+          siteLongitude: 5.0,
+          createdAt: now,
+          updatedAt: now,
+        ));
+      });
 
-      await tester.pumpWidget(MaterialApp(
-        home: SitesMapScreen(dao: dao, currentLat: 51.5, currentLon: 4.0),
-      ));
+      await tester.runAsync(() async {
+        await tester.pumpWidget(MaterialApp(
+          home: SitesMapScreen(dao: dao, currentLat: 51.5, currentLon: 4.0),
+        ));
+        // Sites are fetched in initState; give the future + setState a beat.
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      });
       await tester.pump();
       await tester.pump();
 
@@ -156,17 +160,23 @@ void main() {
     });
   });
 
-  testWidgets('SitesMapScreen shows empty map when no sites', skip: _skipPowerSyncWidget, (tester) async {
+  testWidgets('SitesMapScreen shows empty map when no sites', (tester) async {
     await _withStubbedHttp(() async {
       final db = AppDatabase(NativeDatabase.memory());
       addTearDown(db.close);
-      final psDb = await openPowerSyncForTest();
-      final dao = DiveAnnotationsDao(psDb, FakeSessionSource());
 
-      await tester.pumpWidget(MaterialApp(
-        home: SitesMapScreen(dao: dao, currentLat: null, currentLon: null),
-      ));
-      await tester.pump();
+      late final DiveAnnotationsDao dao;
+      await tester.runAsync(() async {
+        final psDb = await openPowerSyncForTest();
+        dao = DiveAnnotationsDao(psDb, FakeSessionSource());
+      });
+
+      await tester.runAsync(() async {
+        await tester.pumpWidget(MaterialApp(
+          home: SitesMapScreen(dao: dao, currentLat: null, currentLon: null),
+        ));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
       await tester.pump();
 
       expect(find.text('Dive sites'), findsOneWidget);

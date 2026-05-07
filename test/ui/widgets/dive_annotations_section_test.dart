@@ -9,39 +9,47 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../_helpers/powersync_test_helper.dart';
 
-// Phase 2.3 follow-up: these widget tests pump screens whose initState
-// fires PowerSync queries. PowerSync's isolate scheduler doesn't advance
-// under flutter_test's fake-async clock, so pumpWidget deadlocks.
-// Re-enable once we wire `tester.runAsync()` around the pump calls.
-const _skipPowerSyncWidget = true;
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('renders all field labels for a fresh (no-row-yet) dive',
-      skip: _skipPowerSyncWidget, (tester) async {
+      (tester) async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    final psDb = await openPowerSyncForTest();
-    final annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
-    final equipmentDao = EquipmentDao(db, psDb, FakeSessionSource());
-    final notifier = DiveAnnotationsNotifier(annotationsDao, equipmentDao);
-    addTearDown(notifier.dispose);
-    await notifier.load('dive_x');
 
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: SingleChildScrollView(
-          child: DiveAnnotationsSection(
-            notifier: notifier,
-            gasMixes: const [],
-            activeSecondsByMix: const {},
-            annotationsDao: annotationsDao,
-            equipmentDao: equipmentDao,
+    // Everything that touches PowerSync must run in real time —
+    // PowerSync's isolate scheduler waits on wall-clock futures that
+    // the test binding's fake clock will never advance.
+    late final DiveAnnotationsDao annotationsDao;
+    late final EquipmentDao equipmentDao;
+    late final DiveAnnotationsNotifier notifier;
+    await tester.runAsync(() async {
+      final psDb = await openPowerSyncForTest();
+      annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
+      equipmentDao = EquipmentDao(db, psDb, FakeSessionSource());
+      notifier = DiveAnnotationsNotifier(annotationsDao, equipmentDao);
+      await notifier.load('dive_x');
+    });
+    addTearDown(notifier.dispose);
+
+    await tester.runAsync(() async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: DiveAnnotationsSection(
+              notifier: notifier,
+              gasMixes: const [],
+              activeSecondsByMix: const {},
+              annotationsDao: annotationsDao,
+              equipmentDao: equipmentDao,
+            ),
           ),
         ),
-      ),
-    ));
+      ));
+      // Give the section's initState futures (annotations + cylinders
+      // queries) a beat to land before we re-enter fake time.
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
     await tester.pumpAndSettle();
 
     expect(find.text('Site'), findsOneWidget);

@@ -19,27 +19,43 @@ import 'package:powersync/powersync.dart' hide SyncStatus;
 
 import '../../_helpers/powersync_test_helper.dart';
 
-Future<({AppDatabase db, PowerSyncDatabase psDb, DiveListNotifier notifier, DiveAnnotationsDao annotationsDao})> _seed() async {
+typedef _Seed = ({
+  AppDatabase db,
+  PowerSyncDatabase psDb,
+  DiveListNotifier notifier,
+  DiveAnnotationsDao annotationsDao,
+});
+
+Future<_Seed> _seed(WidgetTester tester) async {
   final db = AppDatabase(NativeDatabase.memory());
-  final psDb = await openPowerSyncForTest();
-  final dao = DiveDao(db);
-  final annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
-  for (final num in [711, 712, 718]) {
-    final data = File('test/fixtures/dives/dive_$num.bin').readAsBytesSync();
-    final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
-    final parsed = parser.parse(data);
-    final converted = DiveConverter.convert(
-      parsed: parsed,
-      dcSerial: 0xB89641E4,
-      dcDiveNumber: num,
-      dcModel: ShearwaterModel.petrel3,
+  late final _Seed seed;
+  await tester.runAsync(() async {
+    final psDb = await openPowerSyncForTest();
+    final dao = DiveDao(db);
+    final annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
+    for (final num in [711, 712, 718]) {
+      final data = File('test/fixtures/dives/dive_$num.bin').readAsBytesSync();
+      final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
+      final parsed = parser.parse(data);
+      final converted = DiveConverter.convert(
+        parsed: parsed,
+        dcSerial: 0xB89641E4,
+        dcDiveNumber: num,
+        dcModel: ShearwaterModel.petrel3,
+      );
+      await dao.importDive(
+          converted: converted, rawBlob: data, parserVersion: 1);
+    }
+    final notifier = DiveListNotifier(dao, annotationsDao);
+    await notifier.loadDives();
+    seed = (
+      db: db,
+      psDb: psDb,
+      notifier: notifier,
+      annotationsDao: annotationsDao,
     );
-    await dao.importDive(
-        converted: converted, rawBlob: data, parserVersion: 1);
-  }
-  final notifier = DiveListNotifier(dao, annotationsDao);
-  await notifier.loadDives();
-  return (db: db, psDb: psDb, notifier: notifier, annotationsDao: annotationsDao);
+  });
+  return seed;
 }
 
 Future<void> _pump(
@@ -49,30 +65,30 @@ Future<void> _pump(
   DiveAnnotationsDao annotationsDao,
   DiveListNotifier notifier,
 ) async {
-  await tester.pumpWidget(MaterialApp(
-    home: Scaffold(
-      body: DiveListScreen(
-        notifier: notifier,
-        diveDao: DiveDao(db),
-        annotationsDao: annotationsDao,
-        equipmentDao: EquipmentDao(db, psDb, FakeSessionSource()),
-        settingsNotifier: SettingsNotifier(),
+  await tester.runAsync(() async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: DiveListScreen(
+          notifier: notifier,
+          diveDao: DiveDao(db),
+          annotationsDao: annotationsDao,
+          equipmentDao: EquipmentDao(db, psDb, FakeSessionSource()),
+          settingsNotifier: SettingsNotifier(),
+        ),
       ),
-    ),
-  ));
+    ));
+    // Let the section's initState PowerSync queries land before we
+    // pop back to fake time.
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  });
   await tester.pump();
 }
-
-// Phase 2.3 follow-up: PowerSync + flutter_test fake-async deadlock when
-// widget initState fires PowerSync queries. Re-enable once we wrap pumps
-// in tester.runAsync().
-const _skipPowerSyncWidget = true;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('renders search field', skip: _skipPowerSyncWidget, (tester) async {
-    final s = await _seed();
+  testWidgets('renders search field', (tester) async {
+    final s = await _seed(tester);
     addTearDown(() async {
       s.notifier.dispose();
       await s.db.close();
@@ -82,8 +98,8 @@ void main() {
     expect(find.text('Search dives'), findsOneWidget);
   });
 
-  testWidgets('typing a dive number filters the list', skip: _skipPowerSyncWidget, (tester) async {
-    final s = await _seed();
+  testWidgets('typing a dive number filters the list', (tester) async {
+    final s = await _seed(tester);
     addTearDown(() async {
       s.notifier.dispose();
       await s.db.close();
@@ -102,8 +118,8 @@ void main() {
         findsOneWidget);
   });
 
-  testWidgets('non-matching query shows empty placeholder', skip: _skipPowerSyncWidget, (tester) async {
-    final s = await _seed();
+  testWidgets('non-matching query shows empty placeholder', (tester) async {
+    final s = await _seed(tester);
     addTearDown(() async {
       s.notifier.dispose();
       await s.db.close();
@@ -118,8 +134,8 @@ void main() {
     expect(find.text('No dives match.'), findsOneWidget);
   });
 
-  testWidgets('clear button resets the query', skip: _skipPowerSyncWidget, (tester) async {
-    final s = await _seed();
+  testWidgets('clear button resets the query', (tester) async {
+    final s = await _seed(tester);
     addTearDown(() async {
       s.notifier.dispose();
       await s.db.close();
@@ -136,9 +152,9 @@ void main() {
     expect(find.byType(DiveTile), findsNWidgets(3));
   });
 
-  testWidgets('site filter narrows list and shows active chip', skip: _skipPowerSyncWidget,
+  testWidgets('site filter narrows list and shows active chip',
       (tester) async {
-    final s = await _seed();
+    final s = await _seed(tester);
     addTearDown(() async {
       s.notifier.dispose();
       await s.db.close();
@@ -146,13 +162,15 @@ void main() {
     // Tag exactly one dive with a site name.
     final firstId = s.notifier.dives.first.id;
     final now = DateTime.now();
-    await s.annotationsDao.upsert(dom.DiveAnnotation(
-      diveId: firstId,
-      siteName: 'Zelandia',
-      createdAt: now,
-      updatedAt: now,
-    ));
-    await s.notifier.loadDives();
+    await tester.runAsync(() async {
+      await s.annotationsDao.upsert(dom.DiveAnnotation(
+        diveId: firstId,
+        siteName: 'Zelandia',
+        createdAt: now,
+        updatedAt: now,
+      ));
+      await s.notifier.loadDives();
+    });
     await _pump(tester, s.db, s.psDb, s.annotationsDao, s.notifier);
     expect(find.byType(DiveTile), findsNWidgets(3));
 
