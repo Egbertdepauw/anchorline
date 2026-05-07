@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:powersync/powersync.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/db/database.dart';
@@ -7,6 +8,7 @@ import '../data/db/dive_dao.dart';
 import '../shearwater/parser/dive_converter.dart';
 import '../shearwater/parser/dive_parser.dart';
 import '../shearwater/parser/hardware.dart';
+import '../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
 
 /// SharedPreferences key flipped to `true` after the user runs the
 /// Settings → Danger zone reset. Future launches will see an empty
@@ -28,11 +30,15 @@ Future<void> markFixturesBlocked() async {
 /// user hasn't explicitly reset their data. Pre-public-release we'll
 /// also gate this behind a --dart-define so a fresh install in real
 /// users' hands doesn't show fake dives.
-Future<void> seedFixtures(AppDatabase db) async {
+Future<void> seedFixtures(
+  AppDatabase db, {
+  required PowerSyncDatabase psDb,
+  required SessionSource session,
+}) async {
   final prefs = await SharedPreferences.getInstance();
   if (prefs.getBool(_kFixturesBlockedAfterReset) ?? false) return;
 
-  final dao = DiveDao(db);
+  final dao = DiveDao(db, psDb, session);
   final dives = await dao.getAllDives();
   if (dives.isNotEmpty) return;
 

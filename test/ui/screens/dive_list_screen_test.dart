@@ -31,7 +31,7 @@ Future<_Seed> _seed(WidgetTester tester) async {
   late final _Seed seed;
   await tester.runAsync(() async {
     final psDb = await openPowerSyncForTest();
-    final dao = DiveDao(db);
+    final dao = DiveDao(db, psDb, FakeSessionSource());
     final annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
     for (final num in [711, 712, 718]) {
       final data = File('test/fixtures/dives/dive_$num.bin').readAsBytesSync();
@@ -70,7 +70,7 @@ Future<void> _pump(
       home: Scaffold(
         body: DiveListScreen(
           notifier: notifier,
-          diveDao: DiveDao(db),
+          diveDao: DiveDao(db, psDb, FakeSessionSource()),
           annotationsDao: annotationsDao,
           equipmentDao: EquipmentDao(db, psDb, FakeSessionSource()),
           settingsNotifier: SettingsNotifier(),

@@ -110,6 +110,21 @@ class DiveSamples extends Table {
   Set<Column> get primaryKey => {diveId};
 }
 
+/// Local-only storage of the raw Shearwater binary blob, keyed by
+/// `dive_id`. Phase 2.5 split: dive metadata + samples sync via
+/// PowerSync, but the raw blob stays on the importing device — it's
+/// only needed for re-parsing after a parser bug fix, and not worth
+/// the bandwidth/storage to mirror across devices.
+///
+/// One row per dive; absent on devices that didn't import the dive.
+class DiveRawBlobs extends Table {
+  TextColumn get diveId => text()();
+  BlobColumn get rawBlob => blob()();
+
+  @override
+  Set<Column> get primaryKey => {diveId};
+}
+
 /// User-editable dive annotations.
 class DiveAnnotations extends Table {
   TextColumn get diveId => text().references(Dives, #id)();

@@ -12,7 +12,6 @@ import 'package:ccrlogger/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/ui/screens/dive_detail_screen.dart';
 import 'package:ccrlogger/ui/screens/sites_map_screen.dart';
 import 'package:ccrlogger/ui/widgets/site_mini_map.dart';
-import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,10 +35,11 @@ Future<_Seed> _seedDive(
   int? stackRemainingAtEndSeconds,
 }) async {
   final db = AppDatabase(NativeDatabase.memory());
-  final dao = DiveDao(db);
+  late final DiveDao dao;
   late final _Seed seed;
   await tester.runAsync(() async {
     final psDb = await openPowerSyncForTest();
+    dao = DiveDao(db, psDb, FakeSessionSource());
     final annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
     final equipmentDao = EquipmentDao(db, psDb, FakeSessionSource());
     final data = File('test/fixtures/dives/dive_718.bin').readAsBytesSync();
@@ -53,13 +53,19 @@ Future<_Seed> _seedDive(
     await dao.importDive(
         converted: converted, rawBlob: data, parserVersion: 1);
     // Override the persisted stack values with the test fixture's choice.
+    // Phase 2.5 lives in PowerSync now, so the override goes through
+    // raw SQL on psDb, not Drift's Dives table.
     final row = (await dao.getAllDives()).first;
-    await (db.update(db.dives)..where((t) => t.id.equals(row.id))).write(
-      DivesCompanion(
-        configuredStackSeconds: Value(configuredStackSeconds),
-        stackRemainingAtStartSeconds: Value(stackRemainingAtStartSeconds),
-        stackRemainingAtEndSeconds: Value(stackRemainingAtEndSeconds),
-      ),
+    await psDb.execute(
+      'UPDATE dives SET configured_stack_seconds = ?, '
+      'stack_remaining_at_start_seconds = ?, '
+      'stack_remaining_at_end_seconds = ? WHERE id = ?',
+      [
+        configuredStackSeconds,
+        stackRemainingAtStartSeconds,
+        stackRemainingAtEndSeconds,
+        row.id,
+      ],
     );
     final dive = (await dao.getAllDives()).first;
     seed = (
@@ -181,9 +187,13 @@ void main() {
         '"endBar":185.0,"maxBar":300,"reserveBar":50},'
         '{"slot":1,"usage":2,"name":"O2","serial":0,"beginBar":195.0,'
         '"endBar":145.0,"maxBar":300,"reserveBar":40}]';
-    await (s.db.update(s.db.dives)..where((t) => t.id.equals(s.dive.id)))
-        .write(const DivesCompanion(tanksJson: Value(tanksJson)));
-    final dive = (await s.dao.getAllDives()).first;
+    late final Dive dive;
+    await tester.runAsync(() async {
+      await s.psDb.execute(
+          "UPDATE dives SET tanks_json = ? WHERE id = ?",
+          [tanksJson, s.dive.id]);
+      dive = (await s.dao.getAllDives()).first;
+    });
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, dive, s.dao);
 
@@ -202,13 +212,13 @@ void main() {
         '"endBar":185.0,"maxBar":300,"reserveBar":50},'
         '{"slot":1,"usage":2,"name":"O2","serial":0,"beginBar":195.0,'
         '"endBar":145.0,"maxBar":300,"reserveBar":40}]';
-    await (s.db.update(s.db.dives)..where((t) => t.id.equals(s.dive.id)))
-        .write(const DivesCompanion(tanksJson: Value(tanksJson)));
-
-    // Register the dive computer and a cylinder, then map channel 0.
+    late final Dive dive;
     // PowerSync writes must run on real time, not the test framework's
     // fake clock.
     await tester.runAsync(() async {
+      await s.psDb.execute(
+          "UPDATE dives SET tanks_json = ? WHERE id = ?",
+          [tanksJson, s.dive.id]);
       final dcId = await s.equipmentDao.upsertDiveComputer(
         serial: 0xB89641E4,
         model: 0,
@@ -224,9 +234,9 @@ void main() {
         channelIndex: 0,
         cylinderId: cylId,
       );
+      dive = (await s.dao.getAllDives()).first;
     });
 
-    final dive = (await s.dao.getAllDives()).first;
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, dive, s.dao);
 
     expect(find.text('AL40 EAN21 230→185'), findsOneWidget);
@@ -244,9 +254,13 @@ void main() {
         '"endBar":185.0,"maxBar":300,"reserveBar":50},'
         '{"slot":1,"usage":2,"name":"O2","serial":0,"beginBar":195.0,'
         '"endBar":145.0,"maxBar":300,"reserveBar":40}]';
-    await (s.db.update(s.db.dives)..where((t) => t.id.equals(s.dive.id)))
-        .write(const DivesCompanion(tanksJson: Value(tanksJson)));
-    final dive = (await s.dao.getAllDives()).first;
+    late final Dive dive;
+    await tester.runAsync(() async {
+      await s.psDb.execute(
+          "UPDATE dives SET tanks_json = ? WHERE id = ?",
+          [tanksJson, s.dive.id]);
+      dive = (await s.dao.getAllDives()).first;
+    });
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, dive, s.dao);
 
@@ -259,9 +273,12 @@ void main() {
     final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
-    await (s.db.update(s.db.dives)..where((t) => t.id.equals(s.dive.id)))
-        .write(const DivesCompanion(tanksJson: Value(null)));
-    final dive = (await s.dao.getAllDives()).first;
+    late final Dive dive;
+    await tester.runAsync(() async {
+      await s.psDb.execute(
+          "UPDATE dives SET tanks_json = NULL WHERE id = ?", [s.dive.id]);
+      dive = (await s.dao.getAllDives()).first;
+    });
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, dive, s.dao);
 

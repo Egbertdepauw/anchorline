@@ -5,6 +5,8 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../_helpers/powersync_test_helper.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -12,10 +14,12 @@ void main() {
     SharedPreferences.setMockInitialValues(const {});
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
+    final ps = await openPowerSyncForTest();
+    final session = FakeSessionSource()..setUserId('uid-seed');
 
-    await seedFixtures(db);
+    await seedFixtures(db, psDb: ps, session: session);
 
-    final dives = await DiveDao(db).getAllDives();
+    final dives = await DiveDao(db, ps, session).getAllDives();
     expect(dives, isNotEmpty,
         reason: 'expected fixture dives to land in an empty DB');
   });
@@ -25,10 +29,12 @@ void main() {
         const {'fixtures_blocked_after_reset': true});
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
+    final ps = await openPowerSyncForTest();
+    final session = FakeSessionSource()..setUserId('uid-seed');
 
-    await seedFixtures(db);
+    await seedFixtures(db, psDb: ps, session: session);
 
-    final dives = await DiveDao(db).getAllDives();
+    final dives = await DiveDao(db, ps, session).getAllDives();
     expect(dives, isEmpty,
         reason: 'reset flag must keep the DB empty across launches');
   });
@@ -38,11 +44,13 @@ void main() {
     SharedPreferences.setMockInitialValues(const {});
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
+    final ps = await openPowerSyncForTest();
+    final session = FakeSessionSource()..setUserId('uid-seed');
 
     await markFixturesBlocked();
-    await seedFixtures(db);
+    await seedFixtures(db, psDb: ps, session: session);
 
-    final dives = await DiveDao(db).getAllDives();
+    final dives = await DiveDao(db, ps, session).getAllDives();
     expect(dives, isEmpty);
   });
 }

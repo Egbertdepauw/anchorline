@@ -61,7 +61,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _diveDao = DiveDao(widget.db);
+    _diveDao = DiveDao(
+      widget.db,
+      widget.powerSyncDb,
+      SupabaseAuthSessionSource(Supabase.instance.client),
+    );
     _importStateDao = ImportStateDao(widget.db);
     _equipmentDao = EquipmentDao(
       widget.db,

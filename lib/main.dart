@@ -14,6 +14,7 @@ import 'sync/cloud/ccrlogger_backend_connector.dart';
 import 'sync/cloud/cloud_config.dart';
 import 'sync/cloud/cloud_data_wiper.dart';
 import 'sync/cloud/cloud_sync_coordinator.dart';
+import 'sync/cloud/dives_powersync_migrator.dart';
 import 'sync/cloud/powersync_database.dart';
 import 'ui/app_shell.dart';
 import 'ui/notifiers/settings_notifier.dart';
@@ -31,9 +32,20 @@ void main() async {
   final dbFile = File(p.join(dbDir.path, 'ccrlogger.sqlite'));
   final db = AppDatabase(NativeDatabase(dbFile));
 
-  await seedFixtures(db);
-
+  // PowerSync owns dive metadata + samples now (Phase 2.5), so the
+  // seeder must run after both databases are open.
   final powerSyncDb = await openPowerSyncDatabase();
+
+  // One-shot Drift → PowerSync migration for users upgrading from a
+  // pre-2.5 build. Idempotent — safe to run on every launch.
+  final session = SupabaseAuthSessionSource(Supabase.instance.client);
+  await DivesPowerSyncMigrator(db, powerSyncDb, session).migrate();
+
+  await seedFixtures(
+    db,
+    psDb: powerSyncDb,
+    session: session,
+  );
 
   final settings = SettingsNotifier();
   await settings.load();

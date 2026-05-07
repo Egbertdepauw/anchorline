@@ -46,7 +46,7 @@ void main() {
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
     psDb = await openPowerSyncForTest();
-    diveDao = DiveDao(db);
+    diveDao = DiveDao(db, psDb, FakeSessionSource());
     annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
     tmpDir = await Directory.systemTemp.createTemp('ccrlogger_export_');
     exporter = SubsurfaceExporter(

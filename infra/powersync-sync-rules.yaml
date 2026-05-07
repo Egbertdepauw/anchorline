@@ -9,3 +9,5 @@ bucket_definitions:
       - SELECT * FROM pressure_mappings WHERE owner_id = bucket.user_id
       - SELECT * FROM dive_cylinders WHERE owner_id = bucket.user_id
       - SELECT * FROM dive_computers WHERE owner_id = bucket.user_id
+      - SELECT * FROM dives WHERE owner_id = bucket.user_id
+      - SELECT * FROM dive_samples WHERE owner_id = bucket.user_id

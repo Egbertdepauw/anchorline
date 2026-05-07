@@ -7,6 +7,7 @@ library;
 import 'dart:io';
 
 import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/db/dive_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/sync/cloud/ccrlogger_backend_connector.dart'
     show SessionSource;
@@ -74,6 +75,26 @@ class EquipmentDaoTestRig {
   final PowerSyncDatabase ps;
   final FakeSessionSource session;
   EquipmentDaoTestRig({
+    required this.dao,
+    required this.ps,
+    required this.session,
+  });
+}
+
+/// Convenience: build a [DiveDao] wired to fresh Drift + PowerSync
+/// instances, with a [FakeSessionSource] (signed-in test user by default).
+Future<DiveDaoTestRig> openDiveDaoForTest(AppDatabase drift) async {
+  final ps = await openPowerSyncForTest();
+  final session = FakeSessionSource()..setUserId('test-user');
+  final dao = DiveDao(drift, ps, session);
+  return DiveDaoTestRig(dao: dao, ps: ps, session: session);
+}
+
+class DiveDaoTestRig {
+  final DiveDao dao;
+  final PowerSyncDatabase ps;
+  final FakeSessionSource session;
+  DiveDaoTestRig({
     required this.dao,
     required this.ps,
     required this.session,

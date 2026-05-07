@@ -4,7 +4,7 @@ import 'package:powersync/powersync.dart';
 
 void main() {
   group('appSchema', () {
-    test('declares all seven sync-eligible tables', () {
+    test('declares all sync-eligible tables', () {
       final names = appSchema.tables.map((t) => t.name).toSet();
       expect(names, {
         'dive_annotations',
@@ -14,6 +14,9 @@ void main() {
         'pressure_mappings',
         'dive_cylinders',
         'dive_computers',
+        // Phase 2.5: dive metadata + samples sync too.
+        'dives',
+        'dive_samples',
       });
     });
 
@@ -28,18 +31,26 @@ void main() {
     });
 
     test('every table carries the sync-metadata columns', () {
-      const required = {
-        'owner_id',
-        'created_at',
-        'updated_at',
-        'deleted_at',
-        'version',
-        'sync_status',
-      };
+      const baseRequired = {'owner_id', 'version', 'sync_status'};
+      // `dives` is immutable imported data; created_at/updated_at don't
+      // apply (it has imported_at instead). `dive_samples` is 1:1 with
+      // dives so its soft-delete cascades — no deleted_at column.
+      const exemptCreatedUpdated = {'dives'};
+      const exemptDeletedAt = {'dive_samples'};
       for (final t in appSchema.tables) {
         final cols = t.columns.map((c) => c.name).toSet();
-        expect(cols.containsAll(required), isTrue,
-            reason: '${t.name} missing one of $required (has $cols)');
+        expect(cols.containsAll(baseRequired), isTrue,
+            reason: '${t.name} missing one of $baseRequired (has $cols)');
+        if (!exemptCreatedUpdated.contains(t.name)) {
+          expect(cols.contains('created_at'), isTrue,
+              reason: '${t.name} missing created_at');
+          expect(cols.contains('updated_at'), isTrue,
+              reason: '${t.name} missing updated_at');
+        }
+        if (!exemptDeletedAt.contains(t.name)) {
+          expect(cols.contains('deleted_at'), isTrue,
+              reason: '${t.name} missing deleted_at (has $cols)');
+        }
       }
     });
 

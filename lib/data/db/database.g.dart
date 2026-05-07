@@ -2617,6 +2617,221 @@ class DiveSamplesCompanion extends UpdateCompanion<DiveSample> {
   }
 }
 
+class $DiveRawBlobsTable extends DiveRawBlobs
+    with TableInfo<$DiveRawBlobsTable, DiveRawBlob> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DiveRawBlobsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _diveIdMeta = const VerificationMeta('diveId');
+  @override
+  late final GeneratedColumn<String> diveId = GeneratedColumn<String>(
+    'dive_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _rawBlobMeta = const VerificationMeta(
+    'rawBlob',
+  );
+  @override
+  late final GeneratedColumn<Uint8List> rawBlob = GeneratedColumn<Uint8List>(
+    'raw_blob',
+    aliasedName,
+    false,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [diveId, rawBlob];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'dive_raw_blobs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DiveRawBlob> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('dive_id')) {
+      context.handle(
+        _diveIdMeta,
+        diveId.isAcceptableOrUnknown(data['dive_id']!, _diveIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_diveIdMeta);
+    }
+    if (data.containsKey('raw_blob')) {
+      context.handle(
+        _rawBlobMeta,
+        rawBlob.isAcceptableOrUnknown(data['raw_blob']!, _rawBlobMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rawBlobMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {diveId};
+  @override
+  DiveRawBlob map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DiveRawBlob(
+      diveId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dive_id'],
+      )!,
+      rawBlob: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}raw_blob'],
+      )!,
+    );
+  }
+
+  @override
+  $DiveRawBlobsTable createAlias(String alias) {
+    return $DiveRawBlobsTable(attachedDatabase, alias);
+  }
+}
+
+class DiveRawBlob extends DataClass implements Insertable<DiveRawBlob> {
+  final String diveId;
+  final Uint8List rawBlob;
+  const DiveRawBlob({required this.diveId, required this.rawBlob});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['dive_id'] = Variable<String>(diveId);
+    map['raw_blob'] = Variable<Uint8List>(rawBlob);
+    return map;
+  }
+
+  DiveRawBlobsCompanion toCompanion(bool nullToAbsent) {
+    return DiveRawBlobsCompanion(
+      diveId: Value(diveId),
+      rawBlob: Value(rawBlob),
+    );
+  }
+
+  factory DiveRawBlob.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DiveRawBlob(
+      diveId: serializer.fromJson<String>(json['diveId']),
+      rawBlob: serializer.fromJson<Uint8List>(json['rawBlob']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'diveId': serializer.toJson<String>(diveId),
+      'rawBlob': serializer.toJson<Uint8List>(rawBlob),
+    };
+  }
+
+  DiveRawBlob copyWith({String? diveId, Uint8List? rawBlob}) => DiveRawBlob(
+    diveId: diveId ?? this.diveId,
+    rawBlob: rawBlob ?? this.rawBlob,
+  );
+  DiveRawBlob copyWithCompanion(DiveRawBlobsCompanion data) {
+    return DiveRawBlob(
+      diveId: data.diveId.present ? data.diveId.value : this.diveId,
+      rawBlob: data.rawBlob.present ? data.rawBlob.value : this.rawBlob,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiveRawBlob(')
+          ..write('diveId: $diveId, ')
+          ..write('rawBlob: $rawBlob')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(diveId, $driftBlobEquality.hash(rawBlob));
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DiveRawBlob &&
+          other.diveId == this.diveId &&
+          $driftBlobEquality.equals(other.rawBlob, this.rawBlob));
+}
+
+class DiveRawBlobsCompanion extends UpdateCompanion<DiveRawBlob> {
+  final Value<String> diveId;
+  final Value<Uint8List> rawBlob;
+  final Value<int> rowid;
+  const DiveRawBlobsCompanion({
+    this.diveId = const Value.absent(),
+    this.rawBlob = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DiveRawBlobsCompanion.insert({
+    required String diveId,
+    required Uint8List rawBlob,
+    this.rowid = const Value.absent(),
+  }) : diveId = Value(diveId),
+       rawBlob = Value(rawBlob);
+  static Insertable<DiveRawBlob> custom({
+    Expression<String>? diveId,
+    Expression<Uint8List>? rawBlob,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (diveId != null) 'dive_id': diveId,
+      if (rawBlob != null) 'raw_blob': rawBlob,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DiveRawBlobsCompanion copyWith({
+    Value<String>? diveId,
+    Value<Uint8List>? rawBlob,
+    Value<int>? rowid,
+  }) {
+    return DiveRawBlobsCompanion(
+      diveId: diveId ?? this.diveId,
+      rawBlob: rawBlob ?? this.rawBlob,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (diveId.present) {
+      map['dive_id'] = Variable<String>(diveId.value);
+    }
+    if (rawBlob.present) {
+      map['raw_blob'] = Variable<Uint8List>(rawBlob.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiveRawBlobsCompanion(')
+          ..write('diveId: $diveId, ')
+          ..write('rawBlob: $rawBlob, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $DiveAnnotationsTable extends DiveAnnotations
     with TableInfo<$DiveAnnotationsTable, DiveAnnotation> {
   @override
@@ -7807,6 +8022,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $DivesTable dives = $DivesTable(this);
   late final $DiveSamplesTable diveSamples = $DiveSamplesTable(this);
+  late final $DiveRawBlobsTable diveRawBlobs = $DiveRawBlobsTable(this);
   late final $DiveAnnotationsTable diveAnnotations = $DiveAnnotationsTable(
     this,
   );
@@ -7828,6 +8044,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     dives,
     diveSamples,
+    diveRawBlobs,
     diveAnnotations,
     diveComputers,
     oxygenCells,
@@ -9353,6 +9570,149 @@ typedef $$DiveSamplesTableProcessedTableManager =
       (DiveSample, $$DiveSamplesTableReferences),
       DiveSample,
       PrefetchHooks Function({bool diveId})
+    >;
+typedef $$DiveRawBlobsTableCreateCompanionBuilder =
+    DiveRawBlobsCompanion Function({
+      required String diveId,
+      required Uint8List rawBlob,
+      Value<int> rowid,
+    });
+typedef $$DiveRawBlobsTableUpdateCompanionBuilder =
+    DiveRawBlobsCompanion Function({
+      Value<String> diveId,
+      Value<Uint8List> rawBlob,
+      Value<int> rowid,
+    });
+
+class $$DiveRawBlobsTableFilterComposer
+    extends Composer<_$AppDatabase, $DiveRawBlobsTable> {
+  $$DiveRawBlobsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get diveId => $composableBuilder(
+    column: $table.diveId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get rawBlob => $composableBuilder(
+    column: $table.rawBlob,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DiveRawBlobsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DiveRawBlobsTable> {
+  $$DiveRawBlobsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get diveId => $composableBuilder(
+    column: $table.diveId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get rawBlob => $composableBuilder(
+    column: $table.rawBlob,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DiveRawBlobsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DiveRawBlobsTable> {
+  $$DiveRawBlobsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get diveId =>
+      $composableBuilder(column: $table.diveId, builder: (column) => column);
+
+  GeneratedColumn<Uint8List> get rawBlob =>
+      $composableBuilder(column: $table.rawBlob, builder: (column) => column);
+}
+
+class $$DiveRawBlobsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DiveRawBlobsTable,
+          DiveRawBlob,
+          $$DiveRawBlobsTableFilterComposer,
+          $$DiveRawBlobsTableOrderingComposer,
+          $$DiveRawBlobsTableAnnotationComposer,
+          $$DiveRawBlobsTableCreateCompanionBuilder,
+          $$DiveRawBlobsTableUpdateCompanionBuilder,
+          (
+            DiveRawBlob,
+            BaseReferences<_$AppDatabase, $DiveRawBlobsTable, DiveRawBlob>,
+          ),
+          DiveRawBlob,
+          PrefetchHooks Function()
+        > {
+  $$DiveRawBlobsTableTableManager(_$AppDatabase db, $DiveRawBlobsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DiveRawBlobsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DiveRawBlobsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DiveRawBlobsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> diveId = const Value.absent(),
+                Value<Uint8List> rawBlob = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DiveRawBlobsCompanion(
+                diveId: diveId,
+                rawBlob: rawBlob,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String diveId,
+                required Uint8List rawBlob,
+                Value<int> rowid = const Value.absent(),
+              }) => DiveRawBlobsCompanion.insert(
+                diveId: diveId,
+                rawBlob: rawBlob,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DiveRawBlobsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DiveRawBlobsTable,
+      DiveRawBlob,
+      $$DiveRawBlobsTableFilterComposer,
+      $$DiveRawBlobsTableOrderingComposer,
+      $$DiveRawBlobsTableAnnotationComposer,
+      $$DiveRawBlobsTableCreateCompanionBuilder,
+      $$DiveRawBlobsTableUpdateCompanionBuilder,
+      (
+        DiveRawBlob,
+        BaseReferences<_$AppDatabase, $DiveRawBlobsTable, DiveRawBlob>,
+      ),
+      DiveRawBlob,
+      PrefetchHooks Function()
     >;
 typedef $$DiveAnnotationsTableCreateCompanionBuilder =
     DiveAnnotationsCompanion Function({
@@ -12105,6 +12465,8 @@ class $AppDatabaseManager {
       $$DivesTableTableManager(_db, _db.dives);
   $$DiveSamplesTableTableManager get diveSamples =>
       $$DiveSamplesTableTableManager(_db, _db.diveSamples);
+  $$DiveRawBlobsTableTableManager get diveRawBlobs =>
+      $$DiveRawBlobsTableTableManager(_db, _db.diveRawBlobs);
   $$DiveAnnotationsTableTableManager get diveAnnotations =>
       $$DiveAnnotationsTableTableManager(_db, _db.diveAnnotations);
   $$DiveComputersTableTableManager get diveComputers =>

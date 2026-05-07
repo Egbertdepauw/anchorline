@@ -24,7 +24,7 @@ void main() {
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
     psDb = await openPowerSyncForTest();
-    dao = DiveDao(db);
+    dao = DiveDao(db, psDb, FakeSessionSource());
     annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
     notifier = DiveListNotifier(dao, annotationsDao);
 

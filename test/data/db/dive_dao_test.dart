@@ -8,6 +8,8 @@ import 'package:ccrlogger/shearwater/parser/hardware.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../_helpers/powersync_test_helper.dart';
+
 AppDatabase _createInMemoryDb() {
   return AppDatabase(NativeDatabase.memory());
 }
@@ -29,9 +31,9 @@ void main() {
   late AppDatabase db;
   late DiveDao dao;
 
-  setUp(() {
+  setUp(() async {
     db = _createInMemoryDb();
-    dao = DiveDao(db);
+    dao = (await openDiveDaoForTest(db)).dao;
   });
 
   tearDown(() async {

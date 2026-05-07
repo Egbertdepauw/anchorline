@@ -8,14 +8,18 @@ import 'package:ccrlogger/ui/notifiers/dive_detail_notifier.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../_helpers/powersync_test_helper.dart';
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late AppDatabase db;
   late DiveDao dao;
   late Dive diveRow;
 
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
-    dao = DiveDao(db);
+    dao = (await openDiveDaoForTest(db)).dao;
     final data = File('test/fixtures/dives/dive_718.bin').readAsBytesSync();
     final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
     final parsed = parser.parse(data);

@@ -17,12 +17,16 @@ void main() {
 
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
-    dao = DiveDao(db);
+    final equipmentRig = await openEquipmentDaoForTest(db);
+    // Reuse the equipment rig's psDb so importDive's dive write + the
+    // equipment-side reads share one PowerSync handle (matches how the
+    // app wires them).
+    dao = DiveDao(db, equipmentRig.ps, equipmentRig.session);
     importStateDao = ImportStateDao(db);
     notifier = ImportNotifier(
       dao: dao,
       importStateDao: importStateDao,
-      equipmentDao: (await openEquipmentDaoForTest(db)).dao,
+      equipmentDao: equipmentRig.dao,
       useMock: true,
     );
   });

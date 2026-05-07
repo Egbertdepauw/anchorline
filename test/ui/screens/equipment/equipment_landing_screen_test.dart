@@ -22,7 +22,7 @@ void main() {
     await tester.runAsync(() async {
       final rig = await openEquipmentDaoForTest(db);
       dao = rig.dao;
-      diveDao = DiveDao(db);
+      diveDao = DiveDao(db, rig.ps, rig.session);
       annotationsDao = DiveAnnotationsDao(rig.ps, FakeSessionSource());
     });
 

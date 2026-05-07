@@ -11,6 +11,7 @@ part 'database.g.dart';
   tables: [
     Dives,
     DiveSamples,
+    DiveRawBlobs,
     DiveAnnotations,
     DiveComputers,
     OxygenCells,
@@ -25,7 +26,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -74,6 +75,11 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 9) {
             await m.addColumn(dives, dives.deletedAt);
+          }
+          if (from < 10) {
+            // New local-only raw-blob storage; live data is migrated by
+            // DivesPowerSyncBackfiller on app startup.
+            await m.createTable(diveRawBlobs);
           }
         },
       );
