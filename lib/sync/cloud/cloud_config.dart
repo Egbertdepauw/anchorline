@@ -7,14 +7,16 @@
 library;
 
 class CloudConfig {
-  static const supabaseUrl = 'https://eijknwqahweddpzcxhtr.supabase.co';
+  static const supabaseUrl = 'https://ejvjijqejlrtbnyxixia.supabase.co';
   static const supabaseAnonKey =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVpamtud3FhaHdlZGRwemN4aHRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwODQxNzQsImV4cCI6MjA5MzY2MDE3NH0.XDKIPITMF6st7JiPlYipB5aHCyLk_iMLi0upwnId4kI';
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqdmppanFlamxydGJueXhpeGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMTExOTEsImV4cCI6MjA5MzY4NzE5MX0.DIJl231OkMk21J-GIu2FGNRZYZtEaTQhNr3fLpMPs9Y';
 
-  /// PowerSync endpoint URL. Empty until the user provisions the instance
-  /// and passes `--dart-define=POWERSYNC_ENDPOINT=...` at build time.
+  /// PowerSync endpoint URL. Defaults to the dev instance so Xcode builds
+  /// (which don't pass `--dart-define`) work out of the box. Override at
+  /// `flutter build` time via `--dart-define=POWERSYNC_ENDPOINT=...` to
+  /// point at staging or prod.
   static const powerSyncEndpoint = String.fromEnvironment(
     'POWERSYNC_ENDPOINT',
-    defaultValue: '',
+    defaultValue: 'https://69fb928d8d064eb85ee99fd1.powersync.journeyapps.com',
   );
 }
