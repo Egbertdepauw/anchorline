@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:powersync/powersync.dart' hide SyncStatus, Column;
 
 import '../../data/db/database.dart';
+import '../../dev/fixture_seeder.dart';
 import '../../sync/cloud/auth_service.dart';
 import '../../sync/cloud/cloud_data_wiper.dart';
 import '../../sync/cloud/sync_status_source.dart';
@@ -182,6 +183,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
       // PowerSync: disconnect + clear local SQLite. Re-sync on next start.
       await psDb.disconnectAndClear();
+      // Stop fixture re-seeding from re-populating the empty DB on next
+      // launch. Reinstalling the app clears this flag.
+      await markFixturesBlocked();
     } catch (e, st) {
       debugPrint('Reset data failed: $e\n$st');
       if (!mounted) return;
