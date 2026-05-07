@@ -70,6 +70,19 @@ class DiveListNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Soft-deletes a dive and refreshes the list. Pair with [restoreDive]
+  /// behind a SnackBar UNDO button.
+  Future<void> softDeleteDive(String id) async {
+    await _dao.softDeleteDive(id);
+    await loadDives();
+  }
+
+  /// Undoes a [softDeleteDive] — restores the row and refreshes.
+  Future<void> restoreDive(String id) async {
+    await _dao.restoreDive(id);
+    await loadDives();
+  }
+
   Future<Float32List?> getSparklineData(String diveId) async {
     final cached = _sparklineCache.get(diveId);
     if (cached != null) return cached;

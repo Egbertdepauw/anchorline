@@ -71,6 +71,13 @@ class Dives extends Table {
   /// (unix seconds). Null = pending.
   IntColumn get subsurfaceUploadedAt => integer().nullable()();
 
+  /// Soft-delete timestamp (millis since epoch). Null = visible.
+  /// User-driven via the dive list; restore via the SnackBar undo.
+  /// Imported data is otherwise immutable, so we keep the row + raw blob
+  /// — re-importing the same dive id finds the soft-deleted row and
+  /// resurrects it instead of inserting a duplicate.
+  IntColumn get deletedAt => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

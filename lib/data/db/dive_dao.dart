@@ -112,17 +112,35 @@ class DiveDao {
     return results.isNotEmpty;
   }
 
-  /// Get all dives ordered by start time descending (most recent first).
+  /// Get all live dives ordered by start time descending (most recent first).
+  /// Excludes soft-deleted rows.
   Future<List<Dive>> getAllDives() async {
     final query = _db.select(_db.dives)
+      ..where((d) => d.deletedAt.isNull())
       ..orderBy([(d) => OrderingTerm.desc(d.startTime)]);
     return query.get();
   }
 
-  /// Get a single dive by ID, or `null` if not found.
+  /// Get a single dive by ID, or `null` if not found. Returns
+  /// soft-deleted rows too — needed by the undo path.
   Future<Dive?> getDive(String id) async {
     final query = _db.select(_db.dives)..where((d) => d.id.equals(id));
     return query.getSingleOrNull();
+  }
+
+  /// Soft-deletes a dive. The row + raw blob stay on disk (so undo works
+  /// and re-import lookups still detect duplicates); list queries
+  /// filter it out.
+  Future<void> softDeleteDive(String id) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await (_db.update(_db.dives)..where((d) => d.id.equals(id)))
+        .write(DivesCompanion(deletedAt: Value(now)));
+  }
+
+  /// Clears the soft-delete flag — paired with the SnackBar UNDO action.
+  Future<void> restoreDive(String id) async {
+    await (_db.update(_db.dives)..where((d) => d.id.equals(id)))
+        .write(const DivesCompanion(deletedAt: Value(null)));
   }
 
   /// Get the sample data for a dive.
@@ -173,10 +191,11 @@ class DiveDao {
   }
 
   /// Dives that haven't been exported to a Subsurface XML file yet,
-  /// ordered by start time ascending.
+  /// ordered by start time ascending. Excludes soft-deleted rows.
   Future<List<Dive>> getPendingSubsurfaceUploads() async {
     final query = _db.select(_db.dives)
-      ..where((d) => d.subsurfaceUploadedAt.isNull())
+      ..where(
+          (d) => d.subsurfaceUploadedAt.isNull() & d.deletedAt.isNull())
       ..orderBy([(d) => OrderingTerm.asc(d.startTime)]);
     return query.get();
   }

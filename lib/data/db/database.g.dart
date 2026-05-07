@@ -297,6 +297,17 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -326,6 +337,7 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
     parserVersion,
     importedAt,
     subsurfaceUploadedAt,
+    deletedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -573,6 +585,12 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
         ),
       );
     }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -690,6 +708,10 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
         DriftSqlType.int,
         data['${effectivePrefix}subsurface_uploaded_at'],
       ),
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted_at'],
+      ),
     );
   }
 
@@ -757,6 +779,13 @@ class Dive extends DataClass implements Insertable<Dive> {
   /// When this dive was last exported to a Subsurface .ssrf file
   /// (unix seconds). Null = pending.
   final int? subsurfaceUploadedAt;
+
+  /// Soft-delete timestamp (millis since epoch). Null = visible.
+  /// User-driven via the dive list; restore via the SnackBar undo.
+  /// Imported data is otherwise immutable, so we keep the row + raw blob
+  /// — re-importing the same dive id finds the soft-deleted row and
+  /// resurrects it instead of inserting a duplicate.
+  final int? deletedAt;
   const Dive({
     required this.id,
     required this.dcSerial,
@@ -785,6 +814,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     required this.parserVersion,
     required this.importedAt,
     this.subsurfaceUploadedAt,
+    this.deletedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -838,6 +868,9 @@ class Dive extends DataClass implements Insertable<Dive> {
     if (!nullToAbsent || subsurfaceUploadedAt != null) {
       map['subsurface_uploaded_at'] = Variable<int>(subsurfaceUploadedAt);
     }
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<int>(deletedAt);
+    }
     return map;
   }
 
@@ -890,6 +923,9 @@ class Dive extends DataClass implements Insertable<Dive> {
       subsurfaceUploadedAt: subsurfaceUploadedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(subsurfaceUploadedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
     );
   }
 
@@ -936,6 +972,7 @@ class Dive extends DataClass implements Insertable<Dive> {
       subsurfaceUploadedAt: serializer.fromJson<int?>(
         json['subsurfaceUploadedAt'],
       ),
+      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
     );
   }
   @override
@@ -975,6 +1012,7 @@ class Dive extends DataClass implements Insertable<Dive> {
       'parserVersion': serializer.toJson<int>(parserVersion),
       'importedAt': serializer.toJson<int>(importedAt),
       'subsurfaceUploadedAt': serializer.toJson<int?>(subsurfaceUploadedAt),
+      'deletedAt': serializer.toJson<int?>(deletedAt),
     };
   }
 
@@ -1006,6 +1044,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     int? parserVersion,
     int? importedAt,
     Value<int?> subsurfaceUploadedAt = const Value.absent(),
+    Value<int?> deletedAt = const Value.absent(),
   }) => Dive(
     id: id ?? this.id,
     dcSerial: dcSerial ?? this.dcSerial,
@@ -1045,6 +1084,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     subsurfaceUploadedAt: subsurfaceUploadedAt.present
         ? subsurfaceUploadedAt.value
         : this.subsurfaceUploadedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
   );
   Dive copyWithCompanion(DivesCompanion data) {
     return Dive(
@@ -1107,6 +1147,7 @@ class Dive extends DataClass implements Insertable<Dive> {
       subsurfaceUploadedAt: data.subsurfaceUploadedAt.present
           ? data.subsurfaceUploadedAt.value
           : this.subsurfaceUploadedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
   }
 
@@ -1141,7 +1182,8 @@ class Dive extends DataClass implements Insertable<Dive> {
           ..write('rawBlob: $rawBlob, ')
           ..write('parserVersion: $parserVersion, ')
           ..write('importedAt: $importedAt, ')
-          ..write('subsurfaceUploadedAt: $subsurfaceUploadedAt')
+          ..write('subsurfaceUploadedAt: $subsurfaceUploadedAt, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
@@ -1175,6 +1217,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     parserVersion,
     importedAt,
     subsurfaceUploadedAt,
+    deletedAt,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -1207,7 +1250,8 @@ class Dive extends DataClass implements Insertable<Dive> {
           $driftBlobEquality.equals(other.rawBlob, this.rawBlob) &&
           other.parserVersion == this.parserVersion &&
           other.importedAt == this.importedAt &&
-          other.subsurfaceUploadedAt == this.subsurfaceUploadedAt);
+          other.subsurfaceUploadedAt == this.subsurfaceUploadedAt &&
+          other.deletedAt == this.deletedAt);
 }
 
 class DivesCompanion extends UpdateCompanion<Dive> {
@@ -1238,6 +1282,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
   final Value<int> parserVersion;
   final Value<int> importedAt;
   final Value<int?> subsurfaceUploadedAt;
+  final Value<int?> deletedAt;
   final Value<int> rowid;
   const DivesCompanion({
     this.id = const Value.absent(),
@@ -1267,6 +1312,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     this.parserVersion = const Value.absent(),
     this.importedAt = const Value.absent(),
     this.subsurfaceUploadedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DivesCompanion.insert({
@@ -1297,6 +1343,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     required int parserVersion,
     required int importedAt,
     this.subsurfaceUploadedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        dcSerial = Value(dcSerial),
@@ -1344,6 +1391,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     Expression<int>? parserVersion,
     Expression<int>? importedAt,
     Expression<int>? subsurfaceUploadedAt,
+    Expression<int>? deletedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1379,6 +1427,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
       if (importedAt != null) 'imported_at': importedAt,
       if (subsurfaceUploadedAt != null)
         'subsurface_uploaded_at': subsurfaceUploadedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1411,6 +1460,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     Value<int>? parserVersion,
     Value<int>? importedAt,
     Value<int?>? subsurfaceUploadedAt,
+    Value<int?>? deletedAt,
     Value<int>? rowid,
   }) {
     return DivesCompanion(
@@ -1445,6 +1495,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
       parserVersion: parserVersion ?? this.parserVersion,
       importedAt: importedAt ?? this.importedAt,
       subsurfaceUploadedAt: subsurfaceUploadedAt ?? this.subsurfaceUploadedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1541,6 +1592,9 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     if (subsurfaceUploadedAt.present) {
       map['subsurface_uploaded_at'] = Variable<int>(subsurfaceUploadedAt.value);
     }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<int>(deletedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1579,6 +1633,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
           ..write('parserVersion: $parserVersion, ')
           ..write('importedAt: $importedAt, ')
           ..write('subsurfaceUploadedAt: $subsurfaceUploadedAt, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -7813,6 +7868,7 @@ typedef $$DivesTableCreateCompanionBuilder =
       required int parserVersion,
       required int importedAt,
       Value<int?> subsurfaceUploadedAt,
+      Value<int?> deletedAt,
       Value<int> rowid,
     });
 typedef $$DivesTableUpdateCompanionBuilder =
@@ -7844,6 +7900,7 @@ typedef $$DivesTableUpdateCompanionBuilder =
       Value<int> parserVersion,
       Value<int> importedAt,
       Value<int?> subsurfaceUploadedAt,
+      Value<int?> deletedAt,
       Value<int> rowid,
     });
 
@@ -8048,6 +8105,11 @@ class $$DivesTableFilterComposer extends Composer<_$AppDatabase, $DivesTable> {
 
   ColumnFilters<int> get subsurfaceUploadedAt => $composableBuilder(
     column: $table.subsurfaceUploadedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8270,6 +8332,11 @@ class $$DivesTableOrderingComposer
     column: $table.subsurfaceUploadedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$DivesTableAnnotationComposer
@@ -8393,6 +8460,9 @@ class $$DivesTableAnnotationComposer
     column: $table.subsurfaceUploadedAt,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 
   Expression<T> diveSamplesRefs<T extends Object>(
     Expression<T> Function($$DiveSamplesTableAnnotationComposer a) f,
@@ -8529,6 +8599,7 @@ class $$DivesTableTableManager
                 Value<int> parserVersion = const Value.absent(),
                 Value<int> importedAt = const Value.absent(),
                 Value<int?> subsurfaceUploadedAt = const Value.absent(),
+                Value<int?> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DivesCompanion(
                 id: id,
@@ -8558,6 +8629,7 @@ class $$DivesTableTableManager
                 parserVersion: parserVersion,
                 importedAt: importedAt,
                 subsurfaceUploadedAt: subsurfaceUploadedAt,
+                deletedAt: deletedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -8589,6 +8661,7 @@ class $$DivesTableTableManager
                 required int parserVersion,
                 required int importedAt,
                 Value<int?> subsurfaceUploadedAt = const Value.absent(),
+                Value<int?> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DivesCompanion.insert(
                 id: id,
@@ -8618,6 +8691,7 @@ class $$DivesTableTableManager
                 parserVersion: parserVersion,
                 importedAt: importedAt,
                 subsurfaceUploadedAt: subsurfaceUploadedAt,
+                deletedAt: deletedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

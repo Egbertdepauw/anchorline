@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:powersync/powersync.dart' hide SyncStatus, Column;
 
+import '../../data/db/database.dart';
 import '../../sync/cloud/auth_service.dart';
 import '../../sync/cloud/sync_status_source.dart';
 import '../notifiers/settings_notifier.dart';
@@ -9,12 +11,18 @@ class SettingsScreen extends StatefulWidget {
   final SettingsNotifier notifier;
   final AuthService? authService;
   final SyncStatusSource? syncStatusSource;
+  /// Optional — when both are provided, the Danger zone "Reset local data"
+  /// tile is rendered. Tests typically omit them.
+  final AppDatabase? db;
+  final PowerSyncDatabase? powerSyncDb;
 
   const SettingsScreen({
     super.key,
     required this.notifier,
     this.authService,
     this.syncStatusSource,
+    this.db,
+    this.powerSyncDb,
   });
 
   @override
@@ -58,9 +66,97 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: widget.notifier.useSpeedColoredGraph,
             onChanged: (v) => widget.notifier.setUseSpeedColoredGraph(v),
           ),
+          if (widget.db != null && widget.powerSyncDb != null) ...[
+            const Divider(height: 32),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(
+                'Danger zone',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+              ),
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.delete_forever_outlined,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              title: const Text('Reset local data'),
+              subtitle: const Text(
+                  'Wipes imported dives + local sync state. Cloud data is unaffected; if signed in, it re-syncs after restart.'),
+              onTap: _confirmAndResetLocalData,
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Future<void> _confirmAndResetLocalData() async {
+    final db = widget.db;
+    final psDb = widget.powerSyncDb;
+    if (db == null || psDb == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset local data?'),
+        content: const Text(
+          'Deletes every imported dive on this device and clears the local '
+          'PowerSync cache. Cloud data (annotations, equipment) is not '
+          'touched — if you are signed in, it will re-sync once the app '
+          'restarts.\n\n'
+          'You will need to quit and reopen the app afterwards.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.tonal(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.errorContainer,
+              foregroundColor: Theme.of(ctx).colorScheme.onErrorContainer,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      // Drift: clear all imported-dive related rows. Equipment / annotation
+      // tables in Drift are no longer used (PowerSync owns them), but
+      // we still wipe them to keep the local file fully fresh.
+      await db.transaction(() async {
+        await db.customStatement('DELETE FROM dive_samples');
+        await db.customStatement('DELETE FROM dives');
+        await db.customStatement('DELETE FROM import_states');
+        await db.customStatement('DELETE FROM dive_annotations');
+        await db.customStatement('DELETE FROM dive_computers');
+        await db.customStatement('DELETE FROM oxygen_cells');
+        await db.customStatement('DELETE FROM scrubber_sessions');
+        await db.customStatement('DELETE FROM cylinders');
+        await db.customStatement('DELETE FROM pressure_mappings');
+        await db.customStatement('DELETE FROM dive_cylinders');
+      });
+      // PowerSync: disconnect + clear local SQLite. Re-sync on next start.
+      await psDb.disconnectAndClear();
+    } catch (e, st) {
+      debugPrint('Reset local data failed: $e\n$st');
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Reset failed: $e')));
+      return;
+    }
+    if (!mounted) return;
+    messenger.showSnackBar(const SnackBar(
+      content: Text('Local data cleared. Please quit and reopen the app.'),
+      duration: Duration(seconds: 8),
+    ));
   }
 }
 

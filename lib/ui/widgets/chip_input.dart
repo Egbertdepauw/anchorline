@@ -54,7 +54,10 @@ class _ChipInputState extends State<ChipInput> {
           width: 220,
           child: Autocomplete<String>(
             optionsBuilder: (TextEditingValue tev) {
-              if (tev.text.isEmpty) return const Iterable<String>.empty();
+              // Empty text → show every still-available option (filtering
+              // out values already chipped). Lets the field act as a
+              // discovery dropdown when the user hasn't typed yet.
+              if (tev.text.isEmpty) return available;
               return available.where(
                   (o) => o.toLowerCase().contains(tev.text.toLowerCase()));
             },

@@ -192,4 +192,57 @@ void main() {
       expect(pending, hasLength(3));
     });
   });
+
+  group('soft-delete', () {
+    setUp(() async {
+      // The 'subsurface uploaded' group's setUp imports 711/712/718 in
+      // its own scope; this group needs its own seed.
+      for (final n in [711, 712, 718]) {
+        final converted = _convertFixture(n);
+        final raw = File('test/fixtures/dives/dive_$n.bin').readAsBytesSync();
+        await dao.importDive(
+          converted: converted,
+          rawBlob: raw,
+          parserVersion: 1,
+        );
+      }
+    });
+
+    test('softDeleteDive hides the dive from getAllDives', () async {
+      final id = (await dao.getAllDives()).first.id;
+      await dao.softDeleteDive(id);
+      final visible = await dao.getAllDives();
+      expect(visible.any((d) => d.id == id), isFalse);
+      expect(visible, hasLength(2));
+    });
+
+    test('softDeleteDive also excludes from pending Subsurface uploads',
+        () async {
+      final id = (await dao.getAllDives()).first.id;
+      final beforeCount = (await dao.getPendingSubsurfaceUploads()).length;
+      await dao.softDeleteDive(id);
+      final pending = await dao.getPendingSubsurfaceUploads();
+      expect(pending, hasLength(beforeCount - 1));
+      expect(pending.any((d) => d.id == id), isFalse);
+    });
+
+    test('getDive still returns soft-deleted rows (for the undo path)',
+        () async {
+      final id = (await dao.getAllDives()).first.id;
+      await dao.softDeleteDive(id);
+      final row = await dao.getDive(id);
+      expect(row, isNotNull);
+      expect(row!.deletedAt, isNotNull);
+    });
+
+    test('restoreDive clears deletedAt and re-includes the dive', () async {
+      final id = (await dao.getAllDives()).first.id;
+      await dao.softDeleteDive(id);
+      expect((await dao.getAllDives()).any((d) => d.id == id), isFalse);
+      await dao.restoreDive(id);
+      final visible = await dao.getAllDives();
+      expect(visible.any((d) => d.id == id), isTrue);
+      expect(visible, hasLength(3));
+    });
+  });
 }

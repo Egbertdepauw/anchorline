@@ -164,7 +164,9 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
             textEditingController: _site,
             focusNode: _siteFocus,
             optionsBuilder: (tev) {
-              if (tev.text.isEmpty) return const Iterable<String>.empty();
+              // Empty text on focus → show every known site so the field
+              // doubles as a discovery dropdown, not just a filter.
+              if (tev.text.isEmpty) return _siteOptions;
               return _siteOptions.where(
                   (o) => o.toLowerCase().contains(tev.text.toLowerCase()));
             },

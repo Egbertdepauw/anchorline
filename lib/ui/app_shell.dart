@@ -185,6 +185,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     notifier: widget.settingsNotifier,
                     authService: widget.authService,
                     syncStatusSource: _syncStatusSource,
+                    db: widget.db,
+                    powerSyncDb: widget.powerSyncDb,
                   ),
                 ));
               },
@@ -211,6 +213,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             notifier: widget.settingsNotifier,
             authService: widget.authService,
             syncStatusSource: _syncStatusSource,
+            db: widget.db,
+            powerSyncDb: widget.powerSyncDb,
           ),
         ],
       ),

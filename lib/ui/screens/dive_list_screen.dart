@@ -317,7 +317,7 @@ class _DiveTileWithSparkline extends StatelessWidget {
       future: notifier.getSparklineData(dive.id),
       builder: (context, snapshot) {
         final ann = notifier.annotationsByDiveId[dive.id];
-        return DiveTile(
+        final tile = DiveTile(
           dive: dive,
           sparklineData: snapshot.data,
           annotation: ann,
@@ -341,6 +341,52 @@ class _DiveTileWithSparkline extends StatelessWidget {
             if (!context.mounted) return;
             await notifier.loadDives();
           },
+        );
+
+        return Dismissible(
+          key: ValueKey(dive.id),
+          direction: DismissDirection.endToStart,
+          background: Container(
+            alignment: Alignment.centerRight,
+            color: Colors.red.shade700,
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: const Icon(Icons.delete_outline, color: Colors.white),
+          ),
+          confirmDismiss: (_) async {
+            return await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Delete dive?'),
+                    content: Text(
+                        'Hides #${dive.dcDiveNumber} from the list. You can undo from the SnackBar that appears.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        child: const Text('Delete'),
+                      ),
+                    ],
+                  ),
+                ) ??
+                false;
+          },
+          onDismissed: (_) async {
+            final messenger = ScaffoldMessenger.of(context);
+            await notifier.softDeleteDive(dive.id);
+            if (!context.mounted) return;
+            messenger.showSnackBar(SnackBar(
+              content: Text('Dive #${dive.dcDiveNumber} deleted'),
+              action: SnackBarAction(
+                label: 'UNDO',
+                onPressed: () => notifier.restoreDive(dive.id),
+              ),
+              duration: const Duration(seconds: 6),
+            ));
+          },
+          child: tile,
         );
       },
     );
