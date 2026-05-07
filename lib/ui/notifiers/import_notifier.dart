@@ -282,7 +282,18 @@ class ImportNotifier extends ChangeNotifier {
   /// On completion (success or connection error), the newest successfully
   /// imported fingerprint is saved via [ImportStateDao] for incremental sync
   /// on the next import session.
-  Future<void> downloadAll() async {
+  /// Downloads [subset] (defaults to every new dive) and persists each one.
+  ///
+  /// Pass [subset] from the UI when the user has unchecked some entries
+  /// in the manifest list — useful for batching huge log lists into
+  /// multiple sessions to dodge Petrel session timers and battery
+  /// concerns. The fingerprint that gets saved at the end is the last
+  /// imported dive in [subset]; if you skip older dives via the UI,
+  /// they may be hidden from future incremental scans (use the
+  /// "Force full re-scan" toggle to bring them back).
+  Future<void> downloadAll([List<ManifestEntry>? subset]) async {
+    final toDownload = subset ?? _newDives;
+    _totalToDownload = toDownload.length;
     _state = ImportFlowState.downloading;
     _downloadedCount = 0;
     _failedCount = 0;
@@ -306,8 +317,8 @@ class ImportNotifier extends ChangeNotifier {
     final downloaded = <DownloadedDive>[];
     try {
       final diveStream = _isRealBle
-          ? _realTransport!.downloadDives(_newDives)
-          : _mockTransport!.downloadDives(_newDives);
+          ? _realTransport!.downloadDives(toDownload)
+          : _mockTransport!.downloadDives(toDownload);
 
       await for (final d in diveStream) {
         _currentDiveNumber = d.manifest.diveNumber;

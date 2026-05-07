@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:intl/intl.dart';
+
+import '../../shearwater/parser/manifest_parser.dart';
 import '../notifiers/import_notifier.dart';
 
 class ImportScreen extends StatefulWidget {
@@ -13,6 +16,11 @@ class ImportScreen extends StatefulWidget {
 }
 
 class _ImportScreenState extends State<ImportScreen> {
+  /// Dive numbers the user has unchecked in the manifest list. We track
+  /// the *excluded* set so a freshly-loaded manifest defaults to "all
+  /// selected" without us having to backfill the set every time.
+  final Set<int> _excludedDiveNumbers = {};
+
   @override
   void initState() {
     super.initState();
@@ -26,6 +34,10 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   void _onChanged() => setState(() {});
+
+  List<ManifestEntry> _selectedEntries() => widget.notifier.newDives
+      .where((e) => !_excludedDiveNumbers.contains(e.diveNumber))
+      .toList(growable: false);
 
   @override
   Widget build(BuildContext context) {
@@ -162,10 +174,13 @@ class _ImportScreenState extends State<ImportScreen> {
       ));
     }
 
-    return Center(child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    final selected = _selectedEntries();
+    final fade = theme.colorScheme.onSurface.withValues(alpha: 0.5);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (n.deviceInfo != null) ...[
+        if (n.deviceInfo != null)
           Card(child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(children: [
@@ -174,22 +189,84 @@ class _ImportScreenState extends State<ImportScreen> {
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(n.deviceInfo!.model.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                 Text('S/N ${n.deviceInfo!.serial} · ${n.deviceInfo!.firmware}',
-                    style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+                    style: TextStyle(fontSize: 12, color: fade)),
               ])),
             ]),
           )),
-        ],
-        const SizedBox(height: 24),
-        Text('Found ${n.newDives.length} new dives',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 32),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(
+            child: Text(
+              '${selected.length} of ${n.newDives.length} selected',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ),
+          TextButton(
+            onPressed: _excludedDiveNumbers.isEmpty
+                ? null
+                : () => setState(_excludedDiveNumbers.clear),
+            child: const Text('All'),
+          ),
+          TextButton(
+            onPressed: _excludedDiveNumbers.length == n.newDives.length
+                ? null
+                : () => setState(() => _excludedDiveNumbers
+                    .addAll(n.newDives.map((e) => e.diveNumber))),
+            child: const Text('None'),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Text(
+          'Tip: import in batches if you have a lot of dives. Petrel '
+          'log-mode sessions can time out around the 60-second mark.',
+          style: TextStyle(fontSize: 12, color: fade),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: ListView.builder(
+            itemCount: n.newDives.length,
+            itemBuilder: (context, i) {
+              final entry = n.newDives[i];
+              final excluded = _excludedDiveNumbers.contains(entry.diveNumber);
+              return CheckboxListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                controlAffinity: ListTileControlAffinity.leading,
+                value: !excluded,
+                onChanged: (v) => setState(() {
+                  if (v == true) {
+                    _excludedDiveNumbers.remove(entry.diveNumber);
+                  } else {
+                    _excludedDiveNumbers.add(entry.diveNumber);
+                  }
+                }),
+                title: Text('Dive #${entry.diveNumber}'),
+                subtitle: Text(_formatManifestSubtitle(entry),
+                    style: TextStyle(fontSize: 12, color: fade)),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
         FilledButton.icon(
-          onPressed: () => n.downloadAll(),
+          onPressed: selected.isEmpty
+              ? null
+              : () => n.downloadAll(selected),
           icon: const Icon(Icons.download),
-          label: Text('Import ${n.newDives.length} dives'),
+          label: Text(selected.length == n.newDives.length
+              ? 'Import all ${selected.length} dives'
+              : 'Import ${selected.length} selected'),
         ),
       ],
-    ));
+    );
+  }
+
+  String _formatManifestSubtitle(ManifestEntry entry) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(
+            entry.startTimestamp * 1000,
+            isUtc: true)
+        .toLocal();
+    return DateFormat('yyyy-MM-dd HH:mm').format(dt);
   }
 
   Widget _buildDownloading(ImportNotifier n, ThemeData theme) {
