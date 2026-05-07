@@ -333,11 +333,21 @@ class ImportNotifier extends ChangeNotifier {
       // user doesn't have to repeat the BLE handshake from scratch.
     }
 
-    // Release the BLE link before any disk work — no more timeout pressure.
+    // Release the BLE link before disk work — but cap the wait. The
+    // Shearwater protocol's shutdown handshake (a WDBI write the unit
+    // is meant to ack) silently never returns once the Petrel has
+    // already left log mode — which is the common case after the
+    // last selected dive came down. Three seconds is plenty for a
+    // healthy disconnect; longer than that means the device already
+    // walked away and Phase 2 should not wait.
     if (_isRealBle) {
       try {
-        await _realTransport!.disconnect();
-      } catch (_) {}
+        await _realTransport!
+            .disconnect()
+            .timeout(const Duration(seconds: 3));
+      } catch (e) {
+        debugPrint('BLE disconnect timed out / failed (non-fatal): $e');
+      }
     }
 
     // Phase 2: parse + persist. Failures here are local; the BLE side
