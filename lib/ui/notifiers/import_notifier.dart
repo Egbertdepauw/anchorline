@@ -287,55 +287,83 @@ class ImportNotifier extends ChangeNotifier {
     final serial = int.parse(_deviceInfo!.serial, radix: 16);
     ManifestEntry? lastSuccessfulEntry;
 
+    // Two-phase to keep BLE off the disk-write critical path. Shearwater
+    // computers (Petrel 1/2 especially) drop the connection if we don't
+    // request the next dive within ~15–30 seconds, and Phase 2.5's
+    // PowerSync writes are heavy enough (14 base64'd blob columns) that
+    // interleaving them with BLE downloads can blow that budget.
+    //
+    // Phase 1: pull every dive off the wire into memory as fast as the
+    //          dive computer will hand them over. No disk I/O.
+    // Phase 2: parse + persist sequentially with the BLE link already
+    //          released. No timeout pressure.
+
+    final downloaded = <DownloadedDive>[];
     try {
       final diveStream = _isRealBle
           ? _realTransport!.downloadDives(_newDives)
           : _mockTransport!.downloadDives(_newDives);
 
-      await for (final downloaded in diveStream) {
-        _currentDiveNumber = downloaded.manifest.diveNumber;
+      await for (final d in diveStream) {
+        _currentDiveNumber = d.manifest.diveNumber;
         notifyListeners();
-
-        try {
-          final parsed = parser.parse(downloaded.data);
-          final converted = DiveConverter.convert(
-            parsed: parsed,
-            dcSerial: serial,
-            dcDiveNumber: downloaded.manifest.diveNumber,
-            dcModel: _deviceInfo!.model,
-          );
-          final imported = await _dao.importDive(
-            converted: converted,
-            rawBlob: downloaded.data,
-            parserVersion: 1,
-          );
-          if (imported) {
-            _downloadedCount++;
-            lastSuccessfulEntry = downloaded.manifest;
-          }
-        } catch (e) {
-          debugPrint(
-            'Failed to import dive ${downloaded.manifest.diveNumber}: $e',
-          );
-          _failedCount++;
-        }
-        // Forward-compatible: parser does not currently surface scrubberResetAt.
-        try {
-          await _equipmentDao.applyScrubberEvents(
-            scrubberResetAt: null,
-            dcSerial: serial,
-          );
-        } catch (e) {
-          debugPrint('Failed to apply scrubber events: $e');
-        }
-        notifyListeners();
+        downloaded.add(d);
       }
-
-      _state = ImportFlowState.done;
     } catch (e) {
       _errorMessage =
-          'Connection lost. $_downloadedCount of $_totalToDownload dives imported.';
+          'Connection lost. ${downloaded.length} of $_totalToDownload dives downloaded.';
       _state = ImportFlowState.error;
+      // Even on a partial download, persist whatever we did get so the
+      // user doesn't have to repeat the BLE handshake from scratch.
+    }
+
+    // Release the BLE link before any disk work — no more timeout pressure.
+    if (_isRealBle) {
+      try {
+        await _realTransport!.disconnect();
+      } catch (_) {}
+    }
+
+    // Phase 2: parse + persist. Failures here are local; the BLE side
+    // is already done.
+    for (final d in downloaded) {
+      _currentDiveNumber = d.manifest.diveNumber;
+      notifyListeners();
+      try {
+        final parsed = parser.parse(d.data);
+        final converted = DiveConverter.convert(
+          parsed: parsed,
+          dcSerial: serial,
+          dcDiveNumber: d.manifest.diveNumber,
+          dcModel: _deviceInfo!.model,
+        );
+        final imported = await _dao.importDive(
+          converted: converted,
+          rawBlob: d.data,
+          parserVersion: 1,
+        );
+        if (imported) {
+          _downloadedCount++;
+          lastSuccessfulEntry = d.manifest;
+        }
+      } catch (e) {
+        debugPrint('Failed to import dive ${d.manifest.diveNumber}: $e');
+        _failedCount++;
+      }
+      // Forward-compatible: parser does not currently surface scrubberResetAt.
+      try {
+        await _equipmentDao.applyScrubberEvents(
+          scrubberResetAt: null,
+          dcSerial: serial,
+        );
+      } catch (e) {
+        debugPrint('Failed to apply scrubber events: $e');
+      }
+      notifyListeners();
+    }
+
+    if (_state != ImportFlowState.error) {
+      _state = ImportFlowState.done;
     }
 
     // Save fingerprint for incremental sync on real BLE imports
@@ -344,13 +372,6 @@ class ImportNotifier extends ChangeNotifier {
         _deviceInfo!.serial,
         lastSuccessfulEntry.fingerprint,
       );
-    }
-
-    // Disconnect real transport when done
-    if (_isRealBle) {
-      try {
-        await _realTransport!.disconnect();
-      } catch (_) {}
     }
 
     _currentDiveNumber = null;
