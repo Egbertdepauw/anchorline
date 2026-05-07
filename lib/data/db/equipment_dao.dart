@@ -31,6 +31,31 @@ class EquipmentDao {
 
   String? get _ownerId => _session.currentSession?.user.id;
 
+  // ── Watch streams ───────────────────────────────────────────────────────
+  //
+  // Each fires on every change to its table — including remote writes that
+  // PowerSync pulls from the cloud. Emits an initial event on subscription.
+  // Notifiers wire these into `load()` so screens stay in sync without a
+  // pull-to-refresh.
+
+  Stream<void> watchCylinders() =>
+      _ps.watch('SELECT 1 FROM cylinders LIMIT 1').map((_) {});
+
+  Stream<void> watchOxygenCells() =>
+      _ps.watch('SELECT 1 FROM oxygen_cells LIMIT 1').map((_) {});
+
+  Stream<void> watchScrubberSessions() =>
+      _ps.watch('SELECT 1 FROM scrubber_sessions LIMIT 1').map((_) {});
+
+  Stream<void> watchDiveComputers() =>
+      _ps.watch('SELECT 1 FROM dive_computers LIMIT 1').map((_) {});
+
+  Stream<void> watchPressureMappings() =>
+      _ps.watch('SELECT 1 FROM pressure_mappings LIMIT 1').map((_) {});
+
+  Stream<void> watchDiveCylinders() =>
+      _ps.watch('SELECT 1 FROM dive_cylinders LIMIT 1').map((_) {});
+
   // ── DiveCylinders (per-dive gas-mix → cylinder mapping) ─────────────────
   //
   // Composite Drift PK (dive_id, gas_mix_index); synthesized cloud id is

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart';
 
@@ -6,8 +8,27 @@ import '../../data/db/equipment_dao.dart';
 
 class DiveComputersNotifier extends ChangeNotifier {
   final EquipmentDao _dao;
+  StreamSubscription<void>? _watchSub;
+  bool _disposed = false;
 
-  DiveComputersNotifier(this._dao);
+  DiveComputersNotifier(this._dao) {
+    _watchSub = _dao.watchDiveComputers().listen(
+      (_) {
+        if (_disposed) return;
+        load();
+      },
+      // Subscription can outlive the underlying psDb during teardown;
+      // swallow connection-closed errors instead of letting them surface.
+      onError: (_) {},
+    );
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _watchSub?.cancel();
+    super.dispose();
+  }
 
   List<DiveComputer> _computers = [];
   List<DiveComputer> get computers => List.unmodifiable(_computers);
@@ -16,9 +37,12 @@ class DiveComputersNotifier extends ChangeNotifier {
   bool get loading => _loading;
 
   Future<void> load() async {
+    if (_disposed) return;
     _loading = true;
     notifyListeners();
-    _computers = await _dao.listDiveComputers();
+    final list = await _dao.listDiveComputers();
+    if (_disposed) return;
+    _computers = list;
     _loading = false;
     notifyListeners();
   }
@@ -32,7 +56,10 @@ class DiveComputersNotifier extends ChangeNotifier {
   List<PressureMapping> get mappings => List.unmodifiable(_mappings);
 
   Future<void> loadMappings(String diveComputerId) async {
-    _mappings = await _dao.listPressureMappings(diveComputerId);
+    if (_disposed) return;
+    final list = await _dao.listPressureMappings(diveComputerId);
+    if (_disposed) return;
+    _mappings = list;
     notifyListeners();
   }
 
@@ -52,7 +79,25 @@ class DiveComputersNotifier extends ChangeNotifier {
 
 class CellsNotifier extends ChangeNotifier {
   final EquipmentDao _dao;
-  CellsNotifier(this._dao);
+  StreamSubscription<void>? _watchSub;
+  bool _disposed = false;
+
+  CellsNotifier(this._dao) {
+    _watchSub = _dao.watchOxygenCells().listen(
+      (_) {
+        if (_disposed) return;
+        load();
+      },
+      onError: (_) {},
+    );
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _watchSub?.cancel();
+    super.dispose();
+  }
 
   List<OxygenCell> _cells = [];
   List<OxygenCell> get cells => List.unmodifiable(_cells);
@@ -61,9 +106,12 @@ class CellsNotifier extends ChangeNotifier {
   bool get loading => _loading;
 
   Future<void> load() async {
+    if (_disposed) return;
     _loading = true;
     notifyListeners();
-    _cells = await _dao.listCells();
+    final list = await _dao.listCells();
+    if (_disposed) return;
+    _cells = list;
     _loading = false;
     notifyListeners();
   }
@@ -115,13 +163,34 @@ class CellsNotifier extends ChangeNotifier {
 
 class ScrubberSessionsNotifier extends ChangeNotifier {
   final EquipmentDao _dao;
-  ScrubberSessionsNotifier(this._dao);
+  StreamSubscription<void>? _watchSub;
+  bool _disposed = false;
+
+  ScrubberSessionsNotifier(this._dao) {
+    _watchSub = _dao.watchScrubberSessions().listen(
+      (_) {
+        if (_disposed) return;
+        load();
+      },
+      onError: (_) {},
+    );
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _watchSub?.cancel();
+    super.dispose();
+  }
 
   List<ScrubberSession> _sessions = [];
   List<ScrubberSession> get sessions => List.unmodifiable(_sessions);
 
   Future<void> load() async {
-    _sessions = await _dao.listScrubberSessions();
+    if (_disposed) return;
+    final list = await _dao.listScrubberSessions();
+    if (_disposed) return;
+    _sessions = list;
     notifyListeners();
   }
 
@@ -167,13 +236,34 @@ class ScrubberSessionsNotifier extends ChangeNotifier {
 
 class CylindersNotifier extends ChangeNotifier {
   final EquipmentDao _dao;
-  CylindersNotifier(this._dao);
+  StreamSubscription<void>? _watchSub;
+  bool _disposed = false;
+
+  CylindersNotifier(this._dao) {
+    _watchSub = _dao.watchCylinders().listen(
+      (_) {
+        if (_disposed) return;
+        load();
+      },
+      onError: (_) {},
+    );
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _watchSub?.cancel();
+    super.dispose();
+  }
 
   List<Cylinder> _cylinders = [];
   List<Cylinder> get cylinders => List.unmodifiable(_cylinders);
 
   Future<void> load() async {
-    _cylinders = await _dao.listCylinders();
+    if (_disposed) return;
+    final list = await _dao.listCylinders();
+    if (_disposed) return;
+    _cylinders = list;
     notifyListeners();
   }
 

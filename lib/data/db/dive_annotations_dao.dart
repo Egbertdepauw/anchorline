@@ -28,6 +28,14 @@ class DiveAnnotationsDao {
 
   DiveAnnotationsDao(this._db, this._session);
 
+  /// Fires whenever any row in `dive_annotations` is inserted, updated, or
+  /// deleted — including PowerSync-driven changes coming from the cloud.
+  /// Emits an initial event on subscription so subscribers can do their
+  /// first load via this stream alone if they want to.
+  Stream<void> watchChanges() => _db
+      .watch('SELECT 1 FROM dive_annotations LIMIT 1')
+      .map((_) {});
+
   // ── DiveAnnotations ─────────────────────────────────────────────────────
 
   Future<DiveAnnotation?> get(String diveId) async {
