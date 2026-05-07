@@ -3,7 +3,6 @@ library;
 
 import 'package:drift/drift.dart';
 
-import 'equipment_dao.dart';
 import 'tables.dart';
 
 part 'database.g.dart';
@@ -21,7 +20,6 @@ part 'database.g.dart';
     DiveCylinders,
     ImportStates,
   ],
-  daos: [EquipmentDao],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);

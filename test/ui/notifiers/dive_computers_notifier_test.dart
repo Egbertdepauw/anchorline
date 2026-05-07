@@ -1,14 +1,15 @@
 import 'package:ccrlogger/data/db/database.dart';
-import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/ui/notifiers/equipment_notifiers.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../_helpers/powersync_test_helper.dart';
 
 void main() {
   test('load() populates list and notifies', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    final dao = EquipmentDao(db);
+    final dao = (await openEquipmentDaoForTest(db)).dao;
     await dao.upsertDiveComputer(serial: 1, model: 0xB407);
 
     final n = DiveComputersNotifier(dao);
@@ -23,7 +24,7 @@ void main() {
   test('setMapping persists and reloads mappings', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    final dao = EquipmentDao(db);
+    final dao = (await openEquipmentDaoForTest(db)).dao;
     await dao.upsertDiveComputer(serial: 1, model: 0xB407);
     final dcs = await dao.listDiveComputers();
     final dcId = dcs.single.id;

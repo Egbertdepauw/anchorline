@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../_helpers/powersync_test_helper.dart';
+
 class _FakeAuthClient implements AuthClient {
   User? user;
   Session? session;
@@ -61,38 +63,59 @@ User _user(String id, String email) => User(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('counts null-owner rows across sync-eligible tables', () async {
+  test('copies sync-eligible rows from Drift into PowerSync stamped with userId', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
+    final ps = await openPowerSyncForTest();
 
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    // Two null-owner annotations.
+    // Two annotations + one cell — three rows total.
     await db.customStatement('''
       INSERT INTO dive_annotations
         (dive_id, created_at, updated_at, version, sync_status)
       VALUES ('d1', $now, $now, 1, 0), ('d2', $now, $now, 1, 0)
     ''');
-    // One null-owner cell.
     await db.customStatement('''
       INSERT INTO oxygen_cells
         (id, slot, created_at, updated_at, version, sync_status)
       VALUES ('c1', 1, $now, $now, 1, 0)
     ''');
-    // One row that already has an owner — should not be counted.
-    await db.customStatement('''
-      INSERT INTO oxygen_cells
-        (id, slot, created_at, updated_at, version, sync_status, owner_id)
-      VALUES ('c2', 2, $now, $now, 1, 0, 'someone')
-    ''');
 
-    final backfiller = OwnerIdBackfiller(db);
+    final backfiller = OwnerIdBackfiller(db, ps);
     final n = await backfiller.backfillIfNeeded('uid-123');
     expect(n, 3);
+
+    // Verify the rows landed in PowerSync with the correct owner_id.
+    final psAnnotations = await ps.getAll('SELECT id, owner_id FROM dive_annotations');
+    expect(psAnnotations, hasLength(2));
+    expect(psAnnotations.every((r) => r['owner_id'] == 'uid-123'), isTrue);
+
+    final psCells = await ps.getAll('SELECT id, owner_id FROM oxygen_cells');
+    expect(psCells, hasLength(1));
+    expect(psCells.single['owner_id'], 'uid-123');
+  });
+
+  test('is idempotent: a second run copies zero rows', () async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final ps = await openPowerSyncForTest();
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await db.customStatement('''
+      INSERT INTO oxygen_cells
+        (id, slot, created_at, updated_at, version, sync_status)
+      VALUES ('c1', 1, $now, $now, 1, 0)
+    ''');
+
+    final backfiller = OwnerIdBackfiller(db, ps);
+    expect(await backfiller.backfillIfNeeded('uid'), 1);
+    expect(await backfiller.backfillIfNeeded('uid'), 0);
   });
 
   test('AuthService.signIn invokes the backfiller and logs', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
+    final ps = await openPowerSyncForTest();
 
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await db.customStatement('''
@@ -115,7 +138,7 @@ void main() {
 
     final svc = AuthService(
       client: fake,
-      backfiller: OwnerIdBackfiller(db),
+      backfiller: OwnerIdBackfiller(db, ps),
     );
     addTearDown(() {
       svc.dispose();
@@ -135,9 +158,9 @@ void main() {
     }
 
     expect(
-      logs.any((m) => m.contains('would stamp 3 rows')),
+      logs.any((m) => m.contains('copied 3 rows')),
       isTrue,
-      reason: 'expected total log; got: $logs',
+      reason: 'expected backfill log; got: $logs',
     );
   });
 }

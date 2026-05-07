@@ -6,6 +6,8 @@ library;
 
 import 'dart:io';
 
+import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/sync/cloud/ccrlogger_backend_connector.dart'
     show SessionSource;
 import 'package:ccrlogger/sync/cloud/powersync_schema.dart';
@@ -55,4 +57,25 @@ Future<PowerSyncDatabase> openPowerSyncForTest() async {
     }
   });
   return db;
+}
+
+/// Convenience: build an [EquipmentDao] wired to fresh Drift + PowerSync
+/// instances, with a [FakeSessionSource] (signed-in test user by default
+/// so `owner_id` gets stamped on writes).
+Future<EquipmentDaoTestRig> openEquipmentDaoForTest(AppDatabase drift) async {
+  final ps = await openPowerSyncForTest();
+  final session = FakeSessionSource()..setUserId('test-user');
+  final dao = EquipmentDao(drift, ps, session);
+  return EquipmentDaoTestRig(dao: dao, ps: ps, session: session);
+}
+
+class EquipmentDaoTestRig {
+  final EquipmentDao dao;
+  final PowerSyncDatabase ps;
+  final FakeSessionSource session;
+  EquipmentDaoTestRig({
+    required this.dao,
+    required this.ps,
+    required this.session,
+  });
 }

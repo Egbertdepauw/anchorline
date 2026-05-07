@@ -7766,7 +7766,6 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $DiveCylindersTable diveCylinders = $DiveCylindersTable(this);
   late final $ImportStatesTable importStates = $ImportStatesTable(this);
-  late final EquipmentDao equipmentDao = EquipmentDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();

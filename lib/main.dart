@@ -37,7 +37,8 @@ void main() async {
   final settings = SettingsNotifier();
   await settings.load();
 
-  final authService = AuthService(backfiller: OwnerIdBackfiller(db));
+  final authService =
+      AuthService(backfiller: OwnerIdBackfiller(db, powerSyncDb));
 
   // Held for the app lifetime; tear-down happens at process exit.
   CloudSyncCoordinator(

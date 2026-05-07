@@ -1,10 +1,11 @@
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
-import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/data/db/import_state_dao.dart';
 import 'package:ccrlogger/ui/notifiers/import_notifier.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../_helpers/powersync_test_helper.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -14,14 +15,14 @@ void main() {
   late ImportStateDao importStateDao;
   late ImportNotifier notifier;
 
-  setUp(() {
+  setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
     dao = DiveDao(db);
     importStateDao = ImportStateDao(db);
     notifier = ImportNotifier(
       dao: dao,
       importStateDao: importStateDao,
-      equipmentDao: EquipmentDao(db),
+      equipmentDao: (await openEquipmentDaoForTest(db)).dao,
       useMock: true,
     );
   });

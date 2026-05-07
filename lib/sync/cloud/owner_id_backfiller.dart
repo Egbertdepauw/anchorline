@@ -1,54 +1,176 @@
-/// Stamps `owner_id` on rows that lack one after a user signs in for
-/// the first time.
+/// One-shot Drift → PowerSync data migration, run on first sign-in.
 ///
-/// Phase 2.1: counts null-owner rows across every sync-eligible Drift
-/// table and logs the total. Actual writing is wired up in Phase 2.2
-/// once PowerSync is live — until then we just want observable numbers
-/// to verify the backfill against.
+/// Phase 2.0–2.2 wrote sync-eligible rows to Drift; Phase 2.2b/2.3 moved
+/// them to PowerSync. Existing users have data in Drift that needs to
+/// land in the PowerSync local DB so PowerSync can upload it to Postgres.
+///
+/// We copy each row, stamping `owner_id = userId` along the way. Idempotent:
+/// if a row's `id` already exists in PowerSync we skip it (the user signed
+/// in twice, or they re-installed and the second sign-in is a no-op
+/// because PowerSync already pulled their cloud rows).
 library;
-
 import 'package:flutter/foundation.dart';
+import 'package:powersync/powersync.dart';
 
 import '../../data/db/database.dart';
 
-/// Tables that carry an `owner_id` column today. Keep this list in sync
-/// with `tables.dart`; missing entries silently skip the table.
-const _syncEligibleTables = [
-  'dive_annotations',
-  'dive_computers',
-  'oxygen_cells',
-  'scrubber_sessions',
-  'cylinders',
-  'pressure_mappings',
-  'dive_cylinders',
-];
-
 class OwnerIdBackfiller {
-  final AppDatabase db;
+  final AppDatabase _drift;
+  final PowerSyncDatabase _ps;
 
-  OwnerIdBackfiller(this.db);
+  OwnerIdBackfiller(this._drift, this._ps);
 
-  /// Returns the number of rows across all sync-eligible tables that
-  /// would receive `owner_id = userId`. Logs a per-table breakdown via
-  /// [debugPrint]. Phase 2.1 does not write — Phase 2.2 will.
+  /// Copies every sync-eligible row from Drift into PowerSync, stamping
+  /// [userId] as `owner_id`. Returns the total number of rows copied.
   Future<int> backfillIfNeeded(String userId) async {
     var total = 0;
-    for (final table in _syncEligibleTables) {
-      final n = await _countNullOwners(table);
-      if (n > 0) {
-        debugPrint('OwnerIdBackfiller: $table has $n null-owner rows');
-      }
-      total += n;
-    }
-    debugPrint(
-        'OwnerIdBackfiller: would stamp $total rows with owner_id=$userId');
+    total += await _copyDiveAnnotations(userId);
+    total += await _copyDiveComputers(userId);
+    total += await _copyOxygenCells(userId);
+    total += await _copyScrubberSessions(userId);
+    total += await _copyCylinders(userId);
+    total += await _copyPressureMappings(userId);
+    total += await _copyDiveCylinders(userId);
+    debugPrint('OwnerIdBackfiller: copied $total rows for user $userId');
     return total;
   }
 
-  Future<int> _countNullOwners(String table) async {
-    final row = await db
-        .customSelect('SELECT COUNT(*) AS c FROM $table WHERE owner_id IS NULL')
-        .getSingle();
-    return row.read<int>('c');
+  Future<bool> _exists(String table, String id) async {
+    final row = await _ps.getOptional('SELECT id FROM $table WHERE id = ?', [id]);
+    return row != null;
+  }
+
+  Future<int> _copyDiveAnnotations(String userId) async {
+    final rows = await _drift.select(_drift.diveAnnotations).get();
+    var n = 0;
+    for (final r in rows) {
+      if (await _exists('dive_annotations', r.diveId)) continue;
+      await _ps.execute(
+        'INSERT INTO dive_annotations '
+        '(id, owner_id, dive_id, site_name, site_latitude_e5, '
+        'site_longitude_e5, notes, buddies_json, tags_json, rating, '
+        'conditions, created_at, updated_at, deleted_at, version, sync_status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [r.diveId, userId, r.diveId, r.siteName, r.siteLatitudeE5,
+          r.siteLongitudeE5, r.notes, r.buddiesJson, r.tagsJson, r.rating,
+          r.conditions, r.createdAt, r.updatedAt, r.deletedAt,
+          r.version, r.syncStatus],
+      );
+      n++;
+    }
+    return n;
+  }
+
+  Future<int> _copyDiveComputers(String userId) async {
+    final rows = await _drift.select(_drift.diveComputers).get();
+    var n = 0;
+    for (final r in rows) {
+      if (await _exists('dive_computers', r.id)) continue;
+      await _ps.execute(
+        'INSERT INTO dive_computers '
+        '(id, owner_id, serial, model, firmware_version, nickname, '
+        'created_at, updated_at, deleted_at, version, sync_status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [r.id, userId, r.serial, r.model, r.firmwareVersion, r.nickname,
+          r.createdAt, r.updatedAt, r.deletedAt, r.version, r.syncStatus],
+      );
+      n++;
+    }
+    return n;
+  }
+
+  Future<int> _copyOxygenCells(String userId) async {
+    final rows = await _drift.select(_drift.oxygenCells).get();
+    var n = 0;
+    for (final r in rows) {
+      if (await _exists('oxygen_cells', r.id)) continue;
+      await _ps.execute(
+        'INSERT INTO oxygen_cells '
+        '(id, owner_id, slot, label, installed_date, retired_date, notes, '
+        'created_at, updated_at, deleted_at, version, sync_status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [r.id, userId, r.slot, r.label, r.installedDate, r.retiredDate,
+          r.notes, r.createdAt, r.updatedAt, r.deletedAt,
+          r.version, r.syncStatus],
+      );
+      n++;
+    }
+    return n;
+  }
+
+  Future<int> _copyScrubberSessions(String userId) async {
+    final rows = await _drift.select(_drift.scrubberSessions).get();
+    var n = 0;
+    for (final r in rows) {
+      if (await _exists('scrubber_sessions', r.id)) continue;
+      await _ps.execute(
+        'INSERT INTO scrubber_sessions '
+        '(id, owner_id, started_date, total_minutes, media_type, notes, '
+        'created_at, updated_at, deleted_at, version, sync_status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [r.id, userId, r.startedDate, r.totalMinutes, r.mediaType, r.notes,
+          r.createdAt, r.updatedAt, r.deletedAt, r.version, r.syncStatus],
+      );
+      n++;
+    }
+    return n;
+  }
+
+  Future<int> _copyCylinders(String userId) async {
+    final rows = await _drift.select(_drift.cylinders).get();
+    var n = 0;
+    for (final r in rows) {
+      if (await _exists('cylinders', r.id)) continue;
+      await _ps.execute(
+        'INSERT INTO cylinders '
+        '(id, owner_id, label, role, bailout_order, volume_liters, '
+        'working_pressure_bar, gas_mix, notes, '
+        'created_at, updated_at, deleted_at, version, sync_status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [r.id, userId, r.label, r.role, r.bailoutOrder, r.volumeLiters,
+          r.workingPressureBar, r.gasMix, r.notes,
+          r.createdAt, r.updatedAt, r.deletedAt, r.version, r.syncStatus],
+      );
+      n++;
+    }
+    return n;
+  }
+
+  Future<int> _copyPressureMappings(String userId) async {
+    final rows = await _drift.select(_drift.pressureMappings).get();
+    var n = 0;
+    for (final r in rows) {
+      final id = '${r.diveComputerId}:${r.channelIndex}';
+      if (await _exists('pressure_mappings', id)) continue;
+      await _ps.execute(
+        'INSERT INTO pressure_mappings '
+        '(id, owner_id, dive_computer_id, channel_index, cylinder_id, '
+        'created_at, updated_at, deleted_at, version, sync_status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, userId, r.diveComputerId, r.channelIndex, r.cylinderId,
+          r.createdAt, r.updatedAt, r.deletedAt, r.version, r.syncStatus],
+      );
+      n++;
+    }
+    return n;
+  }
+
+  Future<int> _copyDiveCylinders(String userId) async {
+    final rows = await _drift.select(_drift.diveCylinders).get();
+    var n = 0;
+    for (final r in rows) {
+      final id = '${r.diveId}:${r.gasMixIndex}';
+      if (await _exists('dive_cylinders', id)) continue;
+      await _ps.execute(
+        'INSERT INTO dive_cylinders '
+        '(id, owner_id, dive_id, gas_mix_index, cylinder_id, '
+        'created_at, updated_at, deleted_at, version, sync_status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, userId, r.diveId, r.gasMixIndex, r.cylinderId,
+          r.createdAt, r.updatedAt, r.deletedAt, r.version, r.syncStatus],
+      );
+      n++;
+    }
+    return n;
   }
 }

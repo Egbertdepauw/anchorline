@@ -31,13 +31,13 @@ void main() {
 
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
-    equipmentDao = EquipmentDao(db);
     tmpDir = await Directory.systemTemp.createTemp('ccrlogger_psync_');
     psDb = PowerSyncDatabase(
       schema: appSchema,
       path: p.join(tmpDir.path, 'powersync.db'),
     );
     await psDb.initialize();
+    equipmentDao = EquipmentDao(db, psDb, _FakeSessionSource());
     annotationsDao = DiveAnnotationsDao(psDb, _FakeSessionSource());
   });
 

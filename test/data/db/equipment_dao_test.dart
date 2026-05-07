@@ -7,6 +7,8 @@ import 'package:ccrlogger/data/sample_codec/column_packer.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../_helpers/powersync_test_helper.dart';
+
 AppDatabase _db() => AppDatabase(NativeDatabase.memory());
 
 /// Inserts a Dives row + a DiveSamples row whose per-channel blobs hold
@@ -79,9 +81,9 @@ void main() {
   late AppDatabase db;
   late EquipmentDao dao;
 
-  setUp(() {
+  setUp(() async {
     db = _db();
-    dao = EquipmentDao(db);
+    dao = (await openEquipmentDaoForTest(db)).dao;
   });
 
   tearDown(() async {

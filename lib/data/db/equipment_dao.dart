@@ -1,71 +1,98 @@
 /// Data Access Object for equipment-view tables: dive computers, oxygen
-/// cells, scrubber sessions, cylinders, and pressure-channel mappings.
+/// cells, scrubber sessions, cylinders, pressure-channel mappings, and
+/// per-dive cylinder assignments.
 ///
-/// Uses the `DriftAccessor` pattern so that table accessors (e.g.
-/// `diveComputers`) are available directly on the DAO via the generated
-/// `_$EquipmentDaoMixin`.
+/// Phase 2.3: hybrid backend. The six sync-eligible tables live in
+/// PowerSync (raw SQL via the `PowerSyncDatabase` view). Analysis
+/// methods that join with imported dive data still query Drift directly
+/// — `recentImportsForComputer`, `surfaceMvSeriesForCell`, scrubber
+/// minute accumulation. The DAO holds both database handles and stitches
+/// the two halves in Dart.
+///
+/// Drift row types (`Cylinder`, `OxygenCell`, etc.) are kept as the
+/// public API surface so the existing UI/notifier callers don't change;
+/// internally they're rebuilt from PowerSync `Map<String, dynamic>` rows.
 library;
-
 import 'package:drift/drift.dart';
+import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 
 import '../../analysis/cell_health.dart';
+import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
 import '../models/equipment.dart' show CylinderRole, SlotInUseException;
 import '../sample_codec/column_packer.dart';
 import 'database.dart';
-import 'tables.dart';
 
-part 'equipment_dao.g.dart';
+class EquipmentDao {
+  final AppDatabase _drift;
+  final PowerSyncDatabase _ps;
+  final SessionSource _session;
 
-@DriftAccessor(tables: [
-  DiveComputers,
-  OxygenCells,
-  ScrubberSessions,
-  Cylinders,
-  PressureMappings,
-  DiveCylinders,
-])
-class EquipmentDao extends DatabaseAccessor<AppDatabase>
-    with _$EquipmentDaoMixin {
-  EquipmentDao(super.db);
+  EquipmentDao(this._drift, this._ps, this._session);
+
+  String? get _ownerId => _session.currentSession?.user.id;
 
   // ── DiveCylinders (per-dive gas-mix → cylinder mapping) ─────────────────
   //
-  // Lives on Drift through Phase 2.2 even though `dive_cylinders` is a
-  // sync-eligible table — Phase 2.3 repoints it to PowerSync alongside
-  // the other six. Until then, callers see a Drift-backed API.
+  // Composite Drift PK (dive_id, gas_mix_index); synthesized cloud id is
+  // "<dive_id>:<gas_mix_index>".
 
-  Future<List<DiveCylinder>> listCylindersForDive(String diveId) {
-    return (select(diveCylinders)
-          ..where((t) => t.diveId.equals(diveId) & t.deletedAt.isNull())
-          ..orderBy([(t) => OrderingTerm.asc(t.gasMixIndex)]))
-        .get();
+  Future<List<DiveCylinder>> listCylindersForDive(String diveId) async {
+    final rows = await _ps.getAll(
+      'SELECT * FROM dive_cylinders '
+      'WHERE dive_id = ? AND deleted_at IS NULL '
+      'ORDER BY gas_mix_index ASC',
+      [diveId],
+    );
+    return rows.map(_rowToDiveCylinder).toList();
   }
 
   Future<void> setDiveCylinder(
       String diveId, int gasMixIndex, String? cylinderId) async {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    await into(diveCylinders).insertOnConflictUpdate(
-      DiveCylindersCompanion.insert(
-        diveId: diveId,
-        gasMixIndex: gasMixIndex,
-        cylinderId: Value(cylinderId),
-        createdAt: now,
-        updatedAt: now,
-      ),
-    );
+    await _ps.writeTransaction((tx) async {
+      await _upsertDiveCylinderTx(tx, diveId, gasMixIndex, cylinderId);
+    });
   }
 
-  /// Persists a batch of (gasMixIndex, cylinderId) mappings for a single
-  /// dive in one Drift transaction.
   Future<void> setDiveCylinders(
     String diveId,
     List<({int gasMixIndex, String? cylinderId})> mappings,
   ) async {
-    await db.transaction(() async {
+    await _ps.writeTransaction((tx) async {
       for (final m in mappings) {
-        await setDiveCylinder(diveId, m.gasMixIndex, m.cylinderId);
+        await _upsertDiveCylinderTx(tx, diveId, m.gasMixIndex, m.cylinderId);
       }
     });
+  }
+
+  Future<void> _upsertDiveCylinderTx(
+    dynamic tx,
+    String diveId,
+    int gasMixIndex,
+    String? cylinderId,
+  ) async {
+    final id = '$diveId:$gasMixIndex';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final existing = await tx.getOptional(
+      'SELECT version FROM dive_cylinders WHERE id = ?',
+      [id],
+    );
+    if (existing == null) {
+      await tx.execute(
+        'INSERT INTO dive_cylinders '
+        '(id, owner_id, dive_id, gas_mix_index, cylinder_id, '
+        'created_at, updated_at, deleted_at, version, sync_status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, _ownerId, diveId, gasMixIndex, cylinderId, now, now, null, 1, 0],
+      );
+    } else {
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE dive_cylinders SET '
+        'owner_id = ?, cylinder_id = ?, updated_at = ?, version = ? '
+        'WHERE id = ?',
+        [_ownerId, cylinderId, now, newVersion, id],
+      );
+    }
   }
 
   // ── DiveComputers ────────────────────────────────────────────────────────
@@ -78,58 +105,75 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     int? firmwareVersion,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    final existing = await (select(diveComputers)
-          ..where((t) => t.serial.equals(serial)))
-        .getSingleOrNull();
-
-    if (existing == null) {
-      final id = 'dc_${serial.toRadixString(16)}';
-      await into(diveComputers).insert(DiveComputersCompanion.insert(
-        id: id,
-        serial: serial,
-        model: model,
-        firmwareVersion: Value(firmwareVersion),
-        createdAt: now,
-        updatedAt: now,
-      ));
+    return await _ps.writeTransaction<String>((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT id, version FROM dive_computers WHERE serial = ?',
+        [serial],
+      );
+      if (existing == null) {
+        final id = 'dc_${serial.toRadixString(16)}';
+        await tx.execute(
+          'INSERT INTO dive_computers '
+          '(id, owner_id, serial, model, firmware_version, nickname, '
+          'created_at, updated_at, deleted_at, version, sync_status) '
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [id, _ownerId, serial, model, firmwareVersion, null,
+            now, now, null, 1, 0],
+        );
+        return id;
+      }
+      final id = existing['id'] as String;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE dive_computers SET '
+        'owner_id = ?, model = ?, firmware_version = ?, '
+        'updated_at = ?, version = ? '
+        'WHERE id = ?',
+        [_ownerId, model, firmwareVersion, now, newVersion, id],
+      );
       return id;
-    }
+    });
+  }
 
-    await (update(diveComputers)..where((t) => t.id.equals(existing.id))).write(
-      DiveComputersCompanion(
-        model: Value(model),
-        firmwareVersion: Value(firmwareVersion),
-        updatedAt: Value(now),
-      ),
+  Future<List<DiveComputer>> listDiveComputers() async {
+    final rows = await _ps.getAll(
+      'SELECT * FROM dive_computers '
+      'WHERE deleted_at IS NULL '
+      'ORDER BY updated_at DESC',
     );
-    return existing.id;
+    return rows.map(_rowToDiveComputer).toList();
   }
 
-  Future<List<DiveComputer>> listDiveComputers() {
-    return (select(diveComputers)
-          ..where((t) => t.deletedAt.isNull())
-          ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)]))
-        .get();
-  }
-
-  Future<DiveComputer?> getDiveComputerBySerial(int serial) {
-    return (select(diveComputers)..where((t) => t.serial.equals(serial)))
-        .getSingleOrNull();
+  Future<DiveComputer?> getDiveComputerBySerial(int serial) async {
+    final row = await _ps.getOptional(
+      'SELECT * FROM dive_computers WHERE serial = ?',
+      [serial],
+    );
+    return row == null ? null : _rowToDiveComputer(row);
   }
 
   Future<void> setComputerNickname(String id, String? nickname) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    await (update(diveComputers)..where((t) => t.id.equals(id))).write(
-      DiveComputersCompanion(
-        nickname: Value(nickname),
-        updatedAt: Value(now),
-      ),
-    );
+    await _ps.writeTransaction((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT version FROM dive_computers WHERE id = ?',
+        [id],
+      );
+      if (existing == null) return;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE dive_computers SET '
+        'owner_id = ?, nickname = ?, updated_at = ?, version = ? '
+        'WHERE id = ?',
+        [_ownerId, nickname, now, newVersion, id],
+      );
+    });
   }
 
   /// Most recent dives imported from this computer (by `dcSerial`).
+  /// Stays on Drift — Dives are not sync-eligible.
   Future<List<Dive>> recentImportsForComputer(int serial, {int limit = 10}) {
-    return (select(db.dives)
+    return (_drift.select(_drift.dives)
           ..where((t) => t.dcSerial.equals(serial))
           ..orderBy([(t) => OrderingTerm.desc(t.startTime)])
           ..limit(limit))
@@ -144,45 +188,48 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     DateTime? installedDate,
     String? notes,
   }) async {
-    await _assertSlotAvailable(slot);
     final now = DateTime.now().millisecondsSinceEpoch;
     final id = 'cell_${now}_$slot';
-    await into(oxygenCells).insert(OxygenCellsCompanion.insert(
-      id: id,
-      slot: slot,
-      label: Value(label),
-      installedDate: Value(installedDate?.millisecondsSinceEpoch),
-      notes: Value(notes),
-      createdAt: now,
-      updatedAt: now,
-    ));
+    await _ps.writeTransaction((tx) async {
+      await _assertSlotAvailableTx(tx, slot);
+      await tx.execute(
+        'INSERT INTO oxygen_cells '
+        '(id, owner_id, slot, label, installed_date, retired_date, notes, '
+        'created_at, updated_at, deleted_at, version, sync_status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, _ownerId, slot, label, installedDate?.millisecondsSinceEpoch,
+          null, notes, now, now, null, 1, 0],
+      );
+    });
     return id;
   }
 
-  Future<void> _assertSlotAvailable(int slot, {String? excludingId}) async {
-    final query = select(oxygenCells)
-      ..where((t) =>
-          t.slot.equals(slot) &
-          t.retiredDate.isNull() &
-          t.deletedAt.isNull());
+  Future<void> _assertSlotAvailableTx(dynamic tx, int slot,
+      {String? excludingId}) async {
+    final params = <Object?>[slot];
+    var sql = 'SELECT id, label FROM oxygen_cells '
+        'WHERE slot = ? AND retired_date IS NULL AND deleted_at IS NULL';
     if (excludingId != null) {
-      query.where((t) => t.id.equals(excludingId).not());
+      sql += ' AND id != ?';
+      params.add(excludingId);
     }
-    final conflict = await query.getSingleOrNull();
+    sql += ' LIMIT 1';
+    final conflict = await tx.getOptional(sql, params);
     if (conflict != null) {
       throw SlotInUseException(
         slot: slot,
-        otherCellId: conflict.id,
-        otherLabel: conflict.label,
+        otherCellId: conflict['id'] as String,
+        otherLabel: conflict['label'] as String?,
       );
     }
   }
 
   Future<List<OxygenCell>> listCells() async {
-    final rows = await (select(oxygenCells)
-          ..where((t) => t.deletedAt.isNull()))
-        .get();
-    rows.sort((a, b) {
+    final rows = await _ps.getAll(
+      'SELECT * FROM oxygen_cells WHERE deleted_at IS NULL',
+    );
+    final cells = rows.map(_rowToOxygenCell).toList();
+    cells.sort((a, b) {
       if (a.retiredDate == null && b.retiredDate != null) return -1;
       if (a.retiredDate != null && b.retiredDate == null) return 1;
       if (a.retiredDate != null && b.retiredDate != null) {
@@ -190,25 +237,30 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
       }
       return (b.installedDate ?? 0).compareTo(a.installedDate ?? 0);
     });
-    return rows;
+    return cells;
   }
 
-  Future<OxygenCell?> getCell(String id) {
-    return (select(oxygenCells)..where((t) => t.id.equals(id)))
-        .getSingleOrNull();
+  Future<OxygenCell?> getCell(String id) async {
+    final row = await _ps.getOptional(
+      'SELECT * FROM oxygen_cells WHERE id = ?',
+      [id],
+    );
+    return row == null ? null : _rowToOxygenCell(row);
   }
 
   Future<Map<int, OxygenCell>> activeCellsAt(DateTime t) async {
     final ms = t.millisecondsSinceEpoch;
-    final rows = await (select(oxygenCells)
-          ..where((c) =>
-              c.deletedAt.isNull() &
-              c.installedDate.isNotNull() &
-              c.installedDate.isSmallerOrEqualValue(ms) &
-              (c.retiredDate.isNull() | c.retiredDate.isBiggerThanValue(ms))))
-        .get();
+    final rows = await _ps.getAll(
+      'SELECT * FROM oxygen_cells '
+      'WHERE deleted_at IS NULL '
+      'AND installed_date IS NOT NULL '
+      'AND installed_date <= ? '
+      'AND (retired_date IS NULL OR retired_date > ?)',
+      [ms, ms],
+    );
     final out = <int, OxygenCell>{};
-    for (final c in rows) {
+    for (final r in rows) {
+      final c = _rowToOxygenCell(r);
       final existing = out[c.slot];
       if (existing == null ||
           (c.installedDate ?? 0) > (existing.installedDate ?? 0)) {
@@ -225,46 +277,54 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     Value<DateTime?>? installedDate,
     String? notes,
   }) async {
-    if (slot != null) {
-      await _assertSlotAvailable(slot, excludingId: id);
-    }
     final now = DateTime.now().millisecondsSinceEpoch;
-    await (update(oxygenCells)..where((t) => t.id.equals(id))).write(
-      OxygenCellsCompanion(
-        slot: slot == null ? const Value.absent() : Value(slot),
-        label: label == null ? const Value.absent() : Value(label),
-        installedDate: installedDate == null
-            ? const Value.absent()
-            : Value(installedDate.value?.millisecondsSinceEpoch),
-        notes: notes == null ? const Value.absent() : Value(notes),
-        updatedAt: Value(now),
-      ),
-    );
+    await _ps.writeTransaction((tx) async {
+      if (slot != null) {
+        await _assertSlotAvailableTx(tx, slot, excludingId: id);
+      }
+      final existing = await tx.getOptional(
+        'SELECT * FROM oxygen_cells WHERE id = ?',
+        [id],
+      );
+      if (existing == null) return;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      final newSlot = slot ?? existing['slot'] as int;
+      final newLabel = label ?? existing['label'] as String?;
+      final newInstalled = installedDate == null
+          ? existing['installed_date'] as int?
+          : installedDate.value?.millisecondsSinceEpoch;
+      final newNotes = notes ?? existing['notes'] as String?;
+      await tx.execute(
+        'UPDATE oxygen_cells SET '
+        'owner_id = ?, slot = ?, label = ?, installed_date = ?, notes = ?, '
+        'updated_at = ?, version = ? '
+        'WHERE id = ?',
+        [_ownerId, newSlot, newLabel, newInstalled, newNotes,
+          now, newVersion, id],
+      );
+    });
   }
 
   Future<void> retireCell(String id, {required DateTime retiredAt}) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    await (update(oxygenCells)..where((t) => t.id.equals(id))).write(
-      OxygenCellsCompanion(
-        retiredDate: Value(retiredAt.millisecondsSinceEpoch),
-        updatedAt: Value(now),
-      ),
-    );
+    await _ps.writeTransaction((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT version FROM oxygen_cells WHERE id = ?',
+        [id],
+      );
+      if (existing == null) return;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE oxygen_cells SET '
+        'owner_id = ?, retired_date = ?, updated_at = ?, version = ? '
+        'WHERE id = ?',
+        [_ownerId, retiredAt.millisecondsSinceEpoch, now, newVersion, id],
+      );
+    });
   }
 
   /// Deletes the cell only if no dives can be attributed to its
-  /// `[installedDate, retiredDate)` window:
-  ///
-  /// - If both `installedDate` and `retiredDate` are null, the cell has
-  ///   no window to attribute dives to and is deleted.
-  /// - If `installedDate` is null but `retiredDate` is set, the upper
-  ///   bound alone is used (any dive before retire could have used the cell).
-  /// - Otherwise the inclusive-exclusive window check applies.
-  ///
-  /// Returns true on delete, false if attributable dives exist.
-  ///
-  /// Uses the real `Dives` schema column `startTime` (not the speculative
-  /// `startTimeUtc` that appeared in the plan's first draft).
+  /// `[installedDate, retiredDate)` window. Returns true on delete.
   Future<bool> deleteCellIfUnused(String id) async {
     final cell = await getCell(id);
     if (cell == null) return false;
@@ -272,67 +332,40 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     final installed = cell.installedDate;
     final retired = cell.retiredDate;
 
-    // No window known and no retire date → cell has no possible attributable dives.
     if (installed == null && retired == null) {
-      await (delete(oxygenCells)..where((t) => t.id.equals(id))).go();
+      await _ps.execute('DELETE FROM oxygen_cells WHERE id = ?', [id]);
       return true;
     }
 
-    final overlapping = await (select(db.dives)
-          ..where((t) {
-            Expression<bool> expr = const Constant(true);
-            if (installed != null) {
-              expr = expr & t.startTime.isBiggerOrEqualValue(installed ~/ 1000);
-            }
-            if (retired != null) {
-              expr = expr & t.startTime.isSmallerThanValue(retired ~/ 1000);
-            }
-            return expr;
-          })
-          ..limit(1))
-        .get();
+    final query = _drift.select(_drift.dives);
+    if (installed != null) {
+      query.where((t) => t.startTime.isBiggerOrEqualValue(installed ~/ 1000));
+    }
+    if (retired != null) {
+      query.where((t) => t.startTime.isSmallerThanValue(retired ~/ 1000));
+    }
+    query.limit(1);
+    final overlapping = await query.get();
     if (overlapping.isNotEmpty) return false;
 
-    await (delete(oxygenCells)..where((t) => t.id.equals(id))).go();
+    await _ps.execute('DELETE FROM oxygen_cells WHERE id = ?', [id]);
     return true;
   }
 
   // ── Cell aggregation ─────────────────────────────────────────────────────
 
-  /// Per-dive surface-mV time series for a cell, across all dives in the
-  /// cell's [installedDate, retiredDate) window.
-  ///
-  /// "Surface mV" = mean of `cellMv[slot]` over samples where `depthM < 1.0`
-  /// AND `cellMv >= 5.0` (voted-out heuristic). Dives with no qualifying
-  /// samples are omitted. Slot is 1-based on the table; cellMv channels are
-  /// 0-based in the sample columns (slot 1 → cellMv0, etc).
+  /// Per-dive surface-mV time series for a cell. Surface mV = mean of
+  /// `cellMv[slot]` over samples with `depthM < 1.0` AND `cellMv >= 5.0`.
   Future<List<({DateTime date, double mv, String diveId})>>
       surfaceMvSeriesForCell(String cellId) async {
     final cell = await getCell(cellId);
     if (cell == null) return const [];
-
-    final mvCol = cell.slot - 1; // 1→0, 2→1, 3→2
+    final mvCol = cell.slot - 1;
     if (mvCol < 0 || mvCol > 2) return const [];
 
-    final query = select(db.dives);
-    if (cell.installedDate != null) {
-      query.where(
-          (t) => t.startTime.isBiggerOrEqualValue(cell.installedDate! ~/ 1000));
-    }
-    if (cell.retiredDate != null) {
-      query.where(
-          (t) => t.startTime.isSmallerThanValue(cell.retiredDate! ~/ 1000));
-    }
-    query.orderBy([(t) => OrderingTerm.asc(t.startTime)]);
-    final dives = await query.get();
+    final dives = await _divesInWindow(cell.installedDate, cell.retiredDate);
     if (dives.isEmpty) return const [];
-
-    final samplesById = <String, DiveSample>{
-      for (final s in await (select(db.diveSamples)
-                ..where((t) => t.diveId.isIn(dives.map((d) => d.id))))
-              .get())
-        s.diveId: s,
-    };
+    final samplesById = await _samplesForDives(dives);
 
     final out = <({DateTime date, double mv, String diveId})>[];
     for (final dive in dives) {
@@ -369,32 +402,16 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
 
     final divePeaks = <({DateTime start, double peakMv})>[];
     if (mvCol >= 0 && mvCol <= 2) {
-      final query = select(db.dives);
-      if (cell.installedDate != null) {
-        query.where((t) =>
-            t.startTime.isBiggerOrEqualValue(cell.installedDate! ~/ 1000));
-      }
-      if (cell.retiredDate != null) {
-        query.where(
-            (t) => t.startTime.isSmallerThanValue(cell.retiredDate! ~/ 1000));
-      }
-      query.orderBy([(t) => OrderingTerm.asc(t.startTime)]);
-      final dives = await query.get();
+      final dives = await _divesInWindow(cell.installedDate, cell.retiredDate);
       if (dives.isNotEmpty) {
-        final samplesById = <String, DiveSample>{
-          for (final s in await (select(db.diveSamples)
-                    ..where((t) => t.diveId.isIn(dives.map((d) => d.id))))
-                  .get())
-            s.diveId: s,
-        };
+        final samplesById = await _samplesForDives(dives);
         for (final dive in dives) {
           final sample = samplesById[dive.id];
           if (sample == null) continue;
           final peak = _peakMvForSlot(sample, mvCol);
           if (peak == null) continue;
           divePeaks.add((
-            start:
-                DateTime.fromMillisecondsSinceEpoch(dive.startTime * 1000),
+            start: DateTime.fromMillisecondsSinceEpoch(dive.startTime * 1000),
             peakMv: peak,
           ));
         }
@@ -406,6 +423,27 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
       installedDate: installedDate,
       divePeaks: divePeaks,
     );
+  }
+
+  Future<List<Dive>> _divesInWindow(int? installedMs, int? retiredMs) {
+    final query = _drift.select(_drift.dives);
+    if (installedMs != null) {
+      query.where((t) => t.startTime.isBiggerOrEqualValue(installedMs ~/ 1000));
+    }
+    if (retiredMs != null) {
+      query.where((t) => t.startTime.isSmallerThanValue(retiredMs ~/ 1000));
+    }
+    query.orderBy([(t) => OrderingTerm.asc(t.startTime)]);
+    return query.get();
+  }
+
+  Future<Map<String, DiveSample>> _samplesForDives(List<Dive> dives) async {
+    final ids = dives.map((d) => d.id).toList();
+    if (ids.isEmpty) return const {};
+    final samples = await (_drift.select(_drift.diveSamples)
+          ..where((t) => t.diveId.isIn(ids)))
+        .get();
+    return {for (final s in samples) s.diveId: s};
   }
 
   double? _peakMvForSlot(DiveSample sample, int mvCol) {
@@ -455,34 +493,40 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     String? notes,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    final id = 'scrub_$now';
-    await into(scrubberSessions).insert(ScrubberSessionsCompanion.insert(
-      id: id,
-      startedDate: Value(startedDate.millisecondsSinceEpoch),
-      mediaType: Value(mediaType),
-      notes: Value(notes),
-      createdAt: now,
-      updatedAt: now,
-    ));
+    // Microsecond suffix avoids id collisions when two sessions are
+    // created in the same millisecond (PowerSync enforces UNIQUE on id).
+    final id = 'scrub_${DateTime.now().microsecondsSinceEpoch}';
+    await _ps.execute(
+      'INSERT INTO scrubber_sessions '
+      '(id, owner_id, started_date, total_minutes, media_type, notes, '
+      'created_at, updated_at, deleted_at, version, sync_status) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, _ownerId, startedDate.millisecondsSinceEpoch, null,
+        mediaType, notes, now, now, null, 1, 0],
+    );
     return id;
   }
 
   Future<List<ScrubberSession>> listScrubberSessions() async {
-    final rows = await (select(scrubberSessions)
-          ..where((t) => t.deletedAt.isNull()))
-        .get();
+    final rows = await _ps.getAll(
+      'SELECT * FROM scrubber_sessions WHERE deleted_at IS NULL',
+    );
+    final sessions = rows.map(_rowToScrubberSession).toList();
     // Active (totalMinutes IS NULL) first; closed sorted by startedDate desc.
-    rows.sort((a, b) {
+    sessions.sort((a, b) {
       if (a.totalMinutes == null && b.totalMinutes != null) return -1;
       if (a.totalMinutes != null && b.totalMinutes == null) return 1;
       return (b.startedDate ?? 0).compareTo(a.startedDate ?? 0);
     });
-    return rows;
+    return sessions;
   }
 
-  Future<ScrubberSession?> getScrubberSession(String id) {
-    return (select(scrubberSessions)..where((t) => t.id.equals(id)))
-        .getSingleOrNull();
+  Future<ScrubberSession?> getScrubberSession(String id) async {
+    final row = await _ps.getOptional(
+      'SELECT * FROM scrubber_sessions WHERE id = ?',
+      [id],
+    );
+    return row == null ? null : _rowToScrubberSession(row);
   }
 
   Future<void> updateScrubberSession(
@@ -492,16 +536,25 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     String? notes,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    await (update(scrubberSessions)..where((t) => t.id.equals(id))).write(
-      ScrubberSessionsCompanion(
-        startedDate: startedDate == null
-            ? const Value.absent()
-            : Value(startedDate.millisecondsSinceEpoch),
-        mediaType: mediaType == null ? const Value.absent() : Value(mediaType),
-        notes: notes == null ? const Value.absent() : Value(notes),
-        updatedAt: Value(now),
-      ),
-    );
+    await _ps.writeTransaction((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT * FROM scrubber_sessions WHERE id = ?',
+        [id],
+      );
+      if (existing == null) return;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      final newStarted = startedDate?.millisecondsSinceEpoch
+          ?? existing['started_date'] as int?;
+      final newMediaType = mediaType ?? existing['media_type'] as String?;
+      final newNotes = notes ?? existing['notes'] as String?;
+      await tx.execute(
+        'UPDATE scrubber_sessions SET '
+        'owner_id = ?, started_date = ?, media_type = ?, notes = ?, '
+        'updated_at = ?, version = ? '
+        'WHERE id = ?',
+        [_ownerId, newStarted, newMediaType, newNotes, now, newVersion, id],
+      );
+    });
   }
 
   Future<void> closeScrubberSession(String id, {required DateTime endedAt}) async {
@@ -512,57 +565,64 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
       endBoundOverride: endedAt,
     );
     final now = DateTime.now().millisecondsSinceEpoch;
-    await (update(scrubberSessions)..where((t) => t.id.equals(id))).write(
-      ScrubberSessionsCompanion(
-        totalMinutes: Value(minutes),
-        updatedAt: Value(now),
-      ),
-    );
+    await _ps.writeTransaction((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT version FROM scrubber_sessions WHERE id = ?',
+        [id],
+      );
+      if (existing == null) return;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE scrubber_sessions SET '
+        'owner_id = ?, total_minutes = ?, updated_at = ?, version = ? '
+        'WHERE id = ?',
+        [_ownerId, minutes, now, newVersion, id],
+      );
+    });
   }
 
   Future<void> deleteScrubberSession(String id) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    await (update(scrubberSessions)..where((t) => t.id.equals(id))).write(
-      ScrubberSessionsCompanion(
-        deletedAt: Value(now),
-        updatedAt: Value(now),
-      ),
-    );
+    await _ps.writeTransaction((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT version FROM scrubber_sessions WHERE id = ?',
+        [id],
+      );
+      if (existing == null) return;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE scrubber_sessions SET '
+        'owner_id = ?, deleted_at = ?, updated_at = ?, version = ? '
+        'WHERE id = ?',
+        [_ownerId, now, now, newVersion, id],
+      );
+    });
   }
 
-  /// Forward-compatible hook called per imported dive. Currently a no-op
-  /// when [scrubberResetAt] is null; once the parser surfaces a real reset
-  /// timestamp this will close the open session and start a new one.
+  /// Forward-compatible hook called per imported dive. No-op when
+  /// [scrubberResetAt] is null.
   Future<void> applyScrubberEvents({
     required DateTime? scrubberResetAt,
     required int dcSerial,
   }) async {
     if (scrubberResetAt == null) return;
-
-    await db.transaction(() async {
-      final open = await (select(scrubberSessions)
-            ..where((t) =>
-                t.deletedAt.isNull() & t.totalMinutes.isNull()))
-          .get();
-      for (final s in open) {
-        await closeScrubberSession(s.id, endedAt: scrubberResetAt);
-      }
-      await addScrubberSession(startedDate: scrubberResetAt);
-      // dcSerial reserved for a future migration that ties scrubber sessions
-      // to a specific dive computer (multi-rig support).
-      // ignore: unused_local_variable
-      final _ = dcSerial;
-    });
+    final open = await _ps.getAll(
+      'SELECT id FROM scrubber_sessions '
+      'WHERE deleted_at IS NULL AND total_minutes IS NULL',
+    );
+    for (final s in open) {
+      await closeScrubberSession(s['id'] as String, endedAt: scrubberResetAt);
+    }
+    await addScrubberSession(startedDate: scrubberResetAt);
+    // dcSerial reserved for a future migration that ties scrubber sessions
+    // to a specific dive computer (multi-rig support).
+    // ignore: unused_local_variable
+    final _ = dcSerial;
   }
 
   /// Sum of dive runtimes (in minutes) whose `startTime` falls in
-  /// [session.startedDate, endBound) where `endBound` is the next session's
-  /// `startedDate` (or [endBoundOverride] if the caller is closing the
-  /// session). MVP fallback: dive runtime over-estimates by surface time;
-  /// replace with per-sample scrubber-on time when the parser exposes it.
-  ///
-  /// Uses real `Dives` schema fields `startTime` and `durationSeconds`
-  /// (NOT the speculative `startTimeUtc`/`runtimeSeconds`).
+  /// [session.startedDate, endBound). Endbound = next session's startedDate
+  /// or [endBoundOverride] when closing.
   Future<int> accumulatedMinutesForSession(
     String id, {
     DateTime? endBoundOverride,
@@ -572,28 +632,24 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
 
     int? endEpoch = endBoundOverride?.millisecondsSinceEpoch;
     if (endEpoch == null) {
-      final later = await (select(scrubberSessions)
-            ..where((t) =>
-                t.deletedAt.isNull() &
-                t.startedDate.isBiggerThanValue(session.startedDate!)))
-          .get();
+      final later = await _ps.getAll(
+        'SELECT started_date FROM scrubber_sessions '
+        'WHERE deleted_at IS NULL AND started_date > ?',
+        [session.startedDate],
+      );
       if (later.isNotEmpty) {
         endEpoch = later
-            .map((s) => s.startedDate!)
+            .map((s) => s['started_date'] as int)
             .reduce((a, b) => a < b ? a : b);
       }
     }
 
-    final dives = await (select(db.dives)
-          ..where((t) {
-            var expr = t.startTime
-                .isBiggerOrEqualValue(session.startedDate! ~/ 1000);
-            if (endEpoch != null) {
-              expr = expr & t.startTime.isSmallerThanValue(endEpoch ~/ 1000);
-            }
-            return expr;
-          }))
-        .get();
+    final query = _drift.select(_drift.dives)
+      ..where((t) => t.startTime.isBiggerOrEqualValue(session.startedDate! ~/ 1000));
+    if (endEpoch != null) {
+      query.where((t) => t.startTime.isSmallerThanValue(endEpoch! ~/ 1000));
+    }
+    final dives = await query.get();
 
     final totalSeconds =
         dives.fold<int>(0, (sum, d) => sum + d.durationSeconds);
@@ -619,33 +675,30 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
         role == CylinderRole.bailout ? bailoutOrder : null;
     final now = DateTime.now().millisecondsSinceEpoch;
     final id = 'cyl_${now}_$role';
-    await into(cylinders).insert(CylindersCompanion.insert(
-      id: id,
-      label: label,
-      role: role,
-      bailoutOrder: Value(effectiveOrder),
-      volumeLiters: volumeLiters,
-      workingPressureBar: workingPressureBar,
-      gasMix: Value(gasMix),
-      notes: Value(notes),
-      createdAt: now,
-      updatedAt: now,
-    ));
+    await _ps.execute(
+      'INSERT INTO cylinders '
+      '(id, owner_id, label, role, bailout_order, volume_liters, '
+      'working_pressure_bar, gas_mix, notes, '
+      'created_at, updated_at, deleted_at, version, sync_status) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, _ownerId, label, role, effectiveOrder, volumeLiters,
+        workingPressureBar, gasMix, notes, now, now, null, 1, 0],
+    );
     return id;
   }
 
   Future<List<Cylinder>> listCylinders() async {
-    final rows = await (select(cylinders)
-          ..where((t) => t.deletedAt.isNull()))
-        .get();
-    // Sort by role group order, then bailoutOrder asc, then label asc.
+    final rows = await _ps.getAll(
+      'SELECT * FROM cylinders WHERE deleted_at IS NULL',
+    );
+    final cyls = rows.map(_rowToCylinder).toList();
     const roleOrder = {
       CylinderRole.oxygen: 0,
       CylinderRole.diluent: 1,
       CylinderRole.bailout: 2,
       CylinderRole.offboard: 3,
     };
-    rows.sort((a, b) {
+    cyls.sort((a, b) {
       final ra = roleOrder[a.role] ?? 99;
       final rb = roleOrder[b.role] ?? 99;
       if (ra != rb) return ra.compareTo(rb);
@@ -654,12 +707,15 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
       if (oa != ob) return oa.compareTo(ob);
       return a.label.compareTo(b.label);
     });
-    return rows;
+    return cyls;
   }
 
-  Future<Cylinder?> getCylinder(String id) {
-    return (select(cylinders)..where((t) => t.id.equals(id)))
-        .getSingleOrNull();
+  Future<Cylinder?> getCylinder(String id) async {
+    final row = await _ps.getOptional(
+      'SELECT * FROM cylinders WHERE id = ?',
+      [id],
+    );
+    return row == null ? null : _rowToCylinder(row);
   }
 
   Future<void> updateCylinder(
@@ -676,50 +732,71 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
       throw ArgumentError.value(role, 'role');
     }
     final now = DateTime.now().millisecondsSinceEpoch;
-    // If the role is being moved away from bailout, force-clear bailoutOrder.
-    Value<int?> effectiveBailoutOrder;
-    if (role != null && role != CylinderRole.bailout) {
-      effectiveBailoutOrder = const Value(null);
-    } else if (bailoutOrder != null) {
-      effectiveBailoutOrder = Value(bailoutOrder);
-    } else {
-      effectiveBailoutOrder = const Value.absent();
-    }
-    await (update(cylinders)..where((t) => t.id.equals(id))).write(
-      CylindersCompanion(
-        label: label == null ? const Value.absent() : Value(label),
-        role: role == null ? const Value.absent() : Value(role),
-        bailoutOrder: effectiveBailoutOrder,
-        volumeLiters:
-            volumeLiters == null ? const Value.absent() : Value(volumeLiters),
-        workingPressureBar: workingPressureBar == null
-            ? const Value.absent()
-            : Value(workingPressureBar),
-        gasMix: gasMix == null ? const Value.absent() : Value(gasMix),
-        notes: notes == null ? const Value.absent() : Value(notes),
-        updatedAt: Value(now),
-      ),
-    );
+    await _ps.writeTransaction((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT * FROM cylinders WHERE id = ?',
+        [id],
+      );
+      if (existing == null) return;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      final newRole = role ?? existing['role'] as String;
+      final newLabel = label ?? existing['label'] as String;
+      final int? newBailoutOrder;
+      if (newRole != CylinderRole.bailout) {
+        newBailoutOrder = null;
+      } else if (bailoutOrder != null) {
+        newBailoutOrder = bailoutOrder;
+      } else {
+        newBailoutOrder = existing['bailout_order'] as int?;
+      }
+      final newVolume = volumeLiters ?? (existing['volume_liters'] as num).toDouble();
+      final newPressure = workingPressureBar ?? existing['working_pressure_bar'] as int;
+      final newGas = gasMix ?? existing['gas_mix'] as String?;
+      final newNotes = notes ?? existing['notes'] as String?;
+      await tx.execute(
+        'UPDATE cylinders SET '
+        'owner_id = ?, label = ?, role = ?, bailout_order = ?, '
+        'volume_liters = ?, working_pressure_bar = ?, gas_mix = ?, notes = ?, '
+        'updated_at = ?, version = ? '
+        'WHERE id = ?',
+        [_ownerId, newLabel, newRole, newBailoutOrder, newVolume,
+          newPressure, newGas, newNotes, now, newVersion, id],
+      );
+    });
   }
 
   Future<void> softDeleteCylinder(String id) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    await (update(cylinders)..where((t) => t.id.equals(id))).write(
-      CylindersCompanion(
-        deletedAt: Value(now),
-        updatedAt: Value(now),
-      ),
-    );
+    await _ps.writeTransaction((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT version FROM cylinders WHERE id = ?',
+        [id],
+      );
+      if (existing == null) return;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE cylinders SET '
+        'owner_id = ?, deleted_at = ?, updated_at = ?, version = ? '
+        'WHERE id = ?',
+        [_ownerId, now, now, newVersion, id],
+      );
+    });
   }
 
   // ── PressureMappings ─────────────────────────────────────────────────────
+  //
+  // Composite Drift PK (dive_computer_id, channel_index); synthesized cloud
+  // id is "<dive_computer_id>:<channel_index>".
 
-  Future<List<PressureMapping>> listPressureMappings(String diveComputerId) {
-    return (select(pressureMappings)
-          ..where((t) =>
-              t.diveComputerId.equals(diveComputerId) & t.deletedAt.isNull())
-          ..orderBy([(t) => OrderingTerm.asc(t.channelIndex)]))
-        .get();
+  Future<List<PressureMapping>> listPressureMappings(
+      String diveComputerId) async {
+    final rows = await _ps.getAll(
+      'SELECT * FROM pressure_mappings '
+      'WHERE dive_computer_id = ? AND deleted_at IS NULL '
+      'ORDER BY channel_index ASC',
+      [diveComputerId],
+    );
+    return rows.map(_rowToPressureMapping).toList();
   }
 
   Future<void> setPressureMapping({
@@ -727,22 +804,36 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
     required int channelIndex,
     required String? cylinderId,
   }) async {
+    final id = '$diveComputerId:$channelIndex';
     final now = DateTime.now().millisecondsSinceEpoch;
-    await into(pressureMappings).insertOnConflictUpdate(
-      PressureMappingsCompanion.insert(
-        diveComputerId: diveComputerId,
-        channelIndex: channelIndex,
-        cylinderId: Value(cylinderId),
-        createdAt: now,
-        updatedAt: now,
-      ),
-    );
+    await _ps.writeTransaction((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT version FROM pressure_mappings WHERE id = ?',
+        [id],
+      );
+      if (existing == null) {
+        await tx.execute(
+          'INSERT INTO pressure_mappings '
+          '(id, owner_id, dive_computer_id, channel_index, cylinder_id, '
+          'created_at, updated_at, deleted_at, version, sync_status) '
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [id, _ownerId, diveComputerId, channelIndex, cylinderId,
+            now, now, null, 1, 0],
+        );
+      } else {
+        final newVersion = (existing['version'] as int? ?? 0) + 1;
+        await tx.execute(
+          'UPDATE pressure_mappings SET '
+          'owner_id = ?, cylinder_id = ?, updated_at = ?, version = ? '
+          'WHERE id = ?',
+          [_ownerId, cylinderId, now, newVersion, id],
+        );
+      }
+    });
   }
 
   /// Best-effort enumeration of pressure-channel indexes the device has
-  /// logged. MVP returns channels that already have a mapping; a parser-
-  /// side "infer from imports" lookup is a follow-up once the per-channel
-  /// pressure series is known to surface in the sample blob.
+  /// logged. MVP returns channels that already have a mapping.
   Future<List<int>> pressureChannelsSeenForComputer(
       String diveComputerId) async {
     final rows = await listPressureMappings(diveComputerId);
@@ -771,4 +862,92 @@ class EquipmentDao extends DatabaseAccessor<AppDatabase>
       workingPressureBar: 232,
     );
   }
+
+  // ── Mapping helpers ─────────────────────────────────────────────────────
+
+  DiveCylinder _rowToDiveCylinder(Map<String, dynamic> r) => DiveCylinder(
+        diveId: r['dive_id'] as String,
+        gasMixIndex: r['gas_mix_index'] as int,
+        cylinderId: r['cylinder_id'] as String?,
+        createdAt: r['created_at'] as int,
+        updatedAt: r['updated_at'] as int,
+        deletedAt: r['deleted_at'] as int?,
+        version: r['version'] as int? ?? 1,
+        syncStatus: r['sync_status'] as int? ?? 0,
+        ownerId: r['owner_id'] as String?,
+      );
+
+  DiveComputer _rowToDiveComputer(Map<String, dynamic> r) => DiveComputer(
+        id: r['id'] as String,
+        serial: r['serial'] as int,
+        model: r['model'] as int,
+        firmwareVersion: r['firmware_version'] as int?,
+        nickname: r['nickname'] as String?,
+        createdAt: r['created_at'] as int,
+        updatedAt: r['updated_at'] as int,
+        deletedAt: r['deleted_at'] as int?,
+        version: r['version'] as int? ?? 1,
+        syncStatus: r['sync_status'] as int? ?? 0,
+        ownerId: r['owner_id'] as String?,
+      );
+
+  OxygenCell _rowToOxygenCell(Map<String, dynamic> r) => OxygenCell(
+        id: r['id'] as String,
+        slot: r['slot'] as int,
+        label: r['label'] as String?,
+        installedDate: r['installed_date'] as int?,
+        retiredDate: r['retired_date'] as int?,
+        notes: r['notes'] as String?,
+        createdAt: r['created_at'] as int,
+        updatedAt: r['updated_at'] as int,
+        deletedAt: r['deleted_at'] as int?,
+        version: r['version'] as int? ?? 1,
+        syncStatus: r['sync_status'] as int? ?? 0,
+        ownerId: r['owner_id'] as String?,
+      );
+
+  ScrubberSession _rowToScrubberSession(Map<String, dynamic> r) =>
+      ScrubberSession(
+        id: r['id'] as String,
+        startedDate: r['started_date'] as int?,
+        totalMinutes: r['total_minutes'] as int?,
+        mediaType: r['media_type'] as String?,
+        notes: r['notes'] as String?,
+        createdAt: r['created_at'] as int,
+        updatedAt: r['updated_at'] as int,
+        deletedAt: r['deleted_at'] as int?,
+        version: r['version'] as int? ?? 1,
+        syncStatus: r['sync_status'] as int? ?? 0,
+        ownerId: r['owner_id'] as String?,
+      );
+
+  Cylinder _rowToCylinder(Map<String, dynamic> r) => Cylinder(
+        id: r['id'] as String,
+        label: r['label'] as String,
+        role: r['role'] as String,
+        bailoutOrder: r['bailout_order'] as int?,
+        volumeLiters: (r['volume_liters'] as num).toDouble(),
+        workingPressureBar: r['working_pressure_bar'] as int,
+        gasMix: r['gas_mix'] as String?,
+        notes: r['notes'] as String?,
+        createdAt: r['created_at'] as int,
+        updatedAt: r['updated_at'] as int,
+        deletedAt: r['deleted_at'] as int?,
+        version: r['version'] as int? ?? 1,
+        syncStatus: r['sync_status'] as int? ?? 0,
+        ownerId: r['owner_id'] as String?,
+      );
+
+  PressureMapping _rowToPressureMapping(Map<String, dynamic> r) =>
+      PressureMapping(
+        diveComputerId: r['dive_computer_id'] as String,
+        channelIndex: r['channel_index'] as int,
+        cylinderId: r['cylinder_id'] as String?,
+        createdAt: r['created_at'] as int,
+        updatedAt: r['updated_at'] as int,
+        deletedAt: r['deleted_at'] as int?,
+        version: r['version'] as int? ?? 1,
+        syncStatus: r['sync_status'] as int? ?? 0,
+        ownerId: r['owner_id'] as String?,
+      );
 }

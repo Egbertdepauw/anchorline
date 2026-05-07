@@ -56,7 +56,11 @@ class _AppShellState extends State<AppShell> {
     super.initState();
     _diveDao = DiveDao(widget.db);
     _importStateDao = ImportStateDao(widget.db);
-    _equipmentDao = EquipmentDao(widget.db);
+    _equipmentDao = EquipmentDao(
+      widget.db,
+      widget.powerSyncDb,
+      SupabaseAuthSessionSource(Supabase.instance.client),
+    );
     _diveAnnotationsDao = DiveAnnotationsDao(
       widget.powerSyncDb,
       SupabaseAuthSessionSource(Supabase.instance.client),
