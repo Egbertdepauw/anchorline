@@ -11,6 +11,7 @@ import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
 import '../sync/cloud/auth_service.dart';
 import '../sync/cloud/ccrlogger_backend_connector.dart' show SupabaseAuthSessionSource;
+import '../sync/cloud/cloud_sync_coordinator.dart';
 import '../sync/cloud/sync_status_source.dart';
 import '../sync/subsurface_export.dart';
 import 'notifiers/dive_list_notifier.dart';
@@ -26,6 +27,7 @@ class AppShell extends StatefulWidget {
   final PowerSyncDatabase powerSyncDb;
   final SettingsNotifier settingsNotifier;
   final AuthService authService;
+  final CloudSyncCoordinator cloudSyncCoordinator;
 
   const AppShell({
     super.key,
@@ -33,13 +35,14 @@ class AppShell extends StatefulWidget {
     required this.powerSyncDb,
     required this.settingsNotifier,
     required this.authService,
+    required this.cloudSyncCoordinator,
   });
 
   @override
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _currentIndex = 0;
   late final DiveDao _diveDao;
   late final ImportStateDao _importStateDao;
@@ -54,6 +57,7 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _diveDao = DiveDao(widget.db);
     _importStateDao = ImportStateDao(widget.db);
     _equipmentDao = EquipmentDao(
@@ -81,9 +85,20 @@ class _AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _diveListNotifier.dispose();
     _importNotifier.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Force a fresh PowerSync connection when the app resumes — the
+    // WebSocket can go stale during Mac sleep / backgrounding without
+    // the SyncStatus indicator reflecting it. No-op when signed out.
+    if (state == AppLifecycleState.resumed) {
+      widget.cloudSyncCoordinator.forceReconnect();
+    }
   }
 
   void _onViewDives() {

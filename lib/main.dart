@@ -40,18 +40,21 @@ void main() async {
   final authService =
       AuthService(backfiller: OwnerIdBackfiller(db, powerSyncDb));
 
-  // Held for the app lifetime; tear-down happens at process exit.
-  CloudSyncCoordinator(
+  // Held for the app lifetime; tear-down happens at process exit. AppShell
+  // calls forceReconnect() on lifecycle resume to recover from stale
+  // WebSockets after Mac sleep / backgrounding.
+  final cloudSyncCoordinator = CloudSyncCoordinator(
     database: powerSyncDb,
     connector: CcrloggerBackendConnector(Supabase.instance.client),
     authService: authService,
-  ).start();
+  )..start();
 
   runApp(CCRLogApp(
     db: db,
     powerSyncDb: powerSyncDb,
     settings: settings,
     authService: authService,
+    cloudSyncCoordinator: cloudSyncCoordinator,
   ));
 }
 
@@ -60,6 +63,7 @@ class CCRLogApp extends StatelessWidget {
   final PowerSyncDatabase powerSyncDb;
   final SettingsNotifier settings;
   final AuthService authService;
+  final CloudSyncCoordinator cloudSyncCoordinator;
 
   const CCRLogApp({
     super.key,
@@ -67,6 +71,7 @@ class CCRLogApp extends StatelessWidget {
     required this.powerSyncDb,
     required this.settings,
     required this.authService,
+    required this.cloudSyncCoordinator,
   });
 
   @override
@@ -79,6 +84,7 @@ class CCRLogApp extends StatelessWidget {
         powerSyncDb: powerSyncDb,
         settingsNotifier: settings,
         authService: authService,
+        cloudSyncCoordinator: cloudSyncCoordinator,
       ),
       debugShowCheckedModeBanner: false,
     );

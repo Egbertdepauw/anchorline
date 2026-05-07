@@ -111,4 +111,14 @@ class CloudSyncCoordinator {
       debugPrint('CloudSyncCoordinator.disconnect failed: $e\n$st');
     }
   }
+
+  /// Forces a fresh PowerSync connection. Used to recover from stale
+  /// WebSockets after the app was backgrounded / the Mac came back from
+  /// sleep — the indicator can falsely report "connected" while the
+  /// underlying socket is dead. No-op when signed out.
+  Future<void> forceReconnect() async {
+    if (!_auth.isSignedIn) return;
+    await _disconnect();
+    await _connect();
+  }
 }

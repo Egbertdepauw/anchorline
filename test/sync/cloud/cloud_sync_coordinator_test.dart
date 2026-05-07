@@ -210,4 +210,42 @@ void main() {
 
     expect(h.target.connectCalls, 1, reason: 'still already connected');
   });
+
+  test('forceReconnect when signed in: disconnect then connect', () async {
+    final h = _build(signedIn: true);
+    addTearDown(() {
+      h.coord.dispose();
+      h.auth.dispose();
+      h.client.dispose();
+    });
+
+    h.coord.start();
+    await Future<void>.delayed(Duration.zero);
+    expect(h.target.connectCalls, 1);
+    expect(h.target.disconnectCalls, 0);
+
+    await h.coord.forceReconnect();
+
+    expect(h.target.disconnectCalls, 1);
+    expect(h.target.connectCalls, 2,
+        reason: 'should reconnect with a fresh socket');
+    expect(h.coord.isConnected, isTrue);
+  });
+
+  test('forceReconnect when signed out is a no-op', () async {
+    final h = _build(signedIn: false);
+    addTearDown(() {
+      h.coord.dispose();
+      h.auth.dispose();
+      h.client.dispose();
+    });
+
+    h.coord.start();
+    await Future<void>.delayed(Duration.zero);
+
+    await h.coord.forceReconnect();
+
+    expect(h.target.connectCalls, 0);
+    expect(h.target.disconnectCalls, 0);
+  });
 }
