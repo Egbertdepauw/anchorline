@@ -20,43 +20,58 @@ import 'package:powersync/powersync.dart' hide SyncStatus;
 
 import '../../_helpers/powersync_test_helper.dart';
 
-Future<({AppDatabase db, PowerSyncDatabase psDb, DiveAnnotationsDao annotationsDao, EquipmentDao equipmentDao, DiveDao dao, Dive dive})> _seedDive({
+typedef _Seed = ({
+  AppDatabase db,
+  PowerSyncDatabase psDb,
+  DiveAnnotationsDao annotationsDao,
+  EquipmentDao equipmentDao,
+  DiveDao dao,
+  Dive dive,
+});
+
+Future<_Seed> _seedDive(
+  WidgetTester tester, {
   int? configuredStackSeconds,
   int? stackRemainingAtStartSeconds,
   int? stackRemainingAtEndSeconds,
 }) async {
   final db = AppDatabase(NativeDatabase.memory());
   final dao = DiveDao(db);
-  final psDb = await openPowerSyncForTest();
-  final annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
-  final equipmentDao = EquipmentDao(db, psDb, FakeSessionSource());
-  final data = File('test/fixtures/dives/dive_718.bin').readAsBytesSync();
-  final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
-  final parsed = parser.parse(data);
-  final converted = DiveConverter.convert(
-      parsed: parsed,
-      dcSerial: 0xB89641E4,
-      dcDiveNumber: 718,
-      dcModel: ShearwaterModel.petrel3);
-  await dao.importDive(converted: converted, rawBlob: data, parserVersion: 1);
-  // Override the persisted stack values with the test fixture's choice.
-  final row = (await dao.getAllDives()).first;
-  await (db.update(db.dives)..where((t) => t.id.equals(row.id))).write(
-    DivesCompanion(
-      configuredStackSeconds: Value(configuredStackSeconds),
-      stackRemainingAtStartSeconds: Value(stackRemainingAtStartSeconds),
-      stackRemainingAtEndSeconds: Value(stackRemainingAtEndSeconds),
-    ),
-  );
-  final dive = (await dao.getAllDives()).first;
-  return (
-    db: db,
-    psDb: psDb,
-    annotationsDao: annotationsDao,
-    equipmentDao: equipmentDao,
-    dao: dao,
-    dive: dive,
-  );
+  late final _Seed seed;
+  await tester.runAsync(() async {
+    final psDb = await openPowerSyncForTest();
+    final annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
+    final equipmentDao = EquipmentDao(db, psDb, FakeSessionSource());
+    final data = File('test/fixtures/dives/dive_718.bin').readAsBytesSync();
+    final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
+    final parsed = parser.parse(data);
+    final converted = DiveConverter.convert(
+        parsed: parsed,
+        dcSerial: 0xB89641E4,
+        dcDiveNumber: 718,
+        dcModel: ShearwaterModel.petrel3);
+    await dao.importDive(
+        converted: converted, rawBlob: data, parserVersion: 1);
+    // Override the persisted stack values with the test fixture's choice.
+    final row = (await dao.getAllDives()).first;
+    await (db.update(db.dives)..where((t) => t.id.equals(row.id))).write(
+      DivesCompanion(
+        configuredStackSeconds: Value(configuredStackSeconds),
+        stackRemainingAtStartSeconds: Value(stackRemainingAtStartSeconds),
+        stackRemainingAtEndSeconds: Value(stackRemainingAtEndSeconds),
+      ),
+    );
+    final dive = (await dao.getAllDives()).first;
+    seed = (
+      db: db,
+      psDb: psDb,
+      annotationsDao: annotationsDao,
+      equipmentDao: equipmentDao,
+      dao: dao,
+      dive: dive,
+    );
+  });
+  return seed;
 }
 
 Future<void> _pumpScreen(
@@ -67,27 +82,26 @@ Future<void> _pumpScreen(
   Dive dive,
   DiveDao dao,
 ) async {
-  await tester.pumpWidget(MaterialApp(
-    home: DiveDetailScreen(
-      dive: dive,
-      dao: dao,
-      annotationsDao: annotationsDao,
-      equipmentDao: equipmentDao,
-    ),
-  ));
-  // Drain async loaders (samples + annotations).
-  await tester.pumpAndSettle();
+  await tester.runAsync(() async {
+    await tester.pumpWidget(MaterialApp(
+      home: DiveDetailScreen(
+        dive: dive,
+        dao: dao,
+        annotationsDao: annotationsDao,
+        equipmentDao: equipmentDao,
+      ),
+    ));
+    // Let initState's PowerSync + sample loaders settle before we
+    // re-enter fake time for expects.
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+  });
+  await tester.pump();
 }
 
-// Phase 2.3 follow-up: PowerSync + flutter_test fake-async deadlock when
-// widget initState fires PowerSync queries. Re-enable once we wrap pumps
-// in tester.runAsync().
-const _skipPowerSyncWidget = true;
-
 void main() {
-  testWidgets('shows formatted STACK end-of-dive remaining', skip: _skipPowerSyncWidget, (tester) async {
+  testWidgets('shows formatted STACK end-of-dive remaining', (tester) async {
     // 23777s start, 20293s end, 25200s configured (real dive_718 numbers).
-    final s = await _seedDive(
+    final s = await _seedDive(tester,
       configuredStackSeconds: 25200,
       stackRemainingAtStartSeconds: 23777,
       stackRemainingAtEndSeconds: 20293,
@@ -103,8 +117,8 @@ void main() {
     expect(find.text('STACK'), findsOneWidget);
   });
 
-  testWidgets('hides STACK cell when stack values are null', skip: _skipPowerSyncWidget, (tester) async {
-    final s = await _seedDive();
+  testWidgets('hides STACK cell when stack values are null', (tester) async {
+    final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
@@ -114,9 +128,9 @@ void main() {
     expect(find.byType(DiveDetailScreen), findsOneWidget);
   });
 
-  testWidgets('PPO2 cell shows three icon-prefixed values with bar label', skip: _skipPowerSyncWidget,
+  testWidgets('PPO2 cell shows three icon-prefixed values with bar label',
       (tester) async {
-    final s = await _seedDive();
+    final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
@@ -128,9 +142,9 @@ void main() {
     expect(find.text('PPO2 (bar)'), findsOneWidget);
   });
 
-  testWidgets('TEMP cell shows three icon-prefixed values with °C suffix', skip: _skipPowerSyncWidget,
+  testWidgets('TEMP cell shows three icon-prefixed values with °C suffix',
       (tester) async {
-    final s = await _seedDive();
+    final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
@@ -142,9 +156,9 @@ void main() {
     expect(find.textContaining(RegExp(r'^↑ -?\d+°C$')), findsWidgets);
   });
 
-  testWidgets('shows MAX m/min cell with descent + ascent stacked', skip: _skipPowerSyncWidget,
+  testWidgets('shows MAX m/min cell with descent + ascent stacked',
       (tester) async {
-    final s = await _seedDive();
+    final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
@@ -155,9 +169,9 @@ void main() {
     expect(find.textContaining(RegExp(r'^↑ \d+$')), findsOneWidget);
   });
 
-  testWidgets('TANKS cell renders one row per active tank with start→end', skip: _skipPowerSyncWidget,
+  testWidgets('TANKS cell renders one row per active tank with start→end',
       (tester) async {
-    final s = await _seedDive();
+    final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
     // Inject a known tanks JSON onto the seeded row so we can assert
@@ -178,9 +192,9 @@ void main() {
     expect(find.text('O2 195→145'), findsOneWidget);
   });
 
-  testWidgets('TANKS cell prefers PressureMapping cylinder label', skip: _skipPowerSyncWidget,
+  testWidgets('TANKS cell prefers PressureMapping cylinder label',
       (tester) async {
-    final s = await _seedDive();
+    final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
     const tanksJson =
@@ -192,21 +206,25 @@ void main() {
         .write(const DivesCompanion(tanksJson: Value(tanksJson)));
 
     // Register the dive computer and a cylinder, then map channel 0.
-    final dcId = await s.equipmentDao.upsertDiveComputer(
-      serial: 0xB89641E4,
-      model: 0,
-    );
-    final cylId = await s.equipmentDao.addCylinder(
-      label: 'AL40 EAN21',
-      role: 'diluent',
-      volumeLiters: 5.7,
-      workingPressureBar: 232,
-    );
-    await s.equipmentDao.setPressureMapping(
-      diveComputerId: dcId,
-      channelIndex: 0,
-      cylinderId: cylId,
-    );
+    // PowerSync writes must run on real time, not the test framework's
+    // fake clock.
+    await tester.runAsync(() async {
+      final dcId = await s.equipmentDao.upsertDiveComputer(
+        serial: 0xB89641E4,
+        model: 0,
+      );
+      final cylId = await s.equipmentDao.addCylinder(
+        label: 'AL40 EAN21',
+        role: 'diluent',
+        volumeLiters: 5.7,
+        workingPressureBar: 232,
+      );
+      await s.equipmentDao.setPressureMapping(
+        diveComputerId: dcId,
+        channelIndex: 0,
+        cylinderId: cylId,
+      );
+    });
 
     final dive = (await s.dao.getAllDives()).first;
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, dive, s.dao);
@@ -216,9 +234,9 @@ void main() {
     expect(find.text('O2 195→145'), findsOneWidget);
   });
 
-  testWidgets('TANKS cell falls back to parser labels with no mappings', skip: _skipPowerSyncWidget,
+  testWidgets('TANKS cell falls back to parser labels with no mappings',
       (tester) async {
-    final s = await _seedDive();
+    final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
     const tanksJson =
@@ -237,8 +255,8 @@ void main() {
     expect(find.text('O2 195→145'), findsOneWidget);
   });
 
-  testWidgets('TANKS cell hides when no tanks logged', skip: _skipPowerSyncWidget, (tester) async {
-    final s = await _seedDive();
+  testWidgets('TANKS cell hides when no tanks logged', (tester) async {
+    final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
     await (s.db.update(s.db.dives)..where((t) => t.id.equals(s.dive.id)))
@@ -250,34 +268,41 @@ void main() {
     expect(find.textContaining('TANKS'), findsNothing);
   });
 
-  testWidgets('tapping the header mini-map opens SitesMapScreen', skip: _skipPowerSyncWidget,
+  testWidgets('tapping the header mini-map opens SitesMapScreen',
       (tester) async {
-    final s = await _seedDive();
+    final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
     // Stamp an annotation with coords so the header mini-map renders.
     final now = DateTime.now();
-    await s.annotationsDao.upsert(DiveAnnotation(
-      diveId: s.dive.id,
-      siteName: 'Lagoon',
-      siteLatitude: 51.5,
-      siteLongitude: 4.0,
-      createdAt: now,
-      updatedAt: now,
-    ));
+    await tester.runAsync(() async {
+      await s.annotationsDao.upsert(DiveAnnotation(
+        diveId: s.dive.id,
+        siteName: 'Lagoon',
+        siteLatitude: 51.5,
+        siteLongitude: 4.0,
+        createdAt: now,
+        updatedAt: now,
+      ));
+    });
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
     expect(find.byType(SiteMiniMap), findsOneWidget);
     expect(find.byType(SitesMapScreen), findsNothing);
 
     await tester.tap(find.byType(SiteMiniMap));
-    await tester.pumpAndSettle();
+    // SitesMapScreen wraps a FlutterMap whose tile loaders never settle
+    // under the test framework, so pumpAndSettle would hang. Pump a few
+    // frames to advance the page transition and stop.
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
 
     expect(find.byType(SitesMapScreen), findsOneWidget);
     expect(find.text('Dive sites'), findsOneWidget);
   });
 
-  testWidgets('survives with sentinel raw blob (smoke)', skip: _skipPowerSyncWidget, (tester) async {
+  testWidgets('survives with sentinel raw blob (smoke)', (tester) async {
     // Independent smoke check: even if loadSamples shortcuts, screen builds.
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
