@@ -54,10 +54,15 @@ create policy "owner_full_access"
 create index dives_owner_id_idx on dives (owner_id);
 
 -- dive_samples ---------------------------------------------------------------
--- 1:1 with dives. Blobs are base64-encoded gzipped Float32 channels.
--- tank_pressures_blob is null for OC dives + pre-v6 imports.
+-- 1:1 with dives — `id` is both the PK and the FK to dives(id), so a
+-- dive_samples row carries the same id as its parent dive.
+-- (PowerSync's sync rules require an `id` column in every result row,
+-- and the client already keys the column as `id`, so naming it `id`
+-- here keeps the sync path / upload path in lockstep.)
+-- Blobs are base64-encoded gzipped Float32 channels. `tank_pressures_blob`
+-- is null for OC dives + pre-v6 imports.
 create table dive_samples (
-  dive_id text primary key references dives(id) on delete cascade,
+  id text primary key references dives(id) on delete cascade,
   owner_id uuid not null references auth.users(id) on delete cascade,
   sample_count integer not null,
   depth_blob text not null,

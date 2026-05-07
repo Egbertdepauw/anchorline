@@ -11,8 +11,10 @@
 ///   - `dive_cylinders.id`    = `"<dive_id>:<gas_mix_index>"`
 /// The cloud Postgres schema enforces uniqueness on the underlying composite.
 ///
-/// `dive_samples` uses `dive_id` as PK (1:1 with `dives`) — PowerSync's
-/// implicit `id` column carries that value here.
+/// `dive_samples` is 1:1 with `dives`: its `id` column is both the PK
+/// and the FK to `dives.id`, so a samples row carries the same id as
+/// its parent dive. PowerSync's sync rules require an `id` column on
+/// every result row, hence the alignment.
 ///
 /// Sample blobs are gzipped Float32 columnar binary; PowerSync only
 /// supports text/integer/real, so they live as base64-encoded text and
