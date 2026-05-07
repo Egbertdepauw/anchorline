@@ -8,6 +8,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
@@ -181,6 +182,7 @@ class ImportNotifier extends ChangeNotifier {
   /// Transitions: scanning → connecting → readingManifest.
   Future<void> selectMockDevice() async {
     _stopScan();
+    await _enableWakelock();
     _state = ImportFlowState.connecting;
     notifyListeners();
 
@@ -194,6 +196,7 @@ class ImportNotifier extends ChangeNotifier {
     } catch (e) {
       _errorMessage = 'Connection failed: $e';
       _state = ImportFlowState.error;
+      await _disableWakelock();
     }
     notifyListeners();
   }
@@ -205,6 +208,7 @@ class ImportNotifier extends ChangeNotifier {
   /// Transitions: scanning → connecting → readingManifest.
   Future<void> selectRealDevice(BluetoothDevice device) async {
     _stopScan();
+    await _enableWakelock();
     _state = ImportFlowState.connecting;
     notifyListeners();
 
@@ -228,6 +232,7 @@ class ImportNotifier extends ChangeNotifier {
       try {
         await _realTransport?.disconnect();
       } catch (_) {}
+      await _disableWakelock();
       _realTransport = null;
     }
     notifyListeners();
@@ -374,6 +379,9 @@ class ImportNotifier extends ChangeNotifier {
       );
     }
 
+    // BLE work is fully done — let the screen sleep again.
+    await _disableWakelock();
+
     _currentDiveNumber = null;
     notifyListeners();
   }
@@ -404,7 +412,36 @@ class ImportNotifier extends ChangeNotifier {
     _disposed = true;
     _stopScan();
     _realTransport?.disconnect();
+    // Best-effort: don't await, the framework expects dispose to be sync.
+    unawaited(_disableWakelock());
     super.dispose();
+  }
+
+  // ── Wakelock ──────────────────────────────────────────────────────────────
+  //
+  // iOS suspends BLE callbacks when the screen auto-locks (default 30s),
+  // and the Petrel's log-mode session timer (~60s) fires shortly after,
+  // killing the import even though the user is staring at the progress
+  // screen. Hold a wakelock for the whole BLE-active window.
+  //
+  // Errors are swallowed: the platform implementations no-op on
+  // unsupported targets, but tests can hit MissingPluginException and we
+  // don't want that to fail the import flow.
+
+  Future<void> _enableWakelock() async {
+    try {
+      await WakelockPlus.enable();
+    } catch (e) {
+      debugPrint('Wakelock enable failed (non-fatal): $e');
+    }
+  }
+
+  Future<void> _disableWakelock() async {
+    try {
+      await WakelockPlus.disable();
+    } catch (e) {
+      debugPrint('Wakelock disable failed (non-fatal): $e');
+    }
   }
 
   // ── Internal ───────────────────────────────────────────────────────────────

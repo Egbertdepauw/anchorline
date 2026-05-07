@@ -49,6 +49,11 @@ dependencies:
   share_plus: ^10.0.0
   supabase_flutter: ^2.8.0
   powersync: ^2.1.0
+  # Keeps the iPhone screen awake during BLE import. iOS suspends BLE
+  # callbacks when the screen locks; the Petrel hits its log-mode
+  # session timeout (~60s) right after we go silent, even though the
+  # user is staring at the import progress screen.
+  wakelock_plus: ^1.2.8
 
 dev_dependencies:
   flutter_test:
