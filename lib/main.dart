@@ -12,6 +12,7 @@ import 'dev/fixture_seeder.dart';
 import 'sync/cloud/auth_service.dart';
 import 'sync/cloud/ccrlogger_backend_connector.dart';
 import 'sync/cloud/cloud_config.dart';
+import 'sync/cloud/cloud_data_wiper.dart';
 import 'sync/cloud/cloud_sync_coordinator.dart';
 import 'sync/cloud/powersync_database.dart';
 import 'ui/app_shell.dart';
@@ -55,6 +56,7 @@ void main() async {
     settings: settings,
     authService: authService,
     cloudSyncCoordinator: cloudSyncCoordinator,
+    cloudDataWiper: CloudDataWiper(Supabase.instance.client),
   ));
 }
 
@@ -64,6 +66,7 @@ class CCRLogApp extends StatelessWidget {
   final SettingsNotifier settings;
   final AuthService authService;
   final CloudSyncCoordinator cloudSyncCoordinator;
+  final CloudDataWiper cloudDataWiper;
 
   const CCRLogApp({
     super.key,
@@ -72,6 +75,7 @@ class CCRLogApp extends StatelessWidget {
     required this.settings,
     required this.authService,
     required this.cloudSyncCoordinator,
+    required this.cloudDataWiper,
   });
 
   @override
@@ -85,6 +89,7 @@ class CCRLogApp extends StatelessWidget {
         settingsNotifier: settings,
         authService: authService,
         cloudSyncCoordinator: cloudSyncCoordinator,
+        cloudDataWiper: cloudDataWiper,
       ),
       debugShowCheckedModeBanner: false,
     );

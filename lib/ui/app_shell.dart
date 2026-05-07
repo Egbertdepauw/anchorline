@@ -11,6 +11,7 @@ import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
 import '../sync/cloud/auth_service.dart';
 import '../sync/cloud/ccrlogger_backend_connector.dart' show SupabaseAuthSessionSource;
+import '../sync/cloud/cloud_data_wiper.dart';
 import '../sync/cloud/cloud_sync_coordinator.dart';
 import '../sync/cloud/sync_status_source.dart';
 import '../sync/subsurface_export.dart';
@@ -28,6 +29,7 @@ class AppShell extends StatefulWidget {
   final SettingsNotifier settingsNotifier;
   final AuthService authService;
   final CloudSyncCoordinator cloudSyncCoordinator;
+  final CloudDataWiper? cloudDataWiper;
 
   const AppShell({
     super.key,
@@ -36,6 +38,7 @@ class AppShell extends StatefulWidget {
     required this.settingsNotifier,
     required this.authService,
     required this.cloudSyncCoordinator,
+    this.cloudDataWiper,
   });
 
   @override
@@ -187,6 +190,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     syncStatusSource: _syncStatusSource,
                     db: widget.db,
                     powerSyncDb: widget.powerSyncDb,
+                    cloudDataWiper: widget.cloudDataWiper,
                   ),
                 ));
               },
@@ -215,6 +219,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             syncStatusSource: _syncStatusSource,
             db: widget.db,
             powerSyncDb: widget.powerSyncDb,
+            cloudDataWiper: widget.cloudDataWiper,
           ),
         ],
       ),

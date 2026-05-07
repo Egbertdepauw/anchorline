@@ -4,6 +4,7 @@ import 'package:powersync/powersync.dart' hide SyncStatus, Column;
 
 import '../../data/db/database.dart';
 import '../../sync/cloud/auth_service.dart';
+import '../../sync/cloud/cloud_data_wiper.dart';
 import '../../sync/cloud/sync_status_source.dart';
 import '../notifiers/settings_notifier.dart';
 
@@ -15,6 +16,9 @@ class SettingsScreen extends StatefulWidget {
   /// tile is rendered. Tests typically omit them.
   final AppDatabase? db;
   final PowerSyncDatabase? powerSyncDb;
+  /// Optional — wires the "also delete cloud data" checkbox in the reset
+  /// dialog. Without it the checkbox is hidden and reset stays local-only.
+  final CloudDataWiper? cloudDataWiper;
 
   const SettingsScreen({
     super.key,
@@ -23,6 +27,7 @@ class SettingsScreen extends StatefulWidget {
     this.syncStatusSource,
     this.db,
     this.powerSyncDb,
+    this.cloudDataWiper,
   });
 
   @override
@@ -98,37 +103,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final psDb = widget.powerSyncDb;
     if (db == null || psDb == null) return;
 
+    final wiper = widget.cloudDataWiper;
+    final canWipeCloud =
+        wiper != null && (widget.authService?.isSignedIn ?? false);
+
+    var alsoWipeCloud = false;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Reset local data?'),
-        content: const Text(
-          'Deletes every imported dive on this device and clears the local '
-          'PowerSync cache. Cloud data (annotations, equipment) is not '
-          'touched — if you are signed in, it will re-sync once the app '
-          'restarts.\n\n'
-          'You will need to quit and reopen the app afterwards.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Reset data?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Deletes every imported dive on this device and clears the '
+                'local PowerSync cache.\n\n'
+                'You will need to quit and reopen the app afterwards.',
+              ),
+              if (canWipeCloud) ...[
+                const SizedBox(height: 12),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: alsoWipeCloud,
+                  onChanged: (v) =>
+                      setLocal(() => alsoWipeCloud = v ?? false),
+                  title: const Text('Also delete cloud data'),
+                  subtitle: const Text(
+                      'Permanent. Wipes annotations, cylinders, cells, '
+                      'scrubbers, dive computers and pressure mappings '
+                      'from your account on every device.'),
+                ),
+              ],
+            ],
           ),
-          FilledButton.tonal(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.errorContainer,
-              foregroundColor: Theme.of(ctx).colorScheme.onErrorContainer,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
             ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Reset'),
-          ),
-        ],
+            FilledButton.tonal(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.errorContainer,
+                foregroundColor: Theme.of(ctx).colorScheme.onErrorContainer,
+              ),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(alsoWipeCloud ? 'Reset everything' : 'Reset'),
+            ),
+          ],
+        ),
       ),
     );
     if (confirmed != true || !mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
     try {
+      // Cloud first so logical-replication deletes propagate to other
+      // devices before this device cuts itself off from sync.
+      if (alsoWipeCloud && wiper != null) {
+        await wiper.wipeAllForCurrentUser();
+      }
       // Drift: clear all imported-dive related rows. Equipment / annotation
       // tables in Drift are no longer used (PowerSync owns them), but
       // we still wipe them to keep the local file fully fresh.
@@ -147,15 +183,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // PowerSync: disconnect + clear local SQLite. Re-sync on next start.
       await psDb.disconnectAndClear();
     } catch (e, st) {
-      debugPrint('Reset local data failed: $e\n$st');
+      debugPrint('Reset data failed: $e\n$st');
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text('Reset failed: $e')));
       return;
     }
     if (!mounted) return;
-    messenger.showSnackBar(const SnackBar(
-      content: Text('Local data cleared. Please quit and reopen the app.'),
-      duration: Duration(seconds: 8),
+    messenger.showSnackBar(SnackBar(
+      content: Text(alsoWipeCloud
+          ? 'Local + cloud data cleared. Please quit and reopen the app.'
+          : 'Local data cleared. Please quit and reopen the app.'),
+      duration: const Duration(seconds: 8),
     ));
   }
 }
