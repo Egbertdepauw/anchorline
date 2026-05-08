@@ -1,25 +1,39 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../data/db/database.dart';
 import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
+import '../../data/models/dive_attachment.dart';
 import '../../shearwater/parser/parsed_dive.dart' show TankUsage;
 import '../../data/sample_codec/active_per_mix.dart';
 import '../../data/sample_codec/dive_stats.dart';
 import '../../shearwater/parser/hardware.dart';
+import '../../sync/attachments/attachment_downloader.dart';
 import '../notifiers/dive_annotations_notifier.dart';
+import '../notifiers/dive_attachments_notifier.dart';
 import '../notifiers/dive_detail_notifier.dart';
 import '../notifiers/settings_notifier.dart';
+import '../util/attachment_picker.dart';
 import '../util/dive_mode_color.dart';
 import '../util/format.dart';
 import '../util/tank_labels.dart';
 import '../widgets/crosshair_overlay.dart';
 import '../widgets/crosshair_tooltip.dart';
 import '../widgets/dive_annotations_section.dart';
+import '../widgets/dive_cylinders_section.dart';
+import '../widgets/dive_information_section.dart';
+import '../widgets/dive_media_tab.dart';
+import '../widgets/dive_equipment_section.dart';
 import '../widgets/profile_chart.dart';
 import '../widgets/site_mini_map.dart';
+import 'image_viewer_screen.dart';
+import 'pdf_viewer_screen.dart';
 import 'sites_map_screen.dart';
 import '../widgets/star_rating.dart';
 import '../widgets/trace_toggle.dart';
@@ -30,6 +44,38 @@ class DiveDetailScreen extends StatefulWidget {
   final DiveAnnotationsDao annotationsDao;
   final EquipmentDao equipmentDao;
   final SettingsNotifier? settingsNotifier;
+
+  /// Navigation callbacks for the prev/next AppBar buttons. `null` means
+  /// "no sibling in that direction"; the button is rendered disabled.
+  /// Wired by [DiveDetailPager] when this screen is part of a browsable
+  /// list. Solo presentations (single-shot navigation, tests) leave both
+  /// null and the buttons stay disabled.
+  final VoidCallback? onPrev;
+  final VoidCallback? onNext;
+
+  /// Externally-owned annotations notifier. When provided, this widget
+  /// uses it as-is and does NOT create or dispose a notifier — the
+  /// parent owns the lifecycle, so dirty state survives PageView page
+  /// rebuilds. Solo callers leave it null and a per-screen notifier is
+  /// created internally.
+  ///
+  /// When [annotationsNotifier] is provided, the inner unsaved-changes
+  /// PopScope is also suppressed; the pager wraps everything with its
+  /// own scope-wide guard that knows about every cached page's dirty
+  /// state, not just the visible one.
+  final DiveAnnotationsNotifier? annotationsNotifier;
+
+  /// Externally-owned attachments notifier. When provided, the
+  /// attachments section is rendered; when null (solo callers like
+  /// the cell-detail screen), the section is hidden. Lifecycle is
+  /// owned by the parent so uploads in flight survive page swipes.
+  final DiveAttachmentsNotifier? attachmentsNotifier;
+
+  /// Wired by the pager so file-attachment "Open" actions can fetch
+  /// bytes through the cache before sharing. Null when the attachments
+  /// section is not rendered.
+  final AttachmentDownloader? attachmentDownloader;
+
   const DiveDetailScreen({
     super.key,
     required this.dive,
@@ -37,6 +83,11 @@ class DiveDetailScreen extends StatefulWidget {
     required this.annotationsDao,
     required this.equipmentDao,
     this.settingsNotifier,
+    this.onPrev,
+    this.onNext,
+    this.annotationsNotifier,
+    this.attachmentsNotifier,
+    this.attachmentDownloader,
   });
   @override
   State<DiveDetailScreen> createState() => _DiveDetailScreenState();
@@ -45,6 +96,7 @@ class DiveDetailScreen extends StatefulWidget {
 class _DiveDetailScreenState extends State<DiveDetailScreen> {
   late final DiveDetailNotifier _notifier;
   late final DiveAnnotationsNotifier _annotationsNotifier;
+  late final bool _ownsAnnotations;
 
   @override
   void initState() {
@@ -57,12 +109,17 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     _notifier.addListener(_onChanged);
     _notifier.loadSamples();
 
-    _annotationsNotifier = DiveAnnotationsNotifier(
-      widget.annotationsDao,
-      widget.equipmentDao,
-    );
+    _ownsAnnotations = widget.annotationsNotifier == null;
+    if (_ownsAnnotations) {
+      _annotationsNotifier = DiveAnnotationsNotifier(
+        widget.annotationsDao,
+        widget.equipmentDao,
+      );
+      _annotationsNotifier.load(widget.dive.id);
+    } else {
+      _annotationsNotifier = widget.annotationsNotifier!;
+    }
     _annotationsNotifier.addListener(_onChanged);
-    _annotationsNotifier.load(widget.dive.id);
 
     widget.settingsNotifier?.addListener(_onChanged);
   }
@@ -72,7 +129,9 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     _notifier.removeListener(_onChanged);
     _notifier.dispose();
     _annotationsNotifier.removeListener(_onChanged);
-    _annotationsNotifier.dispose();
+    if (_ownsAnnotations) {
+      _annotationsNotifier.dispose();
+    }
     widget.settingsNotifier?.removeListener(_onChanged);
     super.dispose();
   }
@@ -82,16 +141,16 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final dive = widget.dive;
-    final modeColor = diveModeColor(dive.diveMode);
     final theme = Theme.of(context);
-    final modelName = dive.dcModel < ShearwaterModel.values.length
-        ? ShearwaterModel.values[dive.dcModel].name
-        : 'Unknown';
 
+    // In pager mode the parent owns the unsaved-changes guard — it sees
+    // every cached page's dirty state, not just the visible one. Solo
+    // callers still get the per-screen PopScope.
+    final guardPop = _ownsAnnotations;
     return PopScope(
-      canPop: !_annotationsNotifier.dirty,
+      canPop: !guardPop || !_annotationsNotifier.dirty,
       onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
+        if (didPop || !guardPop) return;
         final shouldDiscard = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -118,6 +177,16 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       appBar: AppBar(
         title: Text('Dive #${dive.dcDiveNumber}'),
         actions: [
+          IconButton(
+            tooltip: 'Previous dive',
+            icon: const Icon(Icons.chevron_left),
+            onPressed: widget.onPrev,
+          ),
+          IconButton(
+            tooltip: 'Next dive',
+            icon: const Icon(Icons.chevron_right),
+            onPressed: widget.onNext,
+          ),
           AnimatedBuilder(
             animation: _annotationsNotifier,
             builder: (context, _) {
@@ -142,10 +211,57 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       ),
       body: _notifier.loading && _notifier.samples == null
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
+          : DefaultTabController(
+              length: 4,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Builder(builder: (context) {
+                    // Hide tab labels on narrow viewports — icons alone keep
+                    // the bar from overflowing on phones in portrait.
+                    final compact = MediaQuery.of(context).size.width < 480;
+                    Widget tab(IconData icon, String label) => Tab(
+                          icon: Icon(icon),
+                          text: compact ? null : label,
+                        );
+                    return TabBar(
+                      tabs: [
+                        tab(Icons.info_outline, 'Details'),
+                        tab(Icons.thermostat_outlined, 'Information'),
+                        tab(Icons.photo_library_outlined, 'Media'),
+                        tab(Icons.scuba_diving_outlined, 'Equipment'),
+                      ],
+                    );
+                  }),
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        _buildDetailsTab(theme),
+                        _buildInformationTab(),
+                        _buildMediaTab(),
+                        _buildEquipmentTab(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+      ),
+    );
+  }
+
+  /// Tab 1 — every per-dive thing except cylinders/gasses, which moved
+  /// to the Equipment tab. Returns a SingleChildScrollView so the body
+  /// scrolls independently of the tab bar above it.
+  Widget _buildDetailsTab(ThemeData theme) {
+    final dive = widget.dive;
+    final modeColor = diveModeColor(dive.diveMode);
+    final modelName = dive.dcModel < ShearwaterModel.values.length
+        ? ShearwaterModel.values[dive.dcModel].name
+        : 'Unknown';
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
                   // Header
                   Builder(builder: (context) {
                     final siteName = _annotationsNotifier.siteName;
@@ -294,6 +410,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                   cellsBySlot: _notifier.activeCells,
                                   tanks: _decodeTanks(),
                                   mappedCylinders: _notifier.mappedCylinders,
+                                  gasMixes: _decodeGasMixes(),
                                   useSpeedColoredGraph: useSpeedColored),
                               if (_notifier.crosshairIndex != null)
                                 CrosshairTooltip(
@@ -310,6 +427,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                   cellsBySlot: _notifier.activeCells,
                                   tanks: _decodeTanks(),
                                   mappedCylinders: _notifier.mappedCylinders,
+                                  gasMixes: _decodeGasMixes(),
                                 ),
                             ]),
                           );
@@ -322,10 +440,183 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                     _buildStatsRow(theme),
                     _buildAnnotationsSection(),
                   ],
-                ],
-              )),
+        ],
       ),
     );
+  }
+
+  /// Tab 2 — Subsurface-style structured conditions + environment.
+  /// Weights live on the Equipment tab. Persists via the same notifier
+  /// as the Details tab (single save button at the screen level).
+  Widget _buildInformationTab() {
+    final samples = _notifier.samples;
+    double? avgWaterTemp;
+    if (samples != null && samples.sampleCount > 0) {
+      final stats =
+          minAvgMax(samples.temperatureCelsius, samples.sampleCount);
+      avgWaterTemp = stats?.avg;
+    }
+    return DiveInformationSection(
+      notifier: _annotationsNotifier,
+      defaultWaterTempC: avgWaterTemp,
+    );
+  }
+
+  /// Tab 3 — media (files + links). For the Phase-3 polish this is a
+  /// dedicated tab; the actual grid + image viewer enhancements arrive
+  /// via the parallel media-tab agent. For now we slot the existing
+  /// section unchanged so the tabs ship working.
+  Widget _buildMediaTab() {
+    if (widget.attachmentsNotifier == null) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Text('Attachments unavailable on this screen.'),
+        ),
+      );
+    }
+    return SingleChildScrollView(
+      child: DiveMediaTab(
+        notifier: widget.attachmentsNotifier!,
+        pickFiles: pickAttachments,
+        onOpen: _openAttachment,
+        loadFile:
+            widget.attachmentDownloader != null ? _loadAttachmentFile : null,
+      ),
+    );
+  }
+
+  /// Tab 3 — equipment used: gas-mix → cylinder mapping (relocated
+  /// from the annotations section) + the five Phase-3 freeform fields
+  /// (suit / undersuit / weight system / DPV / camera). The fields
+  /// themselves are filled in by the parallel equipment-tab agent.
+  Widget _buildEquipmentTab() {
+    final samples = _notifier.samples;
+    final gasMixes = _decodeGasMixes();
+    final activeByMix = samples == null
+        ? <int, int>{}
+        : activeSecondsPerMix(
+            gasMixIndexes: samples.gasMixIndex,
+            sampleCount: samples.sampleCount,
+            sampleIntervalMs: samples.sampleIntervalMs,
+          );
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DiveCylindersSection(
+            notifier: _annotationsNotifier,
+            gasMixes: gasMixes,
+            activeSecondsByMix: activeByMix,
+            equipmentDao: widget.equipmentDao,
+          ),
+          DiveEquipmentSection(
+            notifier: _annotationsNotifier,
+            annotationsDao: widget.annotationsDao,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Loads the local file for an attachment via [AttachmentDownloader].
+  /// Returns null when the downloader isn't wired (solo callers).
+  Future<File> _loadAttachmentFile(String storageKey) async {
+    final downloader = widget.attachmentDownloader;
+    if (downloader == null) {
+      throw StateError('attachmentDownloader not wired');
+    }
+    return downloader.fetch(storageKey: storageKey);
+  }
+
+  bool get _isDesktop {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.linux ||
+        defaultTargetPlatform == TargetPlatform.windows;
+  }
+
+  /// Resolves an attachment open action.
+  ///
+  /// * Image files → in-app full-screen viewer.
+  /// * PDF files → in-app PDF viewer (same shape as the image viewer).
+  ///   Native PDFKit on iOS/macOS, PdfRenderer on Android. Keeps the
+  ///   workflow consistent with images instead of dumping the user
+  ///   into a share sheet.
+  /// * Other files on desktop → `launchUrl(Uri.file(...))` so the OS
+  ///   opens it in the user's default app for that MIME.
+  /// * Other files on mobile → `Share.shareXFiles` (iOS sandbox makes
+  ///   `file://` URLs basically useless for cross-app open; the share
+  ///   sheet is the canonical "open in" path on iOS, until/unless we
+  ///   add QuickLook integration for DOC/XLSX previews later).
+  /// * Links → `launchUrl` with externalApplication.
+  ///
+  /// Failures surface as a SnackBar; a single open failure shouldn't
+  /// tear down the screen.
+  Future<void> _openAttachment(DiveAttachment attachment) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    // share_plus on iOS rejects a null/zero `sharePositionOrigin`;
+    // we pass the screen's bounding rect as a sensible default anchor.
+    final box = context.findRenderObject() as RenderBox?;
+    final origin =
+        box != null ? box.localToGlobal(Offset.zero) & box.size : null;
+    try {
+      switch (attachment) {
+        case FileAttachment file:
+          final cached = await _loadAttachmentFile(file.storageKey);
+          if (!mounted) return;
+          final mime = file.mimeType.toLowerCase();
+          final isImage = mime.startsWith('image/');
+          final isPdf = mime == 'application/pdf';
+          final viewerTitle = file.title?.trim().isNotEmpty == true
+              ? file.title!.trim()
+              : (file.originalFilename ?? (isPdf ? 'PDF' : 'Image'));
+          // Same delete callback shape for both viewers — pop first so
+          // the user is back on the dive screen immediately, then let
+          // the soft-delete settle. The grid re-renders via the
+          // notifier's listener once the DAO completes.
+          Future<void> Function() onViewerDelete(BuildContext viewerCtx) =>
+              () async {
+                Navigator.of(viewerCtx).pop();
+                await widget.attachmentsNotifier?.softDelete(file.id);
+              };
+          if (isImage) {
+            await navigator.push(MaterialPageRoute(
+              builder: (viewerCtx) => ImageViewerScreen(
+                file: cached,
+                title: viewerTitle,
+                attachment: file,
+                onDelete: () => onViewerDelete(viewerCtx)(),
+              ),
+            ));
+          } else if (isPdf) {
+            await navigator.push(MaterialPageRoute(
+              builder: (viewerCtx) => PdfViewerScreen(
+                file: cached,
+                title: viewerTitle,
+                attachment: file,
+                onDelete: () => onViewerDelete(viewerCtx)(),
+              ),
+            ));
+          } else if (_isDesktop) {
+            await launchUrl(Uri.file(cached.path));
+          } else {
+            await Share.shareXFiles(
+              [XFile(cached.path)],
+              sharePositionOrigin: origin,
+            );
+          }
+        case LinkAttachment link:
+          final uri = Uri.parse(link.url);
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not open: $e')),
+      );
+    }
   }
 
   Widget _buildAnnotationsSection() {
@@ -345,6 +636,9 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       activeSecondsByMix: activeByMix,
       annotationsDao: widget.annotationsDao,
       equipmentDao: widget.equipmentDao,
+      // Phase 3: gas-mix → cylinder mapping moved to the Equipment tab
+      // (see DiveCylindersSection). Showing it here would duplicate.
+      showGasMixes: false,
     );
   }
 
@@ -434,7 +728,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
               theme)
         else
           _statCell('PPO2', '—', theme),
-        _statCell('CNS', '${(maxCns * 100).toInt()}%', theme),
+        _statCell('CNS', '${(maxCns * 100).round()}%', theme),
         if (showOtu) _statCell('OTU', '${otu.round()}', theme),
         if (tempStats != null)
           _avgMinMaxCell(

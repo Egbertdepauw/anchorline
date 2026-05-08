@@ -195,6 +195,26 @@ void main() {
         expect(temps[i], lessThan(40));
       }
     });
+
+    test('per-cell sensor calibration survives the conversion (CCR dive)', () {
+      // dive_718 is a JJ-CCR with three calibrated cells. The values come
+      // out of `parsed.header.sensorCalibration` and are copied verbatim
+      // onto `Dive.sensorCalibration` so the import path can persist them.
+      expect(dive718.diveMode.isCcr, isTrue);
+      expect(dive718.sensorCalibration, hasLength(3));
+      // Values are mV→bar factors near the Petrel factory default 0.021.
+      // Allow a generous range (cells drift over time).
+      for (final cal in dive718.sensorCalibration) {
+        expect(cal, greaterThan(0.015));
+        expect(cal, lessThan(0.030));
+      }
+      // The list must match the parser-side header verbatim — that's the
+      // contract the DAO + mapper both rely on.
+      expect(
+        dive718.sensorCalibration,
+        equals(parsed718.header.sensorCalibration),
+      );
+    });
   });
 
   group('all fixture dives convert without error', () {

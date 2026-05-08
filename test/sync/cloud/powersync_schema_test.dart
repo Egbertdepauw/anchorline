@@ -17,6 +17,8 @@ void main() {
         // Phase 2.5: dive metadata + samples sync too.
         'dives',
         'dive_samples',
+        // Phase 3: per-dive attachments (files + links).
+        'dive_attachments',
       });
     });
 

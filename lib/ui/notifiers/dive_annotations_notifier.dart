@@ -26,6 +26,19 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   List<String> get tags => _annotation?.tags ?? const [];
   int? get rating => _annotation?.rating;
   String? get conditions => _annotation?.conditions;
+  String? get suit => _annotation?.suit;
+  String? get undersuit => _annotation?.undersuit;
+  String? get weightSystem => _annotation?.weightSystem;
+  String? get dpv => _annotation?.dpv;
+  String? get camera => _annotation?.camera;
+  int? get visibility => _annotation?.visibility;
+  int? get wavesize => _annotation?.wavesize;
+  int? get current => _annotation?.current;
+  int? get surge => _annotation?.surge;
+  int? get chill => _annotation?.chill;
+  double? get airTempC => _annotation?.airTempC;
+  double? get waterTempC => _annotation?.waterTempC;
+  List<Weight> get weights => _annotation?.weights ?? const [];
   Map<int, String?> get cylinderByMix => Map.unmodifiable(_cylinderByMix);
   bool get dirty => _dirty;
   bool get loaded => _annotation != null;
@@ -88,6 +101,71 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
 
   void setConditions(String? v) {
     _annotation = _annotation?.copyWith(conditions: Value(v));
+    _markDirty();
+  }
+
+  void setSuit(String? v) {
+    _annotation = _annotation?.copyWith(suit: Value(v));
+    _markDirty();
+  }
+
+  void setUndersuit(String? v) {
+    _annotation = _annotation?.copyWith(undersuit: Value(v));
+    _markDirty();
+  }
+
+  void setWeightSystem(String? v) {
+    _annotation = _annotation?.copyWith(weightSystem: Value(v));
+    _markDirty();
+  }
+
+  void setDpv(String? v) {
+    _annotation = _annotation?.copyWith(dpv: Value(v));
+    _markDirty();
+  }
+
+  void setCamera(String? v) {
+    _annotation = _annotation?.copyWith(camera: Value(v));
+    _markDirty();
+  }
+
+  void setVisibility(int? v) {
+    _annotation = _annotation?.copyWith(visibility: Value(v));
+    _markDirty();
+  }
+
+  void setWavesize(int? v) {
+    _annotation = _annotation?.copyWith(wavesize: Value(v));
+    _markDirty();
+  }
+
+  void setCurrent(int? v) {
+    _annotation = _annotation?.copyWith(current: Value(v));
+    _markDirty();
+  }
+
+  void setSurge(int? v) {
+    _annotation = _annotation?.copyWith(surge: Value(v));
+    _markDirty();
+  }
+
+  void setChill(int? v) {
+    _annotation = _annotation?.copyWith(chill: Value(v));
+    _markDirty();
+  }
+
+  void setAirTempC(double? v) {
+    _annotation = _annotation?.copyWith(airTempC: Value(v));
+    _markDirty();
+  }
+
+  void setWaterTempC(double? v) {
+    _annotation = _annotation?.copyWith(waterTempC: Value(v));
+    _markDirty();
+  }
+
+  void setWeights(List<Weight> v) {
+    _annotation = _annotation?.copyWith(weights: v);
     _markDirty();
   }
 

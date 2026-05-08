@@ -1,0 +1,23 @@
+name = "ccrlogger-attachments"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+# `nodejs_compat` is enabled because `jose` references a few Node-shaped
+# globals (Buffer, process.env probes) on import paths we don't actually
+# hit at runtime. The flag is cheap and keeps imports clean.
+compatibility_flags = ["nodejs_compat"]
+
+# R2 bucket binding. The bucket itself is created out-of-band with
+# `wrangler r2 bucket create ccrlogger-attachments` (see README). The
+# binding gives the Worker direct delete/read/write access to R2 without
+# an IAM roundtrip — we still mint presigned PUT/GET URLs for client
+# uploads and downloads, but DELETE goes straight through the binding.
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "ccrlogger-attachments"
+
+# Non-secret config. The Supabase project URL is not sensitive; the
+# JWKS endpoint is public. Everything else (R2 keys, allowed origins)
+# is set with `wrangler secret put` — see README.
+[vars]
+SUPABASE_URL = "https://ejvjijqejlrtbnyxixia.supabase.co"

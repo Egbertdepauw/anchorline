@@ -19,4 +19,15 @@ class CloudConfig {
     'POWERSYNC_ENDPOINT',
     defaultValue: 'https://69fb928d8d064eb85ee99fd1.powersync.journeyapps.com',
   );
+
+  /// Base URL of the Cloudflare Worker that mints presigned R2 URLs for
+  /// dive attachments (sign-upload / sign-download / delete). Defaults
+  /// to the deployed dev Worker so Xcode-driven builds (which don't pass
+  /// `--dart-define`) work out of the box. Override at `flutter build`
+  /// time via `--dart-define=ATTACHMENTS_SIGNER_URL=…` to point at
+  /// staging or prod. No trailing slash.
+  static const attachmentsSignerUrl = String.fromEnvironment(
+    'ATTACHMENTS_SIGNER_URL',
+    defaultValue: 'https://ccrlogger-attachments.ccrlogger.workers.dev',
+  );
 }

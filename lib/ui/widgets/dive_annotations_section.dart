@@ -16,6 +16,12 @@ class DiveAnnotationsSection extends StatefulWidget {
   final DiveAnnotationsDao annotationsDao;
   final EquipmentDao equipmentDao;
 
+  /// When false, the gas-mix → cylinder mapping block is omitted from
+  /// this section (Phase 3: that block lives on the Equipment tab via
+  /// [DiveCylindersSection] instead). Default true so existing solo
+  /// callers (cell_detail_screen, tests) render unchanged.
+  final bool showGasMixes;
+
   const DiveAnnotationsSection({
     super.key,
     required this.notifier,
@@ -23,6 +29,7 @@ class DiveAnnotationsSection extends StatefulWidget {
     required this.activeSecondsByMix,
     required this.annotationsDao,
     required this.equipmentDao,
+    this.showGasMixes = true,
   });
 
   @override
@@ -37,7 +44,6 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
   final _lat = TextEditingController();
   final _lon = TextEditingController();
   final _notes = TextEditingController();
-  final _conditions = TextEditingController();
 
   List<String> _siteOptions = const [];
   List<String> _buddyOptions = const [];
@@ -68,7 +74,6 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
     _lat.text = _n.siteLatitude?.toString() ?? '';
     _lon.text = _n.siteLongitude?.toString() ?? '';
     _notes.text = _n.notes ?? '';
-    _conditions.text = _n.conditions ?? '';
     _controllersHydrated = true;
   }
 
@@ -85,7 +90,6 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
     _lat.dispose();
     _lon.dispose();
     _notes.dispose();
-    _conditions.dispose();
     super.dispose();
   }
 
@@ -288,18 +292,6 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
 
           const SizedBox(height: 16),
 
-          Text('Conditions', style: Theme.of(context).textTheme.titleSmall),
-          TextField(
-            controller: _conditions,
-            decoration: const InputDecoration(
-              hintText: 'e.g. 8m viz, no current',
-            ),
-            onChanged: (v) =>
-                _n.setConditions(v.trim().isEmpty ? null : v.trim()),
-          ),
-
-          const SizedBox(height: 16),
-
           Text('Notes', style: Theme.of(context).textTheme.titleSmall),
           TextField(
             controller: _notes,
@@ -310,11 +302,11 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
 
           const SizedBox(height: 16),
 
-          if (widget.gasMixes.isNotEmpty) ...[
+          if (widget.showGasMixes && widget.gasMixes.isNotEmpty) ...[
             Text('Gas mixes',
                 style: Theme.of(context).textTheme.titleSmall),
             for (var i = 0; i < widget.gasMixes.length; i++)
-              _GasMixRow(
+              GasMixRow(
                 index: i,
                 mix: widget.gasMixes[i],
                 activeSeconds: widget.activeSecondsByMix[i] ?? 0,
@@ -330,7 +322,7 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
   }
 }
 
-class _GasMixRow extends StatelessWidget {
+class GasMixRow extends StatelessWidget {
   final int index;
   final DiveGasMix mix;
   final int activeSeconds;
@@ -338,7 +330,8 @@ class _GasMixRow extends StatelessWidget {
   final String? selectedCylinderId;
   final void Function(String? cylinderId) onChanged;
 
-  const _GasMixRow({
+  const GasMixRow({
+    super.key,
     required this.index,
     required this.mix,
     required this.activeSeconds,

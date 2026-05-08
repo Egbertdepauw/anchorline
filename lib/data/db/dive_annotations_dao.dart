@@ -55,13 +55,20 @@ class DiveAnnotationsDao {
         [a.diveId],
       );
       final ownerId = _session.currentSession?.user.id;
+      final weightsEncoded = a.weights.isEmpty
+          ? null
+          : jsonEncode(a.weights.map((w) => w.toJson()).toList());
       if (existing == null) {
         await tx.execute(
           'INSERT INTO dive_annotations '
           '(id, owner_id, dive_id, site_name, site_latitude_e5, site_longitude_e5, '
           'notes, buddies_json, tags_json, rating, conditions, '
+          'suit, undersuit, weight_system, dpv, camera, '
+          'visibility, wavesize, current, surge, chill, '
+          'air_temp_c, water_temp_c, weights_json, '
           'created_at, updated_at, deleted_at, version, sync_status) '
-          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+          '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             a.diveId, // synthetic id == dive_id (one annotation per dive)
             ownerId,
@@ -74,6 +81,19 @@ class DiveAnnotationsDao {
             a.tags.isEmpty ? null : jsonEncode(a.tags),
             a.rating,
             a.conditions,
+            a.suit,
+            a.undersuit,
+            a.weightSystem,
+            a.dpv,
+            a.camera,
+            a.visibility,
+            a.wavesize,
+            a.current,
+            a.surge,
+            a.chill,
+            a.airTempC,
+            a.waterTempC,
+            weightsEncoded,
             a.createdAt.millisecondsSinceEpoch,
             now,
             a.deletedAt?.millisecondsSinceEpoch,
@@ -94,6 +114,19 @@ class DiveAnnotationsDao {
           'tags_json = ?, '
           'rating = ?, '
           'conditions = ?, '
+          'suit = ?, '
+          'undersuit = ?, '
+          'weight_system = ?, '
+          'dpv = ?, '
+          'camera = ?, '
+          'visibility = ?, '
+          'wavesize = ?, '
+          'current = ?, '
+          'surge = ?, '
+          'chill = ?, '
+          'air_temp_c = ?, '
+          'water_temp_c = ?, '
+          'weights_json = ?, '
           'updated_at = ?, '
           'deleted_at = ?, '
           'version = ?, '
@@ -109,6 +142,19 @@ class DiveAnnotationsDao {
             a.tags.isEmpty ? null : jsonEncode(a.tags),
             a.rating,
             a.conditions,
+            a.suit,
+            a.undersuit,
+            a.weightSystem,
+            a.dpv,
+            a.camera,
+            a.visibility,
+            a.wavesize,
+            a.current,
+            a.surge,
+            a.chill,
+            a.airTempC,
+            a.waterTempC,
+            weightsEncoded,
             now,
             a.deletedAt?.millisecondsSinceEpoch,
             newVersion,
@@ -232,6 +278,28 @@ class DiveAnnotationsDao {
     return all.toList();
   }
 
+  /// Distinct values seen for an equipment text column. Used by the
+  /// Equipment-tab autocompletes (suit, undersuit, weight_system, dpv,
+  /// camera) — typed `column` so the call site reads as
+  /// `distinctEquipmentValues('suit')` and we don't have to write five
+  /// near-identical methods. Column name is whitelisted to defend
+  /// against accidental SQL injection from a future caller.
+  Future<List<String>> distinctEquipmentValues(String column) async {
+    const allowed = {'suit', 'undersuit', 'weight_system', 'dpv', 'camera'};
+    if (!allowed.contains(column)) {
+      throw ArgumentError.value(column, 'column', 'not an equipment column');
+    }
+    final rows = await _db.getAll(
+      'SELECT DISTINCT $column FROM dive_annotations '
+      'WHERE $column IS NOT NULL AND deleted_at IS NULL',
+    );
+    return rows
+        .map((r) => r[column] as String?)
+        .whereType<String>()
+        .where((s) => s.trim().isNotEmpty)
+        .toList();
+  }
+
   // ── Mapping helpers ─────────────────────────────────────────────────────
 
   DiveAnnotation _rowToModel(Map<String, dynamic> row) {
@@ -239,6 +307,7 @@ class DiveAnnotationsDao {
     final lonE5 = row['site_longitude_e5'] as int?;
     final buddiesJson = row['buddies_json'] as String?;
     final tagsJson = row['tags_json'] as String?;
+    final weightsJson = row['weights_json'] as String?;
     final deletedAt = row['deleted_at'] as int?;
     final syncStatusIdx = row['sync_status'] as int? ?? 0;
     return DiveAnnotation(
@@ -251,6 +320,19 @@ class DiveAnnotationsDao {
       tags: _decodeStringList(tagsJson),
       rating: row['rating'] as int?,
       conditions: row['conditions'] as String?,
+      suit: row['suit'] as String?,
+      undersuit: row['undersuit'] as String?,
+      weightSystem: row['weight_system'] as String?,
+      dpv: row['dpv'] as String?,
+      camera: row['camera'] as String?,
+      visibility: row['visibility'] as int?,
+      wavesize: row['wavesize'] as int?,
+      current: row['current'] as int?,
+      surge: row['surge'] as int?,
+      chill: row['chill'] as int?,
+      airTempC: (row['air_temp_c'] as num?)?.toDouble(),
+      waterTempC: (row['water_temp_c'] as num?)?.toDouble(),
+      weights: _decodeWeights(weightsJson),
       createdAt:
           DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
       updatedAt:
@@ -261,6 +343,26 @@ class DiveAnnotationsDao {
       version: row['version'] as int? ?? 1,
       syncStatus: SyncStatus.values[syncStatusIdx.clamp(0, SyncStatus.values.length - 1)],
     );
+  }
+
+  /// Decode `weights_json` into a list of [Weight] entries. Tolerates the
+  /// same wrapped-string-scalar legacy form `_decodeStringList` does for
+  /// the buddies/tags columns (Round 2.2c PowerSync upload-path bug).
+  List<Weight> _decodeWeights(String? raw) {
+    if (raw == null) return const [];
+    try {
+      var v = jsonDecode(raw);
+      if (v is String) v = jsonDecode(v); // unwrap one level
+      if (v is List) {
+        return v
+            .whereType<Map>()
+            .map((m) => Weight.fromJson(Map<String, dynamic>.from(m)))
+            .toList();
+      }
+    } catch (_) {
+      // fall through to empty
+    }
+    return const [];
   }
 
   /// Decodes a JSON-text-encoded string list. Tolerates legacy rows where

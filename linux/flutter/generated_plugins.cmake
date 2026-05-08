@@ -3,6 +3,9 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  file_selector_linux
+  flutter_secure_storage_linux
+  git2dart_binaries
   gtk
   url_launcher_linux
 )

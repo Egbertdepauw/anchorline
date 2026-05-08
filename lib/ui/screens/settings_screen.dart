@@ -3,11 +3,17 @@ import 'package:intl/intl.dart';
 import 'package:powersync/powersync.dart' hide SyncStatus, Column;
 
 import '../../data/db/database.dart';
+import '../../data/db/dive_dao.dart';
 import '../../dev/fixture_seeder.dart';
+import '../../sync/attachments/attachment_object_wiper.dart';
 import '../../sync/cloud/auth_service.dart';
 import '../../sync/cloud/cloud_data_wiper.dart';
 import '../../sync/cloud/sync_status_source.dart';
+import '../../sync/subsurface_git/bootstrap_importer.dart';
+import '../../sync/subsurface_git/credentials.dart';
+import '../../sync/subsurface_git/sync_orchestrator.dart';
 import '../notifiers/settings_notifier.dart';
+import '../widgets/subsurface_sync_section.dart';
 
 class SettingsScreen extends StatefulWidget {
   final SettingsNotifier notifier;
@@ -21,6 +27,25 @@ class SettingsScreen extends StatefulWidget {
   /// dialog. Without it the checkbox is hidden and reset stays local-only.
   final CloudDataWiper? cloudDataWiper;
 
+  /// Optional — when present, the Reset-Everything path also sweeps R2
+  /// objects so the user's storage bill doesn't carry orphans after the
+  /// cloud rows are gone. Best-effort; failures are logged.
+  final AttachmentObjectWiper? attachmentObjectWiper;
+
+  /// Optional — when all three of [subsurfaceOrchestrator],
+  /// [subsurfaceCredentials], and [diveDao] are non-null, the
+  /// "Subsurface sync" card is rendered. Tests omit them and the section
+  /// is hidden, so existing settings-screen tests stay unchanged.
+  final SubsurfaceSyncOrchestrator? subsurfaceOrchestrator;
+  final SubsurfaceCredentialsSource? subsurfaceCredentials;
+  final DiveDao? diveDao;
+
+  /// Optional — when present (and the rest of the Subsurface trio is
+  /// also wired), the section renders a second "Import from Subsurface"
+  /// button that triggers a one-shot bootstrap import. The shell
+  /// instantiates this alongside the orchestrator at app boot.
+  final SubsurfaceBootstrapImporter? subsurfaceBootstrapImporter;
+
   const SettingsScreen({
     super.key,
     required this.notifier,
@@ -29,6 +54,11 @@ class SettingsScreen extends StatefulWidget {
     this.db,
     this.powerSyncDb,
     this.cloudDataWiper,
+    this.attachmentObjectWiper,
+    this.subsurfaceOrchestrator,
+    this.subsurfaceCredentials,
+    this.diveDao,
+    this.subsurfaceBootstrapImporter,
   });
 
   @override
@@ -72,6 +102,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: widget.notifier.useSpeedColoredGraph,
             onChanged: (v) => widget.notifier.setUseSpeedColoredGraph(v),
           ),
+          if (widget.subsurfaceOrchestrator != null &&
+              widget.subsurfaceCredentials != null &&
+              widget.diveDao != null) ...[
+            const Divider(height: 32),
+            SubsurfaceSyncSection(
+              credentials: widget.subsurfaceCredentials!,
+              isPlatformSupported:
+                  widget.subsurfaceOrchestrator!.isPlatformSupported,
+              onSync: widget.subsurfaceOrchestrator!.syncNow,
+              lastSyncedAt: widget.diveDao!.lastSubsurfaceUploadedAt,
+              onBootstrapImport: widget.subsurfaceBootstrapImporter == null
+                  ? null
+                  : () => widget.subsurfaceBootstrapImporter!.import(),
+            ),
+          ],
           if (widget.db != null && widget.powerSyncDb != null) ...[
             const Divider(height: 32),
             Padding(
@@ -161,8 +206,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     final messenger = ScaffoldMessenger.of(context);
     try {
-      // Cloud first so logical-replication deletes propagate to other
-      // devices before this device cuts itself off from sync.
+      // R2 objects first — once `wiper.wipeAllForCurrentUser()` deletes
+      // the dive_attachments rows in Postgres, PowerSync replicates
+      // those deletes down and the local cache loses the storage_keys
+      // we'd need to delete the objects.
+      if (alsoWipeCloud) {
+        await widget.attachmentObjectWiper?.wipeAllForCurrentUser();
+      }
+      // Cloud rows next so logical-replication deletes propagate to
+      // other devices before this device cuts itself off from sync.
       if (alsoWipeCloud && wiper != null) {
         await wiper.wipeAllForCurrentUser();
       }

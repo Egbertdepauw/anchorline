@@ -1,0 +1,10 @@
+model "manually added dive"
+lastmanualtime 55:00min
+maxdepth 11.0m
+meandepth 10.43m
+  0:00 0.0m
+  1:13 11.0m
+ 50:47 11.0m
+ 51:27 5.0m
+ 54:27 5.0m
+ 55:00 0.0m

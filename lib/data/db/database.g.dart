@@ -222,6 +222,17 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _sensorCalibrationJsonMeta =
+      const VerificationMeta('sensorCalibrationJson');
+  @override
+  late final GeneratedColumn<String> sensorCalibrationJson =
+      GeneratedColumn<String>(
+        'sensor_calibration_json',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _configuredStackSecondsMeta =
       const VerificationMeta('configuredStackSeconds');
   @override
@@ -330,6 +341,7 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
     sampleIntervalMs,
     gasMixesJson,
     tanksJson,
+    sensorCalibrationJson,
     configuredStackSeconds,
     stackRemainingAtStartSeconds,
     stackRemainingAtEndSeconds,
@@ -522,6 +534,15 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
         tanksJson.isAcceptableOrUnknown(data['tanks_json']!, _tanksJsonMeta),
       );
     }
+    if (data.containsKey('sensor_calibration_json')) {
+      context.handle(
+        _sensorCalibrationJsonMeta,
+        sensorCalibrationJson.isAcceptableOrUnknown(
+          data['sensor_calibration_json']!,
+          _sensorCalibrationJsonMeta,
+        ),
+      );
+    }
     if (data.containsKey('configured_stack_seconds')) {
       context.handle(
         _configuredStackSecondsMeta,
@@ -680,6 +701,10 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
         DriftSqlType.string,
         data['${effectivePrefix}tanks_json'],
       ),
+      sensorCalibrationJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sensor_calibration_json'],
+      ),
       configuredStackSeconds: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}configured_stack_seconds'],
@@ -761,6 +786,12 @@ class Dive extends DataClass implements Insertable<Dive> {
   /// (no AI configured, OC dives without tank pressure, etc).
   final String? tanksJson;
 
+  /// Per-cell calibration factors as a JSON array of doubles. Length 3
+  /// on CCR; null on OC (or older imports made before the column existed).
+  /// Used to derive per-cell PPO2 from raw mV at display/export time:
+  /// `ppo2_bar = mV * cal / 1000`. The Petrel factory default is 0.021.
+  final String? sensorCalibrationJson;
+
   /// Scrubber stack time (seconds). All null when the diver hasn't
   /// enabled stack tracking on the unit.
   final int? configuredStackSeconds;
@@ -807,6 +838,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     required this.sampleIntervalMs,
     required this.gasMixesJson,
     this.tanksJson,
+    this.sensorCalibrationJson,
     this.configuredStackSeconds,
     this.stackRemainingAtStartSeconds,
     this.stackRemainingAtEndSeconds,
@@ -848,6 +880,9 @@ class Dive extends DataClass implements Insertable<Dive> {
     map['gas_mixes_json'] = Variable<String>(gasMixesJson);
     if (!nullToAbsent || tanksJson != null) {
       map['tanks_json'] = Variable<String>(tanksJson);
+    }
+    if (!nullToAbsent || sensorCalibrationJson != null) {
+      map['sensor_calibration_json'] = Variable<String>(sensorCalibrationJson);
     }
     if (!nullToAbsent || configuredStackSeconds != null) {
       map['configured_stack_seconds'] = Variable<int>(configuredStackSeconds);
@@ -906,6 +941,9 @@ class Dive extends DataClass implements Insertable<Dive> {
       tanksJson: tanksJson == null && nullToAbsent
           ? const Value.absent()
           : Value(tanksJson),
+      sensorCalibrationJson: sensorCalibrationJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sensorCalibrationJson),
       configuredStackSeconds: configuredStackSeconds == null && nullToAbsent
           ? const Value.absent()
           : Value(configuredStackSeconds),
@@ -957,6 +995,9 @@ class Dive extends DataClass implements Insertable<Dive> {
       sampleIntervalMs: serializer.fromJson<int>(json['sampleIntervalMs']),
       gasMixesJson: serializer.fromJson<String>(json['gasMixesJson']),
       tanksJson: serializer.fromJson<String?>(json['tanksJson']),
+      sensorCalibrationJson: serializer.fromJson<String?>(
+        json['sensorCalibrationJson'],
+      ),
       configuredStackSeconds: serializer.fromJson<int?>(
         json['configuredStackSeconds'],
       ),
@@ -1001,6 +1042,9 @@ class Dive extends DataClass implements Insertable<Dive> {
       'sampleIntervalMs': serializer.toJson<int>(sampleIntervalMs),
       'gasMixesJson': serializer.toJson<String>(gasMixesJson),
       'tanksJson': serializer.toJson<String?>(tanksJson),
+      'sensorCalibrationJson': serializer.toJson<String?>(
+        sensorCalibrationJson,
+      ),
       'configuredStackSeconds': serializer.toJson<int?>(configuredStackSeconds),
       'stackRemainingAtStartSeconds': serializer.toJson<int?>(
         stackRemainingAtStartSeconds,
@@ -1037,6 +1081,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     int? sampleIntervalMs,
     String? gasMixesJson,
     Value<String?> tanksJson = const Value.absent(),
+    Value<String?> sensorCalibrationJson = const Value.absent(),
     Value<int?> configuredStackSeconds = const Value.absent(),
     Value<int?> stackRemainingAtStartSeconds = const Value.absent(),
     Value<int?> stackRemainingAtEndSeconds = const Value.absent(),
@@ -1069,6 +1114,9 @@ class Dive extends DataClass implements Insertable<Dive> {
     sampleIntervalMs: sampleIntervalMs ?? this.sampleIntervalMs,
     gasMixesJson: gasMixesJson ?? this.gasMixesJson,
     tanksJson: tanksJson.present ? tanksJson.value : this.tanksJson,
+    sensorCalibrationJson: sensorCalibrationJson.present
+        ? sensorCalibrationJson.value
+        : this.sensorCalibrationJson,
     configuredStackSeconds: configuredStackSeconds.present
         ? configuredStackSeconds.value
         : this.configuredStackSeconds,
@@ -1128,6 +1176,9 @@ class Dive extends DataClass implements Insertable<Dive> {
           ? data.gasMixesJson.value
           : this.gasMixesJson,
       tanksJson: data.tanksJson.present ? data.tanksJson.value : this.tanksJson,
+      sensorCalibrationJson: data.sensorCalibrationJson.present
+          ? data.sensorCalibrationJson.value
+          : this.sensorCalibrationJson,
       configuredStackSeconds: data.configuredStackSeconds.present
           ? data.configuredStackSeconds.value
           : this.configuredStackSeconds,
@@ -1174,6 +1225,7 @@ class Dive extends DataClass implements Insertable<Dive> {
           ..write('sampleIntervalMs: $sampleIntervalMs, ')
           ..write('gasMixesJson: $gasMixesJson, ')
           ..write('tanksJson: $tanksJson, ')
+          ..write('sensorCalibrationJson: $sensorCalibrationJson, ')
           ..write('configuredStackSeconds: $configuredStackSeconds, ')
           ..write(
             'stackRemainingAtStartSeconds: $stackRemainingAtStartSeconds, ',
@@ -1210,6 +1262,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     sampleIntervalMs,
     gasMixesJson,
     tanksJson,
+    sensorCalibrationJson,
     configuredStackSeconds,
     stackRemainingAtStartSeconds,
     stackRemainingAtEndSeconds,
@@ -1243,6 +1296,7 @@ class Dive extends DataClass implements Insertable<Dive> {
           other.sampleIntervalMs == this.sampleIntervalMs &&
           other.gasMixesJson == this.gasMixesJson &&
           other.tanksJson == this.tanksJson &&
+          other.sensorCalibrationJson == this.sensorCalibrationJson &&
           other.configuredStackSeconds == this.configuredStackSeconds &&
           other.stackRemainingAtStartSeconds ==
               this.stackRemainingAtStartSeconds &&
@@ -1275,6 +1329,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
   final Value<int> sampleIntervalMs;
   final Value<String> gasMixesJson;
   final Value<String?> tanksJson;
+  final Value<String?> sensorCalibrationJson;
   final Value<int?> configuredStackSeconds;
   final Value<int?> stackRemainingAtStartSeconds;
   final Value<int?> stackRemainingAtEndSeconds;
@@ -1305,6 +1360,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     this.sampleIntervalMs = const Value.absent(),
     this.gasMixesJson = const Value.absent(),
     this.tanksJson = const Value.absent(),
+    this.sensorCalibrationJson = const Value.absent(),
     this.configuredStackSeconds = const Value.absent(),
     this.stackRemainingAtStartSeconds = const Value.absent(),
     this.stackRemainingAtEndSeconds = const Value.absent(),
@@ -1336,6 +1392,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     required int sampleIntervalMs,
     required String gasMixesJson,
     this.tanksJson = const Value.absent(),
+    this.sensorCalibrationJson = const Value.absent(),
     this.configuredStackSeconds = const Value.absent(),
     this.stackRemainingAtStartSeconds = const Value.absent(),
     this.stackRemainingAtEndSeconds = const Value.absent(),
@@ -1384,6 +1441,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     Expression<int>? sampleIntervalMs,
     Expression<String>? gasMixesJson,
     Expression<String>? tanksJson,
+    Expression<String>? sensorCalibrationJson,
     Expression<int>? configuredStackSeconds,
     Expression<int>? stackRemainingAtStartSeconds,
     Expression<int>? stackRemainingAtEndSeconds,
@@ -1416,6 +1474,8 @@ class DivesCompanion extends UpdateCompanion<Dive> {
       if (sampleIntervalMs != null) 'sample_interval_ms': sampleIntervalMs,
       if (gasMixesJson != null) 'gas_mixes_json': gasMixesJson,
       if (tanksJson != null) 'tanks_json': tanksJson,
+      if (sensorCalibrationJson != null)
+        'sensor_calibration_json': sensorCalibrationJson,
       if (configuredStackSeconds != null)
         'configured_stack_seconds': configuredStackSeconds,
       if (stackRemainingAtStartSeconds != null)
@@ -1453,6 +1513,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     Value<int>? sampleIntervalMs,
     Value<String>? gasMixesJson,
     Value<String?>? tanksJson,
+    Value<String?>? sensorCalibrationJson,
     Value<int?>? configuredStackSeconds,
     Value<int?>? stackRemainingAtStartSeconds,
     Value<int?>? stackRemainingAtEndSeconds,
@@ -1485,6 +1546,8 @@ class DivesCompanion extends UpdateCompanion<Dive> {
       sampleIntervalMs: sampleIntervalMs ?? this.sampleIntervalMs,
       gasMixesJson: gasMixesJson ?? this.gasMixesJson,
       tanksJson: tanksJson ?? this.tanksJson,
+      sensorCalibrationJson:
+          sensorCalibrationJson ?? this.sensorCalibrationJson,
       configuredStackSeconds:
           configuredStackSeconds ?? this.configuredStackSeconds,
       stackRemainingAtStartSeconds:
@@ -1565,6 +1628,11 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     if (tanksJson.present) {
       map['tanks_json'] = Variable<String>(tanksJson.value);
     }
+    if (sensorCalibrationJson.present) {
+      map['sensor_calibration_json'] = Variable<String>(
+        sensorCalibrationJson.value,
+      );
+    }
     if (configuredStackSeconds.present) {
       map['configured_stack_seconds'] = Variable<int>(
         configuredStackSeconds.value,
@@ -1624,6 +1692,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
           ..write('sampleIntervalMs: $sampleIntervalMs, ')
           ..write('gasMixesJson: $gasMixesJson, ')
           ..write('tanksJson: $tanksJson, ')
+          ..write('sensorCalibrationJson: $sensorCalibrationJson, ')
           ..write('configuredStackSeconds: $configuredStackSeconds, ')
           ..write(
             'stackRemainingAtStartSeconds: $stackRemainingAtStartSeconds, ',
@@ -2934,6 +3003,90 @@ class $DiveAnnotationsTable extends DiveAnnotations
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _visibilityMeta = const VerificationMeta(
+    'visibility',
+  );
+  @override
+  late final GeneratedColumn<int> visibility = GeneratedColumn<int>(
+    'visibility',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _wavesizeMeta = const VerificationMeta(
+    'wavesize',
+  );
+  @override
+  late final GeneratedColumn<int> wavesize = GeneratedColumn<int>(
+    'wavesize',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _currentMeta = const VerificationMeta(
+    'current',
+  );
+  @override
+  late final GeneratedColumn<int> current = GeneratedColumn<int>(
+    'current',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _surgeMeta = const VerificationMeta('surge');
+  @override
+  late final GeneratedColumn<int> surge = GeneratedColumn<int>(
+    'surge',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _chillMeta = const VerificationMeta('chill');
+  @override
+  late final GeneratedColumn<int> chill = GeneratedColumn<int>(
+    'chill',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _airTempCMeta = const VerificationMeta(
+    'airTempC',
+  );
+  @override
+  late final GeneratedColumn<double> airTempC = GeneratedColumn<double>(
+    'air_temp_c',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _waterTempCMeta = const VerificationMeta(
+    'waterTempC',
+  );
+  @override
+  late final GeneratedColumn<double> waterTempC = GeneratedColumn<double>(
+    'water_temp_c',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _weightsJsonMeta = const VerificationMeta(
+    'weightsJson',
+  );
+  @override
+  late final GeneratedColumn<String> weightsJson = GeneratedColumn<String>(
+    'weights_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -3013,6 +3166,14 @@ class $DiveAnnotationsTable extends DiveAnnotations
     tagsJson,
     rating,
     conditions,
+    visibility,
+    wavesize,
+    current,
+    surge,
+    chill,
+    airTempC,
+    waterTempC,
+    weightsJson,
     createdAt,
     updatedAt,
     deletedAt,
@@ -3095,6 +3256,60 @@ class $DiveAnnotationsTable extends DiveAnnotations
       context.handle(
         _conditionsMeta,
         conditions.isAcceptableOrUnknown(data['conditions']!, _conditionsMeta),
+      );
+    }
+    if (data.containsKey('visibility')) {
+      context.handle(
+        _visibilityMeta,
+        visibility.isAcceptableOrUnknown(data['visibility']!, _visibilityMeta),
+      );
+    }
+    if (data.containsKey('wavesize')) {
+      context.handle(
+        _wavesizeMeta,
+        wavesize.isAcceptableOrUnknown(data['wavesize']!, _wavesizeMeta),
+      );
+    }
+    if (data.containsKey('current')) {
+      context.handle(
+        _currentMeta,
+        current.isAcceptableOrUnknown(data['current']!, _currentMeta),
+      );
+    }
+    if (data.containsKey('surge')) {
+      context.handle(
+        _surgeMeta,
+        surge.isAcceptableOrUnknown(data['surge']!, _surgeMeta),
+      );
+    }
+    if (data.containsKey('chill')) {
+      context.handle(
+        _chillMeta,
+        chill.isAcceptableOrUnknown(data['chill']!, _chillMeta),
+      );
+    }
+    if (data.containsKey('air_temp_c')) {
+      context.handle(
+        _airTempCMeta,
+        airTempC.isAcceptableOrUnknown(data['air_temp_c']!, _airTempCMeta),
+      );
+    }
+    if (data.containsKey('water_temp_c')) {
+      context.handle(
+        _waterTempCMeta,
+        waterTempC.isAcceptableOrUnknown(
+          data['water_temp_c']!,
+          _waterTempCMeta,
+        ),
+      );
+    }
+    if (data.containsKey('weights_json')) {
+      context.handle(
+        _weightsJsonMeta,
+        weightsJson.isAcceptableOrUnknown(
+          data['weights_json']!,
+          _weightsJsonMeta,
+        ),
       );
     }
     if (data.containsKey('created_at')) {
@@ -3182,6 +3397,38 @@ class $DiveAnnotationsTable extends DiveAnnotations
         DriftSqlType.string,
         data['${effectivePrefix}conditions'],
       ),
+      visibility: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}visibility'],
+      ),
+      wavesize: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}wavesize'],
+      ),
+      current: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}current'],
+      ),
+      surge: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}surge'],
+      ),
+      chill: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}chill'],
+      ),
+      airTempC: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}air_temp_c'],
+      ),
+      waterTempC: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}water_temp_c'],
+      ),
+      weightsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}weights_json'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -3225,6 +3472,17 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
   final String? tagsJson;
   final int? rating;
   final String? conditions;
+  final int? visibility;
+  final int? wavesize;
+  final int? current;
+  final int? surge;
+  final int? chill;
+  final double? airTempC;
+  final double? waterTempC;
+
+  /// JSON array of `{"weight_kg": double, "description": string}` objects,
+  /// one per `weightsystem` line in Subsurface. Null = no weight entries.
+  final String? weightsJson;
   final int createdAt;
   final int updatedAt;
   final int? deletedAt;
@@ -3241,6 +3499,14 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     this.tagsJson,
     this.rating,
     this.conditions,
+    this.visibility,
+    this.wavesize,
+    this.current,
+    this.surge,
+    this.chill,
+    this.airTempC,
+    this.waterTempC,
+    this.weightsJson,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -3275,6 +3541,30 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     }
     if (!nullToAbsent || conditions != null) {
       map['conditions'] = Variable<String>(conditions);
+    }
+    if (!nullToAbsent || visibility != null) {
+      map['visibility'] = Variable<int>(visibility);
+    }
+    if (!nullToAbsent || wavesize != null) {
+      map['wavesize'] = Variable<int>(wavesize);
+    }
+    if (!nullToAbsent || current != null) {
+      map['current'] = Variable<int>(current);
+    }
+    if (!nullToAbsent || surge != null) {
+      map['surge'] = Variable<int>(surge);
+    }
+    if (!nullToAbsent || chill != null) {
+      map['chill'] = Variable<int>(chill);
+    }
+    if (!nullToAbsent || airTempC != null) {
+      map['air_temp_c'] = Variable<double>(airTempC);
+    }
+    if (!nullToAbsent || waterTempC != null) {
+      map['water_temp_c'] = Variable<double>(waterTempC);
+    }
+    if (!nullToAbsent || weightsJson != null) {
+      map['weights_json'] = Variable<String>(weightsJson);
     }
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -3316,6 +3606,30 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       conditions: conditions == null && nullToAbsent
           ? const Value.absent()
           : Value(conditions),
+      visibility: visibility == null && nullToAbsent
+          ? const Value.absent()
+          : Value(visibility),
+      wavesize: wavesize == null && nullToAbsent
+          ? const Value.absent()
+          : Value(wavesize),
+      current: current == null && nullToAbsent
+          ? const Value.absent()
+          : Value(current),
+      surge: surge == null && nullToAbsent
+          ? const Value.absent()
+          : Value(surge),
+      chill: chill == null && nullToAbsent
+          ? const Value.absent()
+          : Value(chill),
+      airTempC: airTempC == null && nullToAbsent
+          ? const Value.absent()
+          : Value(airTempC),
+      waterTempC: waterTempC == null && nullToAbsent
+          ? const Value.absent()
+          : Value(waterTempC),
+      weightsJson: weightsJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(weightsJson),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -3344,6 +3658,14 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       tagsJson: serializer.fromJson<String?>(json['tagsJson']),
       rating: serializer.fromJson<int?>(json['rating']),
       conditions: serializer.fromJson<String?>(json['conditions']),
+      visibility: serializer.fromJson<int?>(json['visibility']),
+      wavesize: serializer.fromJson<int?>(json['wavesize']),
+      current: serializer.fromJson<int?>(json['current']),
+      surge: serializer.fromJson<int?>(json['surge']),
+      chill: serializer.fromJson<int?>(json['chill']),
+      airTempC: serializer.fromJson<double?>(json['airTempC']),
+      waterTempC: serializer.fromJson<double?>(json['waterTempC']),
+      weightsJson: serializer.fromJson<String?>(json['weightsJson']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
@@ -3365,6 +3687,14 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       'tagsJson': serializer.toJson<String?>(tagsJson),
       'rating': serializer.toJson<int?>(rating),
       'conditions': serializer.toJson<String?>(conditions),
+      'visibility': serializer.toJson<int?>(visibility),
+      'wavesize': serializer.toJson<int?>(wavesize),
+      'current': serializer.toJson<int?>(current),
+      'surge': serializer.toJson<int?>(surge),
+      'chill': serializer.toJson<int?>(chill),
+      'airTempC': serializer.toJson<double?>(airTempC),
+      'waterTempC': serializer.toJson<double?>(waterTempC),
+      'weightsJson': serializer.toJson<String?>(weightsJson),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'deletedAt': serializer.toJson<int?>(deletedAt),
@@ -3384,6 +3714,14 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     Value<String?> tagsJson = const Value.absent(),
     Value<int?> rating = const Value.absent(),
     Value<String?> conditions = const Value.absent(),
+    Value<int?> visibility = const Value.absent(),
+    Value<int?> wavesize = const Value.absent(),
+    Value<int?> current = const Value.absent(),
+    Value<int?> surge = const Value.absent(),
+    Value<int?> chill = const Value.absent(),
+    Value<double?> airTempC = const Value.absent(),
+    Value<double?> waterTempC = const Value.absent(),
+    Value<String?> weightsJson = const Value.absent(),
     int? createdAt,
     int? updatedAt,
     Value<int?> deletedAt = const Value.absent(),
@@ -3404,6 +3742,14 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     tagsJson: tagsJson.present ? tagsJson.value : this.tagsJson,
     rating: rating.present ? rating.value : this.rating,
     conditions: conditions.present ? conditions.value : this.conditions,
+    visibility: visibility.present ? visibility.value : this.visibility,
+    wavesize: wavesize.present ? wavesize.value : this.wavesize,
+    current: current.present ? current.value : this.current,
+    surge: surge.present ? surge.value : this.surge,
+    chill: chill.present ? chill.value : this.chill,
+    airTempC: airTempC.present ? airTempC.value : this.airTempC,
+    waterTempC: waterTempC.present ? waterTempC.value : this.waterTempC,
+    weightsJson: weightsJson.present ? weightsJson.value : this.weightsJson,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -3430,6 +3776,20 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       conditions: data.conditions.present
           ? data.conditions.value
           : this.conditions,
+      visibility: data.visibility.present
+          ? data.visibility.value
+          : this.visibility,
+      wavesize: data.wavesize.present ? data.wavesize.value : this.wavesize,
+      current: data.current.present ? data.current.value : this.current,
+      surge: data.surge.present ? data.surge.value : this.surge,
+      chill: data.chill.present ? data.chill.value : this.chill,
+      airTempC: data.airTempC.present ? data.airTempC.value : this.airTempC,
+      waterTempC: data.waterTempC.present
+          ? data.waterTempC.value
+          : this.waterTempC,
+      weightsJson: data.weightsJson.present
+          ? data.weightsJson.value
+          : this.weightsJson,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -3453,6 +3813,14 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
           ..write('tagsJson: $tagsJson, ')
           ..write('rating: $rating, ')
           ..write('conditions: $conditions, ')
+          ..write('visibility: $visibility, ')
+          ..write('wavesize: $wavesize, ')
+          ..write('current: $current, ')
+          ..write('surge: $surge, ')
+          ..write('chill: $chill, ')
+          ..write('airTempC: $airTempC, ')
+          ..write('waterTempC: $waterTempC, ')
+          ..write('weightsJson: $weightsJson, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -3464,7 +3832,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     diveId,
     siteName,
     siteLatitudeE5,
@@ -3474,13 +3842,21 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     tagsJson,
     rating,
     conditions,
+    visibility,
+    wavesize,
+    current,
+    surge,
+    chill,
+    airTempC,
+    waterTempC,
+    weightsJson,
     createdAt,
     updatedAt,
     deletedAt,
     version,
     syncStatus,
     ownerId,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3494,6 +3870,14 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
           other.tagsJson == this.tagsJson &&
           other.rating == this.rating &&
           other.conditions == this.conditions &&
+          other.visibility == this.visibility &&
+          other.wavesize == this.wavesize &&
+          other.current == this.current &&
+          other.surge == this.surge &&
+          other.chill == this.chill &&
+          other.airTempC == this.airTempC &&
+          other.waterTempC == this.waterTempC &&
+          other.weightsJson == this.weightsJson &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
@@ -3512,6 +3896,14 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
   final Value<String?> tagsJson;
   final Value<int?> rating;
   final Value<String?> conditions;
+  final Value<int?> visibility;
+  final Value<int?> wavesize;
+  final Value<int?> current;
+  final Value<int?> surge;
+  final Value<int?> chill;
+  final Value<double?> airTempC;
+  final Value<double?> waterTempC;
+  final Value<String?> weightsJson;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<int?> deletedAt;
@@ -3529,6 +3921,14 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     this.tagsJson = const Value.absent(),
     this.rating = const Value.absent(),
     this.conditions = const Value.absent(),
+    this.visibility = const Value.absent(),
+    this.wavesize = const Value.absent(),
+    this.current = const Value.absent(),
+    this.surge = const Value.absent(),
+    this.chill = const Value.absent(),
+    this.airTempC = const Value.absent(),
+    this.waterTempC = const Value.absent(),
+    this.weightsJson = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -3547,6 +3947,14 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     this.tagsJson = const Value.absent(),
     this.rating = const Value.absent(),
     this.conditions = const Value.absent(),
+    this.visibility = const Value.absent(),
+    this.wavesize = const Value.absent(),
+    this.current = const Value.absent(),
+    this.surge = const Value.absent(),
+    this.chill = const Value.absent(),
+    this.airTempC = const Value.absent(),
+    this.waterTempC = const Value.absent(),
+    this.weightsJson = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.deletedAt = const Value.absent(),
@@ -3567,6 +3975,14 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     Expression<String>? tagsJson,
     Expression<int>? rating,
     Expression<String>? conditions,
+    Expression<int>? visibility,
+    Expression<int>? wavesize,
+    Expression<int>? current,
+    Expression<int>? surge,
+    Expression<int>? chill,
+    Expression<double>? airTempC,
+    Expression<double>? waterTempC,
+    Expression<String>? weightsJson,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<int>? deletedAt,
@@ -3585,6 +4001,14 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
       if (tagsJson != null) 'tags_json': tagsJson,
       if (rating != null) 'rating': rating,
       if (conditions != null) 'conditions': conditions,
+      if (visibility != null) 'visibility': visibility,
+      if (wavesize != null) 'wavesize': wavesize,
+      if (current != null) 'current': current,
+      if (surge != null) 'surge': surge,
+      if (chill != null) 'chill': chill,
+      if (airTempC != null) 'air_temp_c': airTempC,
+      if (waterTempC != null) 'water_temp_c': waterTempC,
+      if (weightsJson != null) 'weights_json': weightsJson,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -3605,6 +4029,14 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     Value<String?>? tagsJson,
     Value<int?>? rating,
     Value<String?>? conditions,
+    Value<int?>? visibility,
+    Value<int?>? wavesize,
+    Value<int?>? current,
+    Value<int?>? surge,
+    Value<int?>? chill,
+    Value<double?>? airTempC,
+    Value<double?>? waterTempC,
+    Value<String?>? weightsJson,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<int?>? deletedAt,
@@ -3623,6 +4055,14 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
       tagsJson: tagsJson ?? this.tagsJson,
       rating: rating ?? this.rating,
       conditions: conditions ?? this.conditions,
+      visibility: visibility ?? this.visibility,
+      wavesize: wavesize ?? this.wavesize,
+      current: current ?? this.current,
+      surge: surge ?? this.surge,
+      chill: chill ?? this.chill,
+      airTempC: airTempC ?? this.airTempC,
+      waterTempC: waterTempC ?? this.waterTempC,
+      weightsJson: weightsJson ?? this.weightsJson,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -3663,6 +4103,30 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     if (conditions.present) {
       map['conditions'] = Variable<String>(conditions.value);
     }
+    if (visibility.present) {
+      map['visibility'] = Variable<int>(visibility.value);
+    }
+    if (wavesize.present) {
+      map['wavesize'] = Variable<int>(wavesize.value);
+    }
+    if (current.present) {
+      map['current'] = Variable<int>(current.value);
+    }
+    if (surge.present) {
+      map['surge'] = Variable<int>(surge.value);
+    }
+    if (chill.present) {
+      map['chill'] = Variable<int>(chill.value);
+    }
+    if (airTempC.present) {
+      map['air_temp_c'] = Variable<double>(airTempC.value);
+    }
+    if (waterTempC.present) {
+      map['water_temp_c'] = Variable<double>(waterTempC.value);
+    }
+    if (weightsJson.present) {
+      map['weights_json'] = Variable<String>(weightsJson.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -3699,6 +4163,14 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
           ..write('tagsJson: $tagsJson, ')
           ..write('rating: $rating, ')
           ..write('conditions: $conditions, ')
+          ..write('visibility: $visibility, ')
+          ..write('wavesize: $wavesize, ')
+          ..write('current: $current, ')
+          ..write('surge: $surge, ')
+          ..write('chill: $chill, ')
+          ..write('airTempC: $airTempC, ')
+          ..write('waterTempC: $waterTempC, ')
+          ..write('weightsJson: $weightsJson, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -8078,6 +8550,7 @@ typedef $$DivesTableCreateCompanionBuilder =
       required int sampleIntervalMs,
       required String gasMixesJson,
       Value<String?> tanksJson,
+      Value<String?> sensorCalibrationJson,
       Value<int?> configuredStackSeconds,
       Value<int?> stackRemainingAtStartSeconds,
       Value<int?> stackRemainingAtEndSeconds,
@@ -8110,6 +8583,7 @@ typedef $$DivesTableUpdateCompanionBuilder =
       Value<int> sampleIntervalMs,
       Value<String> gasMixesJson,
       Value<String?> tanksJson,
+      Value<String?> sensorCalibrationJson,
       Value<int?> configuredStackSeconds,
       Value<int?> stackRemainingAtStartSeconds,
       Value<int?> stackRemainingAtEndSeconds,
@@ -8287,6 +8761,11 @@ class $$DivesTableFilterComposer extends Composer<_$AppDatabase, $DivesTable> {
 
   ColumnFilters<String> get tanksJson => $composableBuilder(
     column: $table.tanksJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sensorCalibrationJson => $composableBuilder(
+    column: $table.sensorCalibrationJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8515,6 +8994,11 @@ class $$DivesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get sensorCalibrationJson => $composableBuilder(
+    column: $table.sensorCalibrationJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get configuredStackSeconds => $composableBuilder(
     column: $table.configuredStackSeconds,
     builder: (column) => ColumnOrderings(column),
@@ -8644,6 +9128,11 @@ class $$DivesTableAnnotationComposer
 
   GeneratedColumn<String> get tanksJson =>
       $composableBuilder(column: $table.tanksJson, builder: (column) => column);
+
+  GeneratedColumn<String> get sensorCalibrationJson => $composableBuilder(
+    column: $table.sensorCalibrationJson,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get configuredStackSeconds => $composableBuilder(
     column: $table.configuredStackSeconds,
@@ -8809,6 +9298,7 @@ class $$DivesTableTableManager
                 Value<int> sampleIntervalMs = const Value.absent(),
                 Value<String> gasMixesJson = const Value.absent(),
                 Value<String?> tanksJson = const Value.absent(),
+                Value<String?> sensorCalibrationJson = const Value.absent(),
                 Value<int?> configuredStackSeconds = const Value.absent(),
                 Value<int?> stackRemainingAtStartSeconds = const Value.absent(),
                 Value<int?> stackRemainingAtEndSeconds = const Value.absent(),
@@ -8839,6 +9329,7 @@ class $$DivesTableTableManager
                 sampleIntervalMs: sampleIntervalMs,
                 gasMixesJson: gasMixesJson,
                 tanksJson: tanksJson,
+                sensorCalibrationJson: sensorCalibrationJson,
                 configuredStackSeconds: configuredStackSeconds,
                 stackRemainingAtStartSeconds: stackRemainingAtStartSeconds,
                 stackRemainingAtEndSeconds: stackRemainingAtEndSeconds,
@@ -8871,6 +9362,7 @@ class $$DivesTableTableManager
                 required int sampleIntervalMs,
                 required String gasMixesJson,
                 Value<String?> tanksJson = const Value.absent(),
+                Value<String?> sensorCalibrationJson = const Value.absent(),
                 Value<int?> configuredStackSeconds = const Value.absent(),
                 Value<int?> stackRemainingAtStartSeconds = const Value.absent(),
                 Value<int?> stackRemainingAtEndSeconds = const Value.absent(),
@@ -8901,6 +9393,7 @@ class $$DivesTableTableManager
                 sampleIntervalMs: sampleIntervalMs,
                 gasMixesJson: gasMixesJson,
                 tanksJson: tanksJson,
+                sensorCalibrationJson: sensorCalibrationJson,
                 configuredStackSeconds: configuredStackSeconds,
                 stackRemainingAtStartSeconds: stackRemainingAtStartSeconds,
                 stackRemainingAtEndSeconds: stackRemainingAtEndSeconds,
@@ -9725,6 +10218,14 @@ typedef $$DiveAnnotationsTableCreateCompanionBuilder =
       Value<String?> tagsJson,
       Value<int?> rating,
       Value<String?> conditions,
+      Value<int?> visibility,
+      Value<int?> wavesize,
+      Value<int?> current,
+      Value<int?> surge,
+      Value<int?> chill,
+      Value<double?> airTempC,
+      Value<double?> waterTempC,
+      Value<String?> weightsJson,
       required int createdAt,
       required int updatedAt,
       Value<int?> deletedAt,
@@ -9744,6 +10245,14 @@ typedef $$DiveAnnotationsTableUpdateCompanionBuilder =
       Value<String?> tagsJson,
       Value<int?> rating,
       Value<String?> conditions,
+      Value<int?> visibility,
+      Value<int?> wavesize,
+      Value<int?> current,
+      Value<int?> surge,
+      Value<int?> chill,
+      Value<double?> airTempC,
+      Value<double?> waterTempC,
+      Value<String?> weightsJson,
       Value<int> createdAt,
       Value<int> updatedAt,
       Value<int?> deletedAt,
@@ -9827,6 +10336,46 @@ class $$DiveAnnotationsTableFilterComposer
 
   ColumnFilters<String> get conditions => $composableBuilder(
     column: $table.conditions,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get visibility => $composableBuilder(
+    column: $table.visibility,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get wavesize => $composableBuilder(
+    column: $table.wavesize,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get current => $composableBuilder(
+    column: $table.current,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get surge => $composableBuilder(
+    column: $table.surge,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get chill => $composableBuilder(
+    column: $table.chill,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get airTempC => $composableBuilder(
+    column: $table.airTempC,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get waterTempC => $composableBuilder(
+    column: $table.waterTempC,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get weightsJson => $composableBuilder(
+    column: $table.weightsJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9933,6 +10482,46 @@ class $$DiveAnnotationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get visibility => $composableBuilder(
+    column: $table.visibility,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get wavesize => $composableBuilder(
+    column: $table.wavesize,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get current => $composableBuilder(
+    column: $table.current,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get surge => $composableBuilder(
+    column: $table.surge,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get chill => $composableBuilder(
+    column: $table.chill,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get airTempC => $composableBuilder(
+    column: $table.airTempC,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get waterTempC => $composableBuilder(
+    column: $table.waterTempC,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get weightsJson => $composableBuilder(
+    column: $table.weightsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -10028,6 +10617,36 @@ class $$DiveAnnotationsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get visibility => $composableBuilder(
+    column: $table.visibility,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get wavesize =>
+      $composableBuilder(column: $table.wavesize, builder: (column) => column);
+
+  GeneratedColumn<int> get current =>
+      $composableBuilder(column: $table.current, builder: (column) => column);
+
+  GeneratedColumn<int> get surge =>
+      $composableBuilder(column: $table.surge, builder: (column) => column);
+
+  GeneratedColumn<int> get chill =>
+      $composableBuilder(column: $table.chill, builder: (column) => column);
+
+  GeneratedColumn<double> get airTempC =>
+      $composableBuilder(column: $table.airTempC, builder: (column) => column);
+
+  GeneratedColumn<double> get waterTempC => $composableBuilder(
+    column: $table.waterTempC,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get weightsJson => $composableBuilder(
+    column: $table.weightsJson,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -10111,6 +10730,14 @@ class $$DiveAnnotationsTableTableManager
                 Value<String?> tagsJson = const Value.absent(),
                 Value<int?> rating = const Value.absent(),
                 Value<String?> conditions = const Value.absent(),
+                Value<int?> visibility = const Value.absent(),
+                Value<int?> wavesize = const Value.absent(),
+                Value<int?> current = const Value.absent(),
+                Value<int?> surge = const Value.absent(),
+                Value<int?> chill = const Value.absent(),
+                Value<double?> airTempC = const Value.absent(),
+                Value<double?> waterTempC = const Value.absent(),
+                Value<String?> weightsJson = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
                 Value<int?> deletedAt = const Value.absent(),
@@ -10128,6 +10755,14 @@ class $$DiveAnnotationsTableTableManager
                 tagsJson: tagsJson,
                 rating: rating,
                 conditions: conditions,
+                visibility: visibility,
+                wavesize: wavesize,
+                current: current,
+                surge: surge,
+                chill: chill,
+                airTempC: airTempC,
+                waterTempC: waterTempC,
+                weightsJson: weightsJson,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -10147,6 +10782,14 @@ class $$DiveAnnotationsTableTableManager
                 Value<String?> tagsJson = const Value.absent(),
                 Value<int?> rating = const Value.absent(),
                 Value<String?> conditions = const Value.absent(),
+                Value<int?> visibility = const Value.absent(),
+                Value<int?> wavesize = const Value.absent(),
+                Value<int?> current = const Value.absent(),
+                Value<int?> surge = const Value.absent(),
+                Value<int?> chill = const Value.absent(),
+                Value<double?> airTempC = const Value.absent(),
+                Value<double?> waterTempC = const Value.absent(),
+                Value<String?> weightsJson = const Value.absent(),
                 required int createdAt,
                 required int updatedAt,
                 Value<int?> deletedAt = const Value.absent(),
@@ -10164,6 +10807,14 @@ class $$DiveAnnotationsTableTableManager
                 tagsJson: tagsJson,
                 rating: rating,
                 conditions: conditions,
+                visibility: visibility,
+                wavesize: wavesize,
+                current: current,
+                surge: surge,
+                chill: chill,
+                airTempC: airTempC,
+                waterTempC: waterTempC,
+                weightsJson: weightsJson,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,

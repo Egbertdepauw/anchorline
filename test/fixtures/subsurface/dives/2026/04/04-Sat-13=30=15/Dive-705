@@ -1,0 +1,14 @@
+duration 56:20 min
+rating 2
+tags "CCR", "X-CCR"
+divesiteid 456b7d53
+divemaster ""
+buddy "Wendy De Joode"
+suit ""
+notes "Nou rondje gedaan, niets gezien, Wendy na een paar minuten kwijt...."
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=99.0% depth=6.269m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=50.0% end=115.97bar depth=22.416m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=20.0% he=48.0% depth=71.346m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=50.0% use="diluent" depth=22.416m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=20.0% he=48.0% use="diluent" depth=71.346m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=18.0% he=23.0% use="diluent" depth=80.398m

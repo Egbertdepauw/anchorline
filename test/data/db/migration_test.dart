@@ -186,7 +186,7 @@ void main() {
   test('schema v2: has cylinders, pressure_mappings, oxygen_cells.label', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    expect(db.schemaVersion, 10);
+    expect(db.schemaVersion, 12);
 
     // Inserting a row exercises the full schema.
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -271,7 +271,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 10);
+    expect(db.schemaVersion, 12);
 
     // Step 5: verify the seeded oxygen_cells row survived.
     final cells = await db.select(db.oxygenCells).get();
@@ -348,7 +348,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 10);
+    expect(db.schemaVersion, 12);
 
     // Step 5: verify the seeded annotation row survived.
     final annotations = await db.select(db.diveAnnotations).get();
@@ -395,7 +395,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 10);
+    expect(db.schemaVersion, 12);
 
     final dives = await db.select(db.dives).get();
     expect(dives, hasLength(1));
@@ -439,7 +439,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 10);
+    expect(db.schemaVersion, 12);
 
     // Migrated row: tanks_json is null on the existing v4 row.
     final migrated = await db.select(db.dives).get();
@@ -526,7 +526,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 10);
+    expect(db.schemaVersion, 12);
 
     // The migrated row's tank_pressures_blob is null.
     final migrated = await db.select(db.diveSamples).get();
@@ -617,7 +617,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 10);
+    expect(db.schemaVersion, 12);
 
     // The migrated row has a null subsurface_uploaded_at.
     final migrated = await db.select(db.dives).get();
@@ -825,7 +825,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 10);
+    expect(db.schemaVersion, 12);
 
     // Pre-existing rows survive the migration with owner_id null.
     expect((await db.select(db.diveAnnotations).get()).single.ownerId, isNull);
@@ -891,6 +891,26 @@ void main() {
         subsurface_uploaded_at INTEGER
       );
     ''');
+    // dive_annotations needs to exist because the v12 step ALTERs it.
+    raw.execute('''
+      CREATE TABLE dive_annotations (
+        dive_id TEXT NOT NULL PRIMARY KEY,
+        site_name TEXT,
+        site_latitude_e5 INTEGER,
+        site_longitude_e5 INTEGER,
+        notes TEXT,
+        buddies_json TEXT,
+        tags_json TEXT,
+        rating INTEGER,
+        conditions TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0,
+        owner_id TEXT
+      );
+    ''');
     raw.execute('PRAGMA user_version = 8;');
 
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -912,7 +932,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 10);
+    expect(db.schemaVersion, 12);
 
     // Pre-existing dive survives with deleted_at null (visible in queries).
     final migrated = await db.select(db.dives).get();
@@ -927,5 +947,256 @@ void main() {
           ..where((d) => d.id.equals('dive_v8')))
         .getSingle();
     expect(fresh.deletedAt, deletedAtMs);
+  });
+
+  test('v10 → v11 onUpgrade adds sensor_calibration_json column to dives',
+      () async {
+    final raw = sqlite3.openInMemory();
+    addTearDown(raw.close);
+
+    // Seed a v10 dives table — every column up to and including
+    // deleted_at, but without sensor_calibration_json. v10 also added
+    // dive_raw_blobs, but that table only matters when the migrator
+    // copies live data over; it's not relevant to this column-add test.
+    raw.execute('''
+      CREATE TABLE dives (
+        id TEXT NOT NULL PRIMARY KEY,
+        dc_serial INTEGER NOT NULL,
+        dc_dive_number INTEGER NOT NULL,
+        start_time INTEGER NOT NULL,
+        end_time INTEGER NOT NULL,
+        utc_offset_minutes INTEGER,
+        duration_seconds INTEGER NOT NULL,
+        max_depth_mm INTEGER NOT NULL,
+        dive_mode INTEGER NOT NULL,
+        deco_model INTEGER NOT NULL,
+        gf_low INTEGER,
+        gf_high INTEGER,
+        atmospheric_pressure_mbar INTEGER NOT NULL,
+        water_density INTEGER NOT NULL,
+        log_version INTEGER NOT NULL,
+        dc_model INTEGER NOT NULL,
+        dc_firmware INTEGER,
+        sample_interval_ms INTEGER NOT NULL,
+        gas_mixes_json TEXT NOT NULL,
+        tanks_json TEXT,
+        configured_stack_seconds INTEGER,
+        stack_remaining_at_start_seconds INTEGER,
+        stack_remaining_at_end_seconds INTEGER,
+        raw_blob BLOB NOT NULL,
+        parser_version INTEGER NOT NULL,
+        imported_at INTEGER NOT NULL,
+        subsurface_uploaded_at INTEGER,
+        deleted_at INTEGER
+      );
+    ''');
+    raw.execute('''
+      CREATE TABLE dive_raw_blobs (
+        dive_id TEXT NOT NULL PRIMARY KEY,
+        raw_blob BLOB NOT NULL
+      );
+    ''');
+    // v8 added owner_id to dive_annotations; the v12 step ALTERs that
+    // table further, so it has to exist at the start of an upgrade
+    // chain that runs both v11 and v12 steps.
+    raw.execute('''
+      CREATE TABLE dive_annotations (
+        dive_id TEXT NOT NULL PRIMARY KEY,
+        site_name TEXT,
+        site_latitude_e5 INTEGER,
+        site_longitude_e5 INTEGER,
+        notes TEXT,
+        buddies_json TEXT,
+        tags_json TEXT,
+        rating INTEGER,
+        conditions TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0,
+        owner_id TEXT
+      );
+    ''');
+    raw.execute('PRAGMA user_version = 10;');
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    raw.execute(
+      'INSERT INTO dives '
+      '(id, dc_serial, dc_dive_number, start_time, end_time, '
+      'duration_seconds, max_depth_mm, dive_mode, deco_model, '
+      'atmospheric_pressure_mbar, water_density, log_version, '
+      'dc_model, sample_interval_ms, gas_mixes_json, raw_blob, '
+      'parser_version, imported_at) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        'dive_v10', 0xB89641E4, 1000, now - 3600, now,
+        3600, 30000, 0, 0, 1013, 1025, 17, 0, 10000, '[]', [0], 1, now,
+      ],
+    );
+
+    final db = AppDatabase(NativeDatabase.opened(raw));
+    addTearDown(db.close);
+
+    await db.customSelect('SELECT 1').get();
+    expect(db.schemaVersion, 12);
+
+    // Pre-existing v10 row survives with sensor_calibration_json null —
+    // the mapper's fallback (Petrel default 0.021) is what handles legacy
+    // data, so we don't backfill anything during migration.
+    final migrated = await db.select(db.dives).get();
+    expect(migrated, hasLength(1));
+    expect(migrated.single.id, 'dive_v10');
+    expect(migrated.single.sensorCalibrationJson, isNull);
+
+    // A fresh insert populating the column reads back verbatim.
+    const calJson = '[0.021,0.022,0.020]';
+    await db.into(db.dives).insert(DivesCompanion.insert(
+          id: 'dive_v11',
+          dcSerial: 0xB89641E4,
+          dcDiveNumber: 1001,
+          startTime: now,
+          endTime: now + 60,
+          durationSeconds: 60,
+          maxDepthMm: 5000,
+          diveMode: 0,
+          decoModel: 0,
+          atmosphericPressureMbar: 1013,
+          waterDensity: 1025,
+          logVersion: 17,
+          dcModel: 0,
+          sampleIntervalMs: 10000,
+          gasMixesJson: '[]',
+          sensorCalibrationJson: const Value(calJson),
+          rawBlob: Uint8List(0),
+          parserVersion: 1,
+          importedAt: now,
+        ));
+    final fresh = await (db.select(db.dives)
+          ..where((d) => d.id.equals('dive_v11')))
+        .getSingle();
+    expect(fresh.sensorCalibrationJson, calJson);
+  });
+
+  test('v11 → v12 onUpgrade adds Information-tab columns to dive_annotations',
+      () async {
+    final raw = sqlite3.openInMemory();
+    addTearDown(raw.close);
+
+    // Seed a v11 dive_annotations table — every column up to and
+    // including owner_id (added at v8) but without the eight new
+    // Information-tab columns (visibility/wavesize/current/surge/chill,
+    // air_temp_c, water_temp_c, weights_json).
+    raw.execute('''
+      CREATE TABLE dive_annotations (
+        dive_id TEXT NOT NULL PRIMARY KEY,
+        site_name TEXT,
+        site_latitude_e5 INTEGER,
+        site_longitude_e5 INTEGER,
+        notes TEXT,
+        buddies_json TEXT,
+        tags_json TEXT,
+        rating INTEGER,
+        conditions TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER,
+        version INTEGER NOT NULL DEFAULT 1,
+        sync_status INTEGER NOT NULL DEFAULT 0,
+        owner_id TEXT
+      );
+    ''');
+    // dives is a FK target of dive_annotations.dive_id, so create a
+    // minimal stub. Same for the other v11-era sync-eligible tables.
+    raw.execute('''
+      CREATE TABLE dives (
+        id TEXT NOT NULL PRIMARY KEY,
+        dc_serial INTEGER NOT NULL,
+        dc_dive_number INTEGER NOT NULL,
+        start_time INTEGER NOT NULL,
+        end_time INTEGER NOT NULL,
+        utc_offset_minutes INTEGER,
+        duration_seconds INTEGER NOT NULL,
+        max_depth_mm INTEGER NOT NULL,
+        dive_mode INTEGER NOT NULL,
+        deco_model INTEGER NOT NULL,
+        gf_low INTEGER,
+        gf_high INTEGER,
+        atmospheric_pressure_mbar INTEGER NOT NULL,
+        water_density INTEGER NOT NULL,
+        log_version INTEGER NOT NULL,
+        dc_model INTEGER NOT NULL,
+        dc_firmware INTEGER,
+        sample_interval_ms INTEGER NOT NULL,
+        gas_mixes_json TEXT NOT NULL,
+        tanks_json TEXT,
+        sensor_calibration_json TEXT,
+        configured_stack_seconds INTEGER,
+        stack_remaining_at_start_seconds INTEGER,
+        stack_remaining_at_end_seconds INTEGER,
+        raw_blob BLOB NOT NULL,
+        parser_version INTEGER NOT NULL,
+        imported_at INTEGER NOT NULL,
+        subsurface_uploaded_at INTEGER,
+        deleted_at INTEGER
+      );
+    ''');
+    _seedV1SyncTables(raw, except: const {'dive_annotations'});
+    raw.execute('PRAGMA user_version = 11;');
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    raw.execute(
+      'INSERT INTO dive_annotations '
+      '(dive_id, rating, created_at, updated_at) VALUES (?, ?, ?, ?)',
+      ['dive_v11', 4, now, now],
+    );
+
+    final db = AppDatabase(NativeDatabase.opened(raw));
+    addTearDown(db.close);
+
+    await db.customSelect('SELECT 1').get();
+    expect(db.schemaVersion, 12);
+
+    // Pre-existing v11 row survives; new columns default to null/empty.
+    final migrated = await db.select(db.diveAnnotations).get();
+    expect(migrated, hasLength(1));
+    expect(migrated.single.diveId, 'dive_v11');
+    expect(migrated.single.rating, 4);
+    expect(migrated.single.visibility, isNull);
+    expect(migrated.single.wavesize, isNull);
+    expect(migrated.single.current, isNull);
+    expect(migrated.single.surge, isNull);
+    expect(migrated.single.chill, isNull);
+    expect(migrated.single.airTempC, isNull);
+    expect(migrated.single.waterTempC, isNull);
+    expect(migrated.single.weightsJson, isNull);
+
+    // A fresh insert populating the new columns reads back verbatim.
+    await db.into(db.diveAnnotations).insert(DiveAnnotationsCompanion.insert(
+          diveId: 'dive_v12',
+          createdAt: now,
+          updatedAt: now,
+          visibility: const Value(5),
+          wavesize: const Value(3),
+          current: const Value(4),
+          surge: const Value(4),
+          chill: const Value(5),
+          airTempC: const Value(24.0),
+          waterTempC: const Value(22.0),
+          weightsJson: const Value(
+              '[{"weight_kg":1.5,"description":"onder standaard"}]'),
+        ));
+    final fresh = await (db.select(db.diveAnnotations)
+          ..where((a) => a.diveId.equals('dive_v12')))
+        .getSingle();
+    expect(fresh.visibility, 5);
+    expect(fresh.wavesize, 3);
+    expect(fresh.current, 4);
+    expect(fresh.surge, 4);
+    expect(fresh.chill, 5);
+    expect(fresh.airTempC, 24.0);
+    expect(fresh.waterTempC, 22.0);
+    expect(fresh.weightsJson,
+        '[{"weight_kg":1.5,"description":"onder standaard"}]');
   });
 }

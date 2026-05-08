@@ -154,7 +154,7 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
 /// scalar and the value round-trips as a wrapped string — breaking
 /// reads on every other device.
 const Map<String, Set<String>> _jsonbColumns = {
-  'dive_annotations': {'buddies_json', 'tags_json'},
+  'dive_annotations': {'buddies_json', 'tags_json', 'weights_json'},
 };
 
 Map<String, dynamic> _decodeJsonColumns(

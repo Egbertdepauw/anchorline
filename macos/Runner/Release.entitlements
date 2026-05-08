@@ -10,5 +10,20 @@
 	<true/>
 	<key>com.apple.security.personal-information.location</key>
 	<true/>
+	<!-- Phase 3 attachments: file_picker needs user-selected read/write to
+	     hand the picked file to AttachmentUploader; image_picker on macOS
+	     uses the same panel under the hood. Camera capture needs the
+	     camera entitlement. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<!-- flutter_secure_storage on macOS rejects all Keychain calls with
+	     OSStatus -34018 ("A required entitlement isn't present") unless
+	     the sandboxed app declares a keychain-access-groups entry. -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	</array>
 </dict>
 </plist>

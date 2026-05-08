@@ -52,6 +52,12 @@ class Dives extends Table {
   /// (no AI configured, OC dives without tank pressure, etc).
   TextColumn get tanksJson => text().nullable()();
 
+  /// Per-cell calibration factors as a JSON array of doubles. Length 3
+  /// on CCR; null on OC (or older imports made before the column existed).
+  /// Used to derive per-cell PPO2 from raw mV at display/export time:
+  /// `ppo2_bar = mV * cal / 1000`. The Petrel factory default is 0.021.
+  TextColumn get sensorCalibrationJson => text().nullable()();
+
   /// Scrubber stack time (seconds). All null when the diver hasn't
   /// enabled stack tracking on the unit.
   IntColumn get configuredStackSeconds => integer().nullable()();
@@ -136,6 +142,23 @@ class DiveAnnotations extends Table {
   TextColumn get tagsJson => text().nullable()();
   IntColumn get rating => integer().nullable()();
   TextColumn get conditions => text().nullable()();
+
+  // Subsurface "Information" tab — environmental ratings (1..5; null =
+  // unrated, mirroring the existing `rating` convention) plus measured
+  // air/water temperatures and weight-system entries. Matches the data
+  // already living in users' Subsurface git repos so Subsurface →
+  // CCRLog import round-trips losslessly.
+  IntColumn get visibility => integer().nullable()();
+  IntColumn get wavesize => integer().nullable()();
+  IntColumn get current => integer().nullable()();
+  IntColumn get surge => integer().nullable()();
+  IntColumn get chill => integer().nullable()();
+  RealColumn get airTempC => real().nullable()();
+  RealColumn get waterTempC => real().nullable()();
+
+  /// JSON array of `{"weight_kg": double, "description": string}` objects,
+  /// one per `weightsystem` line in Subsurface. Null = no weight entries.
+  TextColumn get weightsJson => text().nullable()();
 
   // Sync metadata.
   IntColumn get createdAt => integer()();

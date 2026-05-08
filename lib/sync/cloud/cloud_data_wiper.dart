@@ -18,9 +18,21 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// avoid FK-violation surprises if Postgres ever gains explicit FKs
 /// between these (currently only `auth.users` is referenced).
 const cloudSyncTables = <String>[
+  // Children that reference dives by id (no enforced FK today, but the
+  // ordering reflects intent and saves a future foot-gun).
+  'dive_attachments',
   'dive_annotations',
   'pressure_mappings',
   'dive_cylinders',
+  // Sample data + dive rows. dive_samples FK-cascades from dives via
+  // its `id` column, but we delete it explicitly first so we don't
+  // depend on RLS-allowed cascades — keeps the Supabase log readable.
+  // Without these two lines, the cloud wipe would leave the user's
+  // dive rows in Postgres; PowerSync would re-sync them on next
+  // reconnect and "Reset Everything" wouldn't actually wipe dives.
+  'dive_samples',
+  'dives',
+  // Equipment / device parents.
   'cylinders',
   'oxygen_cells',
   'scrubber_sessions',

@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../../data/db/database.dart';
 import '../../data/db/dive_annotations_dao.dart';
+import '../../data/db/dive_attachments_dao.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
+import '../../sync/attachments/attachment_downloader.dart';
+import '../../sync/attachments/attachment_uploader.dart';
 import '../notifiers/dive_list_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import '../util/dive_mode_color.dart';
@@ -13,7 +16,7 @@ import '../util/dive_search.dart';
 import '../util/format.dart';
 import '../widgets/dive_filter_sheet.dart';
 import '../widgets/dive_tile.dart';
-import 'dive_detail_screen.dart';
+import 'dive_detail_pager.dart';
 import 'sites_map_screen.dart';
 
 class DiveListScreen extends StatefulWidget {
@@ -21,6 +24,13 @@ class DiveListScreen extends StatefulWidget {
   final DiveDao diveDao;
   final DiveAnnotationsDao annotationsDao;
   final EquipmentDao equipmentDao;
+  // Optional attachments plumbing — when any is null the dive detail
+  // pager hides the attachments section. Tests that don't traverse to
+  // the detail screen omit them. Production wires all three from
+  // [AppShell].
+  final DiveAttachmentsDao? attachmentsDao;
+  final AttachmentUploader? attachmentUploader;
+  final AttachmentDownloader? attachmentDownloader;
   final SettingsNotifier settingsNotifier;
 
   const DiveListScreen({
@@ -29,6 +39,9 @@ class DiveListScreen extends StatefulWidget {
     required this.diveDao,
     required this.annotationsDao,
     required this.equipmentDao,
+    this.attachmentsDao,
+    this.attachmentUploader,
+    this.attachmentDownloader,
     required this.settingsNotifier,
   });
 
@@ -274,10 +287,14 @@ class _DiveListScreenState extends State<DiveListScreen> {
                               final dive = entry.value[index];
                               return _DiveTileWithSparkline(
                                 dive: dive,
+                                orderedDives: filtered,
                                 notifier: notifier,
                                 diveDao: widget.diveDao,
                                 annotationsDao: widget.annotationsDao,
                                 equipmentDao: widget.equipmentDao,
+                                attachmentsDao: widget.attachmentsDao,
+                                attachmentUploader: widget.attachmentUploader,
+                                attachmentDownloader: widget.attachmentDownloader,
                                 settingsNotifier: widget.settingsNotifier,
                               );
                             },
@@ -296,18 +313,32 @@ class _DiveListScreenState extends State<DiveListScreen> {
 
 class _DiveTileWithSparkline extends StatelessWidget {
   final Dive dive;
+
+  /// The flat, ordered list of dives currently visible in the list (post
+  /// filter + post group-flatten). Threaded through so a tap can hand the
+  /// whole list to [DiveDetailPager], which lets the user swipe through
+  /// neighbours from the detail screen.
+  final List<Dive> orderedDives;
+
   final DiveListNotifier notifier;
   final DiveDao diveDao;
   final DiveAnnotationsDao annotationsDao;
   final EquipmentDao equipmentDao;
+  final DiveAttachmentsDao? attachmentsDao;
+  final AttachmentUploader? attachmentUploader;
+  final AttachmentDownloader? attachmentDownloader;
   final SettingsNotifier settingsNotifier;
 
   const _DiveTileWithSparkline({
     required this.dive,
+    required this.orderedDives,
     required this.notifier,
     required this.diveDao,
     required this.annotationsDao,
     required this.equipmentDao,
+    required this.attachmentsDao,
+    required this.attachmentUploader,
+    required this.attachmentDownloader,
     required this.settingsNotifier,
   });
 
@@ -329,12 +360,18 @@ class _DiveTileWithSparkline extends StatelessWidget {
             ),
           )),
           onTap: () async {
+            final initialIndex =
+                orderedDives.indexWhere((d) => d.id == dive.id);
             await Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => DiveDetailScreen(
-                dive: dive,
-                dao: diveDao,
+              builder: (_) => DiveDetailPager(
+                dives: orderedDives,
+                initialIndex: initialIndex < 0 ? 0 : initialIndex,
+                diveDao: diveDao,
                 annotationsDao: annotationsDao,
                 equipmentDao: equipmentDao,
+                attachmentsDao: attachmentsDao,
+                attachmentUploader: attachmentUploader,
+                attachmentDownloader: attachmentDownloader,
                 settingsNotifier: settingsNotifier,
               ),
             ));

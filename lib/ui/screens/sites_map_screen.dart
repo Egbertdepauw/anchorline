@@ -98,7 +98,10 @@ class _SitesMapScreenState extends State<SitesMapScreen> {
                   ? const Icon(Icons.location_pin,
                       color: Colors.redAccent, size: 36)
                   : const Icon(Icons.location_pin,
-                      color: Color(0xFF80DEEA), size: 28),
+                      // Muted brick red — visibly recedes against the
+                      // saturated redAccent of the current dive's pin
+                      // while staying legible on OSM's mixed terrain.
+                      color: Color(0xFF8B3A3A), size: 28),
             ),
         ]),
       ],

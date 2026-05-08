@@ -13,9 +13,11 @@ class DiveComputersNotifier extends ChangeNotifier {
 
   DiveComputersNotifier(this._dao) {
     _watchSub = _dao.watchDiveComputers().listen(
-      (_) {
+      (_) async {
         if (_disposed) return;
-        load();
+        try {
+          await load();
+        } catch (_) {}
       },
       // Subscription can outlive the underlying psDb during teardown;
       // swallow connection-closed errors instead of letting them surface.
@@ -84,9 +86,14 @@ class CellsNotifier extends ChangeNotifier {
 
   CellsNotifier(this._dao) {
     _watchSub = _dao.watchOxygenCells().listen(
-      (_) {
+      (_) async {
         if (_disposed) return;
-        load();
+        // Errors from a load triggered by a watch event (e.g. test
+        // teardown closing the DB while a write is propagating) must
+        // not surface as unhandled async errors.
+        try {
+          await load();
+        } catch (_) {}
       },
       onError: (_) {},
     );
@@ -168,9 +175,11 @@ class ScrubberSessionsNotifier extends ChangeNotifier {
 
   ScrubberSessionsNotifier(this._dao) {
     _watchSub = _dao.watchScrubberSessions().listen(
-      (_) {
+      (_) async {
         if (_disposed) return;
-        load();
+        try {
+          await load();
+        } catch (_) {}
       },
       onError: (_) {},
     );
@@ -241,9 +250,11 @@ class CylindersNotifier extends ChangeNotifier {
 
   CylindersNotifier(this._dao) {
     _watchSub = _dao.watchCylinders().listen(
-      (_) {
+      (_) async {
         if (_disposed) return;
-        load();
+        try {
+          await load();
+        } catch (_) {}
       },
       onError: (_) {},
     );

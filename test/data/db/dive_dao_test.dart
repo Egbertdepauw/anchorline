@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
+import 'package:ccrlogger/data/models/dive.dart' as model;
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
 import 'package:ccrlogger/shearwater/parser/hardware.dart';
@@ -24,6 +26,38 @@ ConvertedDive _convertFixture(int diveNumber) {
     dcSerial: 0xB89641E4,
     dcDiveNumber: diveNumber,
     dcModel: ShearwaterModel.petrel3,
+  );
+}
+
+/// Returns a copy of [dive] with [sensorCalibration] substituted in.
+/// Lets us assert deterministic round-trip semantics without depending
+/// on whatever the parser happens to read out of a fixture binary.
+model.Dive _diveWithCalibration(
+    model.Dive dive, List<double> sensorCalibration) {
+  return model.Dive(
+    id: dive.id,
+    dcSerial: dive.dcSerial,
+    dcDiveNumber: dive.dcDiveNumber,
+    startTime: dive.startTime,
+    endTime: dive.endTime,
+    utcOffsetMinutes: dive.utcOffsetMinutes,
+    duration: dive.duration,
+    maxDepthMeters: dive.maxDepthMeters,
+    diveMode: dive.diveMode,
+    decoModel: dive.decoModel,
+    gfLow: dive.gfLow,
+    gfHigh: dive.gfHigh,
+    atmosphericPressureMbar: dive.atmosphericPressureMbar,
+    waterDensityKgM3: dive.waterDensityKgM3,
+    logVersion: dive.logVersion,
+    dcModel: dive.dcModel,
+    gasMixes: dive.gasMixes,
+    tanks: dive.tanks,
+    sampleIntervalMs: dive.sampleIntervalMs,
+    sensorCalibration: sensorCalibration,
+    configuredStackSeconds: dive.configuredStackSeconds,
+    stackRemainingAtStartSeconds: dive.stackRemainingAtStartSeconds,
+    stackRemainingAtEndSeconds: dive.stackRemainingAtEndSeconds,
   );
 }
 
@@ -87,6 +121,56 @@ void main() {
         );
         expect(result, isTrue, reason: 'Dive $num should import successfully');
       }
+    });
+
+    test('persists per-cell sensor calibration through the DAO', () async {
+      // Substitute a known-good calibration on top of fixture 718 so the
+      // round-trip assertion is deterministic regardless of what value
+      // the parser pulled from the binary.
+      final original = _convertFixture(718);
+      final calibration = [0.021, 0.022, 0.020];
+      final converted = ConvertedDive(
+        dive: _diveWithCalibration(original.dive, calibration),
+        samples: original.samples,
+      );
+      final rawBlob =
+          File('test/fixtures/dives/dive_718.bin').readAsBytesSync();
+
+      await dao.importDive(
+        converted: converted,
+        rawBlob: rawBlob,
+        parserVersion: 1,
+      );
+
+      final stored = await dao.getDive(converted.dive.id);
+      expect(stored, isNotNull);
+      expect(stored!.sensorCalibrationJson, isNotNull);
+      final decoded = (jsonDecode(stored.sensorCalibrationJson!) as List)
+          .map((v) => (v as num).toDouble())
+          .toList();
+      expect(decoded, equals(calibration));
+    });
+
+    test('OC-style empty calibration is persisted as null', () async {
+      // Empty list (OC dives) is stored as NULL so the mapper / chart
+      // fallback path is consistent with legacy rows.
+      final original = _convertFixture(718);
+      final converted = ConvertedDive(
+        dive: _diveWithCalibration(original.dive, const <double>[]),
+        samples: original.samples,
+      );
+      final rawBlob =
+          File('test/fixtures/dives/dive_718.bin').readAsBytesSync();
+
+      await dao.importDive(
+        converted: converted,
+        rawBlob: rawBlob,
+        parserVersion: 1,
+      );
+
+      final stored = await dao.getDive(converted.dive.id);
+      expect(stored, isNotNull);
+      expect(stored!.sensorCalibrationJson, isNull);
     });
   });
 

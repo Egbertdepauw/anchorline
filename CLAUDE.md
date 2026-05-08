@@ -70,7 +70,8 @@ These are the load-bearing decisions. Violating them creates more pain than they
 4. **Metric in the database, convert at the UI layer.** Always. Don't store imperial — conversions accumulate floating-point error, and Shearwater logs metric internally regardless of the diver's display preference. UI can show whatever the user wants, with per-field overrides because tech divers mix units (depth in meters, pressure in psi is a real combination some people prefer).
 5. **Single-segment dives in the data model, merge in the UI.** Shearwater logs each underwater segment as a separate dive. "Merge dives" is a display-only concern in Phase 1, possibly a stored relationship in Phase 2.
 6. **Sync metadata everywhere from day one.** Add `created_at`, `updated_at`, `deleted_at`, `version`, `sync_status` to every user-editable entity even though sync isn't implemented in Phase 1. Bolting these on later is much harder than designing them in. Don't add them to immutable imported data — that doesn't sync, it gets re-derived from the raw blob.
-7. **Single commit point for dives.** Importing a dive is an atomic operation: the raw blob, the parsed dive, samples, events, and gases all commit together or not at all. Mid-import BLE disconnects must leave the database in a consistent state. This is the import-side analog of `flush()` in the existing libdc log extractor — keep it as one place in the code.
+7. **All user data syncs across signed-in devices.** Every device the user is signed in on must look at the same canonical state — dives, annotations, equipment, attachments (including the file bytes via R2), all of it. The only acceptable device-local state is (a) intentionally-not-synced raw inputs the parser can re-derive (raw BLE blobs), (b) transient transit state for in-flight operations (pending upload paths, last-imported-fingerprint per DC), and (c) caches that exist purely to avoid network round-trips (downloaded R2 bytes). Anything that affects what the user *sees* must sync. When adding a new entity, ask "if I edit this on the iPhone, will it appear on macOS without me thinking about it?" — if no, you're doing it wrong. New PowerSync-backed tables also need a corresponding line added to `infra/powersync-sync-rules.yaml` (and that file actually deployed to the PowerSync dashboard) before sync works end-to-end.
+8. **Single commit point for dives.** Importing a dive is an atomic operation: the raw blob, the parsed dive, samples, events, and gases all commit together or not at all. Mid-import BLE disconnects must leave the database in a consistent state. This is the import-side analog of `flush()` in the existing libdc log extractor — keep it as one place in the code.
 
 ## Repository layout (target)
 
@@ -145,6 +146,25 @@ This order isolates the risk and keeps something demonstrable at every step.
 - **`dive_id` is `hash(serial, dc_dive_number, start_timestamp_utc)`.** Don't trust just the timestamp; Petrels have had clock issues. Don't trust just the dive number; serial is the disambiguator across multiple computers.
 - **CCR mode is the default UI assumption.** OC dives hide the CCR-specific fields; they don't restructure the layout.
 - **Dark theme is the default.** Tech divers dive in dark places and surface in dark cars.
+- **Use agents whenever possible.** This is a solo-dev project and the codebase is now large enough that doing every line of every feature in the foreground is wasteful. For any task that's a self-contained build (a new DAO + tests, a new widget + tests, a new parser, a new screen wired into existing seams), dispatch a build agent in the background. Foreground work belongs to: integration steps that touch seams the agent can't see, decisions that need user input, and anything where the agent's output needs to be vetted against running code before moving on. Parallelize agents whenever the file sets don't overlap. Keep the prompts concrete: name the files to read, the files to write, the conventions to mirror, and the verify-before-returning steps (`flutter analyze` clean, `flutter test` passing).
+
+### Known third-party defects + local workarounds
+
+- **`git2dart_binaries` 1.10.3 has three macOS packaging defects.** Each fails differently — the first two SIGABRT at launch (`dyld: Library not loaded: @rpath/...`), the third throws at first sync attempt (`Bad state: Unable to resolve git2dart_binaries package location.`). **Workaround applied locally** — the package files in `~/.pub-cache/hosted/pub.dev/git2dart_binaries-1.10.3/` have been edited:
+   1. **Misnamed dylib.** `libgit2.dylib` has install_name `@rpath/libgit2-experimental.1.9.dylib`. File renamed locally to match.
+   2. **Missing vendored dependency.** `libssh2.1.dylib` (a libgit2 dependency) ships in the package but wasn't declared in the podspec's `vendored_libraries`, so it never embedded into the `.app`. Added to the podspec.
+   3. **Mismatched DynamicLibrary.open arg.** `lib/src/util.dart` opens `'libgit2.dylib'`, which doesn't match the renamed file (or the install_name). Patched to open `'libgit2-experimental.1.9.dylib'` on macOS. The fallback path uses `Isolate.resolvePackageUriSync`, which doesn't work in compiled Flutter apps (no `package_config.json` at runtime), so the open call must succeed first try.
+   **This fix lives only in pub-cache** — it survives `flutter clean` / `flutter pub get` / `pod install`, but NOT `dart pub cache clean` or a fresh machine. If macOS sync starts breaking after a cache wipe, redo all three:
+   ```bash
+   cd ~/.pub-cache/hosted/pub.dev/git2dart_binaries-1.10.3/macos
+   mv libgit2.dylib libgit2-experimental.1.9.dylib
+   # Edit git2dart_binaries.podspec — replace s.vendored_libraries with:
+   #   s.vendored_libraries = ['libgit2-experimental.1.9.dylib', 'libssh2.1.dylib']
+   # Edit ../lib/src/util.dart line ~19 — replace the macOS branch with:
+   #   return (name: 'libgit2-experimental.1.9.dylib', subDir: 'macos');
+   cd <repo>/macos && rm -rf Pods Podfile.lock && pod install
+   ```
+   Upstream issue: https://github.com/DartGit-dev/git2dart_binaries/issues/14. When upstream ships a fixed version, pin it in pubspec and delete this section.
 
 ## Stack-rank of features by user value
 

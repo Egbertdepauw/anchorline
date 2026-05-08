@@ -1,0 +1,475 @@
+/// Phase D — pure-Dart sync planner.
+///
+/// The planner walks CCRLog state plus a parsed snapshot of the cloned
+/// Subsurface repo and emits a [SyncPlan] describing every file write
+/// the orchestrator should perform. This file does no I/O and knows
+/// nothing about git — it's deliberately easy to unit-test.
+///
+/// Why pure-Dart: Phase A (parser/serializer) and Phase B (mapper) are
+/// already pure-Dart, so layering the *planning* on top of them lets us
+/// drive the whole CCRLog → Subsurface transformation in tests without
+/// booting PowerSync, libgit2, or the filesystem. The orchestrator
+/// (Phase D, [SubsurfaceSyncOrchestrator]) handles the impure half:
+/// reading DAOs, calling [RemoteSnapshot], writing files, and pushing.
+///
+/// Two non-obvious behaviours, lifted from
+/// `docs/subsurface_format_notes.md`:
+///
+/// 1. **Top-level `divecomputerid` dedup is keyed on `serial`, not on
+///    `deviceid`.** Subsurface computes `deviceid` via a libdc-side
+///    hash of (model + serial); we don't have that hash, so we emit a
+///    stable derivative. If we deduped on our `deviceid` we'd happily
+///    let two `divecomputerid` lines coexist for the same physical
+///    computer — one libdc-imported, one CCRLog-emitted. We dedup on
+///    `serial`, the field that actually identifies the hardware, and
+///    keep whichever line is already in the file (so we don't blow
+///    away a Subsurface-imported entry that has the "right" deviceid).
+///
+/// 2. **Existing dives are matched on `(serial, startTime)`.** When a
+///    CCRLog dive matches an existing remote dive, we reuse its folder
+///    name and `Dive-NNN` number rather than allocating a fresh NNN. This
+///    avoids double-emitting the same dive after the user pushes once
+///    from CCRLog and once via Subsurface itself.
+library;
+
+import 'format/subsurface_format.dart';
+import 'format/subsurface_serializer.dart';
+import 'mapper.dart';
+
+import '../../data/db/database.dart' show Cylinder, Dive, DiveComputer;
+import '../../data/models/annotation.dart';
+import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
+import '../../data/models/sample_set.dart';
+
+/// Bundles one CCRLog dive with everything the mapper needs to emit it.
+///
+/// The orchestrator builds these from its DAO calls and hands the list
+/// to the planner. The planner doesn't talk to DAOs itself — that keeps
+/// it pure.
+class CcrlogDiveBundle {
+  CcrlogDiveBundle({
+    required this.dive,
+    required this.samples,
+    required this.annotation,
+    required this.gasMixes,
+    required this.tanks,
+    required this.cylindersByMixIndex,
+    required this.userDiveComputers,
+  });
+
+  final Dive dive;
+  final SampleSet samples;
+  final DiveAnnotation? annotation;
+  final List<DiveGasMix> gasMixes;
+  final List<DiveTank> tanks;
+  final Map<int, Cylinder> cylindersByMixIndex;
+
+  /// All known CCRLog dive computers — the mapper uses these to build
+  /// the top-level `divecomputerid` lines. The same list is passed for
+  /// every bundle (it's a property of the user's setup, not the dive).
+  /// We carry it on the bundle for symmetry with the rest of the state.
+  final List<DiveComputer> userDiveComputers;
+}
+
+/// One existing dive, recovered from the remote-repo snapshot.
+class ExistingRemoteDive {
+  ExistingRemoteDive({
+    required this.folderSegments,
+    required this.diveNumber,
+    required this.serial,
+    required this.startTime,
+  });
+
+  /// Folder path components, e.g. `['2026', '04', '04-Sat-13=30=15']`.
+  final List<String> folderSegments;
+
+  /// `Dive-NNN` integer found inside the folder.
+  final int diveNumber;
+
+  /// Decoded from the `Divecomputer` keyvalue `Serial` (hex-encoded).
+  /// Null when the remote dive's `Divecomputer` had no `Serial` line
+  /// (very old / manual entries) — those won't ever match a CCRLog dive
+  /// because CCRLog dives always carry `dcSerial`.
+  final int? serial;
+
+  /// Decoded from the folder name's UTC components, mirroring how the
+  /// mapper formats it. Null when the folder name was malformed.
+  final int? startTime;
+}
+
+/// Diagnostic counters the orchestrator surfaces in its result.
+class SyncPlanStats {
+  SyncPlanStats({
+    required this.newDives,
+    required this.updatedDives,
+    required this.skippedDives,
+  });
+
+  final int newDives;
+  final int updatedDives;
+
+  /// CCRLog dives that already match the remote byte-for-byte — no
+  /// rewrite needed. These don't appear in [SyncPlan.diveIdsPlanned]
+  /// because the orchestrator should not stamp `subsurface_uploaded_at`
+  /// on a dive that didn't actually end up in this commit.
+  final int skippedDives;
+}
+
+class SyncPlan {
+  SyncPlan({
+    required this.filesToWrite,
+    required this.diveIdsPlanned,
+    required this.stats,
+  });
+
+  /// Files to (re)write. Keys are POSIX paths relative to the repo
+  /// root. Includes Dive-NNN, Divecomputer, Site-XXXX, and the merged
+  /// 00-Subsurface (when the merge produced a different output than the
+  /// existing file).
+  final Map<String, String> filesToWrite;
+
+  /// CCRLog dive ids that the planner included in this plan, in the
+  /// order they were planned. Used by the orchestrator to mark them
+  /// uploaded after a successful push.
+  final List<String> diveIdsPlanned;
+
+  final SyncPlanStats stats;
+}
+
+class SyncPlanner {
+  SyncPlanner({CcrlogToSubsurfaceMapper? mapper})
+      : _mapper = mapper ?? CcrlogToSubsurfaceMapper();
+
+  final CcrlogToSubsurfaceMapper _mapper;
+
+  /// Build a plan from CCRLog state + the parsed remote-repo snapshot.
+  ///
+  /// See the type docs above for what each input means; in particular:
+  /// - [existingDivesBySerialAndStart] is consulted to reuse folder /
+  ///   dive-number assignments.
+  /// - [existingMaxDiveNumber] is the highest `Dive-NNN` seen on the
+  ///   remote so new dives get NNN+1, NNN+2, ...
+  /// - [existingTopLevel] is merged into so we don't blow away
+  ///   Subsurface- or libdc-imported state.
+  /// - [existingSites] is merged into so user-typed
+  ///   description/notes/geo lines on existing Site files are preserved
+  ///   (CCRLog only owns `name` + `gps`).
+  SyncPlan plan({
+    required List<CcrlogDiveBundle> ccrlogDives,
+    required Map<({int serial, int startTime}), ExistingRemoteDive>
+        existingDivesBySerialAndStart,
+    required int existingMaxDiveNumber,
+    required List<SsLine> existingTopLevel,
+    required Map<String, List<SsLine>> existingSites,
+  }) {
+    final filesToWrite = <String, String>{};
+    final diveIdsPlanned = <String>[];
+    final newDives = <Dive>[];
+    final updatedDives = <Dive>[];
+    var skipped = 0;
+
+    var nextDiveNumber = existingMaxDiveNumber;
+
+    // Mapped sites accumulate keyed by hexId so two CCRLog dives at the
+    // same lat/lon collapse to one Site write. Last writer wins on
+    // collision (they're equivalent — same hexId implies same coords).
+    final mappedSitesByHexId = <String, MappedSite>{};
+
+    // Track the userDiveComputers we encountered (for the top-level
+    // delta). The bundles all carry the same list, but we don't want to
+    // assume that — gather seen ones and dedup by serial.
+    final dcsBySerial = <int, DiveComputer>{};
+
+    for (final bundle in ccrlogDives) {
+      final dive = bundle.dive;
+      final key = (serial: dive.dcSerial, startTime: dive.startTime);
+      final existing = existingDivesBySerialAndStart[key];
+
+      final int diveNumber;
+      final List<String> folderSegments;
+      final bool isUpdate;
+      if (existing != null) {
+        diveNumber = existing.diveNumber;
+        folderSegments = existing.folderSegments;
+        isUpdate = true;
+      } else {
+        nextDiveNumber += 1;
+        diveNumber = nextDiveNumber;
+        folderSegments = _utcFolderSegments(dive.startTime);
+        isUpdate = false;
+      }
+
+      final mapped = _mapper.mapDive(
+        dive: dive,
+        samples: bundle.samples,
+        annotation: bundle.annotation,
+        gasMixes: bundle.gasMixes,
+        tanks: bundle.tanks,
+        cylindersByMixIndex: bundle.cylindersByMixIndex,
+        nextSubsurfaceDiveNumber: diveNumber,
+      );
+
+      final folderPath = folderSegments.join('/');
+      final divePath = '$folderPath/Dive-$diveNumber';
+      final dcPath = '$folderPath/Divecomputer';
+
+      final diveText = serializeSubsurfaceFile(
+        SubsurfaceFile(lines: mapped.diveLines),
+      );
+      final dcText = serializeSubsurfaceFile(
+        SubsurfaceFile(lines: mapped.divecomputerLines),
+      );
+
+      filesToWrite[divePath] = diveText;
+      filesToWrite[dcPath] = dcText;
+      diveIdsPlanned.add(dive.id);
+      if (isUpdate) {
+        updatedDives.add(dive);
+      } else {
+        newDives.add(dive);
+      }
+
+      // Site: map → merge with existing → stage write.
+      if (bundle.annotation != null) {
+        final mappedSite = _mapper.mapSite(bundle.annotation!);
+        if (mappedSite != null) {
+          mappedSitesByHexId[mappedSite.hexId] = mappedSite;
+        }
+      }
+
+      for (final dc in bundle.userDiveComputers) {
+        dcsBySerial.putIfAbsent(dc.serial, () => dc);
+      }
+    }
+
+    // Emit Site files (merged with existing user-edited fields).
+    for (final entry in mappedSitesByHexId.entries) {
+      final hexId = entry.key;
+      final mapped = entry.value;
+      final existingLines = existingSites[hexId];
+      final mergedLines = existingLines == null
+          ? mapped.lines
+          : _mergeSiteLines(
+              existing: existingLines,
+              ours: mapped.lines,
+            );
+      final text = serializeSubsurfaceFile(
+        SubsurfaceFile(lines: mergedLines),
+      );
+      filesToWrite['01-Divesites/Site-$hexId'] = text;
+    }
+
+    // 00-Subsurface: merge our delta into the existing top-level file.
+    final delta = _mapper.topLevelDelta(
+      dives: [...newDives, ...updatedDives],
+      diveComputers: dcsBySerial.values,
+    );
+    final mergedTopLevel = _mergeTopLevel(
+      existing: existingTopLevel,
+      delta: delta,
+    );
+    final mergedTopLevelText = serializeSubsurfaceFile(
+      SubsurfaceFile(lines: mergedTopLevel),
+    );
+    final existingTopLevelText = serializeSubsurfaceFile(
+      SubsurfaceFile(lines: existingTopLevel),
+    );
+    if (mergedTopLevelText != existingTopLevelText) {
+      filesToWrite['00-Subsurface'] = mergedTopLevelText;
+    }
+
+    return SyncPlan(
+      filesToWrite: filesToWrite,
+      diveIdsPlanned: diveIdsPlanned,
+      stats: SyncPlanStats(
+        newDives: newDives.length,
+        updatedDives: updatedDives.length,
+        skippedDives: skipped,
+      ),
+    );
+  }
+
+  // ── Site merge ─────────────────────────────────────────────────────
+
+  /// Replace the `name` and `gps` lines from [existing] with the values
+  /// from [ours]. Everything else (description, notes, geo, anything we
+  /// don't recognise) is preserved verbatim. The mapper's site output
+  /// is always shaped as `[name, description, notes, gps]`; we pull
+  /// those two fields out and overlay them onto the existing file.
+  List<SsLine> _mergeSiteLines({
+    required List<SsLine> existing,
+    required List<SsLine> ours,
+  }) {
+    QuotedLine? ourName;
+    GpsLine? ourGps;
+    for (final l in ours) {
+      if (l is QuotedLine && l.key == 'name') ourName = l;
+      if (l is GpsLine) ourGps = l;
+    }
+
+    final result = <SsLine>[];
+    var sawName = false;
+    var sawGps = false;
+    for (final line in existing) {
+      if (line is QuotedLine && line.key == 'name' && ourName != null) {
+        result.add(QuotedLine(key: 'name', value: ourName.value));
+        sawName = true;
+      } else if (line is GpsLine && ourGps != null) {
+        result.add(GpsLine(lat: ourGps.lat, lon: ourGps.lon));
+        sawGps = true;
+      } else {
+        result.add(line);
+      }
+    }
+    // If existing didn't have a name/gps line at all, append ours so the
+    // file is still valid Subsurface output.
+    if (!sawName && ourName != null) result.add(ourName);
+    if (!sawGps && ourGps != null) result.add(ourGps);
+    return result;
+  }
+
+  // ── Top-level merge ────────────────────────────────────────────────
+
+  /// Merge our delta into the existing 00-Subsurface lines. Rules:
+  /// - `divecomputerid`: dedup on **serial** (not deviceid); keep the
+  ///   existing entry when both are present, append new ones at the end
+  ///   of the existing dc-id block.
+  /// - `fingerprint`: dedup on `(model, serial, deviceid, diveid)`; keep
+  ///   the existing entry when both are present, append new ones at the
+  ///   end of the existing fingerprint block.
+  /// - Everything else (`version`, `units`, `prefs`, raw lines) is left
+  ///   in place.
+  List<SsLine> _mergeTopLevel({
+    required List<SsLine> existing,
+    required TopLevelDelta delta,
+  }) {
+    final existingSerials = <String>{};
+    for (final line in existing) {
+      if (line is DivecomputerIdLine) {
+        final s = _serialOf(line);
+        if (s != null) existingSerials.add(s);
+      }
+    }
+
+    final existingFingerprintKeys = <String>{};
+    for (final line in existing) {
+      if (line is FingerprintLine) {
+        existingFingerprintKeys.add(_fingerprintKey(line));
+      }
+    }
+
+    // Filter our delta to skip duplicates.
+    final newDcIds = <DivecomputerIdLine>[];
+    final newDcSerialsSeen = <String>{};
+    for (final dc in delta.newDivecomputerIds) {
+      final s = _serialOf(dc);
+      if (s != null && existingSerials.contains(s)) continue;
+      if (s != null && !newDcSerialsSeen.add(s)) continue;
+      newDcIds.add(dc);
+    }
+    final newFps = <FingerprintLine>[];
+    final newFpKeysSeen = <String>{};
+    for (final fp in delta.newFingerprints) {
+      final k = _fingerprintKey(fp);
+      if (existingFingerprintKeys.contains(k)) continue;
+      if (!newFpKeysSeen.add(k)) continue;
+      newFps.add(fp);
+    }
+
+    if (newDcIds.isEmpty && newFps.isEmpty) {
+      return existing;
+    }
+
+    // Find the index after the last existing divecomputerid line; insert
+    // new dc-ids there. If there are no existing dc-ids, place them
+    // right after the `version` line (if any) or at the start.
+    var lastDcIdIdx = -1;
+    var lastFingerprintIdx = -1;
+    var versionIdx = -1;
+    for (var i = 0; i < existing.length; i++) {
+      final l = existing[i];
+      if (l is DivecomputerIdLine) lastDcIdIdx = i;
+      if (l is FingerprintLine) lastFingerprintIdx = i;
+      if (l is ScalarLine && l.key == 'version' && versionIdx < 0) {
+        versionIdx = i;
+      }
+    }
+
+    final out = List<SsLine>.from(existing);
+
+    // Insert new fingerprints first (we'll use lastFingerprintIdx that
+    // hasn't shifted yet). Pick insertion points relative to the
+    // unmodified [existing] list, then apply in reverse so earlier
+    // indexes stay valid.
+    if (newFps.isNotEmpty) {
+      final fpInsertAt = lastFingerprintIdx >= 0
+          ? lastFingerprintIdx + 1
+          : (lastDcIdIdx >= 0
+              ? lastDcIdIdx + 1
+              : (versionIdx >= 0 ? versionIdx + 1 : 0));
+      out.insertAll(fpInsertAt, newFps);
+    }
+    if (newDcIds.isNotEmpty) {
+      final dcInsertAt = lastDcIdIdx >= 0
+          ? lastDcIdIdx + 1
+          : (versionIdx >= 0 ? versionIdx + 1 : 0);
+      out.insertAll(dcInsertAt, newDcIds);
+    }
+    return out;
+  }
+
+  /// Pull the `serial` field out of a `divecomputerid` line. Field
+  /// values are stored as raw lexemes (with surrounding quotes, when
+  /// present); we strip the quotes for the dedup key.
+  String? _serialOf(DivecomputerIdLine line) {
+    for (final e in line.fields) {
+      if (e.key == 'serial') {
+        var v = e.value;
+        if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) {
+          v = v.substring(1, v.length - 1);
+        }
+        return v;
+      }
+    }
+    return null;
+  }
+
+  /// Stable composite key for a fingerprint line — the union of the
+  /// fields Subsurface itself uses to identify a unique dive log entry.
+  String _fingerprintKey(FingerprintLine line) {
+    String? get(String key) {
+      for (final e in line.fields) {
+        if (e.key == key) return e.value;
+      }
+      return null;
+    }
+
+    return [
+      get('model') ?? '',
+      get('serial') ?? '',
+      get('deviceid') ?? '',
+      get('diveid') ?? '',
+    ].join('|');
+  }
+
+  /// Compute folder segments from a unix-seconds timestamp using UTC
+  /// components. Mirrors the mapper's private `_folderSegments` so the
+  /// planner can pre-compute paths *before* calling the mapper (we need
+  /// the path to register `Dive-NNN` even when reusing an existing
+  /// folder).
+  List<String> _utcFolderSegments(int startTimeUnixSeconds) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(
+      startTimeUnixSeconds * 1000,
+      isUtc: true,
+    );
+    final yyyy = dt.year.toString().padLeft(4, '0');
+    final mm = dt.month.toString().padLeft(2, '0');
+    final dd = dt.day.toString().padLeft(2, '0');
+    final day = const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        [(dt.weekday - 1) % 7];
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mi = dt.minute.toString().padLeft(2, '0');
+    final ss = dt.second.toString().padLeft(2, '0');
+    return [yyyy, mm, '$dd-$day-$hh=$mi=$ss'];
+  }
+}

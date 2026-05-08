@@ -11,7 +11,7 @@ import '../../data/models/sample_set.dart';
 import '../../shearwater/parser/constants.dart';
 
 /// The set of data traces that can be toggled on/off in the profile chart.
-enum TraceType { ppo2, setpoint, deco, cells, tanks }
+enum TraceType { ppo2, setpoint, deco, cells, tanks, gasChanges }
 
 /// ChangeNotifier backing the dive detail screen.
 ///
@@ -61,9 +61,14 @@ class DiveDetailNotifier extends ChangeNotifier {
   static Set<TraceType> _defaultTraces(int diveModeValue) {
     final mode = DiveMode.fromValue(diveModeValue);
     if (mode.isCcr) {
-      return {TraceType.ppo2, TraceType.setpoint, TraceType.deco};
+      return {
+        TraceType.ppo2,
+        TraceType.setpoint,
+        TraceType.deco,
+        TraceType.gasChanges,
+      };
     }
-    return {TraceType.deco};
+    return {TraceType.deco, TraceType.gasChanges};
   }
 
   /// Load samples from the database and notify listeners.

@@ -10,6 +10,7 @@ const _traceChipData = <TraceType, ({String label, Color color})>{
   TraceType.cells: (label: 'Cells', color: Color(0xFFEF5350)),
   TraceType.deco: (label: 'Deco', color: Color(0xFFFF9800)),
   TraceType.tanks: (label: 'Tanks', color: Color(0xFF90A4AE)),
+  TraceType.gasChanges: (label: 'Gas', color: Color(0xFF4DD0E1)),
 };
 
 /// A [Wrap] of [FilterChip] widgets, one per [TraceType].

@@ -75,6 +75,82 @@ void main() {
       expect(got.conditions, '8m viz, no current');
     });
 
+    test('upsert + get round-trips Information-tab fields '
+        '(env ratings, temps, weights)', () async {
+      final now = DateTime.now();
+      final a = DiveAnnotation(
+        diveId: 'dive_info',
+        rating: 3,
+        visibility: 5,
+        wavesize: 3,
+        current: 4,
+        surge: 4,
+        chill: 5,
+        airTempC: 24.0,
+        waterTempC: 22.0,
+        weights: const [
+          Weight(weightKg: 1.5, description: 'onder standaard'),
+          Weight(weightKg: 2.0, description: 'backplate'),
+        ],
+        createdAt: now,
+        updatedAt: now,
+      );
+      await dao.upsert(a);
+      final got = (await dao.get('dive_info'))!;
+
+      expect(got.rating, 3);
+      expect(got.visibility, 5);
+      expect(got.wavesize, 3);
+      expect(got.current, 4);
+      expect(got.surge, 4);
+      expect(got.chill, 5);
+      expect(got.airTempC, closeTo(24.0, 1e-6));
+      expect(got.waterTempC, closeTo(22.0, 1e-6));
+
+      expect(got.weights, hasLength(2));
+      expect(got.weights[0].weightKg, closeTo(1.5, 1e-6));
+      expect(got.weights[0].description, 'onder standaard');
+      expect(got.weights[1].weightKg, closeTo(2.0, 1e-6));
+      expect(got.weights[1].description, 'backplate');
+    });
+
+    test('upsert with empty weights list stores null in column', () async {
+      final now = DateTime.now();
+      await dao.upsert(DiveAnnotation(
+        diveId: 'dive_no_weights',
+        weights: const [],
+        createdAt: now,
+        updatedAt: now,
+      ));
+      final row = await db.get(
+        'SELECT weights_json FROM dive_annotations WHERE dive_id = ?',
+        ['dive_no_weights'],
+      );
+      expect(row['weights_json'], isNull);
+      // And the model round-trips as an empty list (not null).
+      final got = (await dao.get('dive_no_weights'))!;
+      expect(got.weights, isEmpty);
+    });
+
+    test('Information-tab fields default to null/empty when omitted',
+        () async {
+      final now = DateTime.now();
+      await dao.upsert(DiveAnnotation(
+        diveId: 'dive_blank',
+        createdAt: now,
+        updatedAt: now,
+      ));
+      final got = (await dao.get('dive_blank'))!;
+      expect(got.visibility, isNull);
+      expect(got.wavesize, isNull);
+      expect(got.current, isNull);
+      expect(got.surge, isNull);
+      expect(got.chill, isNull);
+      expect(got.airTempC, isNull);
+      expect(got.waterTempC, isNull);
+      expect(got.weights, isEmpty);
+    });
+
     test('upsert sets created_at/updated_at to sane millis-since-epoch',
         () async {
       final before = DateTime.now().millisecondsSinceEpoch;

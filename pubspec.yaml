@@ -55,6 +55,22 @@ dependencies:
   # user is staring at the import progress screen.
   wakelock_plus: ^1.2.8
 
+  # Phase 3 attachments — file picking, camera capture, MIME lookup,
+  # opening external URLs, and the http client that talks to the
+  # signing Worker + R2 presigned URLs.
+  http: ^1.2.0
+  file_picker: ^8.1.0
+  image_picker: ^1.1.0
+  url_launcher: ^6.3.0
+  mime: ^1.0.5
+  # Native PDF rendering (PDFKit on iOS/macOS, PdfRenderer on Android,
+  # MuPDF on desktop). Used by the in-app PDF viewer so attached PDFs
+  # open inline instead of dropping the user into a share sheet.
+  pdfx: ^2.6.0
+  git2dart: ^0.4.0
+  git2dart_binaries: ^1.10.3
+  flutter_secure_storage: ^10.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

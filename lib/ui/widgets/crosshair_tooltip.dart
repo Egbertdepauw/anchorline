@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../data/db/database.dart';
-import '../../data/models/dive.dart' show DiveTank;
+import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
 import '../../data/models/sample_set.dart';
 import '../notifiers/dive_detail_notifier.dart';
 import '../util/tank_labels.dart';
@@ -15,6 +15,7 @@ class CrosshairTooltip extends StatelessWidget {
   final Map<int, OxygenCell>? cellsBySlot;
   final List<DiveTank>? tanks;
   final Map<int, Cylinder>? mappedCylinders;
+  final List<DiveGasMix>? gasMixes;
 
   const CrosshairTooltip({
     super.key,
@@ -26,11 +27,21 @@ class CrosshairTooltip extends StatelessWidget {
     this.cellsBySlot,
     this.tanks,
     this.mappedCylinders,
+    this.gasMixes,
   });
 
   String _cellLabelOrFallback(int slot, String fallback) {
     if (cellsBySlot == null || cellsBySlot!.isEmpty) return fallback;
     return cellTraceLabelForSlot(cellsBySlot, slot);
+  }
+
+  static String _gasMixLabel(DiveGasMix mix) {
+    if (mix.heliumPercent > 0) {
+      return '${mix.oxygenPercent}/${mix.heliumPercent}';
+    }
+    if (mix.oxygenPercent == 21) return 'Air';
+    if (mix.oxygenPercent == 100) return 'O₂';
+    return 'EAN${mix.oxygenPercent}';
   }
 
   /// Instantaneous vertical-speed at [i], computed from the previous
@@ -72,6 +83,19 @@ class CrosshairTooltip extends StatelessWidget {
           _cellLabelOrFallback(3, 'C3'), samples.cellMv2[i].toStringAsFixed(2)));
     }
     rows.add(_Row('Temp', '${samples.temperatureCelsius[i].toStringAsFixed(1)}°C'));
+
+    if (visibleTraces.contains(TraceType.gasChanges) &&
+        gasMixes != null &&
+        gasMixes!.isNotEmpty &&
+        i < samples.gasMixIndex.length) {
+      final idx = samples.gasMixIndex[i];
+      if (idx < gasMixes!.length) {
+        final mix = gasMixes![idx];
+        final label = _gasMixLabel(mix);
+        final tag = mix.isDiluent ? 'Dil' : 'OC';
+        rows.add(_Row('Gas', '$label  ($tag)'));
+      }
+    }
 
     if (tanks != null &&
         tanks!.isNotEmpty &&

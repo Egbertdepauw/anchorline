@@ -1,0 +1,16 @@
+duration 55:00 min
+visibility 2
+wavesize 5
+current 5
+surge 5
+chill 5
+watersalinity 1030 g/l
+divesiteid 9792f50a
+buddy "Wessel de Pauw"
+suit "Dui TLS350 Explorer"
+notes "Wessels eerste duikje na zijn PADI OW brevet in zout water !
+	"
+cylinder vol=24.0l workpressure=232.0bar description="D12 232 bar" start=232.0bar depth=66.209m
+weightsystem weight=2.0kg description="backplate"
+airtemp 25.0°C
+watertemp 21.0°C

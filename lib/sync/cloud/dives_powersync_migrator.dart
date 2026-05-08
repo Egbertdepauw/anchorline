@@ -60,11 +60,12 @@ class DivesPowerSyncMigrator {
           'deco_model, gf_low, gf_high, atmospheric_pressure_mbar, '
           'water_density, log_version, dc_model, dc_firmware, '
           'sample_interval_ms, gas_mixes_json, tanks_json, '
+          'sensor_calibration_json, '
           'configured_stack_seconds, stack_remaining_at_start_seconds, '
           'stack_remaining_at_end_seconds, parser_version, imported_at, '
           'subsurface_uploaded_at, deleted_at, version, sync_status) '
           'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-          '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             dive.id,
             ownerId,
@@ -87,6 +88,7 @@ class DivesPowerSyncMigrator {
             dive.sampleIntervalMs,
             dive.gasMixesJson,
             dive.tanksJson,
+            dive.sensorCalibrationJson,
             dive.configuredStackSeconds,
             dive.stackRemainingAtStartSeconds,
             dive.stackRemainingAtEndSeconds,

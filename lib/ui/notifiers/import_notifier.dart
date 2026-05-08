@@ -13,6 +13,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../data/db/import_state_dao.dart';
+import '../../data/models/dive.dart' show generateDiveId;
 import '../../shearwater/ble/ble_io_impl.dart';
 import '../../shearwater/ble/mock_ble_transport.dart';
 import '../../shearwater/ble/shearwater_ble_transport.dart';
@@ -247,8 +248,13 @@ class ImportNotifier extends ChangeNotifier {
   /// For real BLE, passes the last known fingerprint from [ImportStateDao] so
   /// the device can return only newer dives (incremental sync).
   ///
-  /// The pre-filter is an optimisation: the authoritative dedup happens
-  /// inside [DiveDao.importDive], which returns `false` for existing dives.
+  /// The Petrel's fingerprint pre-filter is the first line of defence; the
+  /// local-DB existence check below is the belt-and-braces backup for when
+  /// the saved fingerprint is stale (partial prior import, manual reset,
+  /// fresh install with cloud-synced dives, etc). When [forceFullReimport]
+  /// is on, both filters are bypassed so the user sees every dive on the
+  /// device. The authoritative dedup still happens inside
+  /// [DiveDao.importDive] regardless.
   Future<void> readManifestAndFilterNew() async {
     try {
       List<ManifestEntry> manifest;
@@ -263,7 +269,23 @@ class ImportNotifier extends ChangeNotifier {
         manifest = await _mockTransport!.readManifest();
       }
 
-      _newDives = manifest.where((e) => e.isValid).toList();
+      var entries = manifest.where((e) => e.isValid).toList();
+
+      if (!_forceFullReimport && entries.isNotEmpty) {
+        final serial = int.parse(_deviceInfo!.serial, radix: 16);
+        final ids = entries
+            .map((e) => generateDiveId(serial, e.diveNumber, e.startTimestamp))
+            .toList(growable: false);
+        final existing = await _dao.existingDiveIdsAmong(ids);
+        if (existing.isNotEmpty) {
+          entries = [
+            for (var i = 0; i < entries.length; i++)
+              if (!existing.contains(ids[i])) entries[i],
+          ];
+        }
+      }
+
+      _newDives = entries;
       _totalToDownload = _newDives.length;
     } catch (e) {
       _errorMessage = 'Failed to read manifest: $e';
@@ -303,18 +325,14 @@ class ImportNotifier extends ChangeNotifier {
     final serial = int.parse(_deviceInfo!.serial, radix: 16);
     ManifestEntry? lastSuccessfulEntry;
 
-    // Two-phase to keep BLE off the disk-write critical path. Shearwater
-    // computers (Petrel 1/2 especially) drop the connection if we don't
-    // request the next dive within ~15–30 seconds, and Phase 2.5's
-    // PowerSync writes are heavy enough (14 base64'd blob columns) that
-    // interleaving them with BLE downloads can blow that budget.
-    //
-    // Phase 1: pull every dive off the wire into memory as fast as the
-    //          dive computer will hand them over. No disk I/O.
-    // Phase 2: parse + persist sequentially with the BLE link already
-    //          released. No timeout pressure.
-
-    final downloaded = <DownloadedDive>[];
+    // Persist each dive as soon as it lands. The earlier two-phase split
+    // existed to avoid interleaving disk writes with BLE downloads, but
+    // the actual BLE timeout culprits turned out to be elsewhere
+    // (iOS screen-lock → wakelock_plus; disconnect handshake hang →
+    // 3s cap below). PowerSync writes are sub-second; the Petrel
+    // log-mode session timer is ~60s, so per-dive commits leave plenty
+    // of headroom — and a mid-batch BLE drop now keeps every dive that
+    // already made it to disk.
     try {
       final diveStream = _isRealBle
           ? _realTransport!.downloadDives(toDownload)
@@ -323,23 +341,50 @@ class ImportNotifier extends ChangeNotifier {
       await for (final d in diveStream) {
         _currentDiveNumber = d.manifest.diveNumber;
         notifyListeners();
-        downloaded.add(d);
+        try {
+          final parsed = parser.parse(d.data);
+          final converted = DiveConverter.convert(
+            parsed: parsed,
+            dcSerial: serial,
+            dcDiveNumber: d.manifest.diveNumber,
+            dcModel: _deviceInfo!.model,
+          );
+          final imported = await _dao.importDive(
+            converted: converted,
+            rawBlob: d.data,
+            parserVersion: 1,
+          );
+          if (imported) {
+            _downloadedCount++;
+            lastSuccessfulEntry = d.manifest;
+          }
+        } catch (e) {
+          debugPrint('Failed to import dive ${d.manifest.diveNumber}: $e');
+          _failedCount++;
+        }
+        // Forward-compatible: parser does not currently surface
+        // scrubberResetAt. Failures here are local and non-fatal.
+        try {
+          await _equipmentDao.applyScrubberEvents(
+            scrubberResetAt: null,
+            dcSerial: serial,
+          );
+        } catch (e) {
+          debugPrint('Failed to apply scrubber events: $e');
+        }
+        notifyListeners();
       }
     } catch (e) {
       _errorMessage =
-          'Connection lost. ${downloaded.length} of $_totalToDownload dives downloaded.';
+          'Connection lost. $_downloadedCount of $_totalToDownload dives downloaded.';
       _state = ImportFlowState.error;
-      // Even on a partial download, persist whatever we did get so the
-      // user doesn't have to repeat the BLE handshake from scratch.
     }
 
-    // Release the BLE link before disk work — but cap the wait. The
-    // Shearwater protocol's shutdown handshake (a WDBI write the unit
-    // is meant to ack) silently never returns once the Petrel has
-    // already left log mode — which is the common case after the
-    // last selected dive came down. Three seconds is plenty for a
-    // healthy disconnect; longer than that means the device already
-    // walked away and Phase 2 should not wait.
+    // Release the BLE link, but cap the wait. The Shearwater shutdown
+    // handshake (a WDBI write the unit is meant to ack) silently never
+    // returns once the Petrel has already left log mode — common after
+    // the last selected dive came down. Three seconds is plenty for a
+    // healthy disconnect; longer means the device already walked away.
     if (_isRealBle) {
       try {
         await _realTransport!
@@ -348,44 +393,6 @@ class ImportNotifier extends ChangeNotifier {
       } catch (e) {
         debugPrint('BLE disconnect timed out / failed (non-fatal): $e');
       }
-    }
-
-    // Phase 2: parse + persist. Failures here are local; the BLE side
-    // is already done.
-    for (final d in downloaded) {
-      _currentDiveNumber = d.manifest.diveNumber;
-      notifyListeners();
-      try {
-        final parsed = parser.parse(d.data);
-        final converted = DiveConverter.convert(
-          parsed: parsed,
-          dcSerial: serial,
-          dcDiveNumber: d.manifest.diveNumber,
-          dcModel: _deviceInfo!.model,
-        );
-        final imported = await _dao.importDive(
-          converted: converted,
-          rawBlob: d.data,
-          parserVersion: 1,
-        );
-        if (imported) {
-          _downloadedCount++;
-          lastSuccessfulEntry = d.manifest;
-        }
-      } catch (e) {
-        debugPrint('Failed to import dive ${d.manifest.diveNumber}: $e');
-        _failedCount++;
-      }
-      // Forward-compatible: parser does not currently surface scrubberResetAt.
-      try {
-        await _equipmentDao.applyScrubberEvents(
-          scrubberResetAt: null,
-          dcSerial: serial,
-        );
-      } catch (e) {
-        debugPrint('Failed to apply scrubber events: $e');
-      }
-      notifyListeners();
     }
 
     if (_state != ImportFlowState.error) {

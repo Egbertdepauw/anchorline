@@ -1,0 +1,681 @@
+model "Shearwater Petrel 3"
+deviceid 18545bf0
+diveid f397335d
+dctype CCR
+numberofoxygensensors 3
+maxdepth 11.6m
+meandepth 8.177m
+watertemp 16.0°C
+surfacepressure 1.004bar
+salinity 1020g/l
+keyvalue "Configured stack time [hh:mm:ss]" "7:00:00"
+keyvalue "Remaining stack time at start [hh:mm:ss]" "7:00:00"
+keyvalue "Remaining stack time at end [hh:mm:ss]" "6:05:24"
+keyvalue "Logversion" "14(PNF)"
+keyvalue "Sensor 1 calibration [bar / V]" "21.00"
+keyvalue "Sensor 2 calibration [bar / V]" "21.00"
+keyvalue "Sensor 3 calibration [bar / V]" "21.00"
+keyvalue "Serial" "b89641e4"
+keyvalue "FW Version" "97"
+keyvalue "Deco model" "GF 50/95"
+keyvalue "Battery type" "3.6V Saft"
+keyvalue "Battery at end" "3.4 V"
+event 0:05 type=25 flags=6 name="gaschange" cylinder=2 o2=33.0% he=15.0%
+  0:05 0.0m 16.0°C 187.951bar o2pressure=179.953bar tts=1:00 sensor1=0.735bar sensor2=0.714bar sensor3=0.756bar po2=0.7bar
+  0:10 1.6m 187.951bar o2pressure=179.953bar sensor1=0.798bar sensor2=0.777bar sensor3=0.798bar
+  0:15 1.9m 187.951bar o2pressure=179.953bar ndl=99:00 sensor1=0.819bar sensor2=0.798bar sensor3=0.84bar
+  0:20 2.1m 187.951bar o2pressure=179.953bar sensor1=0.84bar sensor2=0.819bar sensor3=0.861bar
+  0:25 2.4m 187.951bar o2pressure=179.953bar
+  0:30 2.8m 186.986bar o2pressure=179.953bar
+  0:35 3.0m 186.986bar o2pressure=179.953bar sensor3=0.84bar
+  0:40 3.5m 186.986bar o2pressure=179.953bar sensor2=0.798bar sensor3=0.819bar
+  0:45 3.9m 186.986bar o2pressure=179.953bar sensor1=0.861bar sensor2=0.819bar sensor3=0.84bar
+  0:50 4.0m 186.986bar o2pressure=179.953bar sensor1=0.84bar
+  0:55 4.1m 186.021bar o2pressure=179.953bar sensor2=0.798bar
+  1:00 4.0m 186.021bar o2pressure=179.953bar sensor1=0.819bar sensor3=0.819bar
+  1:05 4.3m 186.021bar o2pressure=179.953bar sensor1=0.798bar sensor2=0.777bar sensor3=0.798bar
+  1:10 4.4m 186.021bar o2pressure=179.953bar sensor2=0.756bar sensor3=0.777bar
+  1:15 4.7m 186.021bar o2pressure=179.953bar
+  1:20 5.0m 186.021bar o2pressure=179.953bar
+  1:25 5.1m 186.021bar o2pressure=179.953bar sensor1=0.777bar
+  1:30 5.2m 186.021bar o2pressure=179.953bar sensor2=0.735bar
+  1:35 5.3m 186.021bar o2pressure=179.953bar sensor1=0.756bar sensor3=0.756bar
+  1:40 5.5m 186.021bar o2pressure=179.953bar sensor2=0.714bar
+  1:45 5.9m 186.021bar o2pressure=179.953bar sensor2=0.735bar
+  1:50 6.1m 186.021bar o2pressure=179.953bar
+  1:55 6.2m 186.021bar o2pressure=179.953bar sensor1=0.777bar
+  2:00 6.4m 185.055bar o2pressure=179.953bar sensor1=0.798bar sensor2=0.756bar sensor3=0.777bar
+  2:05 6.5m 185.055bar o2pressure=179.953bar sensor3=0.798bar
+  2:10 6.6m 185.055bar o2pressure=179.953bar
+  2:15 6.7m 185.055bar o2pressure=179.953bar sensor3=0.777bar
+  2:20 7.0m 185.055bar o2pressure=179.953bar
+  2:25 7.5m 183.952bar o2pressure=179.953bar sensor3=0.798bar
+  2:30 7.7m 183.952bar o2pressure=179.953bar sensor2=0.777bar
+  2:35 7.9m 183.952bar o2pressure=179.953bar sensor3=0.819bar
+  2:40 8.0m 183.952bar o2pressure=179.953bar cns=1% sensor3=0.798bar
+  2:45 8.1m 183.952bar o2pressure=179.953bar
+  2:50 8.3m 183.952bar o2pressure=179.953bar sensor1=0.819bar
+  2:55 8.6m 183.952bar o2pressure=179.953bar sensor1=0.861bar sensor2=0.798bar sensor3=0.819bar
+  3:00 8.7m 183.952bar o2pressure=179.953bar sensor1=0.882bar sensor2=0.819bar sensor3=0.84bar
+  3:05 8.9m 183.952bar o2pressure=179.953bar sensor2=0.84bar sensor3=0.861bar
+  3:10 9.0m 183.952bar o2pressure=179.953bar
+  3:15 9.2m 183.952bar o2pressure=179.953bar sensor1=0.861bar sensor2=0.819bar
+  3:20 9.5m 183.952bar o2pressure=179.953bar sensor1=0.882bar sensor2=0.84bar
+  3:25 9.6m 183.952bar o2pressure=179.953bar sensor3=0.882bar
+  3:30 9.6m 183.952bar o2pressure=179.953bar
+  3:35 9.7m 183.952bar o2pressure=179.953bar
+  3:40 9.7m 183.952bar o2pressure=179.953bar
+  3:45 9.7m 183.952bar o2pressure=179.953bar sensor1=0.861bar
+  3:50 9.9m 183.952bar o2pressure=179.953bar sensor3=0.861bar
+  3:55 10.0m 183.952bar o2pressure=179.953bar
+  4:00 9.9m 183.952bar o2pressure=179.953bar sensor2=0.819bar sensor3=0.84bar
+  4:05 9.8m 183.952bar o2pressure=179.953bar sensor1=0.84bar
+  4:10 9.8m 183.952bar o2pressure=179.953bar sensor1=0.819bar sensor2=0.798bar sensor3=0.819bar
+  4:15 9.9m 183.952bar o2pressure=179.953bar
+  4:20 9.9m 183.952bar o2pressure=179.953bar sensor2=0.777bar
+  4:25 9.9m 183.952bar o2pressure=179.953bar sensor3=0.798bar
+  4:30 10.0m 183.952bar o2pressure=179.953bar sensor1=0.798bar
+  4:35 10.1m 183.952bar o2pressure=179.953bar
+  4:40 10.1m 183.952bar o2pressure=179.953bar
+  4:45 10.1m 183.952bar o2pressure=179.953bar sensor1=0.819bar po2=1.2bar
+  4:50 10.0m 183.952bar o2pressure=179.953bar
+  4:55 10.1m 183.952bar o2pressure=178.988bar sensor3=0.819bar
+  5:00 10.1m 183.952bar o2pressure=178.988bar
+  5:05 10.2m 183.952bar o2pressure=178.023bar sensor1=0.861bar sensor2=0.798bar
+  5:10 10.1m 183.952bar o2pressure=178.023bar sensor1=0.924bar sensor2=0.819bar sensor3=0.861bar
+  5:15 10.2m 183.952bar o2pressure=177.057bar sensor1=1.05bar sensor2=0.861bar sensor3=0.924bar
+  5:20 10.1m 183.952bar o2pressure=177.057bar sensor1=1.197bar sensor2=0.945bar sensor3=0.987bar
+  5:25 10.6m 183.952bar o2pressure=177.057bar sensor1=1.26bar sensor2=1.008bar sensor3=1.071bar
+  5:30 10.9m 183.952bar o2pressure=175.954bar tts=2:00 sensor1=1.323bar sensor2=1.092bar sensor3=1.155bar
+  5:35 10.6m 183.952bar o2pressure=175.954bar sensor2=1.134bar sensor3=1.197bar
+  5:40 10.4m 183.952bar o2pressure=175.954bar sensor1=1.302bar sensor2=1.155bar sensor3=1.218bar
+  5:45 10.6m 183.952bar o2pressure=175.954bar tts=1:00 sensor1=1.281bar sensor2=1.176bar sensor3=1.239bar
+  5:50 11.1m 183.952bar o2pressure=174.989bar tts=2:00 sensor1=1.302bar sensor2=1.218bar sensor3=1.26bar
+  5:55 11.2m 183.952bar o2pressure=174.989bar sensor2=1.239bar sensor3=1.302bar
+  6:00 11.2m 183.952bar o2pressure=174.989bar sensor1=1.281bar
+  6:05 11.2m 183.952bar o2pressure=174.989bar
+  6:10 11.1m 183.952bar o2pressure=174.989bar sensor1=1.302bar sensor2=1.26bar
+  6:15 10.7m 183.952bar o2pressure=174.989bar cns=2% sensor1=1.281bar sensor2=1.239bar
+  6:20 10.6m 183.952bar o2pressure=174.989bar sensor3=1.281bar
+  6:25 10.5m 183.952bar o2pressure=174.989bar sensor1=1.26bar sensor2=1.218bar
+  6:30 10.2m 183.952bar o2pressure=174.989bar sensor1=1.239bar sensor2=1.197bar sensor3=1.239bar
+  6:35 10.2m 183.952bar o2pressure=174.989bar tts=1:00 sensor1=1.218bar
+  6:40 10.1m 183.952bar o2pressure=174.989bar
+  6:45 10.1m 183.952bar o2pressure=174.989bar sensor2=1.176bar sensor3=1.218bar
+  6:50 10.1m 183.952bar o2pressure=174.989bar sensor1=1.239bar sensor2=1.197bar sensor3=1.239bar
+  6:55 10.0m 183.952bar o2pressure=174.989bar sensor3=1.26bar
+  7:00 10.0m 183.952bar o2pressure=174.989bar sensor1=1.26bar
+  7:05 10.0m 183.952bar o2pressure=174.989bar sensor1=1.281bar sensor2=1.218bar sensor3=1.281bar
+  7:10 9.8m 183.952bar o2pressure=174.989bar sensor2=1.239bar
+  7:15 9.5m 183.952bar o2pressure=174.989bar
+  7:20 9.5m 183.952bar o2pressure=174.989bar sensor1=1.26bar sensor2=1.218bar sensor3=1.26bar
+  7:25 9.5m 183.952bar o2pressure=174.989bar
+  7:30 8.9m 183.952bar o2pressure=174.989bar sensor1=1.239bar sensor2=1.197bar
+  7:35 8.8m 183.952bar o2pressure=174.989bar sensor1=1.197bar sensor2=1.176bar sensor3=1.218bar
+  7:40 8.9m 183.952bar o2pressure=174.024bar
+  7:45 9.0m 183.952bar o2pressure=174.024bar sensor1=1.218bar sensor3=1.239bar
+  7:50 8.6m 183.952bar o2pressure=174.024bar
+  7:55 8.3m 183.952bar o2pressure=174.024bar sensor3=1.218bar
+  8:00 8.5m 183.952bar o2pressure=174.024bar sensor1=1.239bar
+  8:05 8.9m 183.952bar o2pressure=174.024bar sensor1=1.281bar sensor2=1.218bar sensor3=1.26bar
+  8:10 9.0m 183.952bar o2pressure=174.024bar sensor1=1.323bar sensor2=1.26bar sensor3=1.302bar
+  8:15 9.4m 183.952bar o2pressure=174.024bar sensor2=1.281bar sensor3=1.323bar
+  8:20 9.5m 183.952bar o2pressure=174.024bar cns=3% sensor3=1.344bar
+  8:25 9.7m 183.952bar o2pressure=173.058bar sensor1=1.344bar sensor2=1.302bar
+  8:30 9.8m 183.952bar o2pressure=173.058bar
+  8:35 10.0m 183.952bar o2pressure=173.058bar sensor1=1.365bar sensor2=1.323bar sensor3=1.365bar
+  8:40 10.2m 183.952bar o2pressure=173.058bar sensor3=1.386bar
+  8:45 10.4m 183.952bar o2pressure=173.058bar sensor1=1.386bar sensor2=1.344bar
+  8:50 10.4m 183.952bar o2pressure=173.058bar sensor1=1.407bar sensor2=1.365bar sensor3=1.407bar
+  8:55 10.5m 183.952bar o2pressure=173.058bar
+  9:00 10.6m 183.952bar o2pressure=173.058bar tts=2:00 sensor1=1.428bar sensor2=1.386bar sensor3=1.428bar
+  9:05 10.6m 183.952bar o2pressure=173.058bar sensor3=1.449bar
+  9:10 10.7m 183.952bar o2pressure=173.058bar
+  9:15 10.8m 183.952bar o2pressure=173.058bar sensor2=1.407bar
+  9:20 10.9m 183.952bar o2pressure=173.058bar sensor1=1.449bar
+  9:25 10.8m 183.952bar o2pressure=173.058bar
+  9:30 10.7m 183.952bar o2pressure=173.058bar sensor1=1.428bar sensor2=1.386bar
+  9:35 10.8m 183.952bar o2pressure=173.058bar
+  9:40 11.2m 183.952bar o2pressure=173.058bar sensor1=1.449bar sensor2=1.407bar sensor3=1.47bar
+  9:45 11.4m 183.952bar o2pressure=173.058bar sensor1=1.47bar sensor2=1.428bar sensor3=1.491bar
+  9:50 11.4m 183.952bar o2pressure=173.058bar
+  9:55 11.5m 183.952bar o2pressure=173.058bar
+ 10:00 11.6m 183.952bar o2pressure=173.058bar cns=4%
+ 10:05 11.5m 183.952bar o2pressure=173.058bar sensor1=1.491bar sensor2=1.449bar
+ 10:10 11.5m 183.952bar o2pressure=173.058bar sensor3=1.512bar
+ 10:15 11.6m 183.952bar o2pressure=173.058bar
+ 10:20 11.4m 183.952bar o2pressure=173.058bar
+ 10:25 11.4m 183.952bar o2pressure=173.058bar sensor1=1.47bar sensor2=1.428bar sensor3=1.491bar
+ 10:30 11.1m 183.952bar o2pressure=173.058bar sensor3=1.47bar
+ 10:35 11.0m 183.952bar o2pressure=173.058bar sensor1=1.449bar sensor2=1.407bar sensor3=1.449bar
+ 10:40 11.0m 183.952bar o2pressure=173.058bar
+ 10:45 10.9m 183.952bar o2pressure=173.058bar sensor1=1.428bar sensor2=1.386bar
+ 10:50 10.5m 183.952bar o2pressure=173.058bar sensor1=1.407bar sensor3=1.428bar
+ 10:55 10.6m 183.952bar o2pressure=173.058bar tts=1:00 sensor2=1.365bar sensor3=1.407bar
+ 11:00 10.6m 183.952bar o2pressure=173.058bar
+ 11:05 10.5m 183.952bar o2pressure=173.058bar tts=2:00 sensor3=1.428bar
+ 11:10 10.2m 183.952bar o2pressure=173.058bar tts=1:00 sensor1=1.386bar sensor2=1.344bar sensor3=1.386bar
+ 11:15 10.2m 183.952bar o2pressure=173.058bar sensor1=1.365bar sensor2=1.323bar
+ 11:20 10.2m 183.952bar o2pressure=173.058bar sensor1=1.386bar sensor2=1.344bar
+ 11:25 9.9m 183.952bar o2pressure=173.058bar
+ 11:30 9.6m 183.952bar o2pressure=173.058bar sensor1=1.365bar sensor2=1.323bar sensor3=1.365bar
+ 11:35 9.6m 183.952bar o2pressure=173.058bar cns=5% sensor1=1.344bar sensor2=1.302bar
+ 11:40 9.3m 183.952bar o2pressure=173.058bar sensor3=1.344bar
+ 11:45 9.3m 183.952bar o2pressure=173.058bar sensor1=1.323bar sensor2=1.281bar sensor3=1.323bar
+ 11:50 9.2m 183.952bar o2pressure=173.058bar sensor1=1.302bar
+ 11:55 8.9m 183.952bar o2pressure=173.058bar sensor1=1.281bar sensor2=1.26bar sensor3=1.302bar
+ 12:00 8.7m 183.952bar o2pressure=173.058bar sensor1=1.26bar sensor2=1.239bar sensor3=1.281bar
+ 12:05 8.7m 183.952bar o2pressure=173.058bar
+ 12:10 8.6m 183.952bar o2pressure=173.058bar
+ 12:15 8.6m 183.952bar o2pressure=173.058bar sensor2=1.218bar
+ 12:20 8.7m 183.952bar o2pressure=173.058bar sensor2=1.239bar
+ 12:25 8.6m 183.952bar o2pressure=173.058bar
+ 12:30 8.4m 183.952bar o2pressure=173.058bar sensor2=1.218bar sensor3=1.26bar
+ 12:35 8.3m 183.952bar o2pressure=173.058bar sensor1=1.239bar sensor2=1.197bar sensor3=1.239bar
+ 12:40 8.5m 183.952bar o2pressure=173.058bar sensor2=1.218bar sensor3=1.26bar
+ 12:45 9.0m 183.952bar o2pressure=173.058bar sensor1=1.26bar sensor2=1.239bar sensor3=1.281bar
+ 12:50 9.5m 183.952bar o2pressure=173.058bar sensor1=1.302bar sensor2=1.26bar sensor3=1.323bar
+ 12:55 9.5m 183.952bar o2pressure=171.955bar
+ 13:00 9.5m 183.952bar o2pressure=171.955bar
+ 13:05 9.7m 183.952bar o2pressure=171.955bar sensor2=1.281bar
+ 13:10 9.7m 183.952bar o2pressure=171.955bar sensor1=1.323bar sensor2=1.302bar sensor3=1.344bar
+ 13:15 9.3m 183.952bar o2pressure=171.955bar sensor2=1.281bar
+ 13:20 9.1m 183.952bar o2pressure=171.955bar sensor1=1.302bar sensor3=1.323bar
+ 13:25 9.2m 183.952bar o2pressure=171.955bar
+ 13:30 9.2m 183.952bar o2pressure=171.955bar cns=6% sensor2=1.26bar
+ 13:35 9.2m 182.987bar o2pressure=171.955bar sensor1=1.281bar sensor3=1.302bar
+ 13:40 9.4m 182.987bar o2pressure=170.99bar sensor1=1.302bar
+ 13:45 9.4m 182.987bar o2pressure=170.99bar
+ 13:50 9.3m 182.987bar o2pressure=170.99bar
+ 13:55 9.1m 182.987bar o2pressure=170.99bar sensor1=1.323bar
+ 14:00 9.2m 182.987bar o2pressure=170.99bar sensor2=1.281bar sensor3=1.344bar
+ 14:05 9.4m 182.987bar o2pressure=170.99bar sensor1=1.344bar sensor2=1.302bar sensor3=1.365bar
+ 14:10 9.5m 182.987bar o2pressure=170.99bar sensor3=1.344bar
+ 14:15 9.7m 182.987bar o2pressure=170.99bar
+ 14:20 9.6m 182.987bar o2pressure=170.99bar sensor2=1.281bar
+ 14:25 9.5m 182.987bar o2pressure=170.99bar sensor1=1.323bar
+ 14:30 9.8m 182.987bar o2pressure=170.99bar
+ 14:35 9.9m 182.987bar o2pressure=170.99bar
+ 14:40 9.8m 182.987bar o2pressure=170.99bar sensor3=1.323bar
+ 14:45 9.8m 182.987bar o2pressure=170.99bar
+ 14:50 9.9m 182.987bar o2pressure=170.99bar sensor1=1.302bar sensor2=1.26bar
+ 14:55 9.9m 182.987bar o2pressure=170.99bar sensor3=1.302bar
+ 15:00 9.9m 182.022bar o2pressure=170.99bar
+ 15:05 9.9m 182.022bar o2pressure=170.99bar sensor1=1.281bar
+ 15:10 9.9m 182.022bar o2pressure=170.99bar
+ 15:15 10.1m 182.022bar o2pressure=170.99bar sensor2=1.239bar sensor3=1.281bar
+ 15:20 10.2m 182.022bar o2pressure=170.99bar sensor1=1.26bar
+ 15:25 10.2m 182.022bar o2pressure=170.99bar cns=7% sensor1=1.281bar
+ 15:30 10.0m 182.022bar o2pressure=170.99bar sensor1=1.26bar
+ 15:35 9.8m 182.022bar o2pressure=170.99bar sensor2=1.218bar sensor3=1.26bar
+ 15:40 9.4m 182.022bar o2pressure=170.99bar sensor1=1.218bar sensor2=1.197bar sensor3=1.239bar
+ 15:45 9.5m 182.022bar o2pressure=170.99bar sensor1=1.197bar sensor2=1.176bar sensor3=1.218bar
+ 15:50 9.6m 182.022bar o2pressure=170.99bar
+ 15:55 9.6m 182.022bar o2pressure=170.99bar sensor2=1.155bar sensor3=1.197bar
+ 16:00 9.7m 182.022bar o2pressure=170.99bar
+ 16:05 9.5m 182.022bar o2pressure=170.99bar
+ 16:10 9.6m 182.022bar o2pressure=170.99bar sensor1=1.176bar
+ 16:15 9.6m 182.022bar o2pressure=170.99bar
+ 16:20 9.6m 182.022bar o2pressure=170.99bar sensor1=1.197bar
+ 16:25 9.7m 182.022bar o2pressure=170.99bar sensor1=1.176bar sensor3=1.218bar
+ 16:30 9.7m 182.022bar o2pressure=170.99bar sensor1=1.197bar sensor2=1.176bar
+ 16:35 9.8m 182.022bar o2pressure=170.99bar sensor3=1.239bar
+ 16:40 9.9m 182.022bar o2pressure=170.99bar sensor1=1.218bar
+ 16:45 9.9m 182.022bar o2pressure=170.99bar sensor2=1.197bar
+ 16:50 9.9m 182.022bar o2pressure=170.99bar
+ 16:55 10.0m 182.022bar o2pressure=170.99bar sensor3=1.26bar
+ 17:00 10.0m 182.022bar o2pressure=170.99bar sensor1=1.239bar
+ 17:05 10.1m 182.022bar o2pressure=170.99bar
+ 17:10 9.9m 182.022bar o2pressure=170.99bar
+ 17:15 10.0m 182.022bar o2pressure=170.99bar sensor2=1.218bar
+ 17:20 10.2m 182.022bar o2pressure=170.99bar
+ 17:25 10.4m 182.022bar o2pressure=170.99bar sensor1=1.26bar sensor2=1.239bar sensor3=1.281bar
+ 17:30 10.4m 182.022bar o2pressure=170.99bar sensor1=1.281bar sensor3=1.302bar
+ 17:35 10.5m 182.022bar o2pressure=170.99bar
+ 17:40 10.5m 182.022bar o2pressure=170.99bar cns=8%
+ 17:45 10.6m 182.022bar o2pressure=170.99bar
+ 17:50 10.7m 182.022bar o2pressure=170.99bar tts=2:00
+ 17:55 10.7m 182.022bar o2pressure=170.99bar sensor3=1.281bar
+ 18:00 10.8m 182.022bar o2pressure=170.99bar sensor3=1.302bar
+ 18:05 10.9m 182.022bar o2pressure=170.025bar
+ 18:10 10.9m 182.022bar o2pressure=170.025bar
+ 18:15 10.9m 182.022bar o2pressure=170.025bar sensor2=1.26bar
+ 18:20 11.0m 182.022bar o2pressure=170.025bar sensor1=1.302bar sensor2=1.281bar sensor3=1.323bar
+ 18:25 11.1m 182.022bar o2pressure=170.025bar sensor1=1.323bar sensor2=1.302bar sensor3=1.344bar
+ 18:30 11.1m 182.022bar o2pressure=170.025bar sensor1=1.344bar sensor3=1.365bar
+ 18:35 11.0m 182.022bar o2pressure=170.025bar
+ 18:40 11.0m 182.022bar o2pressure=170.025bar sensor1=1.323bar sensor3=1.344bar
+ 18:45 10.9m 182.022bar o2pressure=170.025bar sensor2=1.281bar sensor3=1.323bar
+ 18:50 10.8m 182.022bar o2pressure=170.025bar sensor1=1.302bar sensor2=1.26bar
+ 18:55 10.8m 182.022bar o2pressure=170.025bar sensor3=1.302bar
+ 19:00 10.7m 182.022bar o2pressure=170.025bar
+ 19:05 10.7m 182.022bar o2pressure=170.025bar sensor1=1.281bar
+ 19:10 10.6m 182.022bar o2pressure=170.025bar sensor2=1.239bar
+ 19:15 10.6m 182.022bar o2pressure=170.025bar sensor3=1.281bar
+ 19:20 10.5m 182.022bar o2pressure=170.025bar tts=1:00
+ 19:25 10.6m 182.022bar o2pressure=170.025bar
+ 19:30 10.6m 182.022bar o2pressure=170.025bar tts=2:00 sensor1=1.26bar
+ 19:35 10.6m 182.022bar o2pressure=170.025bar tts=1:00 cns=9%
+ 19:40 10.7m 182.022bar o2pressure=170.025bar
+ 19:45 10.7m 182.022bar o2pressure=170.025bar tts=2:00
+ 19:50 10.4m 182.022bar o2pressure=170.025bar tts=1:00 sensor2=1.218bar
+ 19:55 10.4m 182.022bar o2pressure=170.025bar sensor1=1.239bar sensor3=1.26bar
+ 20:00 10.5m 182.022bar o2pressure=170.025bar sensor1=1.26bar
+ 20:05 10.6m 182.022bar o2pressure=170.025bar tts=2:00 sensor2=1.239bar sensor3=1.281bar
+ 20:10 10.8m 182.022bar o2pressure=170.025bar sensor1=1.281bar sensor2=1.26bar sensor3=1.302bar
+ 20:15 10.9m 182.022bar o2pressure=170.025bar sensor1=1.302bar sensor3=1.323bar
+ 20:20 10.9m 182.022bar o2pressure=170.025bar
+ 20:25 10.9m 182.022bar o2pressure=170.025bar sensor1=1.281bar sensor2=1.239bar sensor3=1.302bar
+ 20:30 10.9m 182.022bar o2pressure=170.025bar
+ 20:35 10.9m 182.022bar o2pressure=170.025bar sensor2=1.26bar
+ 20:40 11.0m 182.022bar o2pressure=170.025bar
+ 20:45 10.9m 182.022bar o2pressure=170.025bar sensor1=1.302bar sensor3=1.323bar
+ 20:50 10.9m 182.022bar o2pressure=170.025bar sensor1=1.281bar sensor3=1.302bar
+ 20:55 10.8m 182.022bar o2pressure=170.025bar
+ 21:00 10.8m 182.022bar o2pressure=170.025bar sensor2=1.239bar sensor3=1.281bar
+ 21:05 10.7m 182.022bar o2pressure=170.025bar
+ 21:10 10.8m 182.022bar o2pressure=170.025bar sensor1=1.26bar
+ 21:15 11.1m 182.022bar o2pressure=170.025bar sensor1=1.281bar
+ 21:20 11.3m 182.022bar o2pressure=170.025bar sensor2=1.26bar sensor3=1.302bar
+ 21:25 11.3m 182.022bar o2pressure=170.025bar
+ 21:30 11.3m 182.022bar o2pressure=170.025bar sensor2=1.239bar
+ 21:35 11.4m 182.022bar o2pressure=170.025bar cns=10% sensor2=1.26bar
+ 21:40 11.3m 182.022bar o2pressure=170.025bar
+ 21:45 11.3m 182.022bar o2pressure=170.025bar sensor2=1.239bar
+ 21:50 11.4m 182.022bar o2pressure=170.025bar sensor2=1.26bar
+ 21:55 11.4m 182.022bar o2pressure=170.025bar sensor1=1.302bar sensor2=1.281bar sensor3=1.323bar
+ 22:00 11.4m 182.022bar o2pressure=170.025bar
+ 22:05 11.5m 182.022bar o2pressure=170.025bar
+ 22:10 11.5m 182.022bar o2pressure=170.025bar sensor2=1.26bar sensor3=1.302bar
+ 22:15 11.3m 182.022bar o2pressure=170.025bar sensor1=1.281bar
+ 22:20 11.1m 182.022bar o2pressure=170.025bar sensor1=1.26bar sensor2=1.239bar sensor3=1.281bar
+ 22:25 11.1m 182.022bar o2pressure=170.025bar sensor2=1.218bar
+ 22:30 10.9m 182.022bar o2pressure=169.059bar sensor3=1.26bar
+ 22:35 10.8m 182.022bar o2pressure=169.059bar sensor1=1.239bar sensor2=1.197bar sensor3=1.239bar
+ 22:40 10.8m 182.022bar o2pressure=169.059bar
+ 22:45 10.9m 182.022bar o2pressure=169.059bar sensor2=1.218bar sensor3=1.26bar
+ 22:50 10.9m 182.022bar o2pressure=169.059bar sensor1=1.26bar sensor3=1.281bar
+ 22:55 10.9m 182.022bar o2pressure=169.059bar
+ 23:00 11.0m 182.022bar o2pressure=169.059bar sensor1=1.239bar sensor3=1.26bar
+ 23:05 11.2m 182.022bar o2pressure=169.059bar sensor1=1.26bar
+ 23:10 11.3m 182.022bar o2pressure=169.059bar
+ 23:15 11.3m 182.022bar o2pressure=169.059bar sensor1=1.239bar
+ 23:20 11.3m 182.022bar o2pressure=169.059bar
+ 23:25 11.5m 182.022bar o2pressure=169.059bar
+ 23:30 11.4m 182.022bar o2pressure=169.059bar sensor1=1.26bar
+ 23:35 11.4m 182.022bar o2pressure=169.059bar sensor1=1.239bar
+ 23:40 11.2m 182.022bar o2pressure=169.059bar cns=11% sensor1=1.26bar sensor3=1.281bar
+ 23:45 11.3m 182.022bar o2pressure=169.059bar
+ 23:50 11.2m 182.022bar o2pressure=169.059bar sensor1=1.239bar sensor3=1.26bar
+ 23:55 11.2m 182.022bar o2pressure=169.059bar sensor2=1.197bar sensor3=1.239bar
+ 24:00 11.3m 182.022bar o2pressure=169.059bar sensor1=1.218bar
+ 24:05 11.3m 182.022bar o2pressure=169.059bar sensor2=1.176bar sensor3=1.218bar
+ 24:10 11.3m 182.022bar o2pressure=169.059bar
+ 24:15 11.3m 182.022bar o2pressure=169.059bar
+ 24:20 11.3m 182.022bar o2pressure=169.059bar
+ 24:25 11.3m 182.022bar o2pressure=169.059bar sensor1=1.197bar
+ 24:30 11.3m 182.022bar o2pressure=169.059bar sensor1=1.218bar
+ 24:35 11.2m 182.022bar o2pressure=169.059bar sensor1=1.197bar
+ 24:40 11.1m 182.022bar o2pressure=169.059bar sensor2=1.155bar
+ 24:45 10.8m 182.022bar o2pressure=169.059bar sensor1=1.176bar sensor3=1.197bar
+ 24:50 10.6m 182.022bar o2pressure=169.059bar sensor2=1.176bar sensor3=1.218bar
+ 24:55 10.4m 182.022bar o2pressure=169.059bar tts=1:00 sensor1=1.197bar sensor2=1.197bar sensor3=1.239bar
+ 25:00 10.3m 182.022bar o2pressure=169.059bar sensor1=1.218bar sensor2=1.218bar sensor3=1.26bar
+ 25:05 10.2m 182.022bar o2pressure=169.059bar
+ 25:10 10.2m 182.022bar o2pressure=169.059bar sensor2=1.176bar sensor3=1.239bar
+ 25:15 9.8m 182.022bar o2pressure=169.059bar sensor1=1.197bar sensor3=1.218bar
+ 25:20 9.7m 182.022bar o2pressure=169.059bar sensor1=1.176bar sensor2=1.134bar sensor3=1.197bar
+ 25:25 9.7m 182.022bar o2pressure=167.956bar sensor1=1.155bar sensor3=1.176bar
+ 25:30 9.7m 182.022bar o2pressure=167.956bar sensor1=1.176bar sensor3=1.197bar
+ 25:35 9.5m 182.022bar o2pressure=167.956bar sensor2=1.155bar sensor3=1.218bar
+ 25:40 9.3m 182.022bar o2pressure=167.956bar
+ 25:45 9.4m 182.022bar o2pressure=166.991bar sensor1=1.197bar sensor2=1.197bar sensor3=1.239bar
+ 25:50 9.5m 182.022bar o2pressure=166.991bar cns=12% sensor1=1.239bar sensor2=1.218bar sensor3=1.281bar
+ 25:55 9.5m 182.022bar o2pressure=166.991bar sensor1=1.26bar sensor2=1.239bar sensor3=1.302bar
+ 26:00 9.6m 182.022bar o2pressure=166.991bar
+ 26:05 9.7m 182.022bar o2pressure=166.991bar
+ 26:10 9.7m 182.022bar o2pressure=166.991bar sensor2=1.218bar sensor3=1.281bar
+ 26:15 9.8m 182.022bar o2pressure=166.026bar
+ 26:20 9.9m 182.022bar o2pressure=166.026bar sensor2=1.239bar
+ 26:25 10.0m 182.022bar o2pressure=166.026bar sensor1=1.281bar sensor2=1.26bar sensor3=1.302bar
+ 26:30 10.1m 182.022bar o2pressure=166.026bar sensor1=1.302bar sensor2=1.281bar sensor3=1.323bar
+ 26:35 9.8m 182.022bar o2pressure=166.026bar sensor1=1.323bar sensor2=1.302bar sensor3=1.344bar
+ 26:40 9.5m 182.022bar o2pressure=166.026bar sensor1=1.302bar sensor2=1.281bar sensor3=1.323bar
+ 26:45 9.3m 182.022bar o2pressure=166.026bar sensor1=1.281bar sensor2=1.26bar sensor3=1.302bar
+ 26:50 9.3m 182.022bar o2pressure=166.026bar sensor1=1.26bar sensor2=1.239bar sensor3=1.281bar
+ 26:55 9.3m 182.022bar o2pressure=166.026bar sensor2=1.218bar
+ 27:00 9.4m 182.022bar o2pressure=166.026bar
+ 27:05 9.5m 182.022bar o2pressure=166.026bar sensor3=1.26bar
+ 27:10 9.7m 182.022bar o2pressure=166.026bar sensor2=1.239bar sensor3=1.281bar
+ 27:15 10.2m 181.056bar o2pressure=166.026bar sensor1=1.281bar sensor2=1.26bar sensor3=1.302bar
+ 27:20 9.8m 181.056bar o2pressure=166.026bar
+ 27:25 9.4m 181.056bar o2pressure=166.026bar sensor1=1.26bar sensor2=1.239bar sensor3=1.281bar
+ 27:30 9.0m 181.056bar o2pressure=166.026bar sensor1=1.239bar sensor2=1.218bar sensor3=1.26bar
+ 27:35 9.1m 181.056bar o2pressure=166.026bar
+ 27:40 9.2m 181.056bar o2pressure=166.026bar sensor1=1.26bar sensor2=1.239bar sensor3=1.281bar
+ 27:45 9.5m 181.056bar o2pressure=166.026bar sensor2=1.218bar
+ 27:50 9.6m 181.056bar o2pressure=166.026bar sensor3=1.26bar
+ 27:55 9.5m 181.056bar o2pressure=166.026bar cns=13% sensor1=1.239bar sensor2=1.197bar sensor3=1.239bar
+ 28:00 9.4m 181.056bar o2pressure=166.026bar sensor1=1.218bar sensor2=1.176bar sensor3=1.218bar
+ 28:05 9.3m 181.056bar o2pressure=166.026bar sensor1=1.197bar sensor2=1.155bar sensor3=1.197bar
+ 28:10 9.4m 181.056bar o2pressure=166.026bar sensor1=1.176bar
+ 28:15 9.5m 181.056bar o2pressure=163.957bar sensor1=1.197bar sensor2=1.176bar sensor3=1.218bar
+ 28:20 9.5m 181.056bar o2pressure=163.957bar sensor1=1.218bar sensor2=1.197bar sensor3=1.239bar
+ 28:25 9.1m 181.056bar o2pressure=163.957bar sensor1=1.239bar sensor2=1.239bar sensor3=1.281bar
+ 28:30 9.3m 181.056bar o2pressure=163.957bar sensor1=1.281bar sensor2=1.302bar sensor3=1.344bar
+ 28:35 9.3m 181.056bar o2pressure=163.957bar sensor1=1.323bar sensor2=1.365bar sensor3=1.407bar
+ 28:40 9.3m 181.056bar o2pressure=163.957bar sensor1=1.344bar sensor2=1.323bar sensor3=1.386bar
+ 28:45 9.2m 181.056bar o2pressure=163.957bar sensor2=1.281bar sensor3=1.344bar
+ 28:50 9.2m 181.056bar o2pressure=163.957bar sensor1=1.302bar sensor2=1.26bar sensor3=1.302bar
+ 28:55 8.9m 181.056bar o2pressure=163.957bar sensor1=1.281bar
+ 29:00 8.7m 181.056bar o2pressure=163.957bar sensor1=1.26bar sensor2=1.239bar sensor3=1.281bar
+ 29:05 8.7m 181.056bar o2pressure=163.957bar
+ 29:10 8.3m 181.056bar o2pressure=163.957bar sensor2=1.218bar
+ 29:15 8.5m 181.056bar o2pressure=163.957bar sensor2=1.239bar
+ 29:20 8.6m 181.056bar o2pressure=163.957bar sensor3=1.302bar
+ 29:25 8.6m 181.056bar o2pressure=163.957bar sensor1=1.281bar sensor3=1.281bar
+ 29:30 8.7m 181.056bar o2pressure=163.957bar sensor1=1.26bar
+ 29:35 8.6m 181.056bar o2pressure=163.957bar sensor2=1.218bar sensor3=1.26bar
+ 29:40 8.5m 181.056bar o2pressure=163.957bar sensor1=1.239bar
+ 29:45 8.1m 181.056bar o2pressure=163.957bar sensor1=1.26bar
+ 29:50 8.3m 181.056bar o2pressure=163.957bar
+ 29:55 8.4m 181.056bar o2pressure=163.957bar cns=14% sensor2=1.239bar sensor3=1.281bar
+ 30:00 8.4m 181.056bar o2pressure=163.957bar
+ 30:05 8.4m 181.056bar o2pressure=163.957bar
+ 30:10 8.5m 181.056bar o2pressure=163.957bar sensor2=1.218bar
+ 30:15 8.6m 181.056bar o2pressure=163.957bar sensor3=1.26bar
+ 30:20 8.6m 181.056bar o2pressure=163.957bar sensor3=1.281bar
+ 30:25 8.7m 181.056bar o2pressure=163.957bar
+ 30:30 8.8m 181.056bar o2pressure=163.957bar
+ 30:35 8.5m 181.056bar o2pressure=163.957bar sensor2=1.239bar
+ 30:40 8.5m 181.056bar o2pressure=163.957bar sensor1=1.239bar sensor2=1.218bar sensor3=1.26bar
+ 30:45 8.5m 181.056bar o2pressure=163.957bar
+ 30:50 8.3m 181.056bar o2pressure=163.957bar sensor1=1.218bar sensor2=1.197bar sensor3=1.239bar
+ 30:55 8.1m 181.056bar o2pressure=163.957bar sensor2=1.176bar sensor3=1.218bar
+ 31:00 8.1m 181.056bar o2pressure=163.957bar sensor1=1.197bar
+ 31:05 7.9m 181.056bar o2pressure=163.957bar
+ 31:10 7.8m 181.056bar o2pressure=163.957bar sensor1=1.176bar sensor2=1.155bar sensor3=1.197bar
+ 31:15 7.7m 181.056bar o2pressure=163.957bar
+ 31:20 7.6m 181.056bar o2pressure=163.957bar sensor2=1.134bar
+ 31:25 7.7m 181.056bar o2pressure=163.957bar sensor2=1.155bar
+ 31:30 7.7m 181.056bar o2pressure=163.957bar
+ 31:35 7.8m 181.056bar o2pressure=163.957bar sensor1=1.197bar sensor2=1.176bar sensor3=1.218bar
+ 31:40 7.9m 181.056bar o2pressure=163.957bar sensor3=1.239bar
+ 31:45 8.0m 181.056bar o2pressure=163.957bar sensor1=1.218bar sensor2=1.197bar
+ 31:50 8.1m 181.056bar o2pressure=163.957bar sensor1=1.239bar sensor3=1.26bar
+ 31:55 8.1m 181.056bar o2pressure=163.957bar sensor2=1.218bar
+ 32:00 8.0m 181.056bar o2pressure=163.957bar sensor2=1.197bar
+ 32:05 8.1m 181.056bar o2pressure=163.957bar cns=15% sensor1=1.218bar sensor3=1.239bar
+ 32:10 8.1m 181.056bar o2pressure=163.957bar
+ 32:15 8.1m 181.056bar o2pressure=163.957bar
+ 32:20 8.1m 181.056bar o2pressure=163.957bar
+ 32:25 8.0m 181.056bar o2pressure=163.957bar sensor3=1.26bar
+ 32:30 8.0m 181.056bar o2pressure=163.957bar
+ 32:35 8.0m 181.056bar o2pressure=163.957bar sensor1=1.239bar sensor2=1.218bar
+ 32:40 7.6m 181.056bar o2pressure=163.957bar sensor2=1.239bar sensor3=1.281bar
+ 32:45 7.7m 181.056bar o2pressure=163.957bar sensor2=1.218bar sensor3=1.26bar
+ 32:50 7.7m 181.056bar o2pressure=162.027bar sensor1=1.26bar sensor2=1.239bar sensor3=1.281bar
+ 32:55 7.5m 181.056bar o2pressure=162.027bar sensor1=1.239bar sensor2=1.218bar sensor3=1.26bar
+ 33:00 7.3m 181.056bar o2pressure=162.027bar sensor1=1.218bar sensor2=1.197bar sensor3=1.239bar
+ 33:05 7.3m 181.056bar o2pressure=162.027bar sensor1=1.239bar sensor2=1.218bar sensor3=1.26bar
+ 33:10 7.3m 181.056bar o2pressure=162.027bar sensor1=1.281bar sensor2=1.26bar sensor3=1.302bar
+ 33:15 7.2m 181.056bar o2pressure=162.027bar
+ 33:20 7.1m 181.056bar o2pressure=162.027bar sensor2=1.239bar
+ 33:25 7.3m 181.056bar o2pressure=162.027bar
+ 33:30 6.8m 181.056bar o2pressure=162.027bar sensor3=1.281bar
+ 33:35 6.6m 181.056bar o2pressure=162.027bar sensor1=1.218bar sensor2=1.197bar sensor3=1.239bar
+ 33:40 6.8m 181.056bar o2pressure=162.027bar sensor2=1.176bar sensor3=1.218bar
+ 33:45 6.7m 181.056bar o2pressure=162.027bar sensor3=1.239bar
+ 33:50 6.9m 181.056bar o2pressure=162.027bar sensor2=1.197bar
+ 33:55 7.2m 181.056bar o2pressure=162.027bar sensor1=1.239bar sensor2=1.218bar sensor3=1.281bar
+ 34:00 7.2m 181.056bar o2pressure=162.027bar sensor1=1.26bar sensor2=1.239bar sensor3=1.302bar
+ 34:05 7.1m 181.056bar o2pressure=162.027bar sensor1=1.281bar sensor2=1.26bar
+ 34:10 7.2m 181.056bar o2pressure=162.027bar cns=16% sensor1=1.323bar sensor2=1.302bar sensor3=1.365bar
+ 34:15 7.1m 181.056bar o2pressure=162.027bar
+ 34:20 7.2m 181.056bar o2pressure=162.027bar sensor3=1.344bar
+ 34:25 7.2m 181.056bar o2pressure=162.027bar sensor2=1.281bar sensor3=1.323bar
+ 34:30 7.1m 181.056bar o2pressure=162.027bar sensor1=1.302bar sensor2=1.26bar sensor3=1.302bar
+ 34:35 7.1m 181.056bar o2pressure=162.027bar
+ 34:40 7.2m 181.056bar o2pressure=162.027bar
+ 34:45 7.2m 181.056bar o2pressure=162.027bar sensor1=1.281bar
+ 34:50 7.0m 181.056bar o2pressure=162.027bar
+ 34:55 7.0m 181.056bar o2pressure=162.027bar
+ 35:00 7.1m 181.056bar o2pressure=162.027bar
+ 35:05 7.1m 181.056bar o2pressure=162.027bar
+ 35:10 6.9m 181.056bar o2pressure=162.027bar sensor2=1.239bar
+ 35:15 6.8m 181.056bar o2pressure=162.027bar sensor1=1.26bar sensor2=1.218bar sensor3=1.281bar
+ 35:20 6.9m 181.056bar o2pressure=162.027bar sensor1=1.239bar sensor3=1.26bar
+ 35:25 7.1m 181.056bar o2pressure=162.027bar sensor1=1.26bar sensor2=1.239bar sensor3=1.281bar
+ 35:30 7.1m 181.056bar o2pressure=162.027bar
+ 35:35 7.1m 181.056bar o2pressure=162.027bar
+ 35:40 7.1m 181.056bar o2pressure=162.027bar
+ 35:45 6.9m 181.056bar o2pressure=162.027bar
+ 35:50 7.0m 181.056bar o2pressure=162.027bar sensor2=1.218bar sensor3=1.26bar
+ 35:55 6.8m 181.056bar o2pressure=162.027bar sensor3=1.281bar
+ 36:00 6.6m 181.056bar o2pressure=162.027bar sensor1=1.239bar sensor2=1.197bar sensor3=1.239bar
+ 36:05 6.6m 181.056bar o2pressure=162.027bar sensor1=1.218bar
+ 36:10 6.7m 181.056bar o2pressure=161.062bar cns=17%
+ 36:15 6.6m 181.056bar o2pressure=161.062bar
+ 36:20 6.5m 181.056bar o2pressure=161.062bar
+ 36:25 6.4m 181.056bar o2pressure=161.062bar sensor1=1.239bar sensor2=1.218bar
+ 36:30 6.4m 181.056bar o2pressure=161.062bar sensor3=1.26bar
+ 36:35 6.3m 181.056bar o2pressure=161.062bar
+ 36:40 6.4m 181.056bar o2pressure=161.062bar sensor2=1.197bar sensor3=1.239bar
+ 36:45 6.4m 181.056bar o2pressure=161.062bar sensor1=1.218bar
+ 36:50 6.2m 181.056bar o2pressure=161.062bar sensor2=1.176bar sensor3=1.218bar
+ 36:55 6.2m 181.056bar o2pressure=161.062bar sensor1=1.197bar sensor2=1.155bar sensor3=1.197bar
+ 37:00 6.2m 181.056bar o2pressure=161.062bar sensor2=1.176bar sensor3=1.218bar
+ 37:05 6.2m 181.056bar o2pressure=161.062bar sensor2=1.155bar sensor3=1.197bar
+ 37:10 6.1m 181.056bar o2pressure=159.958bar sensor2=1.176bar sensor3=1.218bar
+ 37:15 6.2m 181.056bar o2pressure=158.993bar sensor1=1.218bar sensor2=1.218bar sensor3=1.26bar
+ 37:20 5.9m 181.056bar o2pressure=158.993bar sensor1=1.239bar sensor3=1.281bar
+ 37:25 5.9m 181.056bar o2pressure=158.993bar sensor1=1.26bar sensor2=1.26bar sensor3=1.302bar
+ 37:30 5.9m 181.056bar o2pressure=158.993bar sensor1=1.302bar sensor2=1.281bar sensor3=1.344bar
+ 37:35 5.9m 181.056bar o2pressure=158.993bar sensor1=1.323bar sensor2=1.302bar
+ 37:40 6.0m 181.056bar o2pressure=158.993bar sensor1=1.302bar sensor2=1.281bar sensor3=1.323bar
+ 37:45 6.2m 181.056bar o2pressure=158.993bar sensor2=1.26bar sensor3=1.302bar
+ 37:50 6.2m 181.056bar o2pressure=158.993bar
+ 37:55 6.4m 181.056bar o2pressure=158.993bar sensor1=1.281bar
+ 38:00 6.4m 181.056bar o2pressure=158.993bar
+ 38:05 6.3m 181.056bar o2pressure=159.958bar sensor1=1.302bar sensor3=1.323bar
+ 38:10 6.1m 181.056bar o2pressure=159.958bar sensor1=1.281bar sensor2=1.239bar sensor3=1.302bar
+ 38:15 6.3m 181.056bar o2pressure=159.958bar cns=18% sensor1=1.26bar sensor3=1.281bar
+ 38:20 6.2m 181.056bar o2pressure=159.958bar
+ 38:25 6.1m 181.056bar o2pressure=159.958bar
+ 38:30 6.1m 181.056bar o2pressure=159.958bar
+ 38:35 6.0m 181.056bar o2pressure=159.958bar sensor2=1.218bar
+ 38:40 6.0m 181.056bar o2pressure=159.958bar sensor1=1.239bar sensor3=1.26bar
+ 38:45 6.0m 181.056bar o2pressure=159.958bar
+ 38:50 5.9m 181.056bar o2pressure=159.958bar
+ 38:55 5.9m 181.056bar o2pressure=159.958bar
+ 39:00 5.9m 181.056bar o2pressure=159.958bar sensor2=1.197bar
+ 39:05 5.9m 181.056bar o2pressure=159.958bar sensor1=1.218bar sensor3=1.239bar
+ 39:10 5.7m 181.056bar o2pressure=159.958bar sensor1=1.239bar
+ 39:15 5.7m 181.056bar o2pressure=159.958bar sensor1=1.218bar sensor2=1.176bar
+ 39:20 5.8m 181.056bar o2pressure=159.958bar sensor2=1.197bar
+ 39:25 5.9m 181.056bar o2pressure=159.958bar sensor1=1.239bar sensor3=1.26bar
+ 39:30 5.8m 181.056bar o2pressure=159.958bar sensor2=1.218bar
+ 39:35 5.5m 181.056bar o2pressure=159.958bar sensor3=1.281bar
+ 39:40 5.7m 181.056bar o2pressure=159.958bar
+ 39:45 5.8m 181.056bar o2pressure=159.958bar sensor1=1.26bar sensor2=1.239bar
+ 39:50 5.9m 181.056bar o2pressure=159.958bar
+ 39:55 6.0m 179.953bar o2pressure=159.958bar
+ 40:00 5.8m 179.953bar o2pressure=159.958bar sensor2=1.218bar
+ 40:05 5.9m 179.953bar o2pressure=159.958bar sensor1=1.239bar sensor3=1.26bar
+ 40:10 5.8m 179.953bar o2pressure=159.958bar sensor2=1.197bar
+ 40:15 6.0m 179.953bar o2pressure=159.958bar sensor1=1.218bar sensor2=1.176bar sensor3=1.239bar
+ 40:20 6.1m 179.953bar o2pressure=159.958bar cns=19% sensor3=1.218bar
+ 40:25 5.9m 179.953bar o2pressure=159.958bar sensor1=1.197bar
+ 40:30 6.0m 179.953bar o2pressure=159.958bar
+ 40:35 6.1m 179.953bar o2pressure=159.958bar
+ 40:40 6.1m 179.953bar o2pressure=159.958bar
+ 40:45 6.2m 179.953bar o2pressure=159.958bar
+ 40:50 6.2m 179.953bar o2pressure=159.958bar
+ 40:55 5.9m 179.953bar o2pressure=159.958bar
+ 41:00 5.8m 179.953bar o2pressure=159.958bar sensor1=1.176bar sensor2=1.155bar sensor3=1.197bar
+ 41:05 5.4m 179.953bar o2pressure=159.958bar sensor1=1.155bar sensor2=1.134bar sensor3=1.176bar
+ 41:10 4.6m 179.953bar o2pressure=159.958bar sensor1=1.113bar sensor2=1.092bar sensor3=1.134bar po2=0.7bar
+ 41:15 4.6m 179.953bar o2pressure=159.958bar sensor1=1.092bar sensor2=1.071bar sensor3=1.113bar
+ 41:20 4.3m 179.953bar o2pressure=159.958bar sensor1=1.071bar sensor2=1.05bar sensor3=1.092bar
+ 41:25 4.1m 179.953bar o2pressure=159.958bar sensor1=1.05bar sensor2=1.029bar sensor3=1.071bar
+ 41:30 4.1m 179.953bar o2pressure=159.958bar sensor2=1.008bar sensor3=1.05bar
+ 41:35 4.4m 179.953bar o2pressure=158.028bar sensor2=1.029bar sensor3=1.071bar
+ 41:40 4.3m 179.953bar o2pressure=158.028bar sensor1=1.071bar sensor2=1.05bar
+ 41:45 4.3m 179.953bar o2pressure=158.028bar
+ 41:50 4.1m 179.953bar o2pressure=158.028bar sensor1=1.092bar sensor2=1.092bar sensor3=1.134bar
+ 41:55 4.4m 179.953bar o2pressure=158.028bar sensor1=1.134bar sensor2=1.113bar sensor3=1.155bar
+ 42:00 4.6m 179.953bar o2pressure=158.028bar
+ 42:05 4.2m 179.953bar o2pressure=158.028bar
+ 42:10 4.0m 179.953bar o2pressure=158.028bar sensor1=1.092bar sensor2=1.071bar sensor3=1.113bar
+ 42:15 3.8m 179.953bar o2pressure=158.028bar sensor1=1.071bar sensor2=1.05bar sensor3=1.092bar
+ 42:20 4.1m 179.953bar o2pressure=158.028bar
+ 42:25 4.4m 179.953bar o2pressure=158.028bar sensor1=1.092bar sensor2=1.071bar sensor3=1.113bar
+ 42:30 4.6m 179.953bar o2pressure=158.028bar sensor1=1.113bar sensor2=1.092bar sensor3=1.134bar
+ 42:35 4.2m 179.953bar o2pressure=158.028bar
+ 42:40 4.3m 179.953bar o2pressure=158.028bar
+ 42:45 4.5m 179.953bar o2pressure=158.028bar sensor1=1.134bar sensor2=1.113bar sensor3=1.155bar
+ 42:50 4.6m 179.953bar o2pressure=158.028bar cns=20% sensor2=1.092bar sensor3=1.134bar
+ 42:55 4.8m 179.953bar o2pressure=158.028bar sensor1=1.113bar
+ 43:00 5.0m 179.953bar o2pressure=158.028bar sensor1=1.134bar
+ 43:05 5.0m 179.953bar o2pressure=158.028bar sensor2=1.113bar sensor3=1.155bar
+ 43:10 5.1m 179.953bar o2pressure=158.028bar
+ 43:15 5.3m 179.953bar o2pressure=158.028bar sensor1=1.176bar sensor2=1.155bar sensor3=1.197bar
+ 43:20 5.1m 179.953bar o2pressure=158.028bar
+ 43:25 4.9m 179.953bar o2pressure=158.028bar sensor1=1.155bar sensor2=1.134bar sensor3=1.176bar
+ 43:30 5.0m 179.953bar o2pressure=158.028bar
+ 43:35 5.2m 179.953bar o2pressure=158.028bar sensor1=1.176bar
+ 43:40 5.4m 179.953bar o2pressure=158.028bar sensor3=1.197bar
+ 43:45 5.6m 179.953bar o2pressure=158.028bar sensor2=1.155bar
+ 43:50 5.7m 179.953bar o2pressure=158.028bar sensor1=1.197bar sensor2=1.176bar sensor3=1.218bar
+ 43:55 5.6m 179.953bar o2pressure=158.028bar sensor1=1.176bar sensor2=1.155bar sensor3=1.197bar
+ 44:00 5.7m 179.953bar o2pressure=158.028bar sensor1=1.197bar
+ 44:05 5.8m 179.953bar o2pressure=158.028bar sensor2=1.176bar sensor3=1.218bar
+ 44:10 5.8m 179.953bar o2pressure=158.028bar
+ 44:15 5.8m 179.953bar o2pressure=158.028bar sensor2=1.155bar
+ 44:20 5.9m 179.953bar o2pressure=158.028bar
+ 44:25 5.9m 179.953bar o2pressure=158.028bar
+ 44:30 6.0m 179.953bar o2pressure=158.028bar
+ 44:35 6.2m 179.953bar o2pressure=158.028bar sensor2=1.176bar
+ 44:40 6.2m 179.953bar o2pressure=158.028bar
+ 44:45 6.1m 179.953bar o2pressure=158.028bar
+ 44:50 6.2m 179.953bar o2pressure=158.028bar
+ 44:55 6.5m 179.953bar o2pressure=158.028bar
+ 45:00 6.6m 179.953bar o2pressure=158.028bar
+ 45:05 6.6m 179.953bar o2pressure=158.028bar sensor1=1.218bar
+ 45:10 6.6m 179.953bar o2pressure=158.028bar cns=21% sensor1=1.197bar
+ 45:15 6.5m 179.953bar o2pressure=158.028bar sensor2=1.155bar
+ 45:20 6.4m 179.953bar o2pressure=158.028bar sensor1=1.176bar sensor2=1.134bar sensor3=1.176bar
+ 45:25 6.4m 179.953bar o2pressure=158.028bar sensor1=1.155bar
+ 45:30 6.4m 179.953bar o2pressure=158.028bar
+ 45:35 6.6m 179.953bar o2pressure=158.028bar sensor1=1.176bar sensor2=1.155bar sensor3=1.197bar
+ 45:40 6.7m 179.953bar o2pressure=158.028bar sensor1=1.197bar sensor3=1.218bar
+ 45:45 6.6m 179.953bar o2pressure=158.028bar sensor3=1.197bar
+ 45:50 6.7m 179.953bar o2pressure=158.028bar sensor1=1.176bar
+ 45:55 6.6m 179.953bar o2pressure=158.028bar
+ 46:00 6.6m 179.953bar o2pressure=158.028bar sensor1=1.155bar sensor2=1.134bar sensor3=1.176bar
+ 46:05 6.5m 179.953bar o2pressure=158.028bar
+ 46:10 6.4m 179.953bar o2pressure=158.028bar sensor1=1.176bar sensor2=1.155bar sensor3=1.197bar
+ 46:15 6.4m 179.953bar o2pressure=158.028bar
+ 46:20 6.3m 179.953bar o2pressure=158.028bar
+ 46:25 6.3m 179.953bar o2pressure=158.028bar sensor2=1.134bar sensor3=1.176bar
+ 46:30 6.3m 179.953bar o2pressure=158.028bar sensor1=1.155bar
+ 46:35 6.2m 179.953bar o2pressure=158.028bar sensor2=1.113bar sensor3=1.155bar
+ 46:40 6.1m 179.953bar o2pressure=158.028bar sensor1=1.134bar
+ 46:45 6.2m 179.953bar o2pressure=158.028bar
+ 46:50 6.4m 179.953bar o2pressure=158.028bar
+ 46:55 6.6m 179.953bar o2pressure=158.028bar sensor1=1.155bar sensor2=1.134bar sensor3=1.176bar
+ 47:00 6.9m 179.953bar o2pressure=158.028bar sensor1=1.176bar sensor2=1.155bar sensor3=1.197bar
+ 47:05 7.0m 179.953bar o2pressure=158.028bar
+ 47:10 7.2m 178.988bar o2pressure=158.028bar sensor1=1.197bar sensor3=1.218bar
+ 47:15 7.2m 178.988bar o2pressure=158.028bar
+ 47:20 7.3m 178.988bar o2pressure=158.028bar
+ 47:25 7.5m 178.988bar o2pressure=158.028bar sensor3=1.197bar
+ 47:30 7.4m 178.988bar o2pressure=158.028bar cns=22% sensor1=1.176bar
+ 47:35 7.2m 178.988bar o2pressure=158.028bar sensor1=1.134bar sensor2=1.113bar sensor3=1.155bar
+ 47:40 7.2m 178.988bar o2pressure=158.028bar sensor1=1.113bar sensor2=1.092bar sensor3=1.134bar
+ 47:45 7.3m 178.988bar o2pressure=158.028bar
+ 47:50 7.2m 178.988bar o2pressure=158.028bar
+ 47:55 7.1m 178.988bar o2pressure=158.028bar sensor2=1.071bar sensor3=1.113bar
+ 48:00 7.2m 178.988bar o2pressure=158.028bar sensor2=1.092bar sensor3=1.134bar
+ 48:05 7.2m 178.988bar o2pressure=158.028bar
+ 48:10 7.0m 178.988bar o2pressure=158.028bar sensor1=1.092bar sensor2=1.071bar sensor3=1.113bar
+ 48:15 7.0m 178.988bar o2pressure=158.028bar sensor2=1.05bar sensor3=1.092bar
+ 48:20 7.1m 178.988bar o2pressure=158.028bar sensor1=1.071bar
+ 48:25 7.1m 178.023bar o2pressure=158.028bar
+ 48:30 7.0m 178.023bar o2pressure=158.028bar sensor2=1.029bar sensor3=1.071bar
+ 48:35 7.1m 178.023bar o2pressure=158.028bar sensor1=1.05bar
+ 48:40 7.1m 178.023bar o2pressure=158.028bar
+ 48:45 7.1m 178.023bar o2pressure=158.028bar
+ 48:50 7.1m 178.023bar o2pressure=158.028bar
+ 48:55 7.0m 178.023bar o2pressure=158.028bar
+ 49:00 7.1m 178.023bar o2pressure=158.028bar
+ 49:05 7.1m 178.023bar o2pressure=158.028bar
+ 49:10 7.1m 178.023bar o2pressure=157.063bar sensor2=1.008bar sensor3=1.05bar
+ 49:15 7.1m 178.023bar o2pressure=157.063bar sensor1=1.029bar
+ 49:20 7.2m 178.023bar o2pressure=157.063bar
+ 49:25 6.9m 178.023bar o2pressure=157.063bar sensor1=1.05bar sensor2=1.029bar
+ 49:30 7.0m 178.023bar o2pressure=157.063bar sensor1=1.029bar sensor3=1.071bar
+ 49:35 7.0m 178.023bar o2pressure=157.063bar sensor1=1.05bar
+ 49:40 6.9m 178.023bar o2pressure=157.063bar sensor1=1.029bar sensor2=1.008bar sensor3=1.05bar
+ 49:45 6.7m 178.023bar o2pressure=157.063bar sensor1=1.008bar sensor2=0.987bar sensor3=1.029bar
+ 49:50 6.6m 178.023bar o2pressure=157.063bar sensor3=1.008bar
+ 49:55 6.5m 178.023bar o2pressure=157.063bar sensor1=0.987bar sensor2=0.966bar
+ 50:00 6.6m 178.023bar o2pressure=157.063bar
+ 50:05 6.7m 178.023bar o2pressure=157.063bar
+ 50:10 6.8m 178.023bar o2pressure=157.063bar
+ 50:15 6.7m 178.023bar o2pressure=157.063bar
+ 50:20 6.7m 178.023bar o2pressure=157.063bar cns=23%
+ 50:25 6.8m 178.023bar o2pressure=157.063bar
+ 50:30 6.8m 178.023bar o2pressure=157.063bar
+ 50:35 6.8m 178.023bar o2pressure=157.063bar sensor3=0.987bar
+ 50:40 6.8m 178.023bar o2pressure=157.063bar
+ 50:45 6.8m 178.023bar o2pressure=157.063bar
+ 50:50 6.7m 178.023bar o2pressure=157.063bar sensor1=0.966bar sensor2=0.945bar
+ 50:55 6.6m 178.023bar o2pressure=157.063bar
+ 51:00 6.6m 178.023bar o2pressure=157.063bar
+ 51:05 6.7m 178.023bar o2pressure=157.063bar sensor2=0.924bar sensor3=0.966bar
+ 51:10 6.8m 178.023bar o2pressure=157.063bar sensor2=0.945bar sensor3=0.987bar
+ 51:15 6.8m 178.023bar o2pressure=157.063bar sensor3=0.966bar
+ 51:20 6.9m 178.023bar o2pressure=157.063bar sensor3=0.987bar
+ 51:25 6.9m 178.023bar o2pressure=157.063bar
+ 51:30 6.9m 178.023bar o2pressure=157.063bar
+ 51:35 6.9m 178.023bar o2pressure=157.063bar
+ 51:40 7.0m 178.023bar o2pressure=157.063bar
+ 51:45 7.0m 178.023bar o2pressure=157.063bar
+ 51:50 6.8m 178.023bar o2pressure=157.063bar sensor1=0.945bar sensor2=0.924bar sensor3=0.966bar
+ 51:55 6.8m 178.023bar o2pressure=157.063bar sensor2=0.903bar sensor3=0.945bar
+ 52:00 6.7m 178.023bar o2pressure=157.063bar sensor1=0.924bar
+ 52:05 6.7m 178.023bar o2pressure=157.063bar sensor3=0.924bar
+ 52:10 6.3m 178.023bar o2pressure=157.063bar sensor1=0.903bar sensor2=0.882bar sensor3=0.903bar
+ 52:15 6.1m 178.023bar o2pressure=157.063bar sensor1=0.882bar sensor2=0.861bar
+ 52:20 5.9m 178.023bar o2pressure=157.063bar sensor1=0.861bar sensor2=0.84bar sensor3=0.882bar
+ 52:25 5.8m 178.023bar o2pressure=157.063bar sensor2=0.819bar sensor3=0.861bar
+ 52:30 5.6m 178.023bar o2pressure=157.063bar sensor1=0.84bar
+ 52:35 5.1m 178.023bar o2pressure=157.063bar sensor1=0.819bar sensor2=0.798bar sensor3=0.84bar
+ 52:40 5.1m 178.023bar o2pressure=157.063bar sensor1=0.798bar sensor2=0.777bar sensor3=0.819bar
+ 52:45 4.9m 178.023bar o2pressure=157.063bar sensor3=0.798bar
+ 52:50 4.6m 178.023bar o2pressure=157.063bar sensor1=0.777bar sensor2=0.756bar
+ 52:55 4.5m 178.023bar o2pressure=157.063bar sensor1=0.756bar sensor2=0.735bar sensor3=0.777bar
+ 53:00 4.5m 178.023bar o2pressure=157.063bar
+ 53:05 4.2m 178.023bar o2pressure=157.063bar sensor3=0.756bar
+ 53:10 3.8m 178.023bar o2pressure=157.063bar sensor1=0.735bar sensor2=0.714bar sensor3=0.735bar
+ 53:15 3.6m 178.023bar o2pressure=157.063bar sensor1=0.714bar sensor2=0.693bar sensor3=0.714bar
+ 53:20 3.3m 178.023bar o2pressure=157.063bar sensor1=0.693bar sensor2=0.672bar sensor3=0.693bar
+ 53:25 3.0m 178.023bar o2pressure=157.063bar sensor1=0.672bar sensor2=0.651bar sensor3=0.672bar
+ 53:30 2.6m 178.023bar o2pressure=157.063bar sensor1=0.651bar sensor2=0.63bar sensor3=0.651bar
+ 53:35 2.1m 178.023bar o2pressure=157.063bar sensor1=0.63bar sensor2=0.609bar
+ 53:40 1.7m 178.023bar o2pressure=157.063bar sensor1=0.609bar sensor2=0.588bar sensor3=0.609bar
+ 53:45 1.3m 178.023bar o2pressure=157.063bar sensor1=0.588bar sensor2=0.567bar
+ 53:50 0.0m 178.023bar o2pressure=157.063bar sensor3=0.588bar
+ 53:55 0.0m 175.954bar o2pressure=157.063bar tts=0:00 sensor1=0.567bar
+ 54:00 0.0m 173.058bar o2pressure=155.959bar sensor1=0.609bar sensor2=0.63bar sensor3=0.651bar
+ 54:05 0.0m 173.058bar o2pressure=155.959bar sensor1=0.651bar sensor2=0.651bar sensor3=0.672bar
+ 54:10 0.0m 173.058bar o2pressure=155.959bar sensor1=0.672bar sensor2=0.672bar sensor3=0.693bar
+ 54:15 0.0m 173.058bar o2pressure=155.959bar sensor1=0.693bar sensor3=0.714bar
+ 54:20 0.0m 173.058bar o2pressure=155.959bar
+ 54:25 0.0m 173.058bar o2pressure=155.959bar sensor2=0.693bar
+ 54:30 0.0m 173.058bar o2pressure=155.959bar
+ 54:35 0.0m 173.058bar o2pressure=155.959bar sensor1=0.714bar
+ 54:40 0.0m 173.058bar o2pressure=154.994bar cns=24% sensor2=0.714bar sensor3=0.735bar
+ 54:45 0.0m 173.058bar o2pressure=154.994bar sensor1=0.735bar
+ 54:50 0.0m 173.058bar o2pressure=154.994bar

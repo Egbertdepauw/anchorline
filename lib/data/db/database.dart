@@ -26,7 +26,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -80,6 +80,26 @@ class AppDatabase extends _$AppDatabase {
             // New local-only raw-blob storage; live data is migrated by
             // DivesPowerSyncBackfiller on app startup.
             await m.createTable(diveRawBlobs);
+          }
+          if (from < 11) {
+            // Per-cell sensor calibration factors persisted at import
+            // time. JSON-encoded list of doubles; null for legacy rows
+            // (callers fall back to the Petrel default 0.021).
+            await m.addColumn(dives, dives.sensorCalibrationJson);
+          }
+          if (from < 12) {
+            // Subsurface "Information" tab fields — env ratings, air/water
+            // temps, weight-system entries. All nullable; existing rows
+            // get NULL until the user (or a Subsurface re-import) fills
+            // them in.
+            await m.addColumn(diveAnnotations, diveAnnotations.visibility);
+            await m.addColumn(diveAnnotations, diveAnnotations.wavesize);
+            await m.addColumn(diveAnnotations, diveAnnotations.current);
+            await m.addColumn(diveAnnotations, diveAnnotations.surge);
+            await m.addColumn(diveAnnotations, diveAnnotations.chill);
+            await m.addColumn(diveAnnotations, diveAnnotations.airTempC);
+            await m.addColumn(diveAnnotations, diveAnnotations.waterTempC);
+            await m.addColumn(diveAnnotations, diveAnnotations.weightsJson);
           }
         },
       );

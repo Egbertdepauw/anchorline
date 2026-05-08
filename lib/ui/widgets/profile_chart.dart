@@ -10,7 +10,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../data/db/database.dart';
-import '../../data/models/dive.dart' show DiveTank;
+import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
 import '../../data/models/sample_set.dart';
 import '../notifiers/dive_detail_notifier.dart';
 import '../util/tank_labels.dart';
@@ -33,6 +33,8 @@ const Color _cell1Color = Color(0xFFFFEE58);
 const Color _cell2Color = Color(0xFF42A5F5);
 const Color _crosshairColor = Color(0x80FFFFFF);
 const Color _gridColor = Color(0xFF1A2A40);
+const Color _gasChangeColor = Color(0xFF4DD0E1);
+const Color _bailoutColor = Color(0xFFE53935);
 
 // Tank-trace palette per tank slot. Picked to be distinct from the
 // existing depth/cell/setpoint colours.
@@ -124,6 +126,10 @@ class ProfileChart extends StatelessWidget {
   /// When present, overrides the parser-derived legend label per tank.
   final Map<int, Cylinder>? mappedCylinders;
 
+  /// Gas mix table for this dive. Indexed by [SampleSet.gasMixIndex].
+  /// When present, drives the gas-change markers and bailout highlighting.
+  final List<DiveGasMix>? gasMixes;
+
   const ProfileChart({
     super.key,
     required this.samples,
@@ -136,6 +142,7 @@ class ProfileChart extends StatelessWidget {
     this.useSpeedColoredGraph = true,
     this.tanks,
     this.mappedCylinders,
+    this.gasMixes,
   });
 
   @override
@@ -151,6 +158,7 @@ class ProfileChart extends StatelessWidget {
           crosshairIndex: crosshairIndex,
           cellCalibration: cellCalibration,
           useSpeedColoredGraph: useSpeedColoredGraph,
+          gasMixes: gasMixes,
         ),
         child: const SizedBox.expand(),
       ),
@@ -277,6 +285,7 @@ class ProfileChartPainter extends CustomPainter {
   final int? crosshairIndex;
   final List<double>? cellCalibration;
   final bool useSpeedColoredGraph;
+  final List<DiveGasMix>? gasMixes;
 
   const ProfileChartPainter({
     required this.samples,
@@ -284,6 +293,7 @@ class ProfileChartPainter extends CustomPainter {
     required this.crosshairIndex,
     this.cellCalibration,
     this.useSpeedColoredGraph = true,
+    this.gasMixes,
   });
 
   // ── shouldRepaint ──────────────────────────────────────────────
@@ -293,7 +303,8 @@ class ProfileChartPainter extends CustomPainter {
     return old.crosshairIndex != crosshairIndex ||
         !_setEquals(old.visibleTraces, visibleTraces) ||
         old.useSpeedColoredGraph != useSpeedColoredGraph ||
-        !identical(old.samples, samples);
+        !identical(old.samples, samples) ||
+        !identical(old.gasMixes, gasMixes);
   }
 
   static bool _setEquals(Set<TraceType> a, Set<TraceType> b) {
@@ -507,6 +518,13 @@ class ProfileChartPainter extends CustomPainter {
           (mv) => yPpo2(mv * c2), _cell2Color, 1.0);
     }
 
+    // ── Gas-change markers ─────────────────────────────────────────
+    if (visibleTraces.contains(TraceType.gasChanges) &&
+        (gasMixes?.isNotEmpty ?? false) &&
+        samples.gasMixIndex.isNotEmpty) {
+      _drawGasChangeMarkers(canvas, chartRect, n, xOf);
+    }
+
     // ── Crosshair ──────────────────────────────────────────────────
     if (crosshairIndex != null) {
       final ci = crosshairIndex!.clamp(0, n - 1);
@@ -523,6 +541,111 @@ class ProfileChartPainter extends CustomPainter {
     _drawDepthLabels(canvas, chartLeft, chartTop, chartBottom, depthMax, depthStep);
     _drawPpo2Labels(canvas, chartRight, chartTop, chartBottom);
     _drawTimeLabels(canvas, chartLeft, chartRight, chartBottom, size.height, n, samples.sampleIntervalMs);
+  }
+
+  // ── Gas-change markers ─────────────────────────────────────────
+
+  void _drawGasChangeMarkers(
+    Canvas canvas,
+    Rect chartRect,
+    int n,
+    double Function(int) xOf,
+  ) {
+    final mixes = gasMixes!;
+    final indices = samples.gasMixIndex;
+    if (indices.length < 2 || n < 2) return;
+
+    final hasDiluent = mixes.any((m) => m.isDiluent);
+
+    final transitions = <int>[];
+    final limit = n < indices.length ? n : indices.length;
+    for (var i = 1; i < limit; i++) {
+      if (indices[i] != indices[i - 1]) transitions.add(i);
+    }
+    if (transitions.isEmpty) return;
+
+    final labelStyleNormal = const TextStyle(
+      color: Colors.white,
+      fontSize: 9,
+      fontWeight: FontWeight.w500,
+    );
+    final labelStyleBailout = const TextStyle(
+      color: Colors.white,
+      fontSize: 9,
+      fontWeight: FontWeight.bold,
+    );
+
+    // Stack labels vertically when their boxes would overlap. We track
+    // the right edge of the last-placed label per row and pick the
+    // lowest row where the new box's left edge starts past it.
+    final rowRightEdges = <double>[];
+    const rowSpacing = 2.0;
+
+    for (final i in transitions) {
+      final newIdx = indices[i];
+      if (newIdx >= mixes.length) continue;
+      final newMix = mixes[newIdx];
+      final isBailout = hasDiluent && !newMix.isDiluent;
+
+      final color = isBailout ? _bailoutColor : _gasChangeColor;
+      final x = xOf(i);
+
+      final linePaint = Paint()
+        ..color = color.withValues(alpha: isBailout ? 0.7 : 0.5)
+        ..strokeWidth = isBailout ? 2.0 : 1.2;
+      canvas.drawLine(
+        Offset(x, chartRect.top),
+        Offset(x, chartRect.bottom),
+        linePaint,
+      );
+
+      final label = isBailout
+          ? '⚠ ${_gasMixLabel(newMix)}'
+          : _gasMixLabel(newMix);
+      final span = TextSpan(
+        text: label,
+        style: isBailout ? labelStyleBailout : labelStyleNormal,
+      );
+      final tp = TextPainter(text: span, textDirection: TextDirection.ltr)
+        ..layout();
+      const padX = 3.0;
+      const padY = 1.5;
+      final boxWidth = tp.width + 2 * padX;
+      final boxHeight = tp.height + 2 * padY;
+      var boxLeft = x - boxWidth / 2;
+      if (boxLeft < chartRect.left) boxLeft = chartRect.left;
+      if (boxLeft + boxWidth > chartRect.right) {
+        boxLeft = chartRect.right - boxWidth;
+      }
+
+      var row = 0;
+      while (row < rowRightEdges.length && rowRightEdges[row] > boxLeft) {
+        row++;
+      }
+      if (row == rowRightEdges.length) {
+        rowRightEdges.add(boxLeft + boxWidth);
+      } else {
+        rowRightEdges[row] = boxLeft + boxWidth;
+      }
+
+      final boxTop = chartRect.top + 2 + row * (boxHeight + rowSpacing);
+      final boxRect =
+          Rect.fromLTWH(boxLeft, boxTop, boxWidth, boxHeight);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(boxRect, const Radius.circular(2)),
+        Paint()..color = color.withValues(alpha: 0.85),
+      );
+      tp.paint(canvas, Offset(boxLeft + padX, boxTop + padY));
+    }
+  }
+
+  static String _gasMixLabel(DiveGasMix mix) {
+    if (mix.heliumPercent > 0) {
+      return '${mix.oxygenPercent}/${mix.heliumPercent}';
+    }
+    if (mix.oxygenPercent == 21) return 'Air';
+    if (mix.oxygenPercent == 100) return 'O₂';
+    return 'EAN${mix.oxygenPercent}';
   }
 
   // ── Trace helpers ──────────────────────────────────────────────

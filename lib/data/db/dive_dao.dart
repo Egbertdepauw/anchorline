@@ -74,6 +74,11 @@ class DiveDao {
     final tanksJson = dive.tanks.isEmpty
         ? null
         : jsonEncode(dive.tanks.map((t) => t.toJson()).toList());
+    // Per-cell calibration factors. Empty list (OC dives) → null so the
+    // mapper / chart fallback (0.021) is used uniformly with legacy rows.
+    final sensorCalibrationJson = dive.sensorCalibration.isEmpty
+        ? null
+        : jsonEncode(dive.sensorCalibration);
 
     final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -86,11 +91,12 @@ class DiveDao {
         'deco_model, gf_low, gf_high, atmospheric_pressure_mbar, '
         'water_density, log_version, dc_model, dc_firmware, '
         'sample_interval_ms, gas_mixes_json, tanks_json, '
+        'sensor_calibration_json, '
         'configured_stack_seconds, stack_remaining_at_start_seconds, '
         'stack_remaining_at_end_seconds, parser_version, imported_at, '
         'subsurface_uploaded_at, deleted_at, version, sync_status) '
         'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-        '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           dive.id,
           _ownerId,
@@ -113,6 +119,7 @@ class DiveDao {
           dive.sampleIntervalMs,
           gasMixesJson,
           tanksJson,
+          sensorCalibrationJson,
           dive.configuredStackSeconds,
           dive.stackRemainingAtStartSeconds,
           dive.stackRemainingAtEndSeconds,
@@ -178,6 +185,19 @@ class DiveDao {
       [diveId],
     );
     return row != null;
+  }
+
+  /// Returns the subset of [ids] that already exist in the local PowerSync
+  /// store. Used by the import flow to hide already-imported dives from the
+  /// manifest checklist in one query instead of N round-trips.
+  Future<Set<String>> existingDiveIdsAmong(List<String> ids) async {
+    if (ids.isEmpty) return const <String>{};
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final rows = await _ps.getAll(
+      'SELECT id FROM dives WHERE id IN ($placeholders)',
+      ids,
+    );
+    return rows.map((r) => r['id'] as String).toSet();
   }
 
   /// Get all live dives ordered by start time descending (most recent
@@ -286,6 +306,17 @@ class DiveDao {
     return rows.map(_rowToDive).toList();
   }
 
+  /// Latest `subsurface_uploaded_at` (epoch seconds) across all live
+  /// dives, or `null` if no dive has ever been pushed to Subsurface.
+  /// Used by the Subsurface-sync settings card to render "Last synced".
+  Future<int?> lastSubsurfaceUploadedAt() async {
+    final row = await _ps.getOptional(
+      'SELECT MAX(subsurface_uploaded_at) AS last FROM dives '
+      'WHERE deleted_at IS NULL',
+    );
+    return row?['last'] as int?;
+  }
+
   /// Stamps `subsurface_uploaded_at` on the given dives.
   Future<void> markSubsurfaceUploaded(
       Iterable<String> diveIds, int whenSeconds) async {
@@ -332,6 +363,7 @@ class DiveDao {
         sampleIntervalMs: r['sample_interval_ms'] as int,
         gasMixesJson: r['gas_mixes_json'] as String,
         tanksJson: r['tanks_json'] as String?,
+        sensorCalibrationJson: r['sensor_calibration_json'] as String?,
         configuredStackSeconds: r['configured_stack_seconds'] as int?,
         stackRemainingAtStartSeconds:
             r['stack_remaining_at_start_seconds'] as int?,
