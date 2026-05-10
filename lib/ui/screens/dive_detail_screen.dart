@@ -76,6 +76,11 @@ class DiveDetailScreen extends StatefulWidget {
   /// section is not rendered.
   final AttachmentDownloader? attachmentDownloader;
 
+  /// CCRLog-internal sequence number used for the `#N` label. See
+  /// [DiveListNotifier.sequenceByDiveId]. Falls back to the DC's own
+  /// dive number when null (solo callers / tests).
+  final int? sequenceNumber;
+
   const DiveDetailScreen({
     super.key,
     required this.dive,
@@ -88,6 +93,7 @@ class DiveDetailScreen extends StatefulWidget {
     this.annotationsNotifier,
     this.attachmentsNotifier,
     this.attachmentDownloader,
+    this.sequenceNumber,
   });
   @override
   State<DiveDetailScreen> createState() => _DiveDetailScreenState();
@@ -175,7 +181,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       },
       child: Scaffold(
       appBar: AppBar(
-        title: Text('Dive #${dive.dcDiveNumber}'),
+        title:
+            Text('Dive #${widget.sequenceNumber ?? dive.dcDiveNumber}'),
         actions: [
           IconButton(
             tooltip: 'Previous dive',
@@ -307,7 +314,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                             fontSize: 11,
                                             fontWeight: FontWeight.w600)),
                                     const SizedBox(width: 6),
-                                    Text('#${dive.dcDiveNumber}',
+                                    Text(
+                                        '#${widget.sequenceNumber ?? dive.dcDiveNumber}',
                                         style: const TextStyle(
                                             fontWeight: FontWeight.w600,
                                             fontSize: 16)),

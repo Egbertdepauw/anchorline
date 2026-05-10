@@ -22,6 +22,14 @@ class OwnerIdBackfiller {
 
   /// Copies every sync-eligible row from Drift into PowerSync, stamping
   /// [userId] as `owner_id`. Returns the total number of rows copied.
+  ///
+  /// Also stamps `owner_id` on existing PowerSync-resident rows in
+  /// `dives` and `dive_samples` that were written while no auth session
+  /// was active (RLS rejects every upload otherwise — the symptom is
+  /// `new row violates row-level security policy for table "dives"` in
+  /// the upload retry loop). Those two tables don't have Drift→PowerSync
+  /// copies because they were always PowerSync-resident; the backfill
+  /// is an in-place UPDATE rather than a copy.
   Future<int> backfillIfNeeded(String userId) async {
     var total = 0;
     total += await _copyDiveAnnotations(userId);
@@ -31,8 +39,22 @@ class OwnerIdBackfiller {
     total += await _copyCylinders(userId);
     total += await _copyPressureMappings(userId);
     total += await _copyDiveCylinders(userId);
+    total += await _stampOwnerIdInPlace('dives', userId);
+    total += await _stampOwnerIdInPlace('dive_samples', userId);
     debugPrint('OwnerIdBackfiller: copied $total rows for user $userId');
     return total;
+  }
+
+  /// In-place owner_id stamp for tables that already live in PowerSync.
+  /// Targets rows imported pre-sign-in (owner_id NULL) and leaves rows
+  /// owned by other accounts on this device alone.
+  Future<int> _stampOwnerIdInPlace(String table, String userId) async {
+    final affected = await _ps.execute(
+      'UPDATE $table SET owner_id = ? WHERE owner_id IS NULL',
+      [userId],
+    );
+    // PowerSync's `execute` returns a `ResultSet` with `affectedRows`.
+    return affected.length;
   }
 
   Future<bool> _exists(String table, String id) async {

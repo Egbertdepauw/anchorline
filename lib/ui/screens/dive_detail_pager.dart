@@ -44,6 +44,11 @@ class DiveDetailPager extends StatefulWidget {
   final AttachmentDownloader? attachmentDownloader;
   final SettingsNotifier? settingsNotifier;
 
+  /// CCRLog-internal sequence number per dive id (newest = N, oldest = 1).
+  /// See [DiveListNotifier.sequenceByDiveId]. When omitted/empty the screens
+  /// fall back to the DC's own dive number for the `#N` label.
+  final Map<String, int> sequenceByDiveId;
+
   const DiveDetailPager({
     super.key,
     required this.dives,
@@ -55,6 +60,7 @@ class DiveDetailPager extends StatefulWidget {
     this.attachmentUploader,
     this.attachmentDownloader,
     this.settingsNotifier,
+    this.sequenceByDiveId = const {},
   })  : assert(dives.length > 0, 'DiveDetailPager needs at least one dive'),
         assert(initialIndex >= 0, 'initialIndex must be non-negative');
 
@@ -159,7 +165,8 @@ class _DiveDetailPagerState extends State<DiveDetailPager> {
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(SnackBar(
-      content: Text('Unsaved annotations on dive #${dive.dcDiveNumber}'),
+      content: Text(
+          'Unsaved annotations on dive #${widget.sequenceByDiveId[dive.id] ?? dive.dcDiveNumber}'),
       duration: const Duration(seconds: 6),
       action: SnackBarAction(
         label: 'Save',
@@ -187,7 +194,8 @@ class _DiveDetailPagerState extends State<DiveDetailPager> {
   Future<bool> _confirmPopWithDirtyPages(
       List<({Dive dive, DiveAnnotationsNotifier notifier})> dirty) async {
     final summary = dirty
-        .map((p) => '#${p.dive.dcDiveNumber}')
+        .map((p) =>
+            '#${widget.sequenceByDiveId[p.dive.id] ?? p.dive.dcDiveNumber}')
         .join(', ');
     final result = await showDialog<String>(
       context: context,
@@ -248,6 +256,7 @@ class _DiveDetailPagerState extends State<DiveDetailPager> {
             // if PageView ever reuses an element.
             key: ValueKey(dive.id),
             dive: dive,
+            sequenceNumber: widget.sequenceByDiveId[dive.id],
             dao: widget.diveDao,
             annotationsDao: widget.annotationsDao,
             equipmentDao: widget.equipmentDao,

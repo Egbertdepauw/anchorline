@@ -7,9 +7,9 @@
 library;
 
 class CloudConfig {
-  static const supabaseUrl = 'https://ejvjijqejlrtbnyxixia.supabase.co';
+  static const supabaseUrl = 'https://pnbtiwgflfkpdqnfsoaj.supabase.co';
   static const supabaseAnonKey =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqdmppanFlamxydGJueXhpeGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMTExOTEsImV4cCI6MjA5MzY4NzE5MX0.DIJl231OkMk21J-GIu2FGNRZYZtEaTQhNr3fLpMPs9Y';
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBuYnRpd2dmbGZrcGRxbmZzb2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MjY2MjUsImV4cCI6MjA5NDAwMjYyNX0.Wag2WwI4hjRXnJDMk9ARB0zFjTcFzxapX_p6EV3PC38';
 
   /// PowerSync endpoint URL. Defaults to the dev instance so Xcode builds
   /// (which don't pass `--dart-define`) work out of the box. Override at

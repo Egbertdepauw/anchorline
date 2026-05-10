@@ -14,6 +14,11 @@ class DiveTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onMiniMapTap;
 
+  /// CCRLog-internal sequence number used for the `#N` label. See
+  /// [DiveListNotifier.sequenceByDiveId]. Falls back to the DC's own
+  /// dive number when null (e.g. tests that haven't wired the notifier).
+  final int? sequenceNumber;
+
   const DiveTile({
     super.key,
     required this.dive,
@@ -21,6 +26,7 @@ class DiveTile extends StatelessWidget {
     required this.onTap,
     this.annotation,
     this.onMiniMapTap,
+    this.sequenceNumber,
   });
 
   @override
@@ -75,7 +81,7 @@ class DiveTile extends StatelessWidget {
                       Text(diveModeLabel(dive.diveMode),
                         style: TextStyle(color: modeColor, fontSize: 10, fontWeight: FontWeight.w600)),
                       const SizedBox(width: 6),
-                      Text('#${dive.dcDiveNumber}',
+                      Text('#${sequenceNumber ?? dive.dcDiveNumber}',
                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                       if (annotation?.siteName != null &&
                           annotation!.siteName!.isNotEmpty) ...[

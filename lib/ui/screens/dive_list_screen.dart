@@ -85,9 +85,13 @@ class _DiveListScreenState extends State<DiveListScreen> {
     final hasQuery = _query.trim().isNotEmpty;
     final hasFilters = !_filters.isEmpty;
     if (!hasQuery && !hasFilters) return notifier.dives;
+    final seq = notifier.sequenceByDiveId;
     return notifier.dives.where((d) {
       final ann = notifier.annotationsByDiveId[d.id];
-      if (hasQuery && !diveMatchesQuery(d, ann, _query)) return false;
+      if (hasQuery &&
+          !diveMatchesQuery(d, ann, _query, sequenceNumber: seq[d.id])) {
+        return false;
+      }
       if (hasFilters &&
           !diveMatchesFilters(d, ann,
               mode: _filters.mode,
@@ -348,10 +352,12 @@ class _DiveTileWithSparkline extends StatelessWidget {
       future: notifier.getSparklineData(dive.id),
       builder: (context, snapshot) {
         final ann = notifier.annotationsByDiveId[dive.id];
+        final sequenceMap = notifier.sequenceByDiveId;
         final tile = DiveTile(
           dive: dive,
           sparklineData: snapshot.data,
           annotation: ann,
+          sequenceNumber: sequenceMap[dive.id],
           onMiniMapTap: () => Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => SitesMapScreen(
               dao: annotationsDao,
@@ -366,6 +372,7 @@ class _DiveTileWithSparkline extends StatelessWidget {
               builder: (_) => DiveDetailPager(
                 dives: orderedDives,
                 initialIndex: initialIndex < 0 ? 0 : initialIndex,
+                sequenceByDiveId: sequenceMap,
                 diveDao: diveDao,
                 annotationsDao: annotationsDao,
                 equipmentDao: equipmentDao,
@@ -395,7 +402,7 @@ class _DiveTileWithSparkline extends StatelessWidget {
                   builder: (ctx) => AlertDialog(
                     title: const Text('Delete dive?'),
                     content: Text(
-                        'Hides #${dive.dcDiveNumber} from the list. You can undo from the SnackBar that appears.'),
+                        'Hides #${sequenceMap[dive.id] ?? dive.dcDiveNumber} from the list. You can undo from the SnackBar that appears.'),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.of(ctx).pop(false),
@@ -415,7 +422,8 @@ class _DiveTileWithSparkline extends StatelessWidget {
             await notifier.softDeleteDive(dive.id);
             if (!context.mounted) return;
             messenger.showSnackBar(SnackBar(
-              content: Text('Dive #${dive.dcDiveNumber} deleted'),
+              content: Text(
+                  'Dive #${sequenceMap[dive.id] ?? dive.dcDiveNumber} deleted'),
               action: SnackBarAction(
                 label: 'UNDO',
                 onPressed: () => notifier.restoreDive(dive.id),

@@ -46,6 +46,20 @@ class DiveListNotifier extends ChangeNotifier {
   Map<String, dom.DiveAnnotation> get annotationsByDiveId =>
       Map.unmodifiable(_annotationsByDiveId);
 
+  /// CCRLog-internal sequential dive number, keyed by dive id. Computed
+  /// over all non-deleted dives sorted by `start_time` ascending — the
+  /// chronologically-oldest dive is `#1`, newest is `#N`. Stable across
+  /// filter changes (filtering hides rows; it doesn't renumber). The
+  /// number replaces the dive computer's own counter for display purposes
+  /// so divers with multiple DCs (or DCs that have been factory-reset)
+  /// still see one continuous sequence.
+  Map<String, int> get sequenceByDiveId {
+    final n = _dives.length;
+    return {
+      for (var i = 0; i < n; i++) _dives[i].id: n - i,
+    };
+  }
+
   Map<String, List<Dive>> get groupedByMonth {
     final groups = <String, List<Dive>>{};
     for (final dive in _dives) {

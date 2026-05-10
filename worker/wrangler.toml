@@ -20,4 +20,4 @@ bucket_name = "ccrlogger-attachments"
 # JWKS endpoint is public. Everything else (R2 keys, allowed origins)
 # is set with `wrangler secret put` — see README.
 [vars]
-SUPABASE_URL = "https://ejvjijqejlrtbnyxixia.supabase.co"
+SUPABASE_URL = "https://pnbtiwgflfkpdqnfsoaj.supabase.co"
