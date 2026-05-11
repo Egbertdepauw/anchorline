@@ -5,11 +5,15 @@
 -- Three layers of defence, applied via the Management API (this file
 -- documents them so a fresh project bootstrap reproduces the setup):
 --
--- 1. `max_slot_wal_keep_size = 1GB` — set via
---    `PUT /v1/projects/{ref}/config/database/postgres`. Postgres
---    invalidates a slot whose retained WAL exceeds 1 GB. PowerSync
---    then re-bootstraps clients on its next reconnect (one-time
---    re-download, ~minutes). Disk is preserved.
+-- 1. `max_slot_wal_keep_size = 1GB` and `max_wal_size = 1GB` —
+--    both set via `PUT /v1/projects/{ref}/config/database/postgres`.
+--    The first invalidates a stuck slot once retained WAL hits 1 GB
+--    (PowerSync re-bootstraps clients on next reconnect — one-time
+--    re-download, no data loss). The second caps Postgres's own WAL
+--    working set so a traffic spike can't push us above the disk
+--    quota. Supabase enforces a 1 GB MINIMUM on `max_wal_size`, so
+--    that floor is also the most aggressive cap we can set; 4 GB is
+--    the platform default and it dwarfed our 30 MB of user data.
 --
 -- 2. `reap_stale_replication_slots()` + pg_cron schedule (every 15
 --    min). Defence-in-depth: drops slots that are inactive AND
