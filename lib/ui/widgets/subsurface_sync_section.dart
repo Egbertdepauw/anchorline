@@ -31,6 +31,7 @@ import 'package:intl/intl.dart';
 import '../../sync/subsurface_git/bootstrap_importer.dart';
 import '../../sync/subsurface_git/credentials.dart';
 import '../../sync/subsurface_git/sync_orchestrator.dart';
+import '../../sync/subsurface_git/sync_planner.dart' show AbortedDive, AbortReason;
 
 /// Public type alias for the sync callback the section invokes when the
 /// user taps "Sync now". Returning a [SubsurfaceSyncResult] is what
@@ -113,6 +114,12 @@ class _SubsurfaceSyncSectionState extends State<SubsurfaceSyncSection> {
   // operations.
   String? _bootstrapStatus;
   StreamSubscription<SubsurfaceBootstrapEvent>? _bootstrapSub;
+
+  // Push-to-Subsurface state. Stores the most recent sync result so the
+  // aborted-dives list persists after the operation completes.
+  SubsurfaceSyncResult? _lastSyncResult;
+  String? _syncError;
+  bool _syncing = false;
 
   DateTime _now() => (widget.now ?? DateTime.now)();
 
@@ -320,6 +327,85 @@ class _SubsurfaceSyncSectionState extends State<SubsurfaceSyncSection> {
     }
   }
 
+  Widget _buildPushButton() {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: ElevatedButton.icon(
+        onPressed: _busy || _syncing ? null : _onPushPressed,
+        icon: _syncing
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.cloud_upload_outlined),
+        label: const Text('Push to Subsurface'),
+      ),
+    );
+  }
+
+  Future<void> _onPushPressed() async {
+    if (_syncing) return;
+    setState(() {
+      _syncing = true;
+      _syncError = null;
+    });
+    try {
+      final result = await widget.onSync();
+      if (!mounted) return;
+      setState(() => _lastSyncResult = result);
+    } on SubsurfaceSyncException catch (e) {
+      if (!mounted) return;
+      setState(() => _syncError = e.message);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _syncError = e.toString());
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
+  Widget _buildSyncStatusBlock(SubsurfaceSyncResult r) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Pushed ${r.divesPushed} ${r.divesPushed == 1 ? 'dive' : 'dives'}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          if (r.abortedDives.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Skipped ${r.abortedDives.length} '
+              '${r.abortedDives.length == 1 ? 'dive' : 'dives'}',
+              style: const TextStyle(color: Color(0xFFE65100)),
+            ),
+            for (final ab in r.abortedDives)
+              Padding(
+                padding: const EdgeInsets.only(left: 12, top: 2),
+                child: Text(
+                  '• #${ab.dive.dcDiveNumber} — ${_reasonText(ab)}',
+                  style: const TextStyle(
+                      fontSize: 12, color: Color(0xFFB0BEC5)),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _reasonText(AbortedDive ab) {
+    switch (ab.reason) {
+      case AbortReason.foreignEditConflict:
+        return 'edits in Subsurface (${ab.conflictingLines.join(', ')})';
+      case AbortReason.divecomputerProtected:
+        return 'Divecomputer recording protected';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -343,6 +429,20 @@ class _SubsurfaceSyncSectionState extends State<SubsurfaceSyncSection> {
                   _buildPasswordField(),
                   const SizedBox(height: 12),
                   _buildButtonRow(),
+                  if (widget.isPlatformSupported) ...[
+                    const SizedBox(height: 8),
+                    _buildPushButton(),
+                    if (_lastSyncResult != null)
+                      _buildSyncStatusBlock(_lastSyncResult!),
+                    if (_syncError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Sync failed: $_syncError',
+                          style: const TextStyle(color: Color(0xFFE53935)),
+                        ),
+                      ),
+                  ],
                   const SizedBox(height: 12),
                   _buildStatusRow(context),
                 ],

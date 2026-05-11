@@ -9,9 +9,14 @@
 // closure-style "last synced at" reader. Each test wires whatever it
 // needs.
 
+import 'dart:typed_data';
+
+import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/sync/subsurface_git/bootstrap_importer.dart';
 import 'package:ccrlogger/sync/subsurface_git/credentials.dart';
 import 'package:ccrlogger/sync/subsurface_git/sync_orchestrator.dart';
+import 'package:ccrlogger/sync/subsurface_git/sync_planner.dart'
+    show AbortedDive, AbortReason;
 import 'package:ccrlogger/ui/widgets/subsurface_sync_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -429,4 +434,77 @@ void main() {
 
     expect(find.text('Save credentials first.'), findsOneWidget);
   });
+
+  // ── Push to Subsurface button + aborted-dives status ─────────────
+
+  testWidgets('Push button calls syncNow and shows aborts after sync',
+      (tester) async {
+    int syncCalls = 0;
+    final creds = _InMemoryCredentials()
+      ..email = 'e@x'
+      ..password = 'p';
+    final result = SubsurfaceSyncResult(
+      divesPushed: 3,
+      divesSkipped: 0,
+      abortedDives: [
+        AbortedDive(
+          dive: _testDive(diveNumber: 705),
+          reason: AbortReason.foreignEditConflict,
+          conflictingLines: const ['cylinder'],
+        ),
+      ],
+      commitSha: 'abc1234',
+      completedAt: DateTime.utc(2026, 5, 11, 14, 30),
+    );
+
+    await tester.pumpWidget(_harness(
+      creds: creds,
+      onSync: () async {
+        syncCalls += 1;
+        return result;
+      },
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Push to Subsurface'), findsOneWidget);
+    await tester.tap(find.text('Push to Subsurface'));
+    await tester.pumpAndSettle();
+
+    expect(syncCalls, 1);
+    expect(find.textContaining('Pushed 3'), findsOneWidget);
+    expect(find.textContaining('Skipped 1'), findsOneWidget);
+    expect(find.textContaining('#705'), findsOneWidget);
+    expect(find.textContaining('cylinder'), findsOneWidget);
+  });
+}
+
+// ── Test helpers ──────────────────────────────────────────────────────
+
+/// Minimal [Dive] fixture for use in push-button tests. Accepts
+/// [diveNumber] so tests can assert on `#NNN` in the aborted-dive list.
+Dive _testDive({int diveNumber = 700}) {
+  return Dive(
+    id: 'test-$diveNumber',
+    dcSerial: 123456,
+    dcDiveNumber: diveNumber,
+    startTime: 1747000000,
+    endTime: 1747003600,
+    utcOffsetMinutes: null,
+    durationSeconds: 3600,
+    maxDepthMm: 30000,
+    diveMode: 0,
+    decoModel: 0,
+    gfLow: 35,
+    gfHigh: 75,
+    atmosphericPressureMbar: 1013,
+    waterDensity: 1025,
+    logVersion: 14,
+    dcModel: 3,
+    dcFirmware: null,
+    sampleIntervalMs: 10000,
+    gasMixesJson: '[{"o2":21,"he":35,"dil":true}]',
+    rawBlob: Uint8List(0),
+    parserVersion: 1,
+    importedAt: 1747000000,
+  );
 }
