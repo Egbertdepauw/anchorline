@@ -508,6 +508,12 @@ class SyncPlanner {
   }
 
   /// Return the key for any [SsLine] that has one, else null.
+  ///
+  /// `EventLine` / `SampleLine` live in `divecomputerLines`, not the
+  /// `diveLines` this merge runs over — returning null for them (via the
+  /// catch-all) is correct. If a future change ever emits them into
+  /// `diveLines`, they would be treated as keyless and preserved verbatim;
+  /// add explicit cases here if the conflict check should examine them.
   String? _lineKey(SsLine line) => switch (line) {
         ScalarLine l => l.key,
         QuotedLine l => l.key,
