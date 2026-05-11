@@ -562,6 +562,32 @@ void main() {
       expect(text, contains('weightsystem weight=2.0kg description="backplate"'));
       expect(text, contains('weightsystem weight=1.5kg description="belt"'));
     });
+
+    test('mapDive escapes double quotes in weight descriptions', () {
+      final mapper = CcrlogToSubsurfaceMapper();
+      final ann = DiveAnnotation(
+        diveId: 'd1',
+        weights: const [
+          Weight(weightKg: 2.0, description: 'lead "ankle" weights'),
+        ],
+        createdAt: DateTime.utc(2026, 5, 1),
+        updatedAt: DateTime.utc(2026, 5, 1),
+      );
+      final mapped = mapper.mapDive(
+        dive: _ccrPetrelDive(),
+        samples: _threeMinSampleSet(diveId: _ccrPetrelDive().id),
+        annotation: ann,
+        gasMixes: const [],
+        tanks: const [],
+        cylindersByMixIndex: const {},
+        nextSubsurfaceDiveNumber: 1,
+      );
+      final text = serializeSubsurfaceFile(SubsurfaceFile(lines: mapped.diveLines));
+      // The inner quotes must be escaped; the line must round-trip back
+      // through the parser as a single weightsystem entry with the
+      // original description.
+      expect(text, contains(r'description="lead \"ankle\" weights"'));
+    });
   });
 
   group('CcrlogToSubsurfaceMapper.topLevelDelta', () {

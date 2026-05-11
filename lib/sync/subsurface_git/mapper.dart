@@ -28,6 +28,7 @@ import '../../shearwater/parser/constants.dart' show DiveMode;
 import '../../shearwater/parser/hardware.dart';
 import '../../shearwater/parser/parsed_dive.dart' show TankUsage;
 import 'format/subsurface_format.dart';
+import 'format/subsurface_unit_parsing.dart' show quoteString;
 
 /// Result of mapping one CCRLog dive into the two `SsLine` lists Subsurface
 /// stores per dive folder. Pure data; the caller writes them to disk + git.
@@ -234,16 +235,14 @@ class CcrlogToSubsurfaceMapper {
     // Environment temperatures — Subsurface writes with °C suffix.
     void emitTemp(String key, double? celsius) {
       if (celsius == null) return;
-      final formatted = celsius == celsius.roundToDouble()
-          ? '${celsius.toStringAsFixed(1)}°C'
-          : '${celsius.toStringAsFixed(1)}°C';
-      lines.add(ScalarLine(key: key, value: formatted));
+      lines.add(ScalarLine(key: key, value: '${celsius.toStringAsFixed(1)}°C'));
     }
     emitTemp('airtemp', annotation?.airTempC);
     emitTemp('watertemp', annotation?.waterTempC);
     if (siteId != null) {
       lines.add(ScalarLine(key: 'divesiteid', value: siteId));
     }
+    // Subsurface always emits divemaster + buddy + suit, even when empty.
     lines.add(QuotedLine(key: 'divemaster', value: ''));
     final buddy = (annotation?.buddies ?? const <String>[]).join(', ');
     lines.add(QuotedLine(key: 'buddy', value: buddy));
@@ -259,7 +258,7 @@ class CcrlogToSubsurfaceMapper {
       lines.add(WeightsystemLine(
         fields: [
           MapEntry('weight', '${_formatDecimal(w.weightKg, 1)}kg'),
-          MapEntry('description', '"$desc"'),
+          MapEntry('description', quoteString(desc)),
         ],
       ));
     }
@@ -294,7 +293,7 @@ class CcrlogToSubsurfaceMapper {
       ..add(MapEntry('vol', '${_formatDecimal(volumeLiters, 1)}l'))
       ..add(MapEntry(
           'workpressure', '${_formatDecimal(workPressure.toDouble(), 1)}bar'))
-      ..add(MapEntry('description', '"$description"'))
+      ..add(MapEntry('description', quoteString(description)))
       ..add(MapEntry('o2', '${_formatDecimal(mix.oxygenPercent.toDouble(), 1)}%'));
 
     if (mix.heliumPercent > 0) {
@@ -317,7 +316,7 @@ class CcrlogToSubsurfaceMapper {
 
     final useValue = _useValueFor(mix, tank);
     if (useValue != null) {
-      fields.add(MapEntry('use', '"$useValue"'));
+      fields.add(MapEntry('use', quoteString(useValue)));
     }
 
     final firstDepthM = _firstDepthForMix(samples, index);
