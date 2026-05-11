@@ -209,12 +209,20 @@ class SyncPlanner {
     'buddy',
     'suit',
     'notes',
-    'divesiteid',
     'weightsystem',
     // divemaster is always emitted by the mapper as empty; treat as
     // owned so we don't trip a foreign-edit conflict on Subsurface's
     // identical empty line.
     'divemaster',
+    // divesiteid is NOT owned. CCRLog's _siteIdFor() is a SHA-256 of
+    // (lat,lon); Subsurface's UUIDs are random-at-site-creation. The
+    // two never agree, so substituting CCRLog's hash here rewrites the
+    // line on every existing dive that has a site (2026-05-11 smoke:
+    // 273 dives flagged as "updated" purely due to this mismatch).
+    // Preserving existing's hash keeps Dive-NNN ↔ Site-XXX pointers
+    // stable across CCRLog→Subsurface pushes. The site-mapping step
+    // below also reuses existing hexes when coords match an existing
+    // Site file, so we don't create orphan Site-CCRLOGHASH duplicates.
   };
 
   /// Build a plan from CCRLog state + the parsed remote-repo snapshot.
@@ -245,6 +253,14 @@ class SyncPlanner {
     var skipped = 0;
 
     var nextDiveNumber = existingMaxDiveNumber;
+
+    // Build coords → existing hexId map from Subsurface's Site files.
+    // Subsurface's UUIDs are random-at-creation; CCRLog's _siteIdFor is
+    // SHA-256(lat,lon). They never agree, so when we map a CCRLog site
+    // we must look up Subsurface's hex by coords instead of trusting
+    // the mapper's hash — otherwise every site becomes an orphan
+    // duplicate under CCRLog's hash.
+    final existingHexByCoords = _indexSitesByCoords(existingSites);
 
     // Mapped sites accumulate keyed by hexId so two CCRLog dives at the
     // same lat/lon collapse to one Site write. Last writer wins on
@@ -347,7 +363,18 @@ class SyncPlanner {
       if (bundle.annotation != null) {
         final mappedSite = _mapper.mapSite(bundle.annotation!);
         if (mappedSite != null) {
-          mappedSitesByHexId[mappedSite.hexId] = mappedSite;
+          // If Subsurface already has a Site file at the same coords
+          // (under its own random UUID), reuse that hex instead of
+          // writing a duplicate under CCRLog's SHA-256 hash.
+          final resolvedHex =
+              _resolveSiteHex(mappedSite, existingHexByCoords);
+          final keyed = resolvedHex == mappedSite.hexId
+              ? mappedSite
+              : MappedSite(
+                  hexId: resolvedHex,
+                  lines: mappedSite.lines,
+                );
+          mappedSitesByHexId[resolvedHex] = keyed;
         }
       }
 
@@ -510,6 +537,55 @@ class SyncPlanner {
       };
 
   // ── Site merge ─────────────────────────────────────────────────────
+
+  /// Build a coords → existing-hex index from Subsurface's Site files.
+  /// Used to reuse Subsurface's site UUIDs when CCRLog's SHA-256 hash
+  /// would otherwise create a duplicate under a different filename.
+  /// Coordinates are quantized to the same lat-e5/lon-e5 precision the
+  /// mapper uses, so float-to-string round-trip doesn't cause misses.
+  Map<({int latE5, int lonE5}), String> _indexSitesByCoords(
+    Map<String, List<SsLine>> existingSites,
+  ) {
+    final out = <({int latE5, int lonE5}), String>{};
+    for (final entry in existingSites.entries) {
+      final hex = entry.key;
+      for (final line in entry.value) {
+        if (line is GpsLine) {
+          final lat = double.tryParse(line.lat);
+          final lon = double.tryParse(line.lon);
+          if (lat == null || lon == null) break;
+          final latE5 = (lat * 1e5).round();
+          final lonE5 = (lon * 1e5).round();
+          out[(latE5: latE5, lonE5: lonE5)] = hex;
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Resolve the hex CCRLog should write a site under. Subsurface uses
+  /// random UUIDs at site creation; if the existing repo already has a
+  /// Site file at the same coordinates, we reuse that hex instead of
+  /// CCRLog's SHA-256 hash to avoid orphan duplicates.
+  String _resolveSiteHex(
+    MappedSite mapped,
+    Map<({int latE5, int lonE5}), String> existingHexByCoords,
+  ) {
+    for (final line in mapped.lines) {
+      if (line is GpsLine) {
+        final lat = double.tryParse(line.lat);
+        final lon = double.tryParse(line.lon);
+        if (lat == null || lon == null) break;
+        final latE5 = (lat * 1e5).round();
+        final lonE5 = (lon * 1e5).round();
+        final existing = existingHexByCoords[(latE5: latE5, lonE5: lonE5)];
+        if (existing != null) return existing;
+        break;
+      }
+    }
+    return mapped.hexId;
+  }
 
   /// Replace the `name` and `gps` lines from [existing] with the values
   /// from [ours]. Everything else (description, notes, geo, anything we

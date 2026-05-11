@@ -160,6 +160,56 @@ void main() {
       );
     });
 
+    test('existing site at same coords: reuse Subsurface UUID, do not '
+        'create orphan under CCRLog hash', () {
+      // Regression for the 2026-05-11 smoke: Subsurface assigns random
+      // UUIDs at site creation; CCRLog computes SHA-256(lat,lon). On
+      // first push, every site was being duplicated under CCRLog's
+      // hash and every dive's divesiteid was being rewritten. Fix:
+      // when CCRLog's mapped site shares coords with an existing Site
+      // file, reuse the existing Subsurface UUID.
+      final planner = SyncPlanner();
+      final ann = _annotation(
+        diveId: _diveIdA,
+        siteName: 'Om Sid - Dahab',
+        siteLatitude: 28.420550,
+        siteLongitude: 34.457473,
+      );
+      final bundle = _bundle(diveId: _diveIdA, annotation: ann);
+
+      // Subsurface's pre-existing Site file under a random UUID.
+      const subsurfaceHex = 'a36eace9';
+      final existingSiteLines = parseSubsurfaceFile(
+        'name "Om Sid - Dahab"\n'
+        'description ""\n'
+        'notes ""\n'
+        'gps 28.420550 34.457473\n',
+        kind: SubsurfaceFileKind.site,
+      ).lines;
+
+      final plan = planner.plan(
+        ccrlogDives: [bundle],
+        existingDivesBySerialAndStart: const {},
+        existingMaxDiveNumber: 0,
+        existingTopLevel: const [],
+        existingSites: {subsurfaceHex: existingSiteLines},
+      );
+
+      // The site write goes to the EXISTING Subsurface UUID.
+      expect(
+        plan.filesToWrite.keys,
+        contains('01-Divesites/Site-$subsurfaceHex'),
+      );
+      // No orphan under CCRLog's SHA-256 hash was created.
+      final orphanCandidates = plan.filesToWrite.keys
+          .where((k) =>
+              k.startsWith('01-Divesites/') && !k.endsWith(subsurfaceHex))
+          .toList();
+      expect(orphanCandidates, isEmpty,
+          reason: 'CCRLog must not create duplicate Site files for sites '
+              'Subsurface already has under its own UUID.');
+    });
+
     test('site dedup: two CCRLog dives at same lat/lon → one Site-XXXX',
         () {
       final planner = SyncPlanner();
