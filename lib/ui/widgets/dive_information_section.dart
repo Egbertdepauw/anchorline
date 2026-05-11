@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/db/database.dart';
+import '../components/data_row.dart' as components;
+import '../components/section_header.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import 'star_rating.dart';
 
@@ -94,7 +96,7 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionHeader('Conditions'),
+          SectionHeader('Conditions'),
           _ratingRow('Visibility', _n.visibility, _n.setVisibility,
               subtitleLeft: 'Bad', subtitleRight: 'Good'),
           _ratingRow('Surface waves', _n.wavesize, _n.setWavesize,
@@ -106,7 +108,7 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
           _ratingRow('Chill', _n.chill, _n.setChill,
               subtitleLeft: 'Freezing', subtitleRight: 'Comfy'),
           const SizedBox(height: 16),
-          _sectionHeader('Environment'),
+          SectionHeader('Environment'),
           Row(children: [
             Expanded(
               child: _tempField(
@@ -126,14 +128,14 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
             ),
           ]),
           const SizedBox(height: 12),
-          _readOnlyRow(
-            'Water type',
-            '${_waterTypeLabel(widget.dive.waterDensity)}'
-            ' — ${(widget.dive.waterDensity / 1000).toStringAsFixed(3)} g/L',
+          components.DataRow(
+            label: 'Water type',
+            value: '${_waterTypeLabel(widget.dive.waterDensity)}'
+                ' — ${(widget.dive.waterDensity / 1000).toStringAsFixed(3)} g/L',
           ),
-          _readOnlyRow(
-            'Atm. pressure',
-            '${widget.dive.atmosphericPressureMbar} mbar',
+          components.DataRow(
+            label: 'Atm. pressure',
+            value: '${widget.dive.atmosphericPressureMbar} mbar',
           ),
         ],
       ),
@@ -144,35 +146,6 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
     if (densityKgM3 < 1010) return 'Fresh';
     if (densityKgM3 >= 1020) return 'Salt';
     return 'Brackish';
-  }
-
-  Widget _readOnlyRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(children: [
-        SizedBox(
-          width: 130,
-          child: Text(label,
-              style: const TextStyle(fontSize: 13, color: Color(0xFFB0BEC5))),
-        ),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
-      ]),
-    );
-  }
-
-  Widget _sectionHeader(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.6,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-      ),
-    );
   }
 
   Widget _ratingRow(
