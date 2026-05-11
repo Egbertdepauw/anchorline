@@ -1,7 +1,11 @@
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+
 import '../../data/db/database.dart';
 import '../../data/models/annotation.dart' as dom;
+import '../components/numeric_readout.dart';
+import '../theme/tokens.dart';
 import '../util/dive_mode_color.dart';
 import '../util/format.dart';
 import 'site_mini_map.dart';
@@ -32,7 +36,7 @@ class DiveTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final modeColor = diveModeColor(dive.diveMode);
-    final theme = Theme.of(context);
+    final scheme = Theme.of(context).colorScheme;
     final annotationLine = _buildAnnotationLine();
 
     return InkWell(
@@ -41,7 +45,8 @@ class DiveTile extends StatelessWidget {
         decoration: BoxDecoration(
           border: Border(left: BorderSide(color: modeColor, width: 3)),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.md, vertical: Spacing.sm + 2),
         child: Row(
           children: [
             if (annotation?.siteLatitude != null &&
@@ -59,38 +64,42 @@ class DiveTile extends StatelessWidget {
               )
             else
               const SizedBox(width: 56),
-            const SizedBox(width: 12),
+            const SizedBox(width: Spacing.md),
             SizedBox(
-              width: 56, height: 36,
+              width: 56,
+              height: 36,
               child: sparklineData != null && sparklineData!.isNotEmpty
                   ? DepthSparkline(depths: sparklineData!, color: modeColor)
                   : Container(
                       decoration: BoxDecoration(
-                        color: theme.cardColor,
-                        borderRadius: BorderRadius.circular(4),
+                        color: scheme.surfaceContainer,
+                        borderRadius: Radii.cardBr,
                       ),
                     ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: Spacing.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Text(diveModeLabel(dive.diveMode),
-                        style: TextStyle(color: modeColor, fontSize: 10, fontWeight: FontWeight.w600)),
-                      const SizedBox(width: 6),
-                      Text('#${sequenceNumber ?? dive.dcDiveNumber}',
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      Text(
+                        diveModeLabel(dive.diveMode),
+                        style: AppTypography.label.copyWith(color: modeColor),
+                      ),
+                      const SizedBox(width: Spacing.xs + 2),
+                      NumericReadout(
+                        '#${sequenceNumber ?? dive.dcDiveNumber}',
+                        size: ReadoutSize.sm,
+                        color: scheme.onSurface,
+                      ),
                       if (annotation?.siteName != null &&
                           annotation!.siteName!.isNotEmpty) ...[
                         Text(
                           ' · ',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: theme.colorScheme.onSurface
-                                .withValues(alpha: 0.4),
+                          style: AppTypography.body.copyWith(
+                            color: scheme.outlineVariant,
                           ),
                         ),
                         Expanded(
@@ -98,32 +107,36 @@ class DiveTile extends StatelessWidget {
                             annotation!.siteName!,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.7),
+                            style: AppTypography.body.copyWith(
+                              color: scheme.onSurface,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
                       ] else
                         const Spacer(),
-                      const SizedBox(width: 6),
-                      Text(formatDateShort(dive.startTime),
-                        style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5), fontSize: 11)),
+                      const SizedBox(width: Spacing.sm - 2),
+                      Text(
+                        formatDateShort(dive.startTime),
+                        style: AppTypography.caption.copyWith(
+                          color: scheme.outlineVariant,
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(_buildStatsLine(),
-                    style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.7), fontSize: 12)),
+                  const SizedBox(height: Spacing.xs - 2),
+                  NumericReadout(
+                    _buildStatsLine(),
+                    size: ReadoutSize.sm,
+                    color: scheme.onSurface.withValues(alpha: 0.85),
+                  ),
                   if (annotationLine != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(
                         annotationLine,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: theme.colorScheme.onSurface
-                              .withValues(alpha: 0.5),
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.wreck.statusInfo,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
