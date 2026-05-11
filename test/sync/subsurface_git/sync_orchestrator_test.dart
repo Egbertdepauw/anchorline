@@ -138,12 +138,7 @@ class _FakeDataSource implements SubsurfaceSyncDataSource {
 void main() {
   const branch = 'tester@example.com';
 
-  group('SubsurfaceSyncOrchestrator.syncNow',
-      skip: 'Safety hold (2026-05-08): syncNow() throws unconditionally '
-          'until the planner is rewritten to merge conservatively '
-          'rather than overwrite Subsurface-side fields. Re-enable '
-          'this group when the safety throw in sync_orchestrator.dart '
-          'is removed.', () {
+  group('SubsurfaceSyncOrchestrator.syncNow', () {
     test('throws NoCredentialsException when creds are missing', () async {
       final clones = _tempDir('clones');
       final orch = SubsurfaceSyncOrchestrator(
