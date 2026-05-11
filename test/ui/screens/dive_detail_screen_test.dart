@@ -116,11 +116,11 @@ void main() {
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
 
-    // Icon-prefix layout: ⏱ remaining, ∑ configured, ▽ used, STACK label.
-    expect(find.text('⏱ 5:38'), findsOneWidget);
-    expect(find.text('∑ 7:00'), findsOneWidget);
-    expect(find.text('▽ 58:04'), findsOneWidget);
+    // StatTile layout: uppercased "STACK" label, value (remaining), hint
+    // (used · configured) below.
     expect(find.text('STACK'), findsOneWidget);
+    expect(find.text('5:38'), findsOneWidget);
+    expect(find.text('58:04 · 7:00'), findsOneWidget);
   });
 
   testWidgets('hides STACK cell when stack values are null', (tester) async {
@@ -134,45 +134,45 @@ void main() {
     expect(find.byType(DiveDetailScreen), findsOneWidget);
   });
 
-  testWidgets('PPO2 cell shows three icon-prefixed values with bar label',
+  testWidgets('PPO2 cell shows StatTile with avg value + min/max hint',
       (tester) async {
     final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
 
-    // Three big-white lines (avg / min / max) followed by a faded label.
-    expect(find.textContaining(RegExp(r'^⌀ \d\.\d{2}$')), findsOneWidget);
-    expect(find.textContaining(RegExp(r'^↓ \d\.\d{2}$')), findsWidgets);
-    expect(find.textContaining(RegExp(r'^↑ \d\.\d{2}$')), findsWidgets);
-    expect(find.text('PPO2 (bar)'), findsOneWidget);
+    // StatTile renders label uppercased + unit appended: "PPO2  BAR".
+    // Value is the avg as N.NN. Hint is "min / max".
+    expect(find.text('PPO2  BAR'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^\d\.\d{2}$')), findsWidgets);
+    expect(find.textContaining(RegExp(r'^\d\.\d{2} / \d\.\d{2}$')),
+        findsOneWidget);
   });
 
-  testWidgets('TEMP cell shows three icon-prefixed values with °C suffix',
+  testWidgets('TEMP cell shows StatTile with avg + min/max hint',
       (tester) async {
     final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
 
-    // Each value carries the °C suffix; label is just TEMP.
-    expect(find.text('TEMP'), findsOneWidget);
-    expect(find.textContaining(RegExp(r'^⌀ -?\d+°C$')), findsOneWidget);
-    expect(find.textContaining(RegExp(r'^↓ -?\d+°C$')), findsWidgets);
-    expect(find.textContaining(RegExp(r'^↑ -?\d+°C$')), findsWidgets);
+    // Label is "TEMP  °C" (uppercased + unit). Value is integer avg.
+    // Hint is "min / max" (both integers, °C goes in the label).
+    expect(find.text('TEMP  °C'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^-?\d+ / -?\d+$')), findsOneWidget);
   });
 
-  testWidgets('shows MAX m/min cell with descent + ascent stacked',
+  testWidgets('shows V-speed cell with descent + ascent combined',
       (tester) async {
     final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
 
-    // One label, two arrow-prefixed values stacked in a single cell.
-    expect(find.text('MAX m/min'), findsOneWidget);
-    expect(find.textContaining(RegExp(r'^↓ \d+$')), findsOneWidget);
-    expect(find.textContaining(RegExp(r'^↑ \d+$')), findsOneWidget);
+    // Single StatTile with combined "↓N ↑M" value, uppercased label
+    // "V-SPEED  M/MIN".
+    expect(find.text('V-SPEED  M/MIN'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^↓\d+ ↑\d+$')), findsOneWidget);
   });
 
   testWidgets('TANKS cell renders one row per active tank with start→end',
@@ -197,7 +197,7 @@ void main() {
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, dive, s.dao);
 
-    expect(find.text('TANKS (bar)'), findsOneWidget);
+    expect(find.text('TANKS  BAR'), findsOneWidget);
     expect(find.text('DIL 230→185'), findsOneWidget);
     expect(find.text('O2 195→145'), findsOneWidget);
   });

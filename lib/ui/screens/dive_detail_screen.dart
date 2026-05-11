@@ -37,6 +37,8 @@ import 'pdf_viewer_screen.dart';
 import 'sites_map_screen.dart';
 import '../widgets/star_rating.dart';
 import '../widgets/trace_toggle.dart';
+import '../components/stat_tile.dart';
+import '../theme/tokens.dart';
 
 class DiveDetailScreen extends StatefulWidget {
   final Dive dive;
@@ -181,8 +183,31 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       },
       child: Scaffold(
       appBar: AppBar(
-        title:
-            Text('Dive #${widget.sequenceNumber ?? dive.dcDiveNumber}'),
+        title: Builder(builder: (context) {
+          final siteName = _annotationsNotifier.siteName;
+          final subtitle = [
+            if (siteName != null && siteName.isNotEmpty) siteName,
+            formatDateTime(dive.startTime),
+          ].join(' · ');
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Dive #${widget.sequenceNumber ?? dive.dcDiveNumber}',
+                style: AppTypography.headline.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              Text(
+                subtitle,
+                style: AppTypography.caption.copyWith(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
+            ],
+          );
+        }),
         actions: [
           IconButton(
             tooltip: 'Previous dive',
@@ -729,32 +754,42 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     return LayoutBuilder(builder: (context, constraints) {
       final cells = <Widget>[
         if (ppo2Stats != null)
-          _avgMinMaxCell(
-              'PPO2 (bar)',
-              ppo2Stats.avg.toStringAsFixed(2),
-              ppo2Stats.min.toStringAsFixed(2),
-              ppo2Stats.max.toStringAsFixed(2),
-              theme)
+          StatTile(
+            label: 'PPO2',
+            unit: 'bar',
+            value: ppo2Stats.avg.toStringAsFixed(2),
+            hint:
+                '${ppo2Stats.min.toStringAsFixed(2)} / ${ppo2Stats.max.toStringAsFixed(2)}',
+          )
         else
-          _statCell('PPO2', '—', theme),
-        _statCell('CNS', '${(maxCns * 100).round()}%', theme),
-        if (showOtu) _statCell('OTU', '${otu.round()}', theme),
+          const StatTile(label: 'PPO2', value: '—'),
+        StatTile(label: 'CNS', value: '${(maxCns * 100).round()}%'),
+        if (showOtu) StatTile(label: 'OTU', value: '${otu.round()}'),
         if (tempStats != null)
-          _avgMinMaxCell(
-              'TEMP',
-              '${tempStats.avg.round()}',
-              '${tempStats.min.round()}',
-              '${tempStats.max.round()}',
-              theme,
-              unit: '°C')
+          StatTile(
+            label: 'Temp',
+            unit: '°C',
+            value: '${tempStats.avg.round()}',
+            hint: '${tempStats.min.round()} / ${tempStats.max.round()}',
+          )
         else
-          _statCell('TEMP', '—', theme),
-        _descAscCell(vSpeed.maxDescentMpm.round(),
-            vSpeed.maxAscentMpm.round(), theme),
-        _statCell('GAS', gasLabel, theme),
+          const StatTile(label: 'Temp', unit: '°C', value: '—'),
+        StatTile(
+          label: 'V-speed',
+          unit: 'm/min',
+          value:
+              '↓${vSpeed.maxDescentMpm.round()} ↑${vSpeed.maxAscentMpm.round()}',
+        ),
+        StatTile(label: 'Gas', value: gasLabel),
         if (_activeTanks().isNotEmpty) _tanksCell(_activeTanks(), theme),
         if (stackEnd != null)
-          _stackCell(stackLabel, stackUsed, stackConf, theme),
+          StatTile(
+            label: 'Stack',
+            value: stackLabel,
+            hint: [stackUsed, stackConf]
+                .whereType<String>()
+                .join(' · '),
+          ),
       ];
       // Width per cell at ~95px keeps even the long "PPO2 min/avg/max" label
       // legible. Below that, wrap to a second line.
@@ -780,59 +815,6 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     });
   }
 
-  // Cell builders return the unexpanded widget. The caller wraps with
-  // Expanded inside a Row, or uses raw inside a Wrap (Expanded only works
-  // inside Flex parents).
-
-  Widget _statCell(String label, String value, ThemeData theme,
-      {String? tooltip}) {
-    final cell = Column(children: [
-      Text(value,
-          style:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-      const SizedBox(height: 2),
-      Text(label,
-          style: TextStyle(
-              fontSize: 9,
-              color:
-                  theme.colorScheme.onSurface.withValues(alpha: 0.4))),
-    ]);
-    return tooltip == null ? cell : Tooltip(message: tooltip, child: cell);
-  }
-
-  Widget _stackCell(
-      String value, String? used, String? configured, ThemeData theme) {
-    const valueStyle =
-        TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
-    final faded = TextStyle(
-        fontSize: 9,
-        color: theme.colorScheme.onSurface.withValues(alpha: 0.4));
-    return Column(children: [
-      Text('⏱ $value', style: valueStyle),
-      if (configured != null) Text('∑ $configured', style: valueStyle),
-      if (used != null) Text('▽ $used', style: valueStyle),
-      const SizedBox(height: 2),
-      Text('STACK', style: faded),
-    ]);
-  }
-
-  Widget _avgMinMaxCell(
-      String label, String avg, String min, String max, ThemeData theme,
-      {String unit = ''}) {
-    const valueStyle =
-        TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
-    final faded = TextStyle(
-        fontSize: 9,
-        color: theme.colorScheme.onSurface.withValues(alpha: 0.4));
-    return Column(children: [
-      Text('⌀ $avg$unit', style: valueStyle),
-      Text('↓ $min$unit', style: valueStyle),
-      Text('↑ $max$unit', style: valueStyle),
-      const SizedBox(height: 2),
-      Text(label, style: faded),
-    ]);
-  }
-
   /// Active tanks (those with non-zero start or end pressure), sorted
   /// diluent → oxygen → other.
   List<DiveTank> _activeTanks() {
@@ -849,33 +831,27 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     return list;
   }
 
+  /// Multi-line tank pressure cell. Kept as a custom widget because each
+  /// tank gets its own row (StatTile only supports a single value line).
+  /// Uses StatTile-ish styling so it sits cleanly next to the others.
   Widget _tanksCell(List<DiveTank> tanks, ThemeData theme) {
-    const valueStyle =
-        TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
-    final faded = TextStyle(
-        fontSize: 9,
-        color: theme.colorScheme.onSurface.withValues(alpha: 0.4));
-    return Column(children: [
-      for (final t in tanks)
+    final scheme = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
         Text(
-            '${labelForTank(t, _notifier.mappedCylinders)} ${t.beginPressureBar.round()}→${t.endPressureBar.round()}',
-            style: valueStyle),
-      const SizedBox(height: 2),
-      Text('TANKS (bar)', style: faded),
-    ]);
-  }
-
-  Widget _descAscCell(int desc, int asc, ThemeData theme) {
-    const value =
-        TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
-    final faded = TextStyle(
-        fontSize: 9,
-        color: theme.colorScheme.onSurface.withValues(alpha: 0.4));
-    return Column(children: [
-      Text('↓ $desc', style: value),
-      Text('↑ $asc', style: value),
-      const SizedBox(height: 2),
-      Text('MAX m/min', style: faded),
-    ]);
+          'TANKS  BAR',
+          style: AppTypography.label.copyWith(color: scheme.outlineVariant),
+        ),
+        const SizedBox(height: Spacing.xs),
+        for (final t in tanks)
+          Text(
+            '${labelForTank(t, _notifier.mappedCylinders)} '
+            '${t.beginPressureBar.round()}→${t.endPressureBar.round()}',
+            style: AppTypography.readoutSm.copyWith(color: scheme.onSurface),
+          ),
+      ],
+    );
   }
 }

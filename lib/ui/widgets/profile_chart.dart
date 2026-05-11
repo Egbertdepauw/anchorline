@@ -13,6 +13,7 @@ import '../../data/db/database.dart';
 import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
 import '../../data/models/sample_set.dart';
 import '../notifiers/dive_detail_notifier.dart';
+import '../theme/tokens.dart';
 import '../util/tank_labels.dart';
 
 // ── Layout constants ────────────────────────────────────────────
@@ -23,18 +24,22 @@ const double _topPad = 8.0;
 const double _bottomPad = 24.0;
 
 // ── Trace colours ───────────────────────────────────────────────
+//
+// Sourced from `AppColors.wreck` so the chart stays in sync with the
+// rest of the design system. Cell colours are locked across the app:
+// Cell 1 green / Cell 2 blue / Cell 3 pink (`AppColors.wreck.cell1/2/3`).
 
-const Color _depthColor = Color(0xFF4FC3F7);
-const Color _ppo2Color = Color(0xFF66BB6A);
-const Color _setpointColor = Color(0xFFFF9800);
-const Color _decoColor = Color(0xFFFF9800);
-const Color _cell0Color = Color(0xFFEF5350);
-const Color _cell1Color = Color(0xFFFFEE58);
-const Color _cell2Color = Color(0xFF42A5F5);
+final Color _depthColor = AppColors.wreck.chartTraceDepth;
+final Color _ppo2Color = AppColors.wreck.chartTracePpo2;
+final Color _setpointColor = AppColors.wreck.chartTraceSetpoint;
+final Color _decoColor = AppColors.wreck.statusWarning;
+final Color _cell0Color = AppColors.wreck.cell1;
+final Color _cell1Color = AppColors.wreck.cell2;
+final Color _cell2Color = AppColors.wreck.cell3;
 const Color _crosshairColor = Color(0x80FFFFFF);
-const Color _gridColor = Color(0xFF1A2A40);
-const Color _gasChangeColor = Color(0xFF4DD0E1);
-const Color _bailoutColor = Color(0xFFE53935);
+final Color _gridColor = AppColors.wreck.chartGrid;
+final Color _gasChangeColor = AppColors.wreck.statusInfo;
+final Color _bailoutColor = AppColors.wreck.statusDanger;
 
 // Tank-trace palette per tank slot. Picked to be distinct from the
 // existing depth/cell/setpoint colours.
@@ -61,7 +66,7 @@ const double _tankBarMax = 300.0;
 // Speed convention: signed m/min. Negative = ascent (depth decreasing),
 // positive = descent (depth increasing). STABLE keeps the existing depth
 // blue so a calm dive looks the way it always has.
-const Color _vSpeedStableColor = _depthColor;            // light blue
+final Color _vSpeedStableColor = _depthColor;            // light blue
 const Color _vSpeedSlowColor = Color(0xFFA8D957);        // lime
 const Color _vSpeedModerateColor = Color(0xFFE5C73F);    // amber
 const Color _vSpeedFastColor = Color(0xFFEC8A3D);        // orange
@@ -69,7 +74,7 @@ const Color _vSpeedCrazyColor = Color(0xFFE65656);       // red
 
 // Anchor table sorted by speed ascending. _colorForRate finds the bracket
 // containing the segment's signed rate and lerps between the two anchors.
-const List<({double speed, Color color})> _vSpeedAnchors = [
+final List<({double speed, Color color})> _vSpeedAnchors = [
   (speed: -30.0, color: _vSpeedCrazyColor),
   (speed: -18.2, color: _vSpeedCrazyColor),
   (speed: -9.1, color: _vSpeedFastColor),
@@ -237,7 +242,7 @@ class _CellLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const colors = [_cell0Color, _cell1Color, _cell2Color];
+    final colors = [_cell0Color, _cell1Color, _cell2Color];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
