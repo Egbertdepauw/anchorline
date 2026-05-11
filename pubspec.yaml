@@ -103,6 +103,14 @@ flutter:
   assets:
     - test/fixtures/dives/
 
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: fonts/Inter-VariableFont.ttf
+    - family: JetBrainsMono
+      fonts:
+        - asset: fonts/JetBrainsMono-VariableFont.ttf
+
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 
