@@ -1,0 +1,17 @@
+model "Shearwater Petrel 3"
+deviceid 18545bf0
+diveid 4b4531e5
+dctype CCR
+numberofoxygensensors 3
+maxdepth 13.3m
+meandepth 9.648m
+watertemp 7.0°C
+surfacepressure 1.003bar
+salinity 1000g/l
+keyvalue "Logversion" "17(PNF)"
+keyvalue "Serial" "b89641e4"
+event 0:05 type=25 flags=6 name="gaschange" cylinder=5 o2=18.0% he=23.0%
+  0:05 0.0m 12.0°C 182.987bar:0 167.956bar:1 sensor1=0.504bar sensor2=0.588bar sensor3=0.567bar dc_supplied_ppo2=0.55bar po2=0.7bar
+  0:10 1.0m
+  0:15 1.5m
+  0:20 2.0m

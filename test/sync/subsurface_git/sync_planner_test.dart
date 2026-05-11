@@ -10,6 +10,7 @@
 @TestOn('mac-os || linux || windows')
 library;
 
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
@@ -484,6 +485,52 @@ void main() {
       expect(plan.stats.skippedDives, 1);
       expect(plan.stats.updatedDives, 0);
       expect(plan.abortedDives, isEmpty);
+    });
+
+    test('incident replica: cylinder edit on Subsurface side aborts the dive',
+        () {
+      final divText = File('test/fixtures/subsurface_incident_replica/Dive-697')
+          .readAsStringSync();
+      final existingLines =
+          parseSubsurfaceFile(divText, kind: SubsurfaceFileKind.dive).lines;
+      final planner = SyncPlanner();
+      // The default bundle uses _threeGasMixes() so the mapper emits cylinder
+      // lines that won't match the fixture's single user-edited cylinder.
+      // That mismatch is the whole point — Task 4's merge must abort.
+      final bundle = _bundle(diveId: _diveIdA);
+      final plan = planner.plan(
+        ccrlogDives: [bundle],
+        existingDivesBySerialAndStart: {
+          (serial: bundle.dive.dcSerial, startTime: bundle.dive.startTime):
+              ExistingRemoteDive(
+            folderSegments: ['2026', '02', '08-Sun-09=43=19'],
+            diveNumber: 697,
+            serial: bundle.dive.dcSerial,
+            startTime: bundle.dive.startTime,
+            diveLines: existingLines,
+          ),
+        },
+        existingMaxDiveNumber: 697,
+        existingTopLevel: const [],
+        existingSites: const {},
+      );
+
+      // Nothing written for dive 697:
+      expect(
+        plan.filesToWrite.keys.where((k) => k.contains('Dive-697')).toList(),
+        isEmpty,
+      );
+      expect(
+        plan.filesToWrite.keys
+            .where((k) => k.contains('Divecomputer'))
+            .toList(),
+        isEmpty,
+      );
+      // Abort surfaced:
+      expect(plan.abortedDives, hasLength(1));
+      expect(plan.abortedDives.first.dive.id, _diveIdA);
+      expect(plan.abortedDives.first.reason, AbortReason.foreignEditConflict);
+      expect(plan.abortedDives.first.conflictingLines, contains('cylinder'));
     });
   });
 }
