@@ -220,10 +220,30 @@ class CcrlogToSubsurfaceMapper {
     if (tags.isNotEmpty) {
       lines.add(TagsLine(tags: List.of(tags)));
     }
+    // Information-tab star ratings — Subsurface convention is 1..5.
+    void emitStar(String key, int? value) {
+      if (value != null && value > 0) {
+        lines.add(ScalarLine(key: key, value: value.toString()));
+      }
+    }
+    emitStar('visibility', annotation?.visibility);
+    emitStar('wavesize', annotation?.wavesize);
+    emitStar('current', annotation?.current);
+    emitStar('surge', annotation?.surge);
+    emitStar('chill', annotation?.chill);
+    // Environment temperatures — Subsurface writes with °C suffix.
+    void emitTemp(String key, double? celsius) {
+      if (celsius == null) return;
+      final formatted = celsius == celsius.roundToDouble()
+          ? '${celsius.toStringAsFixed(1)}°C'
+          : '${celsius.toStringAsFixed(1)}°C';
+      lines.add(ScalarLine(key: key, value: formatted));
+    }
+    emitTemp('airtemp', annotation?.airTempC);
+    emitTemp('watertemp', annotation?.waterTempC);
     if (siteId != null) {
       lines.add(ScalarLine(key: 'divesiteid', value: siteId));
     }
-    // Subsurface always emits divemaster + buddy + suit, even when empty.
     lines.add(QuotedLine(key: 'divemaster', value: ''));
     final buddy = (annotation?.buddies ?? const <String>[]).join(', ');
     lines.add(QuotedLine(key: 'buddy', value: buddy));
@@ -231,6 +251,17 @@ class CcrlogToSubsurfaceMapper {
     final notes = annotation?.notes;
     if (notes != null && notes.isNotEmpty) {
       lines.add(QuotedLine(key: 'notes', value: notes));
+    }
+    // Weights — one `weightsystem` line per entry.
+    final weights = annotation?.weights ?? const <Weight>[];
+    for (final w in weights) {
+      final desc = w.description;
+      lines.add(WeightsystemLine(
+        fields: [
+          MapEntry('weight', '${_formatDecimal(w.weightKg, 1)}kg'),
+          MapEntry('description', '"$desc"'),
+        ],
+      ));
     }
 
     for (var i = 0; i < gasMixes.length; i++) {

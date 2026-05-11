@@ -503,6 +503,65 @@ void main() {
       expect(text,
           contains('keyvalue "Configured stack time [hh:mm:ss]" "7:00:00"\n'));
     });
+
+    test('mapDive emits Information-tab fields when annotation carries them',
+        () {
+      final mapper = CcrlogToSubsurfaceMapper();
+      final ann = DiveAnnotation(
+        diveId: 'd1',
+        visibility: 5,
+        wavesize: 3,
+        current: 4,
+        surge: 4,
+        chill: 5,
+        airTempC: 24.0,
+        waterTempC: 22.5,
+        createdAt: DateTime.utc(2026, 5, 1),
+        updatedAt: DateTime.utc(2026, 5, 1),
+      );
+      final mapped = mapper.mapDive(
+        dive: _ccrPetrelDive(),
+        samples: _threeMinSampleSet(diveId: _ccrPetrelDive().id),
+        annotation: ann,
+        gasMixes: const [],
+        tanks: const [],
+        cylindersByMixIndex: const {},
+        nextSubsurfaceDiveNumber: 1,
+      );
+      final text = serializeSubsurfaceFile(SubsurfaceFile(lines: mapped.diveLines));
+      expect(text, contains('visibility 5'));
+      expect(text, contains('wavesize 3'));
+      expect(text, contains('current 4'));
+      expect(text, contains('surge 4'));
+      expect(text, contains('chill 5'));
+      expect(text, contains('airtemp 24.0°C'));
+      expect(text, contains('watertemp 22.5°C'));
+    });
+
+    test('mapDive emits one weightsystem line per Weight entry', () {
+      final mapper = CcrlogToSubsurfaceMapper();
+      final ann = DiveAnnotation(
+        diveId: 'd1',
+        weights: const [
+          Weight(weightKg: 2.0, description: 'backplate'),
+          Weight(weightKg: 1.5, description: 'belt'),
+        ],
+        createdAt: DateTime.utc(2026, 5, 1),
+        updatedAt: DateTime.utc(2026, 5, 1),
+      );
+      final mapped = mapper.mapDive(
+        dive: _ccrPetrelDive(),
+        samples: _threeMinSampleSet(diveId: _ccrPetrelDive().id),
+        annotation: ann,
+        gasMixes: const [],
+        tanks: const [],
+        cylindersByMixIndex: const {},
+        nextSubsurfaceDiveNumber: 1,
+      );
+      final text = serializeSubsurfaceFile(SubsurfaceFile(lines: mapped.diveLines));
+      expect(text, contains('weightsystem weight=2.0kg description="backplate"'));
+      expect(text, contains('weightsystem weight=1.5kg description="belt"'));
+    });
   });
 
   group('CcrlogToSubsurfaceMapper.topLevelDelta', () {
