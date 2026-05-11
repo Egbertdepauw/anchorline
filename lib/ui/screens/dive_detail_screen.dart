@@ -466,6 +466,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     }
     return DiveInformationSection(
       notifier: _annotationsNotifier,
+      dive: widget.dive,
       defaultWaterTempC: avgWaterTemp,
     );
   }

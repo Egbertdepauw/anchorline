@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../data/db/database.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import 'star_rating.dart';
 
@@ -10,6 +11,11 @@ import 'star_rating.dart';
 class DiveInformationSection extends StatefulWidget {
   final DiveAnnotationsNotifier notifier;
 
+  /// The dive — used to surface read-only environment fields the
+  /// Shearwater binary already gave us (water density, atmospheric
+  /// pressure).
+  final Dive dive;
+
   /// Sample-derived water-temp fallback shown as the field's hint when
   /// the annotation has no explicit value yet. Typically the average of
   /// the dive computer's per-sample temperature stream.
@@ -18,6 +24,7 @@ class DiveInformationSection extends StatefulWidget {
   const DiveInformationSection({
     super.key,
     required this.notifier,
+    required this.dive,
     this.defaultWaterTempC,
   });
 
@@ -88,11 +95,16 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionHeader('Conditions'),
-          _ratingRow('Visibility', _n.visibility, _n.setVisibility),
-          _ratingRow('Surface waves', _n.wavesize, _n.setWavesize),
-          _ratingRow('Current', _n.current, _n.setCurrent),
-          _ratingRow('Surge', _n.surge, _n.setSurge),
-          _ratingRow('Chill', _n.chill, _n.setChill),
+          _ratingRow('Visibility', _n.visibility, _n.setVisibility,
+              subtitleLeft: 'Bad', subtitleRight: 'Good'),
+          _ratingRow('Surface waves', _n.wavesize, _n.setWavesize,
+              subtitleLeft: 'Large', subtitleRight: 'Small'),
+          _ratingRow('Current', _n.current, _n.setCurrent,
+              subtitleLeft: 'Strong', subtitleRight: 'Weak'),
+          _ratingRow('Surge', _n.surge, _n.setSurge,
+              subtitleLeft: 'Strong', subtitleRight: 'Weak'),
+          _ratingRow('Chill', _n.chill, _n.setChill,
+              subtitleLeft: 'Freezing', subtitleRight: 'Comfy'),
           const SizedBox(height: 16),
           _sectionHeader('Environment'),
           Row(children: [
@@ -113,8 +125,38 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
               ),
             ),
           ]),
+          const SizedBox(height: 12),
+          _readOnlyRow(
+            'Water type',
+            '${_waterTypeLabel(widget.dive.waterDensity)}'
+            ' — ${(widget.dive.waterDensity / 1000).toStringAsFixed(3)} g/L',
+          ),
+          _readOnlyRow(
+            'Atm. pressure',
+            '${widget.dive.atmosphericPressureMbar} mbar',
+          ),
         ],
       ),
+    );
+  }
+
+  static String _waterTypeLabel(int densityKgM3) {
+    if (densityKgM3 < 1010) return 'Fresh';
+    if (densityKgM3 >= 1020) return 'Salt';
+    return 'Brackish';
+  }
+
+  Widget _readOnlyRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(children: [
+        SizedBox(
+          width: 130,
+          child: Text(label,
+              style: const TextStyle(fontSize: 13, color: Color(0xFFB0BEC5))),
+        ),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+      ]),
     );
   }
 
@@ -133,17 +175,48 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
     );
   }
 
-  Widget _ratingRow(String label, int? value, void Function(int?) onChanged) {
+  Widget _ratingRow(
+    String label,
+    int? value,
+    void Function(int?) onChanged, {
+    required String subtitleLeft,
+    required String subtitleRight,
+  }) {
+    // StarRating renders 5 IconButtons with VisualDensity.compact. Each
+    // occupies ~44 px, so the star block is ~220 px wide. The caption
+    // row matches that width so the polarity labels align under the
+    // first and last star.
+    const starBlockWidth = 220.0;
+    const captionStyle = TextStyle(fontSize: 11, color: Color(0xFF78909C));
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(children: [
-        SizedBox(
-          width: 130,
-          child: Text(label,
-              style: const TextStyle(fontSize: 13, color: Color(0xFFB0BEC5))),
-        ),
-        StarRating(value: value, onChanged: onChanged),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            SizedBox(
+              width: 130,
+              child: Text(label,
+                  style:
+                      const TextStyle(fontSize: 13, color: Color(0xFFB0BEC5))),
+            ),
+            StarRating(value: value, onChanged: onChanged),
+          ]),
+          Padding(
+            padding: const EdgeInsets.only(left: 130, top: 1, bottom: 2),
+            child: SizedBox(
+              width: starBlockWidth,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(subtitleLeft, style: captionStyle),
+                  Text(subtitleRight, style: captionStyle),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
