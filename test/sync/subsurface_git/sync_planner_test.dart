@@ -316,6 +316,19 @@ void main() {
         ..sort();
       expect(diveFileNames, containsAll(['Dive-51', 'Dive-52']));
     });
+
+    test('SyncPlan exposes empty abortedDives by default', () {
+      final planner = SyncPlanner();
+      final plan = planner.plan(
+        ccrlogDives: const [],
+        existingDivesBySerialAndStart: const {},
+        existingMaxDiveNumber: 0,
+        existingTopLevel: const [],
+        existingSites: const {},
+      );
+      expect(plan.abortedDives, isEmpty);
+      expect(plan.stats.abortedDives, 0);
+    });
   });
 }
 

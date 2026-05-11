@@ -103,6 +103,7 @@ class SyncPlanStats {
     required this.newDives,
     required this.updatedDives,
     required this.skippedDives,
+    required this.abortedDives,
   });
 
   final int newDives;
@@ -113,6 +114,44 @@ class SyncPlanStats {
   /// because the orchestrator should not stamp `subsurface_uploaded_at`
   /// on a dive that didn't actually end up in this commit.
   final int skippedDives;
+
+  /// Dives the planner declined to write because of a foreign edit on
+  /// the Subsurface side. Surfaced to the user as "Skipped".
+  final int abortedDives;
+}
+
+/// Why a per-dive plan was aborted. Surfaced to the user in the UI's
+/// "Skipped" status block; not an error condition.
+enum AbortReason {
+  /// CCRLog's planned write would change the Divecomputer file for a
+  /// dive Subsurface already has. The Divecomputer file is sacred to
+  /// the DC that recorded it — we never overwrite it in Phase 1.
+  divecomputerProtected,
+
+  /// The existing Dive-NNN file on disk has differences in lines
+  /// CCRLog doesn't own (e.g. user-edited cylinder, a Subsurface-only
+  /// scalar key we don't recognise, a manually-tuned duration). We
+  /// decline to overwrite rather than risk losing the user's edits.
+  foreignEditConflict,
+}
+
+/// One dive that the planner declined to write. Aborts are not
+/// exceptions: sync still succeeds for the other dives in the same
+/// run.
+class AbortedDive {
+  AbortedDive({
+    required this.dive,
+    required this.reason,
+    required this.conflictingLines,
+  });
+
+  final Dive dive;
+  final AbortReason reason;
+
+  /// The line keys (e.g. `cylinder`, `duration`) that triggered a
+  /// `foreignEditConflict`. Empty for other reasons. Surfaced to the
+  /// user verbatim so they can find the offending field.
+  final List<String> conflictingLines;
 }
 
 class SyncPlan {
@@ -120,6 +159,7 @@ class SyncPlan {
     required this.filesToWrite,
     required this.diveIdsPlanned,
     required this.stats,
+    required this.abortedDives,
   });
 
   /// Files to (re)write. Keys are POSIX paths relative to the repo
@@ -134,6 +174,10 @@ class SyncPlan {
   final List<String> diveIdsPlanned;
 
   final SyncPlanStats stats;
+
+  /// Dives the planner declined to write, with reasons. Always empty
+  /// until Task 4 populates conflict detection.
+  final List<AbortedDive> abortedDives;
 }
 
 class SyncPlanner {
@@ -285,7 +329,9 @@ class SyncPlanner {
         newDives: newDives.length,
         updatedDives: updatedDives.length,
         skippedDives: skipped,
+        abortedDives: 0,
       ),
+      abortedDives: const [],
     );
   }
 
