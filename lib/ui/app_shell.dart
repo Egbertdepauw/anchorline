@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' as material show Column;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart' hide SyncStatus;
@@ -25,6 +27,7 @@ import '../sync/cloud/ccrlogger_backend_connector.dart' show SupabaseAuthSession
 import '../sync/cloud/cloud_config.dart';
 import '../sync/cloud/cloud_data_wiper.dart';
 import '../sync/cloud/cloud_sync_coordinator.dart';
+import '../sync/cloud/sync_health_service.dart';
 import '../sync/cloud/sync_status_source.dart';
 import '../sync/subsurface_git/bootstrap_importer.dart';
 import '../sync/subsurface_git/credentials.dart';
@@ -37,6 +40,7 @@ import 'screens/dive_list_screen.dart';
 import 'screens/equipment/equipment_landing_screen.dart';
 import 'screens/import_screen.dart';
 import 'screens/settings_screen.dart';
+import 'widgets/sync_health_banner.dart';
 
 class AppShell extends StatefulWidget {
   final AppDatabase db;
@@ -70,6 +74,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final DiveListNotifier _diveListNotifier;
   late final ImportNotifier _importNotifier;
   late final SyncStatusSource _syncStatusSource;
+  late final SyncHealthService _syncHealthService;
+  StreamSubscription<AuthState>? _authSignInSub;
 
   // Attachments pipeline. The signer URL falls back to a clearly-bogus
   // host when ATTACHMENTS_SIGNER_URL isn't dart-defined so dev builds
@@ -123,6 +129,27 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       useMock: kDebugMode,
     );
     _syncStatusSource = PowerSyncStatusSource(widget.powerSyncDb);
+
+    // Replication-slot WAL retention monitor. Polls every 5 min while
+    // signed in; surfaces a banner before retention crosses the
+    // Postgres `max_slot_wal_keep_size = 1GB` cap. See
+    // supabase/migrations/0008_sync_health_guards.sql for the
+    // server-side guards this complements.
+    _syncHealthService = SyncHealthService(
+      SupabaseSyncHealthClient(Supabase.instance.client),
+    );
+    _authSignInSub = Supabase.instance.client.auth.onAuthStateChange.listen(
+      (event) {
+        if (event.session != null) {
+          _syncHealthService.start();
+        } else {
+          _syncHealthService.stop();
+        }
+      },
+    );
+    if (Supabase.instance.client.auth.currentSession != null) {
+      _syncHealthService.start();
+    }
 
     _attachmentSigner = AttachmentSigner(
       baseUrl: CloudConfig.attachmentsSignerUrl,
@@ -185,6 +212,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _authSignInSub?.cancel();
+    _syncHealthService.dispose();
     _diveListNotifier.dispose();
     _importNotifier.dispose();
     super.dispose();
@@ -236,37 +265,45 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             ),
         ],
       ),
-      body: IndexedStack(
-        index: _currentIndex,
+      body: material.Column(
         children: [
-          DiveListScreen(
-            notifier: _diveListNotifier,
-            diveDao: _diveDao,
-            annotationsDao: _diveAnnotationsDao,
-            equipmentDao: _equipmentDao,
-            attachmentsDao: _diveAttachmentsDao,
-            attachmentUploader: _attachmentUploader,
-            attachmentDownloader: _attachmentDownloader,
-            settingsNotifier: widget.settingsNotifier,
-          ),
-          ImportScreen(notifier: _importNotifier, onViewDives: _onViewDives),
-          EquipmentLandingScreen(
-            dao: _equipmentDao,
-            diveDao: _diveDao,
-            annotationsDao: _diveAnnotationsDao,
-          ),
-          SettingsScreen(
-            notifier: widget.settingsNotifier,
-            authService: widget.authService,
-            syncStatusSource: _syncStatusSource,
-            db: widget.db,
-            powerSyncDb: widget.powerSyncDb,
-            cloudDataWiper: widget.cloudDataWiper,
-            attachmentObjectWiper: _attachmentObjectWiper,
-            subsurfaceOrchestrator: _subsurfaceOrchestrator,
-            subsurfaceCredentials: _subsurfaceCredentials,
-            diveDao: _diveDao,
-            subsurfaceBootstrapImporter: _subsurfaceBootstrapImporter,
+          SyncHealthBanner(service: _syncHealthService),
+          Expanded(
+            child: IndexedStack(
+              index: _currentIndex,
+              children: [
+                DiveListScreen(
+                  notifier: _diveListNotifier,
+                  diveDao: _diveDao,
+                  annotationsDao: _diveAnnotationsDao,
+                  equipmentDao: _equipmentDao,
+                  attachmentsDao: _diveAttachmentsDao,
+                  attachmentUploader: _attachmentUploader,
+                  attachmentDownloader: _attachmentDownloader,
+                  settingsNotifier: widget.settingsNotifier,
+                ),
+                ImportScreen(
+                    notifier: _importNotifier, onViewDives: _onViewDives),
+                EquipmentLandingScreen(
+                  dao: _equipmentDao,
+                  diveDao: _diveDao,
+                  annotationsDao: _diveAnnotationsDao,
+                ),
+                SettingsScreen(
+                  notifier: widget.settingsNotifier,
+                  authService: widget.authService,
+                  syncStatusSource: _syncStatusSource,
+                  db: widget.db,
+                  powerSyncDb: widget.powerSyncDb,
+                  cloudDataWiper: widget.cloudDataWiper,
+                  attachmentObjectWiper: _attachmentObjectWiper,
+                  subsurfaceOrchestrator: _subsurfaceOrchestrator,
+                  subsurfaceCredentials: _subsurfaceCredentials,
+                  diveDao: _diveDao,
+                  subsurfaceBootstrapImporter: _subsurfaceBootstrapImporter,
+                ),
+              ],
+            ),
           ),
         ],
       ),
