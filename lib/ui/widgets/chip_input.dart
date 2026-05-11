@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../theme/tokens.dart';
+
 class ChipInput extends StatefulWidget {
   final List<String> values;
   final List<String> autocompleteOptions;
   final void Function(List<String> values) onChanged;
   final String hintText;
+
+  /// Accent colour for each chip's outline + label. Falls back to the
+  /// theme primary if not provided. Buddies / tags / other taxonomies
+  /// each pass their own so they read as distinct visual classes.
+  final Color? accentColor;
 
   const ChipInput({
     super.key,
@@ -12,6 +19,7 @@ class ChipInput extends StatefulWidget {
     required this.autocompleteOptions,
     required this.onChanged,
     this.hintText = 'Add…',
+    this.accentColor,
   });
 
   @override
@@ -35,6 +43,8 @@ class _ChipInputState extends State<ChipInput> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final accent = widget.accentColor ?? scheme.primary;
     final available = widget.autocompleteOptions
         .where((o) => !widget.values.contains(o))
         .toList();
@@ -46,9 +56,15 @@ class _ChipInputState extends State<ChipInput> {
       children: [
         for (final v in widget.values)
           Chip(
-            label: Text(v),
+            label: Text(v,
+                style: AppTypography.caption.copyWith(color: accent)),
+            backgroundColor: Colors.transparent,
+            side: BorderSide(color: accent),
+            shape: const RoundedRectangleBorder(borderRadius: Radii.chipBr),
             onDeleted: () => _remove(v),
-            deleteIcon: const Icon(Icons.close, size: 16),
+            deleteIcon: Icon(Icons.close, size: 14, color: accent),
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         SizedBox(
           width: 220,

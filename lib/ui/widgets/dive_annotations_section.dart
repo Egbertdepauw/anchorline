@@ -7,6 +7,7 @@ import '../../data/db/equipment_dao.dart';
 import '../../data/models/dive.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import '../screens/map_picker_screen.dart';
+import '../theme/tokens.dart';
 import 'chip_input.dart';
 
 class DiveAnnotationsSection extends StatefulWidget {
@@ -279,6 +280,8 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
             values: _n.buddies,
             autocompleteOptions: _buddyOptions,
             onChanged: _n.setBuddies,
+            // Cool blue — identity / people taxonomy.
+            accentColor: AppColors.wreck.statusInfo,
           ),
 
           const SizedBox(height: 16),
@@ -288,6 +291,8 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
             values: _n.tags,
             autocompleteOptions: _tagOptions,
             onChanged: _n.setTags,
+            // Warm sodium-vapor amber — active classification / labels.
+            accentColor: AppColors.wreck.accentPrimary,
           ),
 
           const SizedBox(height: 16),
