@@ -1,31 +1,140 @@
 import 'package:flutter/material.dart';
 
+import 'tokens.dart';
+
 class AppTheme {
-  static const _seedColor = Color(0xFF4FC3F7);
-  static const _surfaceColor = Color(0xFF0D1B2A);
-  static const _cardColor = Color(0xFF152238);
+  AppTheme._();
 
   static ThemeData dark() {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: _seedColor,
+    const palette = AppColors.wreck;
+
+    final colorScheme = ColorScheme(
       brightness: Brightness.dark,
-      surface: _surfaceColor,
+      primary: palette.accentPrimary,
+      onPrimary: palette.textInverse,
+      secondary: palette.accentMuted,
+      onSecondary: palette.textPrimary,
+      error: palette.statusDanger,
+      onError: palette.textPrimary,
+      surface: palette.surfaceBg,
+      onSurface: palette.textPrimary,
+      surfaceContainer: palette.surfaceCard,
+      surfaceContainerHigh: palette.surfaceRaised,
+      outline: palette.surfaceBezel,
+      outlineVariant: palette.textMuted,
+    );
+
+    final textTheme = TextTheme(
+      displayLarge: AppTypography.display.copyWith(color: palette.textPrimary),
+      displayMedium: AppTypography.display.copyWith(color: palette.textPrimary),
+      headlineLarge:
+          AppTypography.headline.copyWith(color: palette.textPrimary),
+      headlineMedium:
+          AppTypography.headline.copyWith(color: palette.textPrimary),
+      titleLarge: AppTypography.title.copyWith(color: palette.textPrimary),
+      titleMedium: AppTypography.title.copyWith(color: palette.textPrimary),
+      bodyLarge: AppTypography.body.copyWith(color: palette.textPrimary),
+      bodyMedium: AppTypography.body.copyWith(color: palette.textPrimary),
+      bodySmall: AppTypography.caption.copyWith(color: palette.textSecondary),
+      labelLarge: AppTypography.label.copyWith(color: palette.textSecondary),
+      labelMedium: AppTypography.label.copyWith(color: palette.textSecondary),
+      labelSmall: AppTypography.caption.copyWith(color: palette.textMuted),
     );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: _surfaceColor,
-      cardColor: _cardColor,
+      textTheme: textTheme,
+      scaffoldBackgroundColor: palette.surfaceBg,
+      cardColor: palette.surfaceCard,
+      dividerColor: palette.surfaceBezel,
       appBarTheme: AppBarTheme(
-        backgroundColor: _surfaceColor,
-        foregroundColor: colorScheme.onSurface,
+        backgroundColor: palette.surfaceBg,
+        foregroundColor: palette.textPrimary,
         elevation: 0,
+        titleTextStyle:
+            AppTypography.headline.copyWith(color: palette.textPrimary),
+      ),
+      cardTheme: CardThemeData(
+        color: palette.surfaceCard,
+        elevation: 0,
+        shape: const RoundedRectangleBorder(borderRadius: Radii.cardBr),
+        margin: EdgeInsets.zero,
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: _surfaceColor,
-        selectedItemColor: _seedColor,
-        unselectedItemColor: colorScheme.onSurface.withValues(alpha: 0.5),
+        backgroundColor: palette.surfaceBg,
+        selectedItemColor: palette.accentPrimary,
+        unselectedItemColor: palette.textMuted,
+        type: BottomNavigationBarType.fixed,
+        elevation: 0,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: palette.accentPrimary,
+          foregroundColor: palette.textInverse,
+          shape: const RoundedRectangleBorder(borderRadius: Radii.buttonBr),
+          textStyle:
+              AppTypography.label.copyWith(letterSpacing: 0.6),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: palette.accentPrimary,
+          side: BorderSide(color: palette.accentPrimary),
+          shape: const RoundedRectangleBorder(borderRadius: Radii.buttonBr),
+          textStyle:
+              AppTypography.label.copyWith(letterSpacing: 0.6),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: palette.accentPrimary,
+          shape: const RoundedRectangleBorder(borderRadius: Radii.buttonBr),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: palette.surfaceCard,
+        labelStyle: AppTypography.caption.copyWith(color: palette.textPrimary),
+        shape: const RoundedRectangleBorder(borderRadius: Radii.chipBr),
+        side: BorderSide(color: palette.surfaceBezel),
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: palette.surfaceCard,
+        border: OutlineInputBorder(
+          borderRadius: Radii.cardBr,
+          borderSide: BorderSide(color: palette.surfaceBezel),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: Radii.cardBr,
+          borderSide: BorderSide(color: palette.surfaceBezel),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: Radii.cardBr,
+          borderSide: BorderSide(color: palette.accentPrimary),
+        ),
+        labelStyle:
+            AppTypography.caption.copyWith(color: palette.textSecondary),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: palette.surfaceRaised,
+        surfaceTintColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radii.modal),
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: palette.surfaceRaised,
+        surfaceTintColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(borderRadius: Radii.modalTopBr),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: palette.surfaceRaised,
+        contentTextStyle:
+            AppTypography.body.copyWith(color: palette.textPrimary),
+        shape: const RoundedRectangleBorder(borderRadius: Radii.cardBr),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
