@@ -78,6 +78,7 @@ class ExistingRemoteDive {
     required this.diveNumber,
     required this.serial,
     required this.startTime,
+    required this.diveLines,
   });
 
   /// Folder path components, e.g. `['2026', '04', '04-Sat-13=30=15']`.
@@ -95,6 +96,12 @@ class ExistingRemoteDive {
   /// Decoded from the folder name's UTC components, mirroring how the
   /// mapper formats it. Null when the folder name was malformed.
   final int? startTime;
+
+  /// The parsed lines of `<folder>/Dive-NNN` at scan time. The merge in
+  /// the planner uses these as the existing baseline to substitute
+  /// CCRLog-owned lines into. Empty list is valid (a Dive-NNN with no
+  /// content); null is not — populated via [RemoteSnapshot.read].
+  final List<SsLine> diveLines;
 }
 
 /// Diagnostic counters the orchestrator surfaces in its result.

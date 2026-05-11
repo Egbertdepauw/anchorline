@@ -144,6 +144,20 @@ void main() {
       // Original max stays at 710 — we didn't add any real dive folders.
       expect(snap.existingMaxDiveNumber, 710);
     });
+
+    test('scan parses existing Dive-NNN files and attaches diveLines',
+        () async {
+      final snap = await RemoteSnapshot.read(tmp);
+      expect(snap.existingDivesBySerialAndStart, isNotEmpty);
+      final any = snap.existingDivesBySerialAndStart.values.first;
+      expect(any.diveLines, isNotEmpty,
+          reason: 'read should populate diveLines from the on-disk Dive-NNN');
+      // A Dive-NNN always carries a `duration` scalar; verify it parsed.
+      expect(
+        any.diveLines.whereType<ScalarLine>().any((l) => l.key == 'duration'),
+        isTrue,
+      );
+    });
   });
 }
 

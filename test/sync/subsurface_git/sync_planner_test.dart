@@ -65,6 +65,7 @@ void main() {
         diveNumber: 705,
         serial: 0xb89641e4,
         startTime: 1776611925,
+        diveLines: const [],
       );
       final plan = planner.plan(
         ccrlogDives: [bundle],

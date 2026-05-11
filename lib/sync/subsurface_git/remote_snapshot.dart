@@ -164,6 +164,7 @@ class RemoteSnapshot {
     required Directory folder,
   }) {
     int? diveNumber;
+    File? diveFile;
     File? divecomputerFile;
     for (final entity in folder.listSync()) {
       if (entity is! File) continue;
@@ -172,6 +173,7 @@ class RemoteSnapshot {
         final n = int.tryParse(name.substring('Dive-'.length));
         if (n != null && (diveNumber == null || n > diveNumber)) {
           diveNumber = n;
+          diveFile = entity;
         }
       } else if (name == 'Divecomputer' || name.startsWith('Divecomputer-')) {
         // Prefer the bare `Divecomputer` if present; otherwise the
@@ -198,6 +200,18 @@ class RemoteSnapshot {
       }
     }
 
+    var diveLines = const <SsLine>[];
+    if (diveFile != null) {
+      try {
+        final text = diveFile.readAsStringSync();
+        diveLines =
+            parseSubsurfaceFile(text, kind: SubsurfaceFileKind.dive).lines;
+      } catch (_) {
+        // Leave diveLines empty; the planner will treat this as a new
+        // dive rather than merging against an existing baseline.
+      }
+    }
+
     final startTime = _startTimeFromFolderName(folderSegments);
 
     return ExistingRemoteDive(
@@ -205,6 +219,7 @@ class RemoteSnapshot {
       diveNumber: diveNumber,
       serial: serial,
       startTime: startTime,
+      diveLines: diveLines,
     );
   }
 
