@@ -17,6 +17,7 @@ import 'package:ccrlogger/data/models/annotation.dart';
 import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix;
 import 'package:ccrlogger/data/models/sample_set.dart';
 import 'package:ccrlogger/sync/subsurface_git/format/subsurface_parser.dart';
+import 'package:ccrlogger/sync/subsurface_git/mapper.dart';
 import 'package:ccrlogger/sync/subsurface_git/sync_planner.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -77,12 +78,18 @@ void main() {
         existingSites: const {},
       );
 
+      // Phase 1 semantics: existing dive's Dive-NNN may be written (with
+      // merged content) but Divecomputer is NEVER written for an existing
+      // dive — the DC's sample stream is sacred.
       expect(
         plan.filesToWrite.keys,
-        containsAll([
-          '2026/04/04-Sat-13=18=45/Dive-705',
-          '2026/04/04-Sat-13=18=45/Divecomputer',
-        ]),
+        contains('2026/04/04-Sat-13=18=45/Dive-705'),
+      );
+      expect(
+        plan.filesToWrite.keys
+            .where((k) => k.endsWith('/Divecomputer'))
+            .toList(),
+        isEmpty,
       );
       // Did NOT allocate Dive-801.
       expect(
@@ -331,6 +338,154 @@ void main() {
       expect(plan.stats.abortedDives, 0);
     });
   });
+
+  group('_mergeDiveLines (via plan() existing-dive branch)', () {
+    test('happy path: only owned fields change, non-owned lines preserved',
+        () {
+      final existingText = 'duration 57:30 min\n'
+          'rating 3\n'
+          'divemaster ""\n'
+          'buddy "Alice"\n'
+          'suit ""\n'
+          'cylinder vol=3.0l workpressure=232.0bar description="3ℓ" o2=21%\n';
+      final existing = parseSubsurfaceFile(
+        existingText,
+        kind: SubsurfaceFileKind.dive,
+      ).lines;
+
+      final planner = SyncPlanner();
+      // gasMixes: const [] so the mapper emits no cylinder lines, matching
+      // the existing fixture (which has a single cylinder we preserve verbatim).
+      final bundle = _bundle(
+        diveId: _diveIdA,
+        annotation: _testAnnotation(rating: 5, notes: 'great viz'),
+        gasMixes: const [],
+      );
+      final plan = planner.plan(
+        ccrlogDives: [bundle],
+        existingDivesBySerialAndStart: {
+          (serial: bundle.dive.dcSerial, startTime: bundle.dive.startTime):
+              ExistingRemoteDive(
+            folderSegments: ['2026', '04', '19-Sun-15=18=45'],
+            diveNumber: 42,
+            serial: bundle.dive.dcSerial,
+            startTime: bundle.dive.startTime,
+            diveLines: existing,
+          ),
+        },
+        existingMaxDiveNumber: 42,
+        existingTopLevel: const [],
+        existingSites: const {},
+      );
+
+      // No Divecomputer file in the plan — Phase 1 never touches it for
+      // existing dives.
+      expect(
+        plan.filesToWrite.keys
+            .where((k) => k.endsWith('/Divecomputer'))
+            .toList(),
+        isEmpty,
+      );
+      // The Dive-NNN file IS in the plan.
+      const divePath = '2026/04/19-Sun-15=18=45/Dive-42';
+      expect(plan.filesToWrite.containsKey(divePath), isTrue);
+      final out = plan.filesToWrite[divePath]!;
+      // Owned lines changed:
+      expect(out, contains('rating 5'));
+      expect(out, contains('notes "great viz"'));
+      // Non-owned line preserved verbatim:
+      expect(out,
+          contains('cylinder vol=3.0l workpressure=232.0bar description="3ℓ" o2=21%'));
+      expect(plan.stats.updatedDives, 1);
+      expect(plan.abortedDives, isEmpty);
+    });
+
+    test('foreign edit on a non-owned line aborts that dive', () {
+      final existingText = 'duration 57:30 min\n'
+          'rating 3\n'
+          'divemaster ""\n'
+          'buddy ""\n'
+          'suit ""\n'
+          'cylinder vol=11.1l workpressure=232.0bar description="user-edited" o2=32%\n';
+      final existing = parseSubsurfaceFile(
+        existingText,
+        kind: SubsurfaceFileKind.dive,
+      ).lines;
+      final planner = SyncPlanner();
+      final bundle = _bundle(
+        diveId: _diveIdA,
+        annotation: _testAnnotation(rating: 3),
+      );
+      final plan = planner.plan(
+        ccrlogDives: [bundle],
+        existingDivesBySerialAndStart: {
+          (serial: bundle.dive.dcSerial, startTime: bundle.dive.startTime):
+              ExistingRemoteDive(
+            folderSegments: ['2026', '04', '19-Sun-15=18=45'],
+            diveNumber: 42,
+            serial: bundle.dive.dcSerial,
+            startTime: bundle.dive.startTime,
+            diveLines: existing,
+          ),
+        },
+        existingMaxDiveNumber: 42,
+        existingTopLevel: const [],
+        existingSites: const {},
+      );
+      // Nothing written for this dive:
+      expect(
+        plan.filesToWrite.keys
+            .where((k) => k.contains('19-Sun-15=18=45'))
+            .toList(),
+        isEmpty,
+      );
+      // Abort surfaced:
+      expect(plan.abortedDives, hasLength(1));
+      expect(plan.abortedDives.first.reason,
+          AbortReason.foreignEditConflict);
+      expect(plan.abortedDives.first.conflictingLines, contains('cylinder'));
+    });
+
+    test(
+        'idempotent: re-plan on already-matching state writes nothing for '
+        'existing dives', () {
+      final bundle = _bundle(
+        diveId: _diveIdA,
+        annotation: _testAnnotation(rating: 3, notes: 'x'),
+      );
+      final mapper = CcrlogToSubsurfaceMapper();
+      final mapped = mapper.mapDive(
+        dive: bundle.dive,
+        samples: bundle.samples,
+        annotation: bundle.annotation,
+        gasMixes: bundle.gasMixes,
+        tanks: bundle.tanks,
+        cylindersByMixIndex: bundle.cylindersByMixIndex,
+        nextSubsurfaceDiveNumber: 42,
+      );
+      final planner = SyncPlanner();
+      final plan = planner.plan(
+        ccrlogDives: [bundle],
+        existingDivesBySerialAndStart: {
+          (serial: bundle.dive.dcSerial, startTime: bundle.dive.startTime):
+              ExistingRemoteDive(
+            folderSegments: ['2026', '04', '19-Sun-15=18=45'],
+            diveNumber: 42,
+            serial: bundle.dive.dcSerial,
+            startTime: bundle.dive.startTime,
+            diveLines: mapped.diveLines,
+          ),
+        },
+        existingMaxDiveNumber: 42,
+        existingTopLevel: const [],
+        existingSites: const {},
+      );
+      expect(plan.filesToWrite, isEmpty);
+      expect(plan.stats.skippedDives, 1);
+      expect(plan.stats.updatedDives, 0);
+      expect(plan.abortedDives, isEmpty);
+    });
+  });
 }
 
 // ── helpers ──────────────────────────────────────────────────────────
@@ -346,13 +501,14 @@ CcrlogDiveBundle _bundle({
   int startTime = 1776611925,
   DiveAnnotation? annotation,
   List<DiveComputer>? userDiveComputers,
+  List<DiveGasMix>? gasMixes,
 }) {
   final dive = _ccrPetrelDive(diveId: diveId, startTime: startTime);
   return CcrlogDiveBundle(
     dive: dive,
     samples: _smallSampleSet(diveId: diveId),
     annotation: annotation,
-    gasMixes: _threeGasMixes(),
+    gasMixes: gasMixes ?? _threeGasMixes(),
     tanks: const [],
     cylindersByMixIndex: const {},
     userDiveComputers: userDiveComputers ?? const [],
@@ -408,6 +564,15 @@ DiveComputer _diveComputer({required int serial}) {
     ownerId: null,
   );
 }
+
+DiveAnnotation _testAnnotation({int? rating, String? notes}) =>
+    DiveAnnotation(
+      diveId: _diveIdA,
+      rating: rating,
+      notes: notes,
+      createdAt: DateTime.utc(2026, 5, 1),
+      updatedAt: DateTime.utc(2026, 5, 1),
+    );
 
 DiveAnnotation _annotation({
   required String diveId,

@@ -193,6 +193,31 @@ class SyncPlanner {
 
   final CcrlogToSubsurfaceMapper _mapper;
 
+  /// Dive-NNN line keys CCRLog owns. For existing dives the merge only
+  /// replaces lines matching these keys when CCRLog has a non-empty
+  /// value; every other key is left verbatim. Spec:
+  /// docs/superpowers/specs/2026-05-11-subsurface-write-direction-phase-1-design.md
+  static const _ownedDiveLineKeys = {
+    'rating',
+    'visibility',
+    'wavesize',
+    'current',
+    'surge',
+    'chill',
+    'airtemp',
+    'watertemp',
+    'tags',
+    'buddy',
+    'suit',
+    'notes',
+    'divesiteid',
+    'weightsystem',
+    // divemaster is always emitted by the mapper as empty; treat as
+    // owned so we don't trip a foreign-edit conflict on Subsurface's
+    // identical empty line.
+    'divemaster',
+  };
+
   /// Build a plan from CCRLog state + the parsed remote-repo snapshot.
   ///
   /// See the type docs above for what each input means; in particular:
@@ -217,6 +242,7 @@ class SyncPlanner {
     final diveIdsPlanned = <String>[];
     final newDives = <Dive>[];
     final updatedDives = <Dive>[];
+    final abortedDives = <AbortedDive>[];
     var skipped = 0;
 
     var nextDiveNumber = existingMaxDiveNumber;
@@ -238,45 +264,77 @@ class SyncPlanner {
 
       final int diveNumber;
       final List<String> folderSegments;
-      final bool isUpdate;
+
       if (existing != null) {
+        // ── Existing dive: merge CCRLog-owned lines, never touch Divecomputer
         diveNumber = existing.diveNumber;
         folderSegments = existing.folderSegments;
-        isUpdate = true;
+
+        final ours = _mapper.mapDive(
+          dive: dive,
+          samples: bundle.samples,
+          annotation: bundle.annotation,
+          gasMixes: bundle.gasMixes,
+          tanks: bundle.tanks,
+          cylindersByMixIndex: bundle.cylindersByMixIndex,
+          nextSubsurfaceDiveNumber: diveNumber,
+        );
+
+        final mergeResult = _mergeDiveLines(
+          existing: existing.diveLines,
+          ours: ours.diveLines,
+        );
+
+        if (mergeResult.merged == null) {
+          abortedDives.add(AbortedDive(
+            dive: dive,
+            reason: AbortReason.foreignEditConflict,
+            conflictingLines: mergeResult.conflictingKeys,
+          ));
+          continue; // skip this dive entirely — no site/dc side-effects
+        }
+
+        final mergedText = serializeSubsurfaceFile(
+          SubsurfaceFile(lines: mergeResult.merged!),
+        );
+        final existingText = serializeSubsurfaceFile(
+          SubsurfaceFile(lines: existing.diveLines),
+        );
+
+        if (mergedText == existingText) {
+          skipped += 1;
+          // Fall through so site / 00-Subsurface side-effects still run.
+        } else {
+          final folderPath = folderSegments.join('/');
+          filesToWrite['$folderPath/Dive-$diveNumber'] = mergedText;
+          diveIdsPlanned.add(dive.id);
+          updatedDives.add(dive);
+        }
+        // CRITICAL: never emit the Divecomputer file for an existing dive.
       } else {
+        // ── New dive: full Dive-NNN + Divecomputer write
         nextDiveNumber += 1;
         diveNumber = nextDiveNumber;
         folderSegments = _utcFolderSegments(dive.startTime);
-        isUpdate = false;
-      }
 
-      final mapped = _mapper.mapDive(
-        dive: dive,
-        samples: bundle.samples,
-        annotation: bundle.annotation,
-        gasMixes: bundle.gasMixes,
-        tanks: bundle.tanks,
-        cylindersByMixIndex: bundle.cylindersByMixIndex,
-        nextSubsurfaceDiveNumber: diveNumber,
-      );
+        final mapped = _mapper.mapDive(
+          dive: dive,
+          samples: bundle.samples,
+          annotation: bundle.annotation,
+          gasMixes: bundle.gasMixes,
+          tanks: bundle.tanks,
+          cylindersByMixIndex: bundle.cylindersByMixIndex,
+          nextSubsurfaceDiveNumber: diveNumber,
+        );
 
-      final folderPath = folderSegments.join('/');
-      final divePath = '$folderPath/Dive-$diveNumber';
-      final dcPath = '$folderPath/Divecomputer';
-
-      final diveText = serializeSubsurfaceFile(
-        SubsurfaceFile(lines: mapped.diveLines),
-      );
-      final dcText = serializeSubsurfaceFile(
-        SubsurfaceFile(lines: mapped.divecomputerLines),
-      );
-
-      filesToWrite[divePath] = diveText;
-      filesToWrite[dcPath] = dcText;
-      diveIdsPlanned.add(dive.id);
-      if (isUpdate) {
-        updatedDives.add(dive);
-      } else {
+        final folderPath = folderSegments.join('/');
+        filesToWrite['$folderPath/Dive-$diveNumber'] = serializeSubsurfaceFile(
+          SubsurfaceFile(lines: mapped.diveLines),
+        );
+        filesToWrite['$folderPath/Divecomputer'] = serializeSubsurfaceFile(
+          SubsurfaceFile(lines: mapped.divecomputerLines),
+        );
+        diveIdsPlanned.add(dive.id);
         newDives.add(dive);
       }
 
@@ -336,10 +394,144 @@ class SyncPlanner {
         newDives: newDives.length,
         updatedDives: updatedDives.length,
         skippedDives: skipped,
-        abortedDives: 0,
+        abortedDives: abortedDives.length,
       ),
-      abortedDives: const [],
+      abortedDives: abortedDives,
     );
+  }
+
+  // ── Dive-NNN merge ─────────────────────────────────────────────────
+
+  /// Merge our CCRLog-emitted Dive-NNN lines into [existing], replacing
+  /// only lines whose key is in [_ownedDiveLineKeys]. Returns either a
+  /// merged line list (non-owned lines untouched) OR a non-empty
+  /// [conflictingKeys] list if any non-owned line would change.
+  ({List<SsLine>? merged, List<String> conflictingKeys}) _mergeDiveLines({
+    required List<SsLine> existing,
+    required List<SsLine> ours,
+  }) {
+    // Bucket our emission by key.
+    final ourSingleByKey = <String, SsLine>{};
+    final ourRepeatingByKey = <String, List<SsLine>>{};
+    for (final line in ours) {
+      final key = _lineKey(line);
+      if (key == null) continue;
+      if (key == 'weightsystem' || key == 'cylinder') {
+        ourRepeatingByKey.putIfAbsent(key, () => []).add(line);
+      } else {
+        ourSingleByKey[key] = line;
+      }
+    }
+
+    // 1) Detect conflicts on non-owned keys. If we emit anything for a
+    // non-owned key (defensively) AND it would change the existing line,
+    // flag. For non-owned repeating keys like `cylinder`, compare the
+    // whole group.
+    final conflictingKeys = <String>{};
+    final seenKeys = <String>{};
+    for (final line in existing) {
+      final key = _lineKey(line);
+      if (key == null) continue;
+      if (_ownedDiveLineKeys.contains(key)) continue;
+      if (seenKeys.contains(key)) continue; // already compared this group
+      seenKeys.add(key);
+      if (ourSingleByKey.containsKey(key)) {
+        if (_renderLine(line) != _renderLine(ourSingleByKey[key]!)) {
+          conflictingKeys.add(key);
+        }
+      } else if (ourRepeatingByKey.containsKey(key)) {
+        final existingGroup = existing
+            .where((l) => _lineKey(l) == key)
+            .map(_renderLine)
+            .toList();
+        final ourGroup = ourRepeatingByKey[key]!.map(_renderLine).toList();
+        if (!_listEquals(existingGroup, ourGroup)) {
+          conflictingKeys.add(key);
+        }
+      }
+    }
+    if (conflictingKeys.isNotEmpty) {
+      return (
+        merged: null,
+        conflictingKeys: conflictingKeys.toList()..sort(),
+      );
+    }
+
+    // 2) Build merged output. Walk existing lines, swap owned ones for
+    // ours when we have something. Track placement so we can append the
+    // rest at the end (preserves insertion order from the mapper).
+    final placedSingles = <String>{};
+    final placedRepeating = <String>{};
+    final merged = <SsLine>[];
+    for (final line in existing) {
+      final key = _lineKey(line);
+      if (key == null) {
+        merged.add(line);
+        continue;
+      }
+      if (!_ownedDiveLineKeys.contains(key)) {
+        merged.add(line);
+        continue;
+      }
+      // Owned key.
+      if (ourRepeatingByKey.containsKey(key)) {
+        if (!placedRepeating.contains(key)) {
+          merged.addAll(ourRepeatingByKey[key]!);
+          placedRepeating.add(key);
+        }
+        // Drop the existing line — the whole group is replaced by ours.
+        continue;
+      }
+      if (ourSingleByKey.containsKey(key)) {
+        merged.add(ourSingleByKey[key]!);
+        placedSingles.add(key);
+        continue;
+      }
+      // CCRLog has nothing for this owned key. Leave existing.
+      merged.add(line);
+    }
+    // 3) Append owned lines we have but the existing file didn't.
+    // CRITICAL: only owned keys, otherwise non-owned keys we happen to
+    // also emit (e.g. `duration`) get duplicated on top of the line
+    // we already preserved verbatim from `existing`.
+    for (final entry in ourSingleByKey.entries) {
+      if (!_ownedDiveLineKeys.contains(entry.key)) continue;
+      if (placedSingles.contains(entry.key)) continue;
+      merged.add(entry.value);
+    }
+    for (final entry in ourRepeatingByKey.entries) {
+      if (!_ownedDiveLineKeys.contains(entry.key)) continue;
+      if (placedRepeating.contains(entry.key)) continue;
+      merged.addAll(entry.value);
+    }
+    return (merged: merged, conflictingKeys: const []);
+  }
+
+  /// Return the key for any [SsLine] that has one, else null.
+  String? _lineKey(SsLine line) => switch (line) {
+        ScalarLine l => l.key,
+        QuotedLine l => l.key,
+        TagsLine _ => 'tags',
+        CylinderLine _ => 'cylinder',
+        WeightsystemLine _ => 'weightsystem',
+        GpsLine _ => 'gps',
+        DivecomputerIdLine _ => 'divecomputerid',
+        FingerprintLine _ => 'fingerprint',
+        KeyvaluePairLine l => l.key,
+        FlagLine l => l.key,
+        _ => null,
+      };
+
+  /// Render a single line back to text so two lines can be byte-compared.
+  String _renderLine(SsLine line) =>
+      serializeSubsurfaceFile(SubsurfaceFile(lines: [line])).trimRight();
+
+  bool _listEquals(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   // ── Site merge ─────────────────────────────────────────────────────
