@@ -48,6 +48,7 @@ SubsurfaceSyncResult _ok({int divesPushed = 1, String? sha = 'abc'}) =>
     SubsurfaceSyncResult(
       divesPushed: divesPushed,
       divesSkipped: 0,
+      abortedDives: const [],
       commitSha: sha,
       completedAt: DateTime(2026, 5, 8, 10),
     );

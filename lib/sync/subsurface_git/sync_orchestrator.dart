@@ -1,10 +1,3 @@
-// SAFETY HOLD (2026-05-08): syncNow() throws unconditionally pending
-// a redesign of the merge logic — see comment on the throw. The
-// original implementation below the throw is intentionally preserved
-// (and unreachable). Suppress the dead_code warning until the hold
-// lifts; we want the rest of the analyzer signal on this file.
-// ignore_for_file: dead_code
-
 /// Phase D — orchestrates an end-to-end Subsurface git sync.
 ///
 /// This is the public entry point the Settings UI (Phase E) will call.
@@ -37,13 +30,14 @@ import '../../data/models/sample_set.dart';
 import 'credentials.dart';
 import 'remote_snapshot.dart';
 import 'repo.dart';
-import 'sync_planner.dart';
+import 'sync_planner.dart' show AbortedDive, CcrlogDiveBundle, SyncPlanner;
 
 /// Result of one [SubsurfaceSyncOrchestrator.syncNow] invocation.
 class SubsurfaceSyncResult {
   SubsurfaceSyncResult({
     required this.divesPushed,
     required this.divesSkipped,
+    required this.abortedDives,
     required this.commitSha,
     required this.completedAt,
   });
@@ -57,6 +51,10 @@ class SubsurfaceSyncResult {
   /// needed. The orchestrator does not stamp `subsurface_uploaded_at`
   /// on these.
   final int divesSkipped;
+
+  /// Dives the planner declined to push because of a foreign edit on
+  /// the Subsurface side. Surface as "Skipped" in the UI; not errors.
+  final List<AbortedDive> abortedDives;
 
   /// Git SHA of the commit we pushed, or null if the plan was empty
   /// (nothing changed since the previous sync).
@@ -195,28 +193,6 @@ class SubsurfaceSyncOrchestrator {
   /// Run a full sync. See class docs for the sequence; throws
   /// [SubsurfaceSyncException] (or a subtype) on terminal failure.
   Future<SubsurfaceSyncResult> syncNow() async {
-    // SAFETY HOLD (2026-05-08). The current planner generates a
-    // *complete* Dive-NNN from CCRLog state and writes it whole, which
-    // clobbers any Subsurface-side edits the user has made (notes,
-    // multi-buddy lists, drysuit-with-undersuit suit strings, manually-
-    // tuned cylinders). Disabled here pending a redesign that merges
-    // conservatively — only adding fields CCRLog truly owns, never
-    // overwriting. See the open Phase D follow-up; remove this guard
-    // once the merge-mode planner ships and is tested against a
-    // throwaway fork of the user's repo.
-    throw SubsurfaceSyncException(
-      'Subsurface sync is temporarily disabled while a data-loss bug '
-      'in the merge logic is fixed. Existing dives in your Subsurface '
-      'log were getting overwritten with CCRLog-only data. Track the '
-      'fix in the Phase D follow-up notes.',
-    );
-
-    // The body below is intentionally unreachable until the safety
-    // hold above is lifted. The plan is to keep it here verbatim so
-    // the redesign can replace it surgically. `// ignore_for_file`
-    // would be too broad; a per-statement `// ignore:` doesn't apply
-    // to a whole block, so we accept the analyzer warnings on this
-    // file in the interim.
     // 1. Platform gate.
     if (!isPlatformSupported) {
       throw PlatformNotSupportedSyncException();
@@ -379,6 +355,7 @@ class SubsurfaceSyncOrchestrator {
       return SubsurfaceSyncResult(
         divesPushed: 0,
         divesSkipped: plan.stats.skippedDives,
+        abortedDives: plan.abortedDives,
         commitSha: null,
         completedAt: _clock(),
       );
@@ -403,6 +380,7 @@ class SubsurfaceSyncOrchestrator {
     return SubsurfaceSyncResult(
       divesPushed: divesChanged,
       divesSkipped: plan.stats.skippedDives,
+      abortedDives: plan.abortedDives,
       commitSha: sha,
       completedAt: _clock(),
     );

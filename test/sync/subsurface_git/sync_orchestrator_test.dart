@@ -252,6 +252,20 @@ void main() {
       expect(showHead.stdout.toString(), contains('CCRLog sync'));
     });
   });
+
+  // Smoke test the post-safety-hold result shape. Task 7 un-skips the
+  // group above so the full orchestrator-level abort flow is exercised
+  // end-to-end there.
+  test('SubsurfaceSyncResult carries abortedDives list', () {
+    final r = SubsurfaceSyncResult(
+      divesPushed: 0,
+      divesSkipped: 0,
+      abortedDives: const [],
+      commitSha: null,
+      completedAt: DateTime.utc(2026, 5, 11),
+    );
+    expect(r.abortedDives, isEmpty);
+  });
 }
 
 // ── helpers ──────────────────────────────────────────────────────────
