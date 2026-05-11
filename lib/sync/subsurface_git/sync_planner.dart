@@ -294,22 +294,13 @@ class SyncPlanner {
           nextSubsurfaceDiveNumber: diveNumber,
         );
 
-        final mergeResult = _mergeDiveLines(
+        final mergedLines = _mergeDiveLines(
           existing: existing.diveLines,
           ours: ours.diveLines,
         );
 
-        if (mergeResult.merged == null) {
-          abortedDives.add(AbortedDive(
-            dive: dive,
-            reason: AbortReason.foreignEditConflict,
-            conflictingLines: mergeResult.conflictingKeys,
-          ));
-          continue; // skip this dive entirely — no site/dc side-effects
-        }
-
         final mergedText = serializeSubsurfaceFile(
-          SubsurfaceFile(lines: mergeResult.merged!),
+          SubsurfaceFile(lines: mergedLines),
         );
         final existingText = serializeSubsurfaceFile(
           SubsurfaceFile(lines: existing.diveLines),
@@ -417,10 +408,9 @@ class SyncPlanner {
   // ── Dive-NNN merge ─────────────────────────────────────────────────
 
   /// Merge our CCRLog-emitted Dive-NNN lines into [existing], replacing
-  /// only lines whose key is in [_ownedDiveLineKeys]. Returns either a
-  /// merged line list (non-owned lines untouched) OR a non-empty
-  /// [conflictingKeys] list if any non-owned line would change.
-  ({List<SsLine>? merged, List<String> conflictingKeys}) _mergeDiveLines({
+  /// only lines whose key is in [_ownedDiveLineKeys]. Non-owned lines
+  /// are preserved verbatim — that's the data-loss protection.
+  List<SsLine> _mergeDiveLines({
     required List<SsLine> existing,
     required List<SsLine> ours,
   }) {
@@ -437,41 +427,18 @@ class SyncPlanner {
       }
     }
 
-    // 1) Detect conflicts on non-owned keys. If we emit anything for a
-    // non-owned key (defensively) AND it would change the existing line,
-    // flag. For non-owned repeating keys like `cylinder`, compare the
-    // whole group.
-    final conflictingKeys = <String>{};
-    final seenKeys = <String>{};
-    for (final line in existing) {
-      final key = _lineKey(line);
-      if (key == null) continue;
-      if (_ownedDiveLineKeys.contains(key)) continue;
-      if (seenKeys.contains(key)) continue; // already compared this group
-      seenKeys.add(key);
-      if (ourSingleByKey.containsKey(key)) {
-        if (_renderLine(line) != _renderLine(ourSingleByKey[key]!)) {
-          conflictingKeys.add(key);
-        }
-      } else if (ourRepeatingByKey.containsKey(key)) {
-        final existingGroup = existing
-            .where((l) => _lineKey(l) == key)
-            .map(_renderLine)
-            .toList();
-        final ourGroup = ourRepeatingByKey[key]!.map(_renderLine).toList();
-        if (!_listEquals(existingGroup, ourGroup)) {
-          conflictingKeys.add(key);
-        }
-      }
-    }
-    if (conflictingKeys.isNotEmpty) {
-      return (
-        merged: null,
-        conflictingKeys: conflictingKeys.toList()..sort(),
-      );
-    }
-
-    // 2) Build merged output. Walk existing lines, swap owned ones for
+    // Note: an earlier iteration also rejected the merge when the mapper's
+    // emission for a non-owned key (e.g. `cylinder`, `duration`) differed
+    // byte-for-byte from what was on disk. In practice this fired on
+    // every dive — CCRLog's serializer and Subsurface's serializer don't
+    // agree on decimal precision, key order, or which optional fields to
+    // emit — and made the push workflow unusable. The actual data-loss
+    // protection is structural: we walk existing lines below and copy
+    // every non-owned line verbatim, so a foreign edit on a non-owned key
+    // can never be overwritten by our write. The byte-compare was extra
+    // belt-and-suspenders that we don't need.
+    //
+    // Build merged output. Walk existing lines, swap owned ones for
     // ours when we have something. Track placement so we can append the
     // rest at the end (preserves insertion order from the mapper).
     final placedSingles = <String>{};
@@ -518,7 +485,7 @@ class SyncPlanner {
       if (placedRepeating.contains(entry.key)) continue;
       merged.addAll(entry.value);
     }
-    return (merged: merged, conflictingKeys: const []);
+    return merged;
   }
 
   /// Return the key for any [SsLine] that has one, else null.
@@ -541,18 +508,6 @@ class SyncPlanner {
         FlagLine l => l.key,
         _ => null,
       };
-
-  /// Render a single line back to text so two lines can be byte-compared.
-  String _renderLine(SsLine line) =>
-      serializeSubsurfaceFile(SubsurfaceFile(lines: [line])).trimRight();
-
-  bool _listEquals(List<String> a, List<String> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
-  }
 
   // ── Site merge ─────────────────────────────────────────────────────
 

@@ -460,7 +460,11 @@ void main() {
       expect(plan.abortedDives, isEmpty);
     });
 
-    test('foreign edit on a non-owned line aborts that dive', () {
+    test('foreign edit on a non-owned line is preserved verbatim, not '
+        'overwritten', () {
+      // Subsurface side has a user-edited cylinder. CCRLog has different
+      // gasMixes for the same dive (the 2026-05-08 incident shape). The
+      // merge must NOT overwrite Subsurface's cylinder.
       final existingText = 'duration 57:30 min\n'
           'rating 3\n'
           'divemaster ""\n'
@@ -474,7 +478,7 @@ void main() {
       final planner = SyncPlanner();
       final bundle = _bundle(
         diveId: _diveIdA,
-        annotation: _testAnnotation(rating: 3),
+        annotation: _testAnnotation(rating: 5),
       );
       final plan = planner.plan(
         ccrlogDives: [bundle],
@@ -492,18 +496,17 @@ void main() {
         existingTopLevel: const [],
         existingSites: const {},
       );
-      // Nothing written for this dive:
-      expect(
-        plan.filesToWrite.keys
-            .where((k) => k.contains('19-Sun-15=18=45'))
-            .toList(),
-        isEmpty,
-      );
-      // Abort surfaced:
-      expect(plan.abortedDives, hasLength(1));
-      expect(plan.abortedDives.first.reason,
-          AbortReason.foreignEditConflict);
-      expect(plan.abortedDives.first.conflictingLines, contains('cylinder'));
+      expect(plan.abortedDives, isEmpty);
+      const divePath = '2026/04/19-Sun-15=18=45/Dive-42';
+      final out = plan.filesToWrite[divePath]!;
+      // Owned rating change went through:
+      expect(out, contains('rating 5'));
+      // CRITICAL: user's cylinder edit is preserved byte-for-byte. The
+      // mapper would have emitted three different cylinder lines from
+      // _threeGasMixes(), but the merge dropped them and kept Subsurface's.
+      expect(out, contains(
+          'cylinder vol=11.1l workpressure=232.0bar description="user-edited" o2=32%'));
+      expect(out, isNot(contains('vol=3.0l')));
     });
 
     test(
@@ -546,16 +549,19 @@ void main() {
       expect(plan.abortedDives, isEmpty);
     });
 
-    test('incident replica: cylinder edit on Subsurface side aborts the dive',
-        () {
+    test(
+        'incident replica: user-edited cylinder is preserved, never '
+        'overwritten by CCRLog', () {
       final divText = File('test/fixtures/subsurface_incident_replica/Dive-697')
           .readAsStringSync();
       final existingLines =
           parseSubsurfaceFile(divText, kind: SubsurfaceFileKind.dive).lines;
       final planner = SyncPlanner();
-      // The default bundle uses _threeGasMixes() so the mapper emits cylinder
-      // lines that won't match the fixture's single user-edited cylinder.
-      // That mismatch is the whole point — Task 4's merge must abort.
+      // Default bundle uses _threeGasMixes() — three cylinder lines, none
+      // matching the fixture's single user-manually-tuned cylinder. The
+      // merge must KEEP the user's cylinder and not let CCRLog's overwrite
+      // it. (The 2026-05-08 incident was the OPPOSITE: full overwrite of
+      // the on-disk Dive-NNN with CCRLog's emission.)
       final bundle = _bundle(diveId: _diveIdA);
       final plan = planner.plan(
         ccrlogDives: [bundle],
@@ -574,22 +580,28 @@ void main() {
         existingSites: const {},
       );
 
-      // Nothing written for dive 697:
-      expect(
-        plan.filesToWrite.keys.where((k) => k.contains('Dive-697')).toList(),
-        isEmpty,
-      );
+      // Divecomputer is NEVER staged for an existing dive — sample stream
+      // is sacred.
       expect(
         plan.filesToWrite.keys
             .where((k) => k.contains('Divecomputer'))
             .toList(),
         isEmpty,
       );
-      // Abort surfaced:
-      expect(plan.abortedDives, hasLength(1));
-      expect(plan.abortedDives.first.dive.id, _diveIdA);
-      expect(plan.abortedDives.first.reason, AbortReason.foreignEditConflict);
-      expect(plan.abortedDives.first.conflictingLines, contains('cylinder'));
+      expect(plan.abortedDives, isEmpty);
+      // The user's cylinder line survives byte-for-byte.
+      final divePath = plan.filesToWrite.keys
+          .firstWhere((k) => k.contains('Dive-697'));
+      final out = plan.filesToWrite[divePath]!;
+      expect(
+        out,
+        contains(
+          'cylinder vol=3.0l workpressure=232.0bar description="user-manually-tuned" o2=18.0% he=23.0% use="diluent" depth=6.249m',
+        ),
+        reason: 'If this fails, the 2026-05-08 data-loss class of bug is back.',
+      );
+      // CCRLog's three default cylinders were NOT injected.
+      expect(out, isNot(contains('"3L tank"')));
     });
   });
 }
