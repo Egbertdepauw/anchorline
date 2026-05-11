@@ -70,7 +70,15 @@ class FlutterBluePlusBleIo implements BleIo {
     }
 
     await _notifyChar!.setNotifyValue(true);
-    debugPrint('BLE connected. MTU=${device.mtuNow} bytes');
+    int? rssi;
+    try {
+      rssi = await device.readRssi();
+    } catch (_) {
+      // readRssi can fail on iOS if not connected long enough; ignore.
+    }
+    debugPrint('BLE connected. MTU=${device.mtuNow}B, '
+        'RSSI=${rssi ?? 'n/a'} dBm, '
+        'platform=${defaultTargetPlatform.name}');
     _notifySub = _notifyChar!.onValueReceived.listen((data) {
       _frames.add(Uint8List.fromList(data));
       final waiter = _frameSignal;

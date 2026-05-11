@@ -38,13 +38,34 @@ class ShearwaterProtocol {
   Future<ResponsePacket> _transfer(Uint8List commandPayload) async {
     final requestPacket = Packet.buildRequest(commandPayload);
     final frames = BleSlipCodec.encode(requestPacket);
+    final writeStart = DateTime.now();
     for (final frame in frames) {
       await _ble.writeBytes(frame);
     }
+    final writeMs = DateTime.now().difference(writeStart).inMilliseconds;
+    final readStart = DateTime.now();
     final responseFrames = await _ble.readFrames();
+    final readMs = DateTime.now().difference(readStart).inMilliseconds;
+    _lastWriteMs = writeMs;
+    _lastReadMs = readMs;
+    _lastWriteFrameCount = frames.length;
+    _lastReadFrameCount = responseFrames.length;
     final decoded = BleSlipCodec.decode(responseFrames);
     return Packet.parseResponse(decoded);
   }
+
+  /// Last `_transfer` timing — exposed so `download()` can print
+  /// per-block round-trip breakdown without re-wrapping every protocol
+  /// op. Diagnostic only; cleared on each new transfer.
+  int _lastWriteMs = 0;
+  int _lastReadMs = 0;
+  int _lastWriteFrameCount = 0;
+  int _lastReadFrameCount = 0;
+
+  int get lastWriteMs => _lastWriteMs;
+  int get lastReadMs => _lastReadMs;
+  int get lastWriteFrameCount => _lastWriteFrameCount;
+  int get lastReadFrameCount => _lastReadFrameCount;
 
   /// Read Data By Identifier (RDBI).
   ///
@@ -139,13 +160,29 @@ class ShearwaterProtocol {
     final stopwatch = Stopwatch()..start();
     int? firstBlockMs;
     var blocksRead = 0;
+    // Per-block round-trip stats for the post-download summary.
+    var totalWriteMs = 0;
+    var totalReadMs = 0;
+    var maxBlockMs = 0;
+    var minBlockMs = 1 << 30;
 
     while (nbytes < size && !done) {
       final blockStart = stopwatch.elapsedMilliseconds;
       final blockRequest = Uint8List.fromList([0x36, blockNum]);
       final blockResponse = await _transfer(blockRequest);
-      firstBlockMs ??= stopwatch.elapsedMilliseconds - blockStart;
+      final blockMs = stopwatch.elapsedMilliseconds - blockStart;
+      firstBlockMs ??= blockMs;
+      totalWriteMs += _lastWriteMs;
+      totalReadMs += _lastReadMs;
+      if (blockMs > maxBlockMs) maxBlockMs = blockMs;
+      if (blockMs < minBlockMs) minBlockMs = blockMs;
       blocksRead++;
+      if (blocksRead <= 3 || blocksRead % 25 == 0) {
+        // ignore: avoid_print
+        print('  block $blocksRead: ${blockMs}ms '
+            '(write ${_lastWriteMs}ms × ${_lastWriteFrameCount}f, '
+            'read ${_lastReadMs}ms × ${_lastReadFrameCount}f)');
+      }
 
       if (!blockResponse.isValid) {
         throw ProtocolException('Invalid download block response');
@@ -191,10 +228,16 @@ class ShearwaterProtocol {
     final kbps = totalMs > 0
         ? (nbytes / totalMs * 1000 / 1024).toStringAsFixed(1)
         : 'inf';
+    final avgWriteMs =
+        blocksRead > 0 ? (totalWriteMs / blocksRead).toStringAsFixed(1) : '0';
+    final avgReadMs =
+        blocksRead > 0 ? (totalReadMs / blocksRead).toStringAsFixed(1) : '0';
     // ignore: avoid_print
     print('download(addr=0x${address.toRadixString(16)}) '
         '$blocksRead blocks, ${nbytes}B, ${totalMs}ms '
-        '($kbps KB/s, first block ${firstBlockMs ?? 0}ms)');
+        '($kbps KB/s, first block ${firstBlockMs ?? 0}ms, '
+        'block min/max ${minBlockMs == 1 << 30 ? 0 : minBlockMs}/${maxBlockMs}ms, '
+        'avg write ${avgWriteMs}ms / read ${avgReadMs}ms)');
 
     // ── Finalize ──
     if (compressed) {
