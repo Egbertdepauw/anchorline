@@ -61,13 +61,32 @@ void main() {
     test('existing dive (matching serial, startTime) reuses folder + NNN',
         () {
       final planner = SyncPlanner();
-      final bundle = _bundle(diveId: _diveIdA);
+      // gasMixes: const [] so the mapper doesn't emit cylinder lines that
+      // would conflict with the existing fixture's single cylinder.
+      // annotation: rating differs from existing so the merge produces
+      // a different file and updatedDives = 1.
+      final bundle = _bundle(
+        diveId: _diveIdA,
+        gasMixes: const [],
+        annotation: _testAnnotation(rating: 5),
+      );
+      // A minimally-realistic on-disk Dive-NNN — non-empty diveLines is a
+      // precondition for the merge path (empty triggers the unreadable
+      // abort case, covered by its own test below).
+      final existingLines = parseSubsurfaceFile(
+        'duration 57:30 min\n'
+        'rating 2\n'
+        'divemaster ""\n'
+        'buddy ""\n'
+        'suit ""\n',
+        kind: SubsurfaceFileKind.dive,
+      ).lines;
       final existing = ExistingRemoteDive(
         folderSegments: ['2026', '04', '04-Sat-13=18=45'],
         diveNumber: 705,
         serial: 0xb89641e4,
         startTime: 1776611925,
-        diveLines: const [],
+        diveLines: existingLines,
       );
       final plan = planner.plan(
         ccrlogDives: [bundle],
@@ -99,6 +118,46 @@ void main() {
       );
       expect(plan.stats.newDives, 0);
       expect(plan.stats.updatedDives, 1);
+    });
+
+    test('existing dive with empty (unreadable) Dive-NNN aborts rather '
+        'than silently overwriting', () {
+      final planner = SyncPlanner();
+      final bundle = _bundle(diveId: _diveIdA);
+      final existing = ExistingRemoteDive(
+        folderSegments: ['2026', '04', '04-Sat-13=18=45'],
+        diveNumber: 705,
+        serial: 0xb89641e4,
+        startTime: 1776611925,
+        // Empty mimics a parse failure at scan time on a corrupt Dive-NNN.
+        diveLines: const [],
+      );
+      final plan = planner.plan(
+        ccrlogDives: [bundle],
+        existingDivesBySerialAndStart: {
+          (serial: 0xb89641e4, startTime: 1776611925): existing,
+        },
+        existingMaxDiveNumber: 705,
+        existingTopLevel: const [],
+        existingSites: const {},
+      );
+
+      // Nothing written for this dive.
+      expect(
+        plan.filesToWrite.keys
+            .where((k) => k.contains('04-Sat-13=18=45'))
+            .toList(),
+        isEmpty,
+      );
+      expect(plan.abortedDives, hasLength(1));
+      expect(
+        plan.abortedDives.first.reason,
+        AbortReason.foreignEditConflict,
+      );
+      expect(
+        plan.abortedDives.first.conflictingLines,
+        contains('<unreadable Dive-NNN>'),
+      );
     });
 
     test('site dedup: two CCRLog dives at same lat/lon → one Site-XXXX',

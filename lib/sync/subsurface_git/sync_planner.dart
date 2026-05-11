@@ -182,8 +182,7 @@ class SyncPlan {
 
   final SyncPlanStats stats;
 
-  /// Dives the planner declined to write, with reasons. Always empty
-  /// until Task 4 populates conflict detection.
+  /// Dives the planner declined to write, with reasons.
   final List<AbortedDive> abortedDives;
 }
 
@@ -269,6 +268,21 @@ class SyncPlanner {
         // ── Existing dive: merge CCRLog-owned lines, never touch Divecomputer
         diveNumber = existing.diveNumber;
         folderSegments = existing.folderSegments;
+
+        // If the scan failed to parse the on-disk Dive-NNN (corrupt or
+        // unreadable file but the sibling Divecomputer parsed and gave us
+        // the (serial, startTime) match), diveLines is empty. Merging
+        // against an empty baseline would write the full CCRLog emission
+        // as if it were a brand-new dive — exactly the silent-overwrite
+        // class of bug Phase 1 exists to prevent. Abort instead.
+        if (existing.diveLines.isEmpty) {
+          abortedDives.add(AbortedDive(
+            dive: dive,
+            reason: AbortReason.foreignEditConflict,
+            conflictingLines: const ['<unreadable Dive-NNN>'],
+          ));
+          continue;
+        }
 
         final ours = _mapper.mapDive(
           dive: dive,
