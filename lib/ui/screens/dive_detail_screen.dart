@@ -315,6 +315,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                     dao: widget.annotationsDao,
                                     currentLat: lat,
                                     currentLon: lon,
+                                    settingsNotifier: widget.settingsNotifier,
                                   ),
                                 )),
                                 child: IgnorePointer(
@@ -680,6 +681,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       activeSecondsByMix: activeByMix,
       annotationsDao: widget.annotationsDao,
       equipmentDao: widget.equipmentDao,
+      settingsNotifier: widget.settingsNotifier,
       // Phase 3: gas-mix → cylinder mapping moved to the Equipment tab
       // (see DiveCylindersSection). Showing it here would duplicate.
       showGasMixes: false,

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/models/annotation.dart';
+import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/sites_map_screen.dart';
 import 'package:ccrlogger/ui/theme/tokens.dart';
 import 'package:ccrlogger/ui/widgets/map_layer_toggle.dart';
@@ -167,7 +168,7 @@ void main() {
 
       await tester.runAsync(() async {
         await tester.pumpWidget(MaterialApp(
-          home: SitesMapScreen(dao: dao, currentLat: 51.5, currentLon: 4.0),
+          home: SitesMapScreen(dao: dao, currentLat: 51.5, currentLon: 4.0, settingsNotifier: SettingsNotifier()),
         ));
         // Sites are fetched in initState; give the future + setState a beat.
         await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -200,7 +201,7 @@ void main() {
 
       await tester.runAsync(() async {
         await tester.pumpWidget(MaterialApp(
-          home: SitesMapScreen(dao: dao, currentLat: null, currentLon: null),
+          home: SitesMapScreen(dao: dao, currentLat: null, currentLon: null, settingsNotifier: SettingsNotifier()),
         ));
         await Future<void>.delayed(const Duration(milliseconds: 100));
       });
@@ -229,7 +230,7 @@ void main() {
 
       await tester.runAsync(() async {
         await tester.pumpWidget(MaterialApp(
-          home: SitesMapScreen(dao: dao, currentLat: 51.5, currentLon: 4.0),
+          home: SitesMapScreen(dao: dao, currentLat: 51.5, currentLon: 4.0, settingsNotifier: SettingsNotifier()),
         ));
         await Future<void>.delayed(const Duration(milliseconds: 200));
       });
@@ -263,7 +264,7 @@ void main() {
 
       await tester.runAsync(() async {
         await tester.pumpWidget(MaterialApp(
-          home: SitesMapScreen(dao: dao, currentLat: 51.5, currentLon: 4.0),
+          home: SitesMapScreen(dao: dao, currentLat: 51.5, currentLon: 4.0, settingsNotifier: SettingsNotifier()),
         ));
         await Future<void>.delayed(const Duration(milliseconds: 200));
       });
@@ -300,7 +301,7 @@ void main() {
 
       await tester.runAsync(() async {
         await tester.pumpWidget(MaterialApp(
-          home: SitesMapScreen(dao: dao, currentLat: 51.5, currentLon: 4.0),
+          home: SitesMapScreen(dao: dao, currentLat: 51.5, currentLon: 4.0, settingsNotifier: SettingsNotifier()),
         ));
         await Future<void>.delayed(const Duration(milliseconds: 200));
       });
@@ -326,7 +327,7 @@ void main() {
 
       await tester.runAsync(() async {
         await tester.pumpWidget(MaterialApp(
-          home: SitesMapScreen(dao: dao, currentLat: 51.5, currentLon: 4.0),
+          home: SitesMapScreen(dao: dao, currentLat: 51.5, currentLon: 4.0, settingsNotifier: SettingsNotifier()),
         ));
         await Future<void>.delayed(const Duration(milliseconds: 200));
       });

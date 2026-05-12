@@ -251,6 +251,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     dao: _diveAnnotationsDao,
                     currentLat: null,
                     currentLon: null,
+                    settingsNotifier: widget.settingsNotifier,
                   ),
                 ));
               },

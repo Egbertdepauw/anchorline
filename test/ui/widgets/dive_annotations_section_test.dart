@@ -2,6 +2,7 @@ import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/ui/notifiers/dive_annotations_notifier.dart';
+import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/widgets/dive_annotations_section.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -42,6 +43,7 @@ void main() {
               activeSecondsByMix: const {},
               annotationsDao: annotationsDao,
               equipmentDao: equipmentDao,
+              settingsNotifier: SettingsNotifier(),
             ),
           ),
         ),

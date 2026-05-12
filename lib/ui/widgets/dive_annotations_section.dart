@@ -5,6 +5,7 @@ import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../data/models/dive.dart';
 import '../notifiers/dive_annotations_notifier.dart';
+import '../notifiers/settings_notifier.dart';
 import '../screens/map_picker_screen.dart';
 import '../screens/sites_map_screen.dart';
 import '../theme/tokens.dart';
@@ -24,6 +25,7 @@ class DiveAnnotationsSection extends StatefulWidget {
   /// [DiveCylindersSection] instead). Default true so existing solo
   /// callers (cell_detail_screen, tests) render unchanged.
   final bool showGasMixes;
+  final SettingsNotifier settingsNotifier;
 
   const DiveAnnotationsSection({
     super.key,
@@ -32,6 +34,7 @@ class DiveAnnotationsSection extends StatefulWidget {
     required this.activeSecondsByMix,
     required this.annotationsDao,
     required this.equipmentDao,
+    required this.settingsNotifier,
     this.showGasMixes = true,
   });
 
@@ -151,12 +154,14 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
                           lat: lat,
                           lon: lon,
                           siteName: _n.siteName,
+                          settingsNotifier: widget.settingsNotifier,
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => SitesMapScreen(
                                 dao: widget.annotationsDao,
                                 currentLat: lat,
                                 currentLon: lon,
+                                settingsNotifier: widget.settingsNotifier,
                               ),
                             ),
                           ),

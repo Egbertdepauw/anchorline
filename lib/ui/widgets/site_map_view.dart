@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../notifiers/settings_notifier.dart';
 import '../theme/tokens.dart';
 import 'map_layer_toggle.dart';
 import 'map_tile_sources.dart';
@@ -15,12 +16,14 @@ class SiteMapView extends StatefulWidget {
     super.key,
     required this.lat,
     required this.lon,
+    required this.settingsNotifier,
     this.siteName,
     this.onTap,
   });
 
   final double lat;
   final double lon;
+  final SettingsNotifier settingsNotifier;
   final String? siteName;
   final VoidCallback? onTap;
 
@@ -29,8 +32,6 @@ class SiteMapView extends StatefulWidget {
 }
 
 class _SiteMapViewState extends State<SiteMapView> {
-  MapLayerStyle _style = MapLayerStyle.normal;
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -47,24 +48,28 @@ class _SiteMapViewState extends State<SiteMapView> {
     return LayoutBuilder(builder: (context, constraints) {
       final w = constraints.maxWidth.isFinite ? constraints.maxWidth : 360.0;
       final h = constraints.maxHeight.isFinite ? constraints.maxHeight : 220.0;
-      return Stack(
-        children: [
-          SiteMiniMap(
-            lat: lat,
-            lon: lon,
-            width: w,
-            height: h,
-            markerSize: 24,
-            tileUrl: tileUrlFor(_style),
-          ),
-          Positioned(
-            right: Spacing.sm,
-            top: Spacing.sm,
-            child: MapLayerToggle(
-              current: _style,
-              onChanged: (next) => setState(() => _style = next),
-            ),
-          ),
+      return ListenableBuilder(
+        listenable: widget.settingsNotifier,
+        builder: (context, _) {
+          final style = widget.settingsNotifier.mapLayerStyle;
+          return Stack(
+            children: [
+              SiteMiniMap(
+                lat: lat,
+                lon: lon,
+                width: w,
+                height: h,
+                markerSize: 24,
+                tileUrl: tileUrlFor(style),
+              ),
+              Positioned(
+                right: Spacing.sm,
+                top: Spacing.sm,
+                child: MapLayerToggle(
+                  current: style,
+                  onChanged: widget.settingsNotifier.setMapLayerStyle,
+                ),
+              ),
           Positioned(
             left: Spacing.sm,
             right: Spacing.sm,
@@ -108,6 +113,8 @@ class _SiteMapViewState extends State<SiteMapView> {
             ),
           ),
         ],
+          );
+        },
       );
     });
   }

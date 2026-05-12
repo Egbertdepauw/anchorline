@@ -1,3 +1,4 @@
+import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/theme/app_theme.dart';
 import 'package:ccrlogger/ui/widgets/map_layer_toggle.dart';
 import 'package:ccrlogger/ui/widgets/map_tile_sources.dart';
@@ -14,6 +15,7 @@ void main() {
       theme: AppTheme.dark(),
       home: Scaffold(
         body: SiteMapView(
+          settingsNotifier: SettingsNotifier(),
           lat: 52.2366,
           lon: 4.9570,
           siteName: 'Vinkeveen — de Dierentuin',
@@ -42,6 +44,7 @@ void main() {
       theme: AppTheme.dark(),
       home: Scaffold(
         body: SiteMapView(
+          settingsNotifier: SettingsNotifier(),
           lat: 52.2366,
           lon: 4.9570,
           siteName: 'Vinkeveen',
@@ -60,6 +63,7 @@ void main() {
       theme: AppTheme.dark(),
       home: Scaffold(
         body: SiteMapView(
+          settingsNotifier: SettingsNotifier(),
           lat: 52.2366,
           lon: 4.9570,
         ),
