@@ -56,4 +56,28 @@ void main() {
     );
     expect(scroll.scrollDirection, Axis.horizontal);
   });
+
+  testWidgets(
+      'TraceSegmentedBar does not overflow at iPhone-portrait width (375 px)',
+      (tester) async {
+    tester.view.physicalSize = const Size(375, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(wrap(TraceSegmentedBar(
+      visibleTraces: const {
+        TraceType.ppo2,
+        TraceType.setpoint,
+        TraceType.cells,
+        TraceType.deco,
+        TraceType.tanks,
+        TraceType.gasChanges,
+      },
+      onToggle: (_) {},
+    )));
+    expect(tester.takeException(), isNull);
+  });
 }
