@@ -243,7 +243,7 @@ class CcrlogToSubsurfaceMapper {
       lines.add(ScalarLine(key: 'divesiteid', value: siteId));
     }
     // Subsurface always emits divemaster + buddy + suit, even when empty.
-    lines.add(QuotedLine(key: 'divemaster', value: ''));
+    lines.add(QuotedLine(key: 'divemaster', value: annotation?.divemaster ?? ''));
     final buddy = (annotation?.buddies ?? const <String>[]).join(', ');
     lines.add(QuotedLine(key: 'buddy', value: buddy));
     lines.add(QuotedLine(key: 'suit', value: annotation?.suit ?? ''));
