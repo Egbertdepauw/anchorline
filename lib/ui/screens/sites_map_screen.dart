@@ -3,11 +3,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../data/db/dive_annotations_dao.dart';
-
-/// OpenStreetMap tile server. Same caveat as MapPickerScreen: swap to a
-/// permitted provider before public release.
-const String _tileUrlTemplate =
-    'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+import '../theme/tokens.dart';
+import '../widgets/map_layer_toggle.dart';
+import '../widgets/map_tile_sources.dart';
 
 class SitesMapScreen extends StatefulWidget {
   final DiveAnnotationsDao dao;
@@ -27,6 +25,7 @@ class SitesMapScreen extends StatefulWidget {
 
 class _SitesMapScreenState extends State<SitesMapScreen> {
   List<({String? siteName, double lat, double lon})>? _sites;
+  MapLayerStyle _style = MapLayerStyle.normal;
 
   @override
   void initState() {
@@ -54,18 +53,40 @@ class _SitesMapScreenState extends State<SitesMapScreen> {
       appBar: AppBar(title: const Text('Dive sites')),
       body: _sites == null
           ? const Center(child: CircularProgressIndicator())
-          : _buildMap(_sites!),
+          : Stack(
+              children: [
+                _buildMap(_sites!),
+                Positioned(
+                  top: Spacing.sm,
+                  right: Spacing.sm,
+                  child: MapLayerToggle(
+                    current: _style,
+                    onChanged: (next) => setState(() => _style = next),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 
   Widget _buildMap(List<({String? siteName, double lat, double lon})> sites) {
     final points = [for (final s in sites) LatLng(s.lat, s.lon)];
+    final cLat = widget.currentLat;
+    final cLon = widget.currentLon;
 
     final MapOptions options;
     if (points.isEmpty) {
       options = const MapOptions(
         initialCenter: LatLng(0, 0),
         initialZoom: 2,
+      );
+    } else if (cLat != null && cLon != null) {
+      // Came from a specific dive — focus on it at z=14 so the diver
+      // sees their dive's location at a useful scale. Other pins still
+      // pinned; pan/zoom-out reveals them.
+      options = MapOptions(
+        initialCenter: LatLng(cLat, cLon),
+        initialZoom: 14,
       );
     } else if (points.length == 1) {
       options = MapOptions(
@@ -85,21 +106,21 @@ class _SitesMapScreenState extends State<SitesMapScreen> {
       options: options,
       children: [
         TileLayer(
-          urlTemplate: _tileUrlTemplate,
+          urlTemplate: tileUrlFor(_style),
           userAgentPackageName: 'app.ccrlogger',
         ),
         MarkerLayer(markers: [
           for (final s in sites)
             Marker(
               point: LatLng(s.lat, s.lon),
-              width: 36,
-              height: 36,
+              width: _isCurrent(s.lat, s.lon) ? 44 : 36,
+              height: _isCurrent(s.lat, s.lon) ? 44 : 36,
               child: _isCurrent(s.lat, s.lon)
-                  ? const Icon(Icons.location_pin,
-                      color: Colors.redAccent, size: 36)
+                  ? Icon(Icons.location_pin,
+                      color: AppColors.wreck.accentPrimary, size: 44)
                   : const Icon(Icons.location_pin,
                       // Muted brick red — visibly recedes against the
-                      // saturated redAccent of the current dive's pin
+                      // saturated accent of the current dive's pin
                       // while staying legible on OSM's mixed terrain.
                       color: Color(0xFF8B3A3A), size: 28),
             ),
