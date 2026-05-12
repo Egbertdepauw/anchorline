@@ -83,6 +83,13 @@ class DiveDetailScreen extends StatefulWidget {
   /// dive number when null (solo callers / tests).
   final int? sequenceNumber;
 
+  /// When true, the screen renders only the per-tab body (no Scaffold,
+  /// AppBar, DefaultTabController, or TabBar) — the parent is expected
+  /// to provide them. [DiveDetailPager] uses this so its top chrome stays
+  /// fixed while only the body slides between dives. Default false; solo
+  /// callers (cell_detail_screen, tests) get a full self-contained screen.
+  final bool wrappedInPager;
+
   const DiveDetailScreen({
     super.key,
     required this.dive,
@@ -96,6 +103,7 @@ class DiveDetailScreen extends StatefulWidget {
     this.attachmentsNotifier,
     this.attachmentDownloader,
     this.sequenceNumber,
+    this.wrappedInPager = false,
   });
   @override
   State<DiveDetailScreen> createState() => _DiveDetailScreenState();
@@ -147,6 +155,13 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   Widget build(BuildContext context) {
     final dive = widget.dive;
     final theme = Theme.of(context);
+
+    if (widget.wrappedInPager) {
+      // Parent owns Scaffold/AppBar/DefaultTabController/TabBar/PopScope
+      // so the top chrome stays fixed while only the body slides between
+      // dives.
+      return _buildPagerBody(theme);
+    }
 
     // In pager mode the parent owns the unsaved-changes guard — it sees
     // every cached page's dirty state, not just the visible one. Solo
@@ -275,6 +290,24 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
               ),
             ),
       ),
+    );
+  }
+
+  /// Body used when the screen is wrapped by [DiveDetailPager]. The
+  /// pager provides Scaffold + AppBar + DefaultTabController + TabBar
+  /// above us; we return just the per-tab content so only this slides
+  /// between dives.
+  Widget _buildPagerBody(ThemeData theme) {
+    if (_notifier.loading && _notifier.samples == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return TabBarView(
+      children: [
+        _buildDetailsTab(theme),
+        _buildInformationTab(),
+        _buildMediaTab(),
+        _buildEquipmentTab(),
+      ],
     );
   }
 

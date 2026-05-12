@@ -28,6 +28,8 @@ import '../../sync/attachments/attachment_uploader.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import '../notifiers/dive_attachments_notifier.dart';
 import '../notifiers/settings_notifier.dart';
+import '../theme/tokens.dart';
+import '../util/format.dart';
 import 'dive_detail_screen.dart';
 
 class DiveDetailPager extends StatefulWidget {
@@ -235,6 +237,8 @@ class _DiveDetailPagerState extends State<DiveDetailPager> {
   @override
   Widget build(BuildContext context) {
     final dirty = _dirtyPages();
+    final currentDive = widget.dives[_currentIndex];
+    final currentAnnotations = _annotationsFor(currentDive);
     return PopScope(
       canPop: dirty.isEmpty,
       onPopInvokedWithResult: (didPop, _) async {
@@ -244,31 +248,125 @@ class _DiveDetailPagerState extends State<DiveDetailPager> {
           Navigator.of(context).pop();
         }
       },
-      child: PageView.builder(
-        controller: _controller,
-        itemCount: widget.dives.length,
-        onPageChanged: _onPageChanged,
-        itemBuilder: (context, i) {
-          final dive = widget.dives[i];
-          return DiveDetailScreen(
-            // Keying by dive id forces a clean state for each page so we
-            // don't accidentally bleed sample/detail state between dives
-            // if PageView ever reuses an element.
-            key: ValueKey(dive.id),
-            dive: dive,
-            sequenceNumber: widget.sequenceByDiveId[dive.id],
-            dao: widget.diveDao,
-            annotationsDao: widget.annotationsDao,
-            equipmentDao: widget.equipmentDao,
-            settingsNotifier: widget.settingsNotifier,
-            annotationsNotifier: _annotationsFor(dive),
-            attachmentsNotifier: _attachmentsFor(dive),
-            attachmentDownloader: widget.attachmentDownloader,
-            onPrev: i > 0 ? _goPrev : null,
-            onNext: i < widget.dives.length - 1 ? _goNext : null,
-          );
-        },
+      child: DefaultTabController(
+        length: 4,
+        child: Scaffold(
+          appBar: _buildAppBar(context, currentDive, currentAnnotations),
+          body: Column(
+            children: [
+              _buildTabBar(context),
+              Expanded(
+                child: PageView.builder(
+                  controller: _controller,
+                  itemCount: widget.dives.length,
+                  onPageChanged: _onPageChanged,
+                  itemBuilder: (context, i) {
+                    final dive = widget.dives[i];
+                    return DiveDetailScreen(
+                      // Keying by dive id forces a clean state for each
+                      // page so we don't accidentally bleed sample/detail
+                      // state between dives if PageView ever reuses an
+                      // element.
+                      key: ValueKey(dive.id),
+                      dive: dive,
+                      sequenceNumber: widget.sequenceByDiveId[dive.id],
+                      dao: widget.diveDao,
+                      annotationsDao: widget.annotationsDao,
+                      equipmentDao: widget.equipmentDao,
+                      settingsNotifier: widget.settingsNotifier,
+                      annotationsNotifier: _annotationsFor(dive),
+                      attachmentsNotifier: _attachmentsFor(dive),
+                      attachmentDownloader: widget.attachmentDownloader,
+                      onPrev: i > 0 ? _goPrev : null,
+                      onNext: i < widget.dives.length - 1 ? _goNext : null,
+                      wrappedInPager: true,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
+    );
+  }
+
+  /// AppBar bound to the current dive — title + subtitle reflect whichever
+  /// page is foregrounded, save button reads its dirty state. Listening to
+  /// each cached annotations notifier (see [_annotationsFor]) is what
+  /// keeps the bar in sync after a page change OR a dirty-flag flip.
+  PreferredSizeWidget _buildAppBar(
+    BuildContext context,
+    Dive currentDive,
+    DiveAnnotationsNotifier annotations,
+  ) {
+    final siteName = annotations.siteName;
+    final subtitle = [
+      if (siteName != null && siteName.isNotEmpty) siteName,
+      formatDateTime(currentDive.startTime),
+    ].join(' · ');
+    return AppBar(
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Dive #${widget.sequenceByDiveId[currentDive.id] ?? currentDive.dcDiveNumber}',
+            style: AppTypography.headline.copyWith(
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          Text(
+            subtitle,
+            style: AppTypography.caption.copyWith(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        IconButton(
+          tooltip: 'Previous dive',
+          icon: const Icon(Icons.chevron_left),
+          onPressed: _currentIndex > 0 ? _goPrev : null,
+        ),
+        IconButton(
+          tooltip: 'Next dive',
+          icon: const Icon(Icons.chevron_right),
+          onPressed: _currentIndex < widget.dives.length - 1 ? _goNext : null,
+        ),
+        IconButton(
+          tooltip: annotations.dirty ? 'Save (unsaved changes)' : 'Save',
+          icon: Icon(
+            annotations.dirty ? Icons.save : Icons.save_outlined,
+            color: annotations.dirty
+                ? Theme.of(context).colorScheme.primary
+                : null,
+          ),
+          onPressed: annotations.dirty ? () => annotations.save() : null,
+        ),
+      ],
+    );
+  }
+
+  /// Fixed tab bar — driven by the inherited [DefaultTabController]. Tab
+  /// choice persists across dive swipes, so a user on Information stays
+  /// on Information when navigating to the next dive.
+  Widget _buildTabBar(BuildContext context) {
+    // Hide tab labels on narrow viewports — icons alone keep the bar
+    // from overflowing on phones in portrait.
+    final compact = MediaQuery.of(context).size.width < 480;
+    Widget tab(IconData icon, String label) => Tab(
+          icon: Icon(icon),
+          text: compact ? null : label,
+        );
+    return TabBar(
+      tabs: [
+        tab(Icons.info_outline, 'Details'),
+        tab(Icons.thermostat_outlined, 'Information'),
+        tab(Icons.photo_library_outlined, 'Media'),
+        tab(Icons.scuba_diving_outlined, 'Equipment'),
+      ],
     );
   }
 }
