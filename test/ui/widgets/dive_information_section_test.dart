@@ -113,6 +113,37 @@ void main() {
     expect(find.text('Atm. pressure'), findsOneWidget);
     expect(find.text('1003 mbar'), findsOneWidget);
   });
+
+  testWidgets('DC section renders Model + Serial + Firmware + Deco + log',
+      (tester) async {
+    final harness = await setup(tester);
+    await pumpSection(
+      tester,
+      notifier: harness.notifier,
+      dive: _testDive(),
+    );
+
+    expect(find.text('DIVE COMPUTER'), findsOneWidget);
+    expect(find.text('Shearwater Petrel 3'), findsOneWidget);
+    expect(find.text('b89641e4'), findsOneWidget);
+    expect(find.text('Bühlmann ZHL-16 · GF 50 / 95'), findsOneWidget);
+    expect(find.text('10 s'), findsOneWidget);
+    expect(find.textContaining('17'), findsOneWidget); // log version
+  });
+
+  testWidgets('DC section renders Scrubber sub-block when configured stack present',
+      (tester) async {
+    final harness = await setup(tester);
+    await pumpSection(
+      tester,
+      notifier: harness.notifier,
+      // configuredStackSeconds = 25200 = 7h, start=10847, end=7347 from _testDive.
+      dive: _testDive(),
+    );
+
+    expect(find.text('SCRUBBER'), findsOneWidget);
+    expect(find.text('7:00'), findsOneWidget); // configured
+  });
 }
 
 Dive _testDive({

@@ -1,9 +1,15 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/db/database.dart';
+import '../../shearwater/parser/hardware.dart' show ShearwaterModel;
 import '../components/data_row.dart' as components;
+import '../components/numeric_readout.dart';
 import '../components/section_header.dart';
+import '../components/status_dot.dart';
+import '../theme/tokens.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import 'star_rating.dart';
 
@@ -137,9 +143,178 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
             label: 'Atm. pressure',
             value: '${widget.dive.atmosphericPressureMbar} mbar',
           ),
+          const SizedBox(height: Spacing.lg),
+          ..._buildDiveComputerSection(context),
         ],
       ),
     );
+  }
+
+  List<Widget> _buildDiveComputerSection(BuildContext context) {
+    final dive = widget.dive;
+    final modelName = _modelDisplayName(dive.dcModel);
+    final serialHex = dive.dcSerial.toRadixString(16).padLeft(8, '0');
+    final firmware = dive.dcFirmware == null
+        ? '—'
+        : '0x${dive.dcFirmware!.toRadixString(16).toUpperCase()}';
+    final decoModelLabel = _decoModelLabel(
+      dive.decoModel,
+      dive.gfLow,
+      dive.gfHigh,
+    );
+    final sampleInterval = '${(dive.sampleIntervalMs / 1000).round()} s';
+    final logVersion =
+        '${dive.logVersion}${_isPnf(dive.logVersion) ? ' (PNF)' : ''}';
+    const unitsLabel = 'Metric'; // CCRLog always stores metric per CLAUDE.md.
+
+    final children = <Widget>[
+      const SectionHeader('Dive computer'),
+      components.DataRow(label: 'Model', value: modelName),
+      components.DataRow(label: 'Serial', value: serialHex, numeric: true),
+      components.DataRow(label: 'Firmware', value: firmware, numeric: true),
+      components.DataRow(label: 'Deco model', value: decoModelLabel),
+      components.DataRow(
+          label: 'Sample interval', value: sampleInterval, numeric: true),
+      components.DataRow(label: 'Log version', value: logVersion, numeric: true),
+      components.DataRow(label: 'Units', value: unitsLabel),
+      const SizedBox(height: Spacing.md),
+      const SectionHeader('Sensors'),
+      _cellCalibrationRow(context),
+      components.DataRow(label: 'Air-integration', value: _aiModeLabel(dive)),
+    ];
+
+    if (dive.configuredStackSeconds != null) {
+      children.addAll([
+        const SizedBox(height: Spacing.md),
+        const SectionHeader('Scrubber'),
+        components.DataRow(
+          label: 'Configured',
+          value: _formatStackHm(dive.configuredStackSeconds!),
+          numeric: true,
+        ),
+        if (dive.stackRemainingAtStartSeconds != null)
+          components.DataRow(
+            label: 'Remaining start',
+            value: _formatStackHm(dive.stackRemainingAtStartSeconds!),
+            numeric: true,
+          ),
+        if (dive.stackRemainingAtEndSeconds != null)
+          components.DataRow(
+            label: 'Remaining end',
+            value: _formatStackHm(dive.stackRemainingAtEndSeconds!),
+            numeric: true,
+          ),
+        if (dive.stackRemainingAtStartSeconds != null &&
+            dive.stackRemainingAtEndSeconds != null)
+          components.DataRow(
+            label: 'Used this dive',
+            value: _formatStackHm(dive.stackRemainingAtStartSeconds! -
+                dive.stackRemainingAtEndSeconds!),
+            numeric: true,
+          ),
+      ]);
+    }
+
+    return children;
+  }
+
+  Widget _cellCalibrationRow(BuildContext context) {
+    final raw = widget.dive.sensorCalibrationJson;
+    List<double> cal = const [0.021, 0.021, 0.021];
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final parsed = (jsonDecode(raw) as List).cast<num>();
+        if (parsed.length >= 3) {
+          cal = parsed.take(3).map((n) => n.toDouble()).toList();
+        }
+      } catch (_) {/* fallback to defaults */}
+    }
+    final scheme = Theme.of(context).colorScheme;
+    final cellColors = [
+      AppColors.wreck.cell1,
+      AppColors.wreck.cell2,
+      AppColors.wreck.cell3,
+    ];
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(
+              'Cell calibration',
+              style: AppTypography.body.copyWith(color: scheme.outlineVariant),
+            ),
+          ),
+          for (var i = 0; i < 3; i++) ...[
+            StatusDot(color: cellColors[i]),
+            const SizedBox(width: Spacing.xs),
+            NumericReadout(
+              cal[i].toStringAsFixed(4),
+              size: ReadoutSize.sm,
+            ),
+            if (i < 2) const SizedBox(width: Spacing.md),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _modelDisplayName(int modelIdx) {
+    final values = ShearwaterModel.values;
+    if (modelIdx < 0 || modelIdx >= values.length) return 'Unknown';
+    return switch (values[modelIdx]) {
+      ShearwaterModel.predator => 'Shearwater Predator',
+      ShearwaterModel.petrel => 'Shearwater Petrel',
+      ShearwaterModel.petrel2 => 'Shearwater Petrel 2',
+      ShearwaterModel.petrel3 => 'Shearwater Petrel 3',
+      ShearwaterModel.nerd => 'Shearwater NERD',
+      ShearwaterModel.nerd2 => 'Shearwater NERD 2',
+      ShearwaterModel.perdix => 'Shearwater Perdix',
+      ShearwaterModel.perdixAi => 'Shearwater Perdix AI',
+      ShearwaterModel.perdix2 => 'Shearwater Perdix 2',
+      ShearwaterModel.teric => 'Shearwater Teric',
+      ShearwaterModel.peregrine => 'Shearwater Peregrine',
+      ShearwaterModel.peregrineTx => 'Shearwater Peregrine TX',
+      ShearwaterModel.tern => 'Shearwater Tern',
+      ShearwaterModel.unknown => 'Shearwater (unknown)',
+    };
+  }
+
+  String _decoModelLabel(int decoCode, int? gfLow, int? gfHigh) {
+    final base = switch (decoCode) {
+      0 => 'Bühlmann ZHL-16',
+      1 => 'VPM-B',
+      2 => 'VPM-B/GFS',
+      _ => 'Unknown',
+    };
+    if (decoCode == 0 && gfLow != null && gfHigh != null) {
+      return '$base · GF $gfLow / $gfHigh';
+    }
+    return base;
+  }
+
+  bool _isPnf(int logVersion) => logVersion >= 13;
+
+  String _aiModeLabel(Dive dive) {
+    final raw = dive.tanksJson;
+    int tanksCount = 0;
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        tanksCount = (jsonDecode(raw) as List).length;
+      } catch (_) {}
+    }
+    if (tanksCount == 0) return 'Off';
+    if (tanksCount <= 2) {
+      return 'Standard ($tanksCount tank${tanksCount == 1 ? '' : 's'})';
+    }
+    return 'HP-CCR ($tanksCount tanks)';
+  }
+
+  String _formatStackHm(int seconds) {
+    final h = seconds ~/ 3600;
+    final m = (seconds % 3600) ~/ 60;
+    return '$h:${m.toString().padLeft(2, '0')}';
   }
 
   static String _waterTypeLabel(int densityKgM3) {
