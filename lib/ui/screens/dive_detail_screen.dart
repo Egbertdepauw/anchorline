@@ -128,8 +128,6 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       _annotationsNotifier = widget.annotationsNotifier!;
     }
     _annotationsNotifier.addListener(_onChanged);
-
-    widget.settingsNotifier.addListener(_onChanged);
   }
 
   @override
@@ -140,7 +138,6 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     if (_ownsAnnotations) {
       _annotationsNotifier.dispose();
     }
-    widget.settingsNotifier.removeListener(_onChanged);
     super.dispose();
   }
 
@@ -478,8 +475,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                             ),
                             TraceSegmentedBar(
                                 visibleTraces: visibleTraces,
-                                onToggle: (t) =>
-                                    widget.settingsNotifier.toggleTrace(t)),
+                                onToggle: widget.settingsNotifier.toggleTrace),
                           ],
                         );
                       },
