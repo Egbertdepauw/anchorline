@@ -9,9 +9,7 @@ import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../data/models/sample_set.dart';
 import '../../shearwater/parser/constants.dart';
-
-/// The set of data traces that can be toggled on/off in the profile chart.
-enum TraceType { ppo2, setpoint, deco, cells, tanks, gasChanges }
+import '../widgets/trace_segmented_bar.dart' show TraceType;
 
 /// ChangeNotifier backing the dive detail screen.
 ///

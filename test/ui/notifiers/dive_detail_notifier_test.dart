@@ -5,6 +5,7 @@ import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
 import 'package:ccrlogger/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/ui/notifiers/dive_detail_notifier.dart';
+import 'package:ccrlogger/ui/widgets/trace_segmented_bar.dart' show TraceType;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 

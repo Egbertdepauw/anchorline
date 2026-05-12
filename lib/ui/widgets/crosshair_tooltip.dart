@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../data/db/database.dart';
 import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
 import '../../data/models/sample_set.dart';
-import '../notifiers/dive_detail_notifier.dart';
+import 'trace_segmented_bar.dart' show TraceType;
 import '../util/tank_labels.dart';
 import 'profile_chart.dart' show cellTraceLabelForSlot;
 

@@ -4,7 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../components/status_dot.dart';
-import '../notifiers/dive_detail_notifier.dart';
+import 'trace_segmented_bar.dart' show TraceType;
 import '../theme/tokens.dart';
 
 /// One toggle's display data — the label shown on the chip, and the

@@ -1,4 +1,4 @@
-import 'package:ccrlogger/ui/notifiers/dive_detail_notifier.dart';
+import 'package:ccrlogger/ui/widgets/trace_segmented_bar.dart' show TraceType;
 import 'package:ccrlogger/ui/widgets/trace_toggle.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
