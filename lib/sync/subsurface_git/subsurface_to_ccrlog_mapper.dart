@@ -724,6 +724,7 @@ class SubsurfaceToCcrlogMapper {
     required List<SsLine>? siteLines,
   }) {
     String? notes;
+    String? divemaster;
     final buddies = <String>[];
     final tags = <String>[];
     int? rating;
@@ -753,6 +754,9 @@ class SubsurfaceToCcrlogMapper {
             break;
           case 'suit':
             if (l.value.isNotEmpty) suit = l.value;
+            break;
+          case 'divemaster':
+            if (l.value.isNotEmpty) divemaster = l.value;
             break;
         }
       } else if (l is ScalarLine) {
@@ -825,6 +829,7 @@ class SubsurfaceToCcrlogMapper {
     }
 
     final hasAnyField = notes != null ||
+        divemaster != null ||
         buddies.isNotEmpty ||
         tags.isNotEmpty ||
         rating != null ||
@@ -849,6 +854,7 @@ class SubsurfaceToCcrlogMapper {
       siteLatitude: siteLat,
       siteLongitude: siteLon,
       notes: notes,
+      divemaster: divemaster,
       buddies: buddies,
       tags: tags,
       rating: rating,
