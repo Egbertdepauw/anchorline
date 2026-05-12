@@ -45,6 +45,7 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
   final _lat = TextEditingController();
   final _lon = TextEditingController();
   final _notes = TextEditingController();
+  final _divemaster = TextEditingController();
 
   List<String> _siteOptions = const [];
   List<String> _buddyOptions = const [];
@@ -75,6 +76,7 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
     _lat.text = _n.siteLatitude?.toString() ?? '';
     _lon.text = _n.siteLongitude?.toString() ?? '';
     _notes.text = _n.notes ?? '';
+    _divemaster.text = _n.divemaster ?? '';
     _controllersHydrated = true;
   }
 
@@ -91,6 +93,7 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
     _lat.dispose();
     _lon.dispose();
     _notes.dispose();
+    _divemaster.dispose();
     super.dispose();
   }
 
@@ -273,6 +276,15 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
             ],
           ),
 
+          const SizedBox(height: 16),
+
+          Text('Divemaster', style: Theme.of(context).textTheme.titleSmall),
+          TextField(
+            controller: _divemaster,
+            decoration: const InputDecoration(hintText: 'Divemaster name'),
+            onChanged: (v) =>
+                _n.setDivemaster(v.trim().isEmpty ? null : v.trim()),
+          ),
           const SizedBox(height: 16),
 
           Text('Buddies', style: Theme.of(context).textTheme.titleSmall),
