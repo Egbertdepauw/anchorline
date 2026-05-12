@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'map_tile_sources.dart';
+
 class SiteMiniMap extends StatelessWidget {
   final double lat;
   final double lon;
@@ -21,6 +23,12 @@ class SiteMiniMap extends StatelessWidget {
   /// on large maps. Independent of map dimensions when supplied.
   final double? markerSize;
 
+  /// Tile URL template. Defaults to OSM. Mini-maps don't expose a
+  /// toggle (too small for satellite to add useful detail); callers
+  /// pass nothing and stay on OSM. Big-map callers (SiteMapView,
+  /// SitesMapScreen) forward their state-owned tile URL.
+  final String tileUrl;
+
   const SiteMiniMap({
     super.key,
     required this.lat,
@@ -29,6 +37,7 @@ class SiteMiniMap extends StatelessWidget {
     this.width,
     this.height,
     this.markerSize,
+    this.tileUrl = osmTileUrl,
   });
 
   @override
@@ -53,8 +62,7 @@ class SiteMiniMap extends StatelessWidget {
           ),
           children: [
             TileLayer(
-              urlTemplate:
-                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              urlTemplate: tileUrl,
               userAgentPackageName: 'app.ccrlogger',
             ),
             MarkerLayer(markers: [
