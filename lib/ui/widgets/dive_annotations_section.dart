@@ -6,9 +6,11 @@ import '../../data/db/equipment_dao.dart';
 import '../../data/models/dive.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import '../screens/map_picker_screen.dart';
+import '../screens/sites_map_screen.dart';
 import '../theme/tokens.dart';
 import 'chip_input.dart';
 import 'site_form_view.dart';
+import 'site_map_view.dart';
 
 class DiveAnnotationsSection extends StatefulWidget {
   final DiveAnnotationsNotifier notifier;
@@ -110,11 +112,62 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SiteFormView(
-            notifier: _n,
-            annotationsDao: widget.annotationsDao,
-            onPickOnMap: () => _pickOnMap(context),
-          ),
+          Builder(builder: (context) {
+            final lat = _n.siteLatitude;
+            final lon = _n.siteLongitude;
+            final hasCoords = lat != null && lon != null;
+            if (!hasCoords) {
+              return SiteFormView(
+                notifier: _n,
+                annotationsDao: widget.annotationsDao,
+                onPickOnMap: () => _pickOnMap(context),
+              );
+            }
+            return DefaultTabController(
+              length: 2,
+              initialIndex: 1, // default to Map
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const TabBar(
+                    tabs: [
+                      Tab(text: 'Form'),
+                      Tab(text: 'Map'),
+                    ],
+                    isScrollable: false,
+                  ),
+                  SizedBox(
+                    height: 280,
+                    child: TabBarView(
+                      children: [
+                        SingleChildScrollView(
+                          child: SiteFormView(
+                            notifier: _n,
+                            annotationsDao: widget.annotationsDao,
+                            onPickOnMap: () => _pickOnMap(context),
+                          ),
+                        ),
+                        SiteMapView(
+                          lat: lat,
+                          lon: lon,
+                          siteName: _n.siteName,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => SitesMapScreen(
+                                dao: widget.annotationsDao,
+                                currentLat: lat,
+                                currentLon: lon,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
 
           const SizedBox(height: 16),
 
