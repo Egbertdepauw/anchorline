@@ -26,6 +26,7 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   List<String> get tags => _annotation?.tags ?? const [];
   int? get rating => _annotation?.rating;
   String? get conditions => _annotation?.conditions;
+  String? get divemaster => _annotation?.divemaster;
   String? get suit => _annotation?.suit;
   String? get undersuit => _annotation?.undersuit;
   String? get weightSystem => _annotation?.weightSystem;
@@ -101,6 +102,11 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
 
   void setConditions(String? v) {
     _annotation = _annotation?.copyWith(conditions: Value(v));
+    _markDirty();
+  }
+
+  void setDivemaster(String? v) {
+    _annotation = _annotation?.copyWith(divemaster: Value(v));
     _markDirty();
   }
 

@@ -89,4 +89,15 @@ void main() {
     await n.save();
     expect((await annotationsDao.get('dive_clear'))?.siteName, isNull);
   });
+
+  test('setDivemaster updates value and marks dirty', () async {
+    final n = DiveAnnotationsNotifier(annotationsDao, equipmentDao);
+    await n.load('dive_dm_3');
+    expect(n.divemaster, isNull);
+
+    n.setDivemaster('Wendy');
+
+    expect(n.divemaster, 'Wendy');
+    expect(n.dirty, isTrue);
+  });
 }
