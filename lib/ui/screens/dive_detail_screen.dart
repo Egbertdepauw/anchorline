@@ -795,9 +795,10 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                 .join(' · '),
           ),
       ];
-      // Width per cell at ~95px keeps even the long "PPO2 min/avg/max" label
-      // legible. Below that, wrap to a second line.
-      const minCellWidth = 95.0;
+      // Width per cell at ~80px lands at 4 columns on iPhone-portrait (374
+      // available / 80 ≈ 4.7 → 4 cells fit with spacing). Below that, wrap
+      // to a second line. Tablets / desktop windows stay single-row.
+      const minCellWidth = 80.0;
       final cellWidth =
           (constraints.maxWidth - 16) / cells.length; // 16 = horizontal padding
       final useWrap = cellWidth < minCellWidth;
