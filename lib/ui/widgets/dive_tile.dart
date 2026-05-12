@@ -8,7 +8,6 @@ import '../components/numeric_readout.dart';
 import '../theme/tokens.dart';
 import '../util/dive_mode_color.dart';
 import '../util/format.dart';
-import 'site_mini_map.dart';
 import 'sparkline.dart';
 
 class DiveTile extends StatelessWidget {
@@ -16,7 +15,6 @@ class DiveTile extends StatelessWidget {
   final Float32List? sparklineData;
   final dom.DiveAnnotation? annotation;
   final VoidCallback onTap;
-  final VoidCallback? onMiniMapTap;
 
   /// CCRLog-internal sequence number used for the `#N` label. See
   /// [DiveListNotifier.sequenceByDiveId]. Falls back to the DC's own
@@ -29,7 +27,6 @@ class DiveTile extends StatelessWidget {
     required this.sparklineData,
     required this.onTap,
     this.annotation,
-    this.onMiniMapTap,
     this.sequenceNumber,
   });
 
@@ -49,22 +46,6 @@ class DiveTile extends StatelessWidget {
             horizontal: Spacing.md, vertical: Spacing.sm + 2),
         child: Row(
           children: [
-            if (annotation?.siteLatitude != null &&
-                annotation?.siteLongitude != null)
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onMiniMapTap,
-                child: IgnorePointer(
-                  child: SiteMiniMap(
-                    lat: annotation!.siteLatitude!,
-                    lon: annotation!.siteLongitude!,
-                    size: 56,
-                  ),
-                ),
-              )
-            else
-              const SizedBox(width: 56),
-            const SizedBox(width: Spacing.md),
             SizedBox(
               width: 56,
               height: 36,

@@ -71,8 +71,7 @@ void main() {
     expect(find.byType(DiveTile), findsOneWidget);
   });
 
-  testWidgets('DiveTile shows mini map when annotation has coords',
-      (tester) async {
+  testWidgets('DiveTile never renders a SiteMiniMap', (tester) async {
     final now = DateTime.now();
     final ann = dom.DiveAnnotation(
       diveId: 'test-dive-id',
@@ -82,32 +81,14 @@ void main() {
       updatedAt: now,
     );
     await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: DiveTile(
-        dive: _makeDive(),
-        sparklineData: Float32List.fromList([0, 10, 0]),
-        annotation: ann,
-        onTap: () {},
-      )),
-    ));
-    expect(find.byType(SiteMiniMap), findsOneWidget);
-  });
-
-  testWidgets('DiveTile omits mini map when annotation lacks coords',
-      (tester) async {
-    final now = DateTime.now();
-    final ann = dom.DiveAnnotation(
-      diveId: 'test-dive-id',
-      siteName: 'Some Site',
-      createdAt: now,
-      updatedAt: now,
-    );
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: DiveTile(
-        dive: _makeDive(),
-        sparklineData: Float32List.fromList([0, 10, 0]),
-        annotation: ann,
-        onTap: () {},
-      )),
+      home: Scaffold(
+        body: DiveTile(
+          dive: _makeDive(),
+          sparklineData: Float32List.fromList([0, 10, 0]),
+          annotation: ann,
+          onTap: () {},
+        ),
+      ),
     ));
     expect(find.byType(SiteMiniMap), findsNothing);
   });

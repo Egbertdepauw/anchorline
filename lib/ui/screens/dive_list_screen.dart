@@ -17,7 +17,6 @@ import '../util/format.dart';
 import '../widgets/dive_filter_sheet.dart';
 import '../widgets/dive_tile.dart';
 import 'dive_detail_pager.dart';
-import 'sites_map_screen.dart';
 
 class DiveListScreen extends StatefulWidget {
   final DiveListNotifier notifier;
@@ -358,13 +357,6 @@ class _DiveTileWithSparkline extends StatelessWidget {
           sparklineData: snapshot.data,
           annotation: ann,
           sequenceNumber: sequenceMap[dive.id],
-          onMiniMapTap: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => SitesMapScreen(
-              dao: annotationsDao,
-              currentLat: ann?.siteLatitude,
-              currentLon: ann?.siteLongitude,
-            ),
-          )),
           onTap: () async {
             final initialIndex =
                 orderedDives.indexWhere((d) => d.id == dive.id);
