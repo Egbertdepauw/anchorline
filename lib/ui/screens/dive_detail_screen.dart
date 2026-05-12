@@ -36,7 +36,7 @@ import 'image_viewer_screen.dart';
 import 'pdf_viewer_screen.dart';
 import 'sites_map_screen.dart';
 import '../widgets/star_rating.dart';
-import '../widgets/trace_toggle.dart';
+import '../widgets/trace_segmented_bar.dart';
 import '../components/stat_tile.dart';
 import '../theme/tokens.dart';
 
@@ -467,7 +467,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                         }),
                       );
                     }),
-                    TraceToggleChips(
+                    TraceSegmentedBar(
                         visibleTraces: _notifier.visibleTraces,
                         onToggle: _notifier.toggleTrace),
                     _buildStatsRow(theme),
