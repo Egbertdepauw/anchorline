@@ -142,6 +142,7 @@ class DiveAnnotations extends Table {
   TextColumn get tagsJson => text().nullable()();
   IntColumn get rating => integer().nullable()();
   TextColumn get conditions => text().nullable()();
+  TextColumn get divemaster => text().nullable()();
 
   // Subsurface "Information" tab — environmental ratings (1..5; null =
   // unrated, mirroring the existing `rating` convention) plus measured

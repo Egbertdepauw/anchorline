@@ -3003,6 +3003,17 @@ class $DiveAnnotationsTable extends DiveAnnotations
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _divemasterMeta = const VerificationMeta(
+    'divemaster',
+  );
+  @override
+  late final GeneratedColumn<String> divemaster = GeneratedColumn<String>(
+    'divemaster',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _visibilityMeta = const VerificationMeta(
     'visibility',
   );
@@ -3166,6 +3177,7 @@ class $DiveAnnotationsTable extends DiveAnnotations
     tagsJson,
     rating,
     conditions,
+    divemaster,
     visibility,
     wavesize,
     current,
@@ -3256,6 +3268,12 @@ class $DiveAnnotationsTable extends DiveAnnotations
       context.handle(
         _conditionsMeta,
         conditions.isAcceptableOrUnknown(data['conditions']!, _conditionsMeta),
+      );
+    }
+    if (data.containsKey('divemaster')) {
+      context.handle(
+        _divemasterMeta,
+        divemaster.isAcceptableOrUnknown(data['divemaster']!, _divemasterMeta),
       );
     }
     if (data.containsKey('visibility')) {
@@ -3397,6 +3415,10 @@ class $DiveAnnotationsTable extends DiveAnnotations
         DriftSqlType.string,
         data['${effectivePrefix}conditions'],
       ),
+      divemaster: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}divemaster'],
+      ),
       visibility: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}visibility'],
@@ -3472,6 +3494,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
   final String? tagsJson;
   final int? rating;
   final String? conditions;
+  final String? divemaster;
   final int? visibility;
   final int? wavesize;
   final int? current;
@@ -3499,6 +3522,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     this.tagsJson,
     this.rating,
     this.conditions,
+    this.divemaster,
     this.visibility,
     this.wavesize,
     this.current,
@@ -3541,6 +3565,9 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     }
     if (!nullToAbsent || conditions != null) {
       map['conditions'] = Variable<String>(conditions);
+    }
+    if (!nullToAbsent || divemaster != null) {
+      map['divemaster'] = Variable<String>(divemaster);
     }
     if (!nullToAbsent || visibility != null) {
       map['visibility'] = Variable<int>(visibility);
@@ -3606,6 +3633,9 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       conditions: conditions == null && nullToAbsent
           ? const Value.absent()
           : Value(conditions),
+      divemaster: divemaster == null && nullToAbsent
+          ? const Value.absent()
+          : Value(divemaster),
       visibility: visibility == null && nullToAbsent
           ? const Value.absent()
           : Value(visibility),
@@ -3658,6 +3688,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       tagsJson: serializer.fromJson<String?>(json['tagsJson']),
       rating: serializer.fromJson<int?>(json['rating']),
       conditions: serializer.fromJson<String?>(json['conditions']),
+      divemaster: serializer.fromJson<String?>(json['divemaster']),
       visibility: serializer.fromJson<int?>(json['visibility']),
       wavesize: serializer.fromJson<int?>(json['wavesize']),
       current: serializer.fromJson<int?>(json['current']),
@@ -3687,6 +3718,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       'tagsJson': serializer.toJson<String?>(tagsJson),
       'rating': serializer.toJson<int?>(rating),
       'conditions': serializer.toJson<String?>(conditions),
+      'divemaster': serializer.toJson<String?>(divemaster),
       'visibility': serializer.toJson<int?>(visibility),
       'wavesize': serializer.toJson<int?>(wavesize),
       'current': serializer.toJson<int?>(current),
@@ -3714,6 +3746,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     Value<String?> tagsJson = const Value.absent(),
     Value<int?> rating = const Value.absent(),
     Value<String?> conditions = const Value.absent(),
+    Value<String?> divemaster = const Value.absent(),
     Value<int?> visibility = const Value.absent(),
     Value<int?> wavesize = const Value.absent(),
     Value<int?> current = const Value.absent(),
@@ -3742,6 +3775,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     tagsJson: tagsJson.present ? tagsJson.value : this.tagsJson,
     rating: rating.present ? rating.value : this.rating,
     conditions: conditions.present ? conditions.value : this.conditions,
+    divemaster: divemaster.present ? divemaster.value : this.divemaster,
     visibility: visibility.present ? visibility.value : this.visibility,
     wavesize: wavesize.present ? wavesize.value : this.wavesize,
     current: current.present ? current.value : this.current,
@@ -3776,6 +3810,9 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       conditions: data.conditions.present
           ? data.conditions.value
           : this.conditions,
+      divemaster: data.divemaster.present
+          ? data.divemaster.value
+          : this.divemaster,
       visibility: data.visibility.present
           ? data.visibility.value
           : this.visibility,
@@ -3813,6 +3850,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
           ..write('tagsJson: $tagsJson, ')
           ..write('rating: $rating, ')
           ..write('conditions: $conditions, ')
+          ..write('divemaster: $divemaster, ')
           ..write('visibility: $visibility, ')
           ..write('wavesize: $wavesize, ')
           ..write('current: $current, ')
@@ -3842,6 +3880,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     tagsJson,
     rating,
     conditions,
+    divemaster,
     visibility,
     wavesize,
     current,
@@ -3870,6 +3909,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
           other.tagsJson == this.tagsJson &&
           other.rating == this.rating &&
           other.conditions == this.conditions &&
+          other.divemaster == this.divemaster &&
           other.visibility == this.visibility &&
           other.wavesize == this.wavesize &&
           other.current == this.current &&
@@ -3896,6 +3936,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
   final Value<String?> tagsJson;
   final Value<int?> rating;
   final Value<String?> conditions;
+  final Value<String?> divemaster;
   final Value<int?> visibility;
   final Value<int?> wavesize;
   final Value<int?> current;
@@ -3921,6 +3962,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     this.tagsJson = const Value.absent(),
     this.rating = const Value.absent(),
     this.conditions = const Value.absent(),
+    this.divemaster = const Value.absent(),
     this.visibility = const Value.absent(),
     this.wavesize = const Value.absent(),
     this.current = const Value.absent(),
@@ -3947,6 +3989,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     this.tagsJson = const Value.absent(),
     this.rating = const Value.absent(),
     this.conditions = const Value.absent(),
+    this.divemaster = const Value.absent(),
     this.visibility = const Value.absent(),
     this.wavesize = const Value.absent(),
     this.current = const Value.absent(),
@@ -3975,6 +4018,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     Expression<String>? tagsJson,
     Expression<int>? rating,
     Expression<String>? conditions,
+    Expression<String>? divemaster,
     Expression<int>? visibility,
     Expression<int>? wavesize,
     Expression<int>? current,
@@ -4001,6 +4045,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
       if (tagsJson != null) 'tags_json': tagsJson,
       if (rating != null) 'rating': rating,
       if (conditions != null) 'conditions': conditions,
+      if (divemaster != null) 'divemaster': divemaster,
       if (visibility != null) 'visibility': visibility,
       if (wavesize != null) 'wavesize': wavesize,
       if (current != null) 'current': current,
@@ -4029,6 +4074,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     Value<String?>? tagsJson,
     Value<int?>? rating,
     Value<String?>? conditions,
+    Value<String?>? divemaster,
     Value<int?>? visibility,
     Value<int?>? wavesize,
     Value<int?>? current,
@@ -4055,6 +4101,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
       tagsJson: tagsJson ?? this.tagsJson,
       rating: rating ?? this.rating,
       conditions: conditions ?? this.conditions,
+      divemaster: divemaster ?? this.divemaster,
       visibility: visibility ?? this.visibility,
       wavesize: wavesize ?? this.wavesize,
       current: current ?? this.current,
@@ -4102,6 +4149,9 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     }
     if (conditions.present) {
       map['conditions'] = Variable<String>(conditions.value);
+    }
+    if (divemaster.present) {
+      map['divemaster'] = Variable<String>(divemaster.value);
     }
     if (visibility.present) {
       map['visibility'] = Variable<int>(visibility.value);
@@ -4163,6 +4213,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
           ..write('tagsJson: $tagsJson, ')
           ..write('rating: $rating, ')
           ..write('conditions: $conditions, ')
+          ..write('divemaster: $divemaster, ')
           ..write('visibility: $visibility, ')
           ..write('wavesize: $wavesize, ')
           ..write('current: $current, ')
@@ -10218,6 +10269,7 @@ typedef $$DiveAnnotationsTableCreateCompanionBuilder =
       Value<String?> tagsJson,
       Value<int?> rating,
       Value<String?> conditions,
+      Value<String?> divemaster,
       Value<int?> visibility,
       Value<int?> wavesize,
       Value<int?> current,
@@ -10245,6 +10297,7 @@ typedef $$DiveAnnotationsTableUpdateCompanionBuilder =
       Value<String?> tagsJson,
       Value<int?> rating,
       Value<String?> conditions,
+      Value<String?> divemaster,
       Value<int?> visibility,
       Value<int?> wavesize,
       Value<int?> current,
@@ -10336,6 +10389,11 @@ class $$DiveAnnotationsTableFilterComposer
 
   ColumnFilters<String> get conditions => $composableBuilder(
     column: $table.conditions,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get divemaster => $composableBuilder(
+    column: $table.divemaster,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10482,6 +10540,11 @@ class $$DiveAnnotationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get divemaster => $composableBuilder(
+    column: $table.divemaster,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get visibility => $composableBuilder(
     column: $table.visibility,
     builder: (column) => ColumnOrderings(column),
@@ -10617,6 +10680,11 @@ class $$DiveAnnotationsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get divemaster => $composableBuilder(
+    column: $table.divemaster,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get visibility => $composableBuilder(
     column: $table.visibility,
     builder: (column) => column,
@@ -10730,6 +10798,7 @@ class $$DiveAnnotationsTableTableManager
                 Value<String?> tagsJson = const Value.absent(),
                 Value<int?> rating = const Value.absent(),
                 Value<String?> conditions = const Value.absent(),
+                Value<String?> divemaster = const Value.absent(),
                 Value<int?> visibility = const Value.absent(),
                 Value<int?> wavesize = const Value.absent(),
                 Value<int?> current = const Value.absent(),
@@ -10755,6 +10824,7 @@ class $$DiveAnnotationsTableTableManager
                 tagsJson: tagsJson,
                 rating: rating,
                 conditions: conditions,
+                divemaster: divemaster,
                 visibility: visibility,
                 wavesize: wavesize,
                 current: current,
@@ -10782,6 +10852,7 @@ class $$DiveAnnotationsTableTableManager
                 Value<String?> tagsJson = const Value.absent(),
                 Value<int?> rating = const Value.absent(),
                 Value<String?> conditions = const Value.absent(),
+                Value<String?> divemaster = const Value.absent(),
                 Value<int?> visibility = const Value.absent(),
                 Value<int?> wavesize = const Value.absent(),
                 Value<int?> current = const Value.absent(),
@@ -10807,6 +10878,7 @@ class $$DiveAnnotationsTableTableManager
                 tagsJson: tagsJson,
                 rating: rating,
                 conditions: conditions,
+                divemaster: divemaster,
                 visibility: visibility,
                 wavesize: wavesize,
                 current: current,

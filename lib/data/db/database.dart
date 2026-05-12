@@ -26,7 +26,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -100,6 +100,12 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(diveAnnotations, diveAnnotations.airTempC);
             await m.addColumn(diveAnnotations, diveAnnotations.waterTempC);
             await m.addColumn(diveAnnotations, diveAnnotations.weightsJson);
+          }
+          if (from < 13) {
+            // Divemaster string — new per-annotation field exposing the
+            // Subsurface "divemaster" line that we previously emitted as
+            // empty. Nullable; existing rows get NULL.
+            await m.addColumn(diveAnnotations, diveAnnotations.divemaster);
           }
         },
       );
