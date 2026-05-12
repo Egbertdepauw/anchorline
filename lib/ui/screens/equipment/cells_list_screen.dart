@@ -5,18 +5,21 @@ import '../../../data/db/dive_annotations_dao.dart';
 import '../../../data/db/dive_dao.dart';
 import '../../../data/db/equipment_dao.dart';
 import '../../notifiers/equipment_notifiers.dart';
+import '../../notifiers/settings_notifier.dart';
 import 'cell_detail_screen.dart';
 
 class CellsListScreen extends StatefulWidget {
   final EquipmentDao dao;
   final DiveDao diveDao;
   final DiveAnnotationsDao annotationsDao;
+  final SettingsNotifier settingsNotifier;
 
   const CellsListScreen({
     super.key,
     required this.dao,
     required this.diveDao,
     required this.annotationsDao,
+    required this.settingsNotifier,
   });
 
   @override
@@ -54,6 +57,7 @@ class _CellsListScreenState extends State<CellsListScreen> {
               dao: widget.dao,
               diveDao: widget.diveDao,
               annotationsDao: widget.annotationsDao,
+              settingsNotifier: widget.settingsNotifier,
             ),
           ));
           if (!context.mounted) return;
@@ -86,6 +90,7 @@ class _CellsListScreenState extends State<CellsListScreen> {
                             dao: widget.dao,
                             diveDao: widget.diveDao,
                             annotationsDao: widget.annotationsDao,
+                            settingsNotifier: widget.settingsNotifier,
                             id: c.id,
                           ),
                         ));

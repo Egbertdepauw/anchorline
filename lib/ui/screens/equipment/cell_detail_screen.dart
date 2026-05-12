@@ -7,6 +7,7 @@ import '../../../data/db/dive_annotations_dao.dart';
 import '../../../data/db/dive_dao.dart';
 import '../../../data/db/equipment_dao.dart';
 import '../../../data/models/equipment.dart' show SlotInUseException;
+import '../../notifiers/settings_notifier.dart';
 import '../../widgets/cell_health_strip.dart';
 import '../../widgets/cell_mv_chart.dart';
 import '../dive_detail_screen.dart';
@@ -15,6 +16,7 @@ class CellDetailScreen extends StatefulWidget {
   final EquipmentDao dao;
   final DiveDao diveDao;
   final DiveAnnotationsDao annotationsDao;
+  final SettingsNotifier settingsNotifier;
   final String? id; // null = create-new draft
 
   const CellDetailScreen({
@@ -22,6 +24,7 @@ class CellDetailScreen extends StatefulWidget {
     required this.dao,
     required this.diveDao,
     required this.annotationsDao,
+    required this.settingsNotifier,
     this.id,
   });
 
@@ -138,6 +141,7 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
         dao: widget.diveDao,
         annotationsDao: widget.annotationsDao,
         equipmentDao: widget.dao,
+        settingsNotifier: widget.settingsNotifier,
       ),
     ));
   }

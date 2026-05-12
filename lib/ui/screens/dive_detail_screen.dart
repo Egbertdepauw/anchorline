@@ -45,7 +45,7 @@ class DiveDetailScreen extends StatefulWidget {
   final DiveDao dao;
   final DiveAnnotationsDao annotationsDao;
   final EquipmentDao equipmentDao;
-  final SettingsNotifier? settingsNotifier;
+  final SettingsNotifier settingsNotifier;
 
   /// Navigation callbacks for the prev/next AppBar buttons. `null` means
   /// "no sibling in that direction"; the button is rendered disabled.
@@ -89,7 +89,7 @@ class DiveDetailScreen extends StatefulWidget {
     required this.dao,
     required this.annotationsDao,
     required this.equipmentDao,
-    this.settingsNotifier,
+    required this.settingsNotifier,
     this.onPrev,
     this.onNext,
     this.annotationsNotifier,
@@ -129,7 +129,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     }
     _annotationsNotifier.addListener(_onChanged);
 
-    widget.settingsNotifier?.addListener(_onChanged);
+    widget.settingsNotifier.addListener(_onChanged);
   }
 
   @override
@@ -140,7 +140,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     if (_ownsAnnotations) {
       _annotationsNotifier.dispose();
     }
-    widget.settingsNotifier?.removeListener(_onChanged);
+    widget.settingsNotifier.removeListener(_onChanged);
     super.dispose();
   }
 
@@ -422,54 +422,68 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
 
                   // Profile chart
                   if (_notifier.samples != null) ...[
-                    Builder(builder: (context) {
-                      final samples = _notifier.samples!;
-                      final useSpeedColored =
-                          widget.settingsNotifier?.useSpeedColoredGraph ?? true;
-                      return SizedBox(
-                        height: 250,
-                        child: LayoutBuilder(builder: (context, constraints) {
-                          return CrosshairOverlay(
-                            sampleCount: samples.sampleCount,
-                            chartLeftPad: 40,
-                            chartRightPad: 44,
-                            onIndexChanged: _notifier.setCrosshairIndex,
-                            onRelease: _notifier.clearCrosshair,
-                            child: Stack(children: [
-                              ProfileChart(
-                                  samples: samples,
-                                  visibleTraces: _notifier.visibleTraces,
-                                  crosshairIndex: _notifier.crosshairIndex,
-                                  cellsBySlot: _notifier.activeCells,
-                                  tanks: _decodeTanks(),
-                                  mappedCylinders: _notifier.mappedCylinders,
-                                  gasMixes: _decodeGasMixes(),
-                                  useSpeedColoredGraph: useSpeedColored),
-                              if (_notifier.crosshairIndex != null)
-                                CrosshairTooltip(
-                                  samples: _notifier.samples!,
-                                  sampleIndex: _notifier.crosshairIndex!,
-                                  visibleTraces: _notifier.visibleTraces,
-                                  chartX: 40 +
-                                      (_notifier.crosshairIndex! /
-                                              (_notifier.samples!
-                                                      .sampleCount -
-                                                  1)) *
-                                          (constraints.maxWidth - 84),
-                                  chartWidth: constraints.maxWidth,
-                                  cellsBySlot: _notifier.activeCells,
-                                  tanks: _decodeTanks(),
-                                  mappedCylinders: _notifier.mappedCylinders,
-                                  gasMixes: _decodeGasMixes(),
-                                ),
-                            ]),
-                          );
-                        }),
-                      );
-                    }),
-                    TraceSegmentedBar(
-                        visibleTraces: _notifier.visibleTraces,
-                        onToggle: _notifier.toggleTrace),
+                    ListenableBuilder(
+                      listenable: widget.settingsNotifier,
+                      builder: (context, _) {
+                        final visibleTraces =
+                            widget.settingsNotifier.visibleTraces;
+                        final useSpeedColored =
+                            widget.settingsNotifier.useSpeedColoredGraph;
+                        return Column(
+                          children: [
+                            SizedBox(
+                              height: 250,
+                              child: LayoutBuilder(
+                                  builder: (context, constraints) {
+                                final samples = _notifier.samples!;
+                                return CrosshairOverlay(
+                                  sampleCount: samples.sampleCount,
+                                  chartLeftPad: 40,
+                                  chartRightPad: 44,
+                                  onIndexChanged: _notifier.setCrosshairIndex,
+                                  onRelease: _notifier.clearCrosshair,
+                                  child: Stack(children: [
+                                    ProfileChart(
+                                        samples: samples,
+                                        visibleTraces: visibleTraces,
+                                        crosshairIndex:
+                                            _notifier.crosshairIndex,
+                                        cellsBySlot: _notifier.activeCells,
+                                        tanks: _decodeTanks(),
+                                        mappedCylinders:
+                                            _notifier.mappedCylinders,
+                                        gasMixes: _decodeGasMixes(),
+                                        useSpeedColoredGraph: useSpeedColored),
+                                    if (_notifier.crosshairIndex != null)
+                                      CrosshairTooltip(
+                                        samples: _notifier.samples!,
+                                        sampleIndex: _notifier.crosshairIndex!,
+                                        visibleTraces: visibleTraces,
+                                        chartX: 40 +
+                                            (_notifier.crosshairIndex! /
+                                                    (_notifier.samples!
+                                                            .sampleCount -
+                                                        1)) *
+                                                (constraints.maxWidth - 84),
+                                        chartWidth: constraints.maxWidth,
+                                        cellsBySlot: _notifier.activeCells,
+                                        tanks: _decodeTanks(),
+                                        mappedCylinders:
+                                            _notifier.mappedCylinders,
+                                        gasMixes: _decodeGasMixes(),
+                                      ),
+                                  ]),
+                                );
+                              }),
+                            ),
+                            TraceSegmentedBar(
+                                visibleTraces: visibleTraces,
+                                onToggle: (t) =>
+                                    widget.settingsNotifier.toggleTrace(t)),
+                          ],
+                        );
+                      },
+                    ),
                     _buildStatsRow(theme),
                     _buildAnnotationsSection(),
                   ],

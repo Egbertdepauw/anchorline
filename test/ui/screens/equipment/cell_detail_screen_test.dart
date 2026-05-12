@@ -2,6 +2,7 @@ import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
+import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/equipment/cell_detail_screen.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +35,7 @@ void main() {
           dao: dao,
           diveDao: diveDao,
           annotationsDao: annotationsDao,
+          settingsNotifier: SettingsNotifier(),
           id: id,
         ),
       ));
@@ -74,6 +76,7 @@ void main() {
           dao: dao,
           diveDao: diveDao,
           annotationsDao: annotationsDao,
+          settingsNotifier: SettingsNotifier(),
           id: id,
         ),
       ));

@@ -303,6 +303,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                   dao: _equipmentDao,
                   diveDao: _diveDao,
                   annotationsDao: _diveAnnotationsDao,
+                  settingsNotifier: widget.settingsNotifier,
                 ),
                 SettingsScreen(
                   notifier: widget.settingsNotifier,

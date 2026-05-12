@@ -1,6 +1,7 @@
 /// Notifier for the dive detail screen.
 ///
-/// Manages sample loading, trace visibility, and crosshair position.
+/// Manages sample loading and crosshair position.
+/// Trace visibility is owned by [SettingsNotifier].
 library;
 
 import 'package:flutter/foundation.dart';
@@ -8,14 +9,11 @@ import '../../data/db/database.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../data/models/sample_set.dart';
-import '../../shearwater/parser/constants.dart';
-import '../widgets/trace_segmented_bar.dart' show TraceType;
 
 /// ChangeNotifier backing the dive detail screen.
 ///
 /// Provides:
 /// - Lazy sample loading from [DiveDao].
-/// - Per-[TraceType] visibility toggle with notification.
 /// - Crosshair index for the profile chart scrubber.
 class DiveDetailNotifier extends ChangeNotifier {
   final Dive dive;
@@ -25,7 +23,6 @@ class DiveDetailNotifier extends ChangeNotifier {
   SampleSet? _samples;
   Map<int, OxygenCell> _activeCells = const {};
   Map<int, Cylinder> _mappedCylinders = const {};
-  final Set<TraceType> _visibleTraces;
   int? _crosshairIndex;
   bool _loading = false;
 
@@ -39,9 +36,6 @@ class DiveDetailNotifier extends ChangeNotifier {
   /// dive computer. Empty when no mappings exist.
   Map<int, Cylinder> get mappedCylinders => _mappedCylinders;
 
-  /// Currently visible trace types.
-  Set<TraceType> get visibleTraces => _visibleTraces;
-
   /// Current crosshair sample index, or `null` when no crosshair is active.
   int? get crosshairIndex => _crosshairIndex;
 
@@ -53,21 +47,7 @@ class DiveDetailNotifier extends ChangeNotifier {
     required DiveDao dao,
     EquipmentDao? equipmentDao,
   })  : _dao = dao,
-        _equipmentDao = equipmentDao,
-        _visibleTraces = _defaultTraces(dive.diveMode);
-
-  static Set<TraceType> _defaultTraces(int diveModeValue) {
-    final mode = DiveMode.fromValue(diveModeValue);
-    if (mode.isCcr) {
-      return {
-        TraceType.ppo2,
-        TraceType.setpoint,
-        TraceType.deco,
-        TraceType.gasChanges,
-      };
-    }
-    return {TraceType.deco, TraceType.gasChanges};
-  }
+        _equipmentDao = equipmentDao;
 
   /// Load samples from the database and notify listeners.
   Future<void> loadSamples() async {
@@ -98,16 +78,6 @@ class DiveDetailNotifier extends ChangeNotifier {
       out[m.channelIndex] = c;
     }
     return out;
-  }
-
-  /// Toggle the visibility of [trace] and notify listeners.
-  void toggleTrace(TraceType trace) {
-    if (_visibleTraces.contains(trace)) {
-      _visibleTraces.remove(trace);
-    } else {
-      _visibleTraces.add(trace);
-    }
-    notifyListeners();
   }
 
   /// Set the crosshair to [index] and notify listeners.

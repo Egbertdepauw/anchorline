@@ -42,7 +42,7 @@ class DiveDetailPager extends StatefulWidget {
   final DiveAttachmentsDao? attachmentsDao;
   final AttachmentUploader? attachmentUploader;
   final AttachmentDownloader? attachmentDownloader;
-  final SettingsNotifier? settingsNotifier;
+  final SettingsNotifier settingsNotifier;
 
   /// CCRLog-internal sequence number per dive id (newest = N, oldest = 1).
   /// See [DiveListNotifier.sequenceByDiveId]. When omitted/empty the screens
@@ -59,7 +59,7 @@ class DiveDetailPager extends StatefulWidget {
     this.attachmentsDao,
     this.attachmentUploader,
     this.attachmentDownloader,
-    this.settingsNotifier,
+    required this.settingsNotifier,
     this.sequenceByDiveId = const {},
   })  : assert(dives.length > 0, 'DiveDetailPager needs at least one dive'),
         assert(initialIndex >= 0, 'initialIndex must be non-negative');

@@ -9,6 +9,7 @@ import 'package:ccrlogger/data/models/annotation.dart';
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
 import 'package:ccrlogger/shearwater/parser/hardware.dart';
+import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/dive_detail_screen.dart';
 import 'package:ccrlogger/ui/screens/sites_map_screen.dart';
 import 'package:ccrlogger/ui/widgets/site_mini_map.dart';
@@ -95,6 +96,7 @@ Future<void> _pumpScreen(
         dao: dao,
         annotationsDao: annotationsDao,
         equipmentDao: equipmentDao,
+        settingsNotifier: SettingsNotifier(),
       ),
     ));
     // Let initState's PowerSync + sample loaders settle before we
