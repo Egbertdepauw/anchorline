@@ -304,10 +304,13 @@ void main() {
     });
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
-    expect(find.byType(SiteMiniMap), findsOneWidget);
+    // Two SiteMiniMap widgets now: the header one and another inside the
+    // Map tab of the site sub-block's tab-group. Both open SitesMapScreen
+    // on tap; this test exercises the header (the first match).
+    expect(find.byType(SiteMiniMap), findsNWidgets(2));
     expect(find.byType(SitesMapScreen), findsNothing);
 
-    await tester.tap(find.byType(SiteMiniMap));
+    await tester.tap(find.byType(SiteMiniMap).first);
     // SitesMapScreen wraps a FlutterMap whose tile loaders never settle
     // under the test framework, so pumpAndSettle would hang. Pump a few
     // frames to advance the page transition and stop.
