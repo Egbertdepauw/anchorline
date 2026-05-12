@@ -40,6 +40,7 @@ import 'screens/dive_list_screen.dart';
 import 'screens/equipment/equipment_landing_screen.dart';
 import 'screens/import_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/sites_map_screen.dart';
 import 'widgets/sync_health_banner.dart';
 
 class AppShell extends StatefulWidget {
@@ -240,6 +241,20 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       appBar: AppBar(
         title: const Text('CCRLog'),
         actions: [
+          if (_currentIndex == 0)
+            IconButton(
+              tooltip: 'Dive sites map',
+              icon: const Icon(Icons.map_outlined),
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => SitesMapScreen(
+                    dao: _diveAnnotationsDao,
+                    currentLat: null,
+                    currentLon: null,
+                  ),
+                ));
+              },
+            ),
           if (_currentIndex == 0)
             IconButton(
               tooltip: 'Settings',
