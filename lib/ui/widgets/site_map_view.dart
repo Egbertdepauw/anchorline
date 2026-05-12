@@ -25,52 +25,65 @@ class SiteMapView extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final coordsLabel =
         '${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}';
-    return Stack(
-      children: [
-        SiteMiniMap(lat: lat, lon: lon, size: 200),
-        Positioned(
-          left: Spacing.sm,
-          right: Spacing.sm,
-          bottom: Spacing.sm,
-          child: InkWell(
-            onTap: onTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: Spacing.sm, vertical: Spacing.xs),
-              decoration: BoxDecoration(
-                color: scheme.surface.withValues(alpha: 0.85),
-                borderRadius: Radii.cardBr,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (siteName != null && siteName!.isNotEmpty)
+    // Fills the available width and height so the map reaches edge-to-
+    // edge inside its tab-view slot. The marker stays a fixed small
+    // size regardless of map dimensions.
+    return LayoutBuilder(builder: (context, constraints) {
+      final w = constraints.maxWidth.isFinite ? constraints.maxWidth : 360.0;
+      final h = constraints.maxHeight.isFinite ? constraints.maxHeight : 220.0;
+      return Stack(
+        children: [
+          SiteMiniMap(
+            lat: lat,
+            lon: lon,
+            width: w,
+            height: h,
+            markerSize: 24,
+          ),
+          Positioned(
+            left: Spacing.sm,
+            right: Spacing.sm,
+            bottom: Spacing.sm,
+            child: InkWell(
+              onTap: onTap,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: Spacing.sm, vertical: Spacing.xs),
+                decoration: BoxDecoration(
+                  color: scheme.surface.withValues(alpha: 0.85),
+                  borderRadius: Radii.cardBr,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (siteName != null && siteName!.isNotEmpty)
+                      Text(
+                        siteName!,
+                        style: AppTypography.body.copyWith(
+                          color: scheme.onSurface,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    if (siteName != null && siteName!.isNotEmpty)
+                      const SizedBox(height: Spacing.xs),
                     Text(
-                      siteName!,
-                      style: AppTypography.body.copyWith(
-                        color: scheme.onSurface,
-                        fontWeight: FontWeight.w500,
+                      coordsLabel,
+                      style: AppTypography.readoutSm.copyWith(
+                        color: scheme.outlineVariant,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  if (siteName != null && siteName!.isNotEmpty)
-                    const SizedBox(height: Spacing.xs),
-                  Text(
-                    coordsLabel,
-                    style: AppTypography.readoutSm.copyWith(
-                      color: scheme.outlineVariant,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      ],
-    );
+        ],
+      );
+    });
   }
 }
