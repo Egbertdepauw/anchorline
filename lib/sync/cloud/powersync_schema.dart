@@ -35,6 +35,7 @@ const appSchema = Schema([
     Column.text('tags_json'),
     Column.integer('rating'),
     Column.text('conditions'),
+    Column.text('divemaster'),
     // Equipment used on this dive (Phase 3). All optional, free text,
     // surfaced as buddies-style autocompletes in the UI.
     Column.text('suit'),

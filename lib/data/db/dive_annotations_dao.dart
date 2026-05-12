@@ -62,13 +62,13 @@ class DiveAnnotationsDao {
         await tx.execute(
           'INSERT INTO dive_annotations '
           '(id, owner_id, dive_id, site_name, site_latitude_e5, site_longitude_e5, '
-          'notes, buddies_json, tags_json, rating, conditions, '
+          'notes, buddies_json, tags_json, rating, conditions, divemaster, '
           'suit, undersuit, weight_system, dpv, camera, '
           'visibility, wavesize, current, surge, chill, '
           'air_temp_c, water_temp_c, weights_json, '
           'created_at, updated_at, deleted_at, version, sync_status) '
           'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-          '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             a.diveId, // synthetic id == dive_id (one annotation per dive)
             ownerId,
@@ -81,6 +81,7 @@ class DiveAnnotationsDao {
             a.tags.isEmpty ? null : jsonEncode(a.tags),
             a.rating,
             a.conditions,
+            a.divemaster,
             a.suit,
             a.undersuit,
             a.weightSystem,
@@ -114,6 +115,7 @@ class DiveAnnotationsDao {
           'tags_json = ?, '
           'rating = ?, '
           'conditions = ?, '
+          'divemaster = ?, '
           'suit = ?, '
           'undersuit = ?, '
           'weight_system = ?, '
@@ -142,6 +144,7 @@ class DiveAnnotationsDao {
             a.tags.isEmpty ? null : jsonEncode(a.tags),
             a.rating,
             a.conditions,
+            a.divemaster,
             a.suit,
             a.undersuit,
             a.weightSystem,
@@ -320,6 +323,7 @@ class DiveAnnotationsDao {
       tags: _decodeStringList(tagsJson),
       rating: row['rating'] as int?,
       conditions: row['conditions'] as String?,
+      divemaster: row['divemaster'] as String?,
       suit: row['suit'] as String?,
       undersuit: row['undersuit'] as String?,
       weightSystem: row['weight_system'] as String?,

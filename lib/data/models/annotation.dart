@@ -58,6 +58,7 @@ class DiveAnnotation {
   final List<String> tags;
   final int? rating; // 1-5
   final String? conditions;
+  final String? divemaster;
 
   // Equipment used on this dive (Phase 3). All freeform single-string
   // values; the UI surfaces each as a buddies-style autocomplete.
@@ -96,6 +97,7 @@ class DiveAnnotation {
     this.tags = const [],
     this.rating,
     this.conditions,
+    this.divemaster,
     this.suit,
     this.undersuit,
     this.weightSystem,
@@ -126,6 +128,7 @@ class DiveAnnotation {
     List<String>? tags,
     Value<int?>? rating,
     Value<String?>? conditions,
+    Value<String?>? divemaster,
     Value<String?>? suit,
     Value<String?>? undersuit,
     Value<String?>? weightSystem,
@@ -157,6 +160,7 @@ class DiveAnnotation {
         tags: tags ?? this.tags,
         rating: rating == null ? this.rating : rating.value,
         conditions: conditions == null ? this.conditions : conditions.value,
+        divemaster: divemaster == null ? this.divemaster : divemaster.value,
         suit: suit == null ? this.suit : suit.value,
         undersuit: undersuit == null ? this.undersuit : undersuit.value,
         weightSystem:
