@@ -169,7 +169,7 @@ class DiveGasMix {
   final int heliumPercent;
   final bool isDiluent;
 
-  DiveGasMix({
+  const DiveGasMix({
     required this.oxygenPercent,
     required this.heliumPercent,
     required this.isDiluent,
