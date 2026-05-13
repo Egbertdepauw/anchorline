@@ -7,7 +7,7 @@ import '../components/status_dot.dart';
 import '../theme/tokens.dart';
 
 /// The set of data traces that can be toggled on/off in the profile chart.
-enum TraceType { ppo2, setpoint, deco, cells, tanks, gasChanges }
+enum TraceType { ppo2, setpoint, deco, cells, tanks, gasChanges, density, end }
 
 const _segmentData = <TraceType, ({String label, Color color})>{
   TraceType.ppo2: (label: 'PPO2', color: Color(0xFFFFCC66)),
@@ -16,9 +16,11 @@ const _segmentData = <TraceType, ({String label, Color color})>{
   TraceType.deco: (label: 'Deco', color: Color(0xFFF39C12)),
   TraceType.tanks: (label: 'Tanks', color: Color(0xFF60A5FA)),
   TraceType.gasChanges: (label: 'Gas', color: Color(0xFF60A5FA)),
+  TraceType.density: (label: 'Density', color: Color(0xFFE3E6EB)),
+  TraceType.end: (label: 'END', color: Color(0xFFE3E6EB)),
 };
 
-/// Connected segmented control of [TraceType] toggles. Six segments share
+/// Connected segmented control of [TraceType] toggles. Eight segments share
 /// a single rounded outline with 1-px dividers; selected segments tint
 /// up. On narrow screens the bar overflows right and scrolls
 /// horizontally.

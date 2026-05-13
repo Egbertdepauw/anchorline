@@ -6,7 +6,7 @@ void main() {
   Widget wrap(Widget child) =>
       MaterialApp(home: Scaffold(body: child));
 
-  testWidgets('TraceSegmentedBar renders six segments with their labels',
+  testWidgets('TraceSegmentedBar renders eight segments with their labels',
       (tester) async {
     await tester.pumpWidget(wrap(TraceSegmentedBar(
       visibleTraces: const {TraceType.ppo2, TraceType.deco},
@@ -18,6 +18,8 @@ void main() {
     expect(find.text('Deco'), findsOneWidget);
     expect(find.text('Tanks'), findsOneWidget);
     expect(find.text('Gas'), findsOneWidget);
+    expect(find.text('Density'), findsOneWidget);
+    expect(find.text('END'), findsOneWidget);
   });
 
   testWidgets('tapping an unselected segment calls onToggle with its TraceType',
@@ -55,6 +57,18 @@ void main() {
       ),
     );
     expect(scroll.scrollDirection, Axis.horizontal);
+  });
+
+  testWidgets('tapping Density / END segments calls onToggle', (tester) async {
+    TraceType? toggled;
+    await tester.pumpWidget(wrap(TraceSegmentedBar(
+      visibleTraces: const {},
+      onToggle: (t) => toggled = t,
+    )));
+    await tester.tap(find.text('Density'));
+    expect(toggled, TraceType.density);
+    await tester.tap(find.text('END'));
+    expect(toggled, TraceType.end);
   });
 
   testWidgets(
