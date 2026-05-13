@@ -19,16 +19,31 @@ not a generalist log."
 
 ## Asset
 
-- **Source:** user generates externally via an AI image tool
-  (Bing Image Creator / Google ImageFX / Krea / etc.) using a prompt
-  matching the t-shirt reference style (surfacing CCR diver, front view,
-  white line art on transparent background, illustrator quality).
-- **Format:** single PNG with transparent background (preferred) or SVG
-  if the AI tool exports vector
-- **Resolution:** at least 1200×1200 px so it stays crisp on retina
-  displays. Larger is fine — Flutter scales down cleanly
-- **Colour:** pure white line art on transparent; opacity controlled at
-  render time via the theme
+- **Source:** user generated externally via an AI image tool. Image
+  composition matches the original t-shirt reference: surfacing CCR
+  diver, front view, white line art with halftone shading, water
+  ripples + reflection.
+- **Format:** PNG, **solid black background** (NOT transparent — the
+  AI tool returned it black-on-black-bg, which is fine; the render
+  layer compensates).
+- **Resolution:** ~1024×1024 px, scales cleanly on retina displays.
+- **Path:** `assets/images/watermark.png` (user adds the file manually
+  before this track's first implementation task runs — drag from
+  Finder into the project).
+
+## Rendering — black background, blend-mode compositing
+
+The image's black background can't be pre-masked (we want a single
+asset, no manual remove.bg step). At render time we composite the
+image using `BlendMode.screen` against its parent layer — screen blend
+formula `result = 1 − (1 − dst) × (1 − src)` makes black pixels
+transparent (src=0 → result=dst) and lifts white pixels onto the
+background unchanged.
+
+Flutter's `Image.asset` widget doesn't expose a blend-mode-against-parent
+parameter (only `colorBlendMode` which blends image with the `color`
+property), so we need a small custom `BlendMask` widget that drops into
+its own `saveLayer` with the chosen blend mode.
 
 ## Placement + opacity
 
@@ -47,9 +62,63 @@ not a generalist log."
 
 ## Implementation surface
 
-### New file
+### New files
 
-`lib/ui/widgets/background_watermark.dart` — a small `StatelessWidget`:
+**`lib/ui/widgets/blend_mask.dart`** — generic helper that composites a
+child with a chosen `BlendMode` against its parent layer (Flutter
+standard recipe for "blend my child against the background"):
+
+```dart
+import 'package:flutter/rendering.dart';
+import 'package:flutter/widgets.dart';
+
+/// Composites [child] using [blendMode] against its parent's pixels,
+/// at the chosen alpha. Use to apply blend modes (e.g. screen, plus)
+/// that Flutter's stock `Image.asset(colorBlendMode:)` can't reach —
+/// those blend the image with a colour, not with what's behind it.
+class BlendMask extends SingleChildRenderObjectWidget {
+  final BlendMode blendMode;
+  final double opacity;
+
+  const BlendMask({
+    super.key,
+    required this.blendMode,
+    required this.opacity,
+    super.child,
+  });
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderBlendMask(blendMode, opacity);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderBlendMask r) {
+    r.blendMode = blendMode;
+    r.opacity = opacity;
+  }
+}
+
+class _RenderBlendMask extends RenderProxyBox {
+  BlendMode blendMode;
+  double opacity;
+  _RenderBlendMask(this.blendMode, this.opacity);
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    context.canvas.saveLayer(
+      offset & size,
+      Paint()
+        ..blendMode = blendMode
+        ..color = Color.fromRGBO(255, 255, 255, opacity),
+    );
+    super.paint(context, offset);
+    context.canvas.restore();
+  }
+}
+```
+
+**`lib/ui/widgets/background_watermark.dart`** — composes
+`BlendMask` + `Image.asset`:
 
 ```dart
 class BackgroundWatermark extends StatelessWidget {
@@ -67,13 +136,15 @@ class BackgroundWatermark extends StatelessWidget {
     if (opacity <= 0) return child;
     return Stack(
       children: [
+        child,
         Positioned.fill(
           child: IgnorePointer(
             child: Center(
               child: FractionallySizedBox(
                 widthFactor: 0.6,
                 heightFactor: 0.6,
-                child: Opacity(
+                child: BlendMask(
+                  blendMode: BlendMode.screen,
                   opacity: opacity,
                   child: Image.asset(
                     'assets/images/watermark.png',
@@ -84,12 +155,21 @@ class BackgroundWatermark extends StatelessWidget {
             ),
           ),
         ),
-        child,
       ],
     );
   }
 }
 ```
+
+Note the Stack child order has flipped vs. the v1 spec: with `Opacity`
+the watermark went behind because we wanted it under the content; with
+`BlendMode.screen` it goes **on top** of the content so it composites
+*against* the rendered content as the destination. Screen blend keeps
+the brighter pixel — for the watermark's white lines that's the white;
+for the watermark's black background that's whatever the app rendered
+underneath. Net: line art glows faintly over the content, black
+background is fully transparent. `IgnorePointer` ensures taps still
+reach the content layer underneath.
 
 ### Files modified
 
@@ -105,21 +185,43 @@ class BackgroundWatermark extends StatelessWidget {
 
 ### Tests
 
+- `test/ui/widgets/blend_mask_test.dart`:
+  - Builds with a `BlendMode.screen` + opacity 0.5 and a coloured child
+  - Asserts the render tree contains a `_RenderBlendMask` with the
+    expected `blendMode` and `opacity` properties
+  - Updates: changing the props on the widget propagates to the
+    render object
 - `test/ui/widgets/background_watermark_test.dart`:
-  - Renders nothing extra when `opacity == 0` (image not in the tree)
-  - Renders the image inside an `Opacity` widget when `opacity > 0`
-  - `IgnorePointer` wraps the image so taps fall through
-- `test/ui/notifiers/settings_notifier_test.dart` — extend with watermark round-trip test (defaults to 0.06, persists across reload, no-ops on identical value)
+  - Renders nothing extra when `opacity == 0` (no image in the tree)
+  - When `opacity > 0`, the tree contains a `BlendMask` with
+    `blendMode == BlendMode.screen` wrapping an `Image`
+  - `IgnorePointer` wraps the watermark so taps fall through to the
+    child layer
+- `test/ui/notifiers/settings_notifier_test.dart` — extend with
+  watermark-opacity round-trip test (defaults to 0.06, persists
+  across reload, no-ops on identical value, clamps to 0..0.20 range)
 
 ## Risks
 
-- **Asset missing in tests** — the PNG would need to be present for any
-  widget test that triggers the watermark. Test fix: tests that don't
-  care construct the SettingsNotifier with `watermarkOpacity = 0` so the
-  image-load path is skipped.
-- **Performance on Android** — `Opacity` widget forces a saveLayer. For
-  a single static image this is negligible, but worth noting if we ever
-  add motion to the watermark (we won't in v1).
+- **Asset missing in tests** — the PNG must be present at
+  `assets/images/watermark.png` for any widget test that triggers the
+  watermark. Test fix: tests that don't care construct the
+  `SettingsNotifier` with `watermarkOpacity = 0` so the image-load path
+  is skipped entirely (no asset bundle lookup).
+- **`saveLayer` cost per build.** `BlendMask` calls `saveLayer` once
+  per paint. For a static asset on a screen that rebuilds rarely this
+  is negligible (<1 ms on modern devices). If watermark ever becomes
+  animated or appears on a heavily-rebuilding screen, profile first.
+- **Future light theme.** `BlendMode.screen` blends the image's
+  whites onto whatever's underneath. On a light theme background the
+  watermark's white lines would become invisible (1 ∨ 1 = 1, no
+  contrast). When a light theme lands, either:
+  (a) switch the watermark image to a black-line-art version + use
+  `BlendMode.multiply` on light theme, or
+  (b) keep the white image but use `BlendMode.darken` on light theme
+  (less ideal — line art renders as the line art's white over the
+  light bg, which is still invisible). Out of scope for v1; flagged
+  here so the next visual-redesign session knows what to do.
 
 ## Out of scope for v1
 
