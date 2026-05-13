@@ -32,6 +32,8 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   String? get weightSystem => _annotation?.weightSystem;
   String? get dpv => _annotation?.dpv;
   String? get camera => _annotation?.camera;
+  String get displayDecoAlgorithm =>
+      _annotation?.displayDecoAlgorithm ?? 'zhl16c';
   int? get visibility => _annotation?.visibility;
   int? get wavesize => _annotation?.wavesize;
   int? get current => _annotation?.current;
@@ -132,6 +134,14 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
 
   void setCamera(String? v) {
     _annotation = _annotation?.copyWith(camera: Value(v));
+    _markDirty();
+  }
+
+  void setDisplayDecoAlgorithm(String value) {
+    if (displayDecoAlgorithm == value) return;
+    _annotation = _annotation?.copyWith(
+      displayDecoAlgorithm: Value(value),
+    );
     _markDirty();
   }
 

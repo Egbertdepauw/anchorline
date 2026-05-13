@@ -100,4 +100,58 @@ void main() {
     expect(n.divemaster, 'Wendy');
     expect(n.dirty, isTrue);
   });
+
+  group('displayDecoAlgorithm', () {
+    test('defaults to zhl16c when annotation field is null', () async {
+      final n = DiveAnnotationsNotifier(annotationsDao, equipmentDao);
+      await n.load('dive_algo_1');
+      expect(n.displayDecoAlgorithm, 'zhl16c');
+    });
+
+    test('setDisplayDecoAlgorithm updates value, marks dirty, notifies',
+        () async {
+      final n = DiveAnnotationsNotifier(annotationsDao, equipmentDao);
+      await n.load('dive_algo_2');
+      var notifyCount = 0;
+      n.addListener(() => notifyCount++);
+      n.setDisplayDecoAlgorithm('vpmb');
+      expect(n.displayDecoAlgorithm, 'vpmb');
+      expect(n.dirty, isTrue);
+      expect(notifyCount, greaterThan(0));
+    });
+
+    test('setDisplayDecoAlgorithm no-ops on identical value', () async {
+      final n = DiveAnnotationsNotifier(annotationsDao, equipmentDao);
+      await n.load('dive_algo_3');
+      // First set to establish a non-default value, then reset dirty.
+      n.setDisplayDecoAlgorithm('vpmb');
+      await n.save();
+      expect(n.dirty, isFalse);
+      var notifyCount = 0;
+      n.addListener(() => notifyCount++);
+      // Setting the same value again must be a no-op.
+      n.setDisplayDecoAlgorithm('vpmb');
+      expect(notifyCount, 0);
+      expect(n.dirty, isFalse);
+    });
+
+    test('setDisplayDecoAlgorithm persists to DB after save', () async {
+      final n = DiveAnnotationsNotifier(annotationsDao, equipmentDao);
+      await n.load('dive_algo_4');
+      n.setDisplayDecoAlgorithm('vpmb');
+      await n.save();
+      final got = await annotationsDao.get('dive_algo_4');
+      expect(got?.displayDecoAlgorithm, 'vpmb');
+    });
+
+    test('getter defaults to zhl16c when DB has null', () async {
+      final n = DiveAnnotationsNotifier(annotationsDao, equipmentDao);
+      await n.load('dive_algo_5');
+      // Save without setting the algo — persists null.
+      await n.save();
+      // Re-load from DB.
+      await n.load('dive_algo_5');
+      expect(n.displayDecoAlgorithm, 'zhl16c');
+    });
+  });
 }
