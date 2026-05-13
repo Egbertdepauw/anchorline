@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../../analysis/gas_density.dart';
 import '../../analysis/end.dart';
+import '../../analysis/deco/replay_result.dart';
 import '../../data/db/database.dart';
 import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
 import '../../data/models/sample_set.dart';
@@ -162,6 +163,11 @@ class ProfileChart extends StatelessWidget {
   /// Defaults to `true` (US-Navy/TDI convention).
   final bool endCountsOxygen;
 
+  /// Optional deco replay result. When non-null and [visibleTraces] contains
+  /// [TraceType.gf99] or [TraceType.ceiling], the corresponding traces are
+  /// painted on the chart.
+  final DecoReplayResult? decoReplay;
+
   const ProfileChart({
     super.key,
     required this.samples,
@@ -176,6 +182,7 @@ class ProfileChart extends StatelessWidget {
     this.mappedCylinders,
     this.gasMixes,
     this.endCountsOxygen = true,
+    this.decoReplay,
   });
 
   @override
@@ -222,6 +229,7 @@ class ProfileChart extends StatelessWidget {
           gasMixes: gasMixes,
           densitySeries: densitySeries,
           endSeries: endSeries,
+          decoReplay: decoReplay,
         ),
         child: const SizedBox.expand(),
       ),
@@ -358,6 +366,11 @@ class ProfileChartPainter extends CustomPainter {
   /// in [visibleTraces] and gas-mix data is available.
   final Float32List? endSeries;
 
+  /// Optional deco replay result. When non-null and [visibleTraces] contains
+  /// [TraceType.gf99] or [TraceType.ceiling], the corresponding traces are
+  /// painted on the chart.
+  final DecoReplayResult? decoReplay;
+
   const ProfileChartPainter({
     required this.samples,
     required this.visibleTraces,
@@ -367,6 +380,7 @@ class ProfileChartPainter extends CustomPainter {
     this.gasMixes,
     this.densitySeries,
     this.endSeries,
+    this.decoReplay,
   });
 
   // ── shouldRepaint ──────────────────────────────────────────────
@@ -379,7 +393,8 @@ class ProfileChartPainter extends CustomPainter {
         !identical(old.samples, samples) ||
         !identical(old.gasMixes, gasMixes) ||
         !identical(old.densitySeries, densitySeries) ||
-        !identical(old.endSeries, endSeries);
+        !identical(old.endSeries, endSeries) ||
+        !identical(old.decoReplay, decoReplay);
   }
 
   static bool _setEquals(Set<TraceType> a, Set<TraceType> b) {
@@ -641,6 +656,46 @@ class ProfileChartPainter extends CustomPainter {
           Offset(xOf(i), yDepth(e1)),
           segPaint,
         );
+      }
+    }
+
+    // ── GF99 trace ────────────────────────────────────────────────
+    // Mapped to the right-axis chart space: 0% at chartBottom, 150% at
+    // chartTop. Violet line, drawn over the depth fill.
+    if (decoReplay != null && visibleTraces.contains(TraceType.gf99)) {
+      final s = decoReplay!.gf99Series;
+      final gfPaint = Paint()
+        ..color = const Color(0xFF9333EA)
+        ..strokeWidth = 1.6
+        ..style = PaintingStyle.stroke;
+      for (var i = 1; i < s.length && i < n; i++) {
+        if (s[i - 1].isNaN || s[i].isNaN) continue;
+        final x0 = xOf(i - 1);
+        final x1 = xOf(i);
+        final y0 =
+            chartTop + (1 - (s[i - 1] / 150.0).clamp(0.0, 1.0)) * chartHeight;
+        final y1 =
+            chartTop + (1 - (s[i] / 150.0).clamp(0.0, 1.0)) * chartHeight;
+        canvas.drawLine(Offset(x0, y0), Offset(x1, y1), gfPaint);
+      }
+    }
+
+    // ── Ceiling trace ─────────────────────────────────────────────
+    // Shares the depth y-axis. Amber line. Only drawn where ceiling > 0
+    // (skips no-stop samples).
+    if (decoReplay != null && visibleTraces.contains(TraceType.ceiling)) {
+      final s = decoReplay!.ceilingMeters;
+      final ceilPaint = Paint()
+        ..color = const Color(0xFFEAB308)
+        ..strokeWidth = 1.6
+        ..style = PaintingStyle.stroke;
+      for (var i = 1; i < s.length && i < n; i++) {
+        if (s[i - 1] <= 0 || s[i] <= 0) continue;
+        final x0 = xOf(i - 1);
+        final x1 = xOf(i);
+        final y0 = yDepth(s[i - 1]);
+        final y1 = yDepth(s[i]);
+        canvas.drawLine(Offset(x0, y0), Offset(x1, y1), ceilPaint);
       }
     }
 

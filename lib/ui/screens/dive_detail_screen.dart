@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
@@ -9,6 +10,7 @@ import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
+import '../../data/models/sample_set.dart';
 import '../../data/models/dive_attachment.dart';
 import '../../shearwater/parser/parsed_dive.dart' show TankUsage;
 import '../../data/sample_codec/active_per_mix.dart';
@@ -41,6 +43,9 @@ import '../components/stat_tile.dart';
 import '../theme/tokens.dart';
 import '../../analysis/gas_density.dart';
 import '../../analysis/end.dart';
+import '../../analysis/deco/replay_engine.dart';
+import '../../analysis/deco/replay_result.dart';
+import '../../analysis/deco/zhl16c.dart' show SampleStream;
 
 class DiveDetailScreen extends StatefulWidget {
   final Dive dive;
@@ -115,6 +120,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   late final DiveDetailNotifier _notifier;
   late final DiveAnnotationsNotifier _annotationsNotifier;
   late final bool _ownsAnnotations;
+  final _decoEngine = DecoReplayEngine();
 
   @override
   void initState() {
@@ -461,6 +467,29 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                               child: LayoutBuilder(
                                   builder: (context, constraints) {
                                 final samples = _notifier.samples!;
+                                final needsReplay =
+                                    visibleTraces.contains(TraceType.gf99) ||
+                                        visibleTraces
+                                            .contains(TraceType.ceiling);
+                                final gasMixes = _decodeGasMixes();
+                                DecoReplayResult? decoReplay;
+                                if (needsReplay) {
+                                  final algo = _annotationsNotifier
+                                              .displayDecoAlgorithm ==
+                                          'vpmb'
+                                      ? DecoAlgorithm.vpmb
+                                      : DecoAlgorithm.zhl16c;
+                                  decoReplay = _decoEngine.replay(
+                                    diveId: widget.dive.id,
+                                    samples: _SampleSetAdapter(samples),
+                                    gasMixes: gasMixes,
+                                    algorithm: algo,
+                                    vpmbConservatism: widget
+                                        .settingsNotifier.vpmbConservatism,
+                                    gfLow: widget.dive.gfLow,
+                                    gfHigh: widget.dive.gfHigh,
+                                  );
+                                }
                                 return CrosshairOverlay(
                                   sampleCount: samples.sampleCount,
                                   chartLeftPad: 40,
@@ -477,10 +506,11 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         tanks: _decodeTanks(),
                                         mappedCylinders:
                                             _notifier.mappedCylinders,
-                                        gasMixes: _decodeGasMixes(),
+                                        gasMixes: gasMixes,
                                         useSpeedColoredGraph: useSpeedColored,
                                         endCountsOxygen: widget
-                                            .settingsNotifier.endCountsOxygen),
+                                            .settingsNotifier.endCountsOxygen,
+                                        decoReplay: decoReplay),
                                     if (_notifier.crosshairIndex != null)
                                       CrosshairTooltip(
                                         samples: _notifier.samples!,
@@ -940,4 +970,20 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       ],
     );
   }
+}
+
+/// Adapts [SampleSet] to the [SampleStream] interface expected by
+/// [DecoReplayEngine]. Bridges field names without copying data.
+class _SampleSetAdapter implements SampleStream {
+  final SampleSet _s;
+  const _SampleSetAdapter(this._s);
+
+  @override
+  Float32List get depthMeters => _s.depthMeters;
+
+  @override
+  Uint8List get gasMixIndex => _s.gasMixIndex;
+
+  @override
+  int get sampleIntervalMs => _s.sampleIntervalMs;
 }
