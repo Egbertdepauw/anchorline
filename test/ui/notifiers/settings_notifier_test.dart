@@ -206,4 +206,60 @@ void main() {
       expect(n2.endCountsOxygen, isFalse);
     });
   });
+
+  group('vpmbConservatism', () {
+    test('defaults to 2 when prefs empty', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.vpmbConservatism, 2);
+    });
+
+    test('setVpmbConservatism updates value and notifies', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      var notifyCount = 0;
+      n.addListener(() => notifyCount++);
+      await n.setVpmbConservatism(4);
+      expect(n.vpmbConservatism, 4);
+      expect(notifyCount, 1);
+    });
+
+    test('setVpmbConservatism clamps negatives to 0', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      await n.setVpmbConservatism(-5);
+      expect(n.vpmbConservatism, 0);
+    });
+
+    test('setVpmbConservatism clamps values > 4 to 4', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      await n.setVpmbConservatism(10);
+      expect(n.vpmbConservatism, 4);
+    });
+
+    test('setVpmbConservatism no-ops on identical value', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      var notifyCount = 0;
+      n.addListener(() => notifyCount++);
+      await n.setVpmbConservatism(2);
+      expect(notifyCount, 0);
+    });
+
+    test('persists across reload', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n1 = SettingsNotifier();
+      await n1.load();
+      await n1.setVpmbConservatism(3);
+      final n2 = SettingsNotifier();
+      await n2.load();
+      expect(n2.vpmbConservatism, 3);
+    });
+  });
 }

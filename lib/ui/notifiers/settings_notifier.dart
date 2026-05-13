@@ -10,6 +10,7 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kMapLayerStyle = 'map_layer_style';
   static const _kWatermarkOpacity = 'watermark_opacity';
   static const _kEndCountsOxygen = 'end_counts_oxygen';
+  static const _kVpmbConservatism = 'vpmb_conservatism';
 
   static const _defaultVisibleTraces = <TraceType>{
     TraceType.ppo2,
@@ -23,12 +24,14 @@ class SettingsNotifier extends ChangeNotifier {
   MapLayerStyle _mapLayerStyle = MapLayerStyle.normal;
   double _watermarkOpacity = 0.06;
   bool _endCountsOxygen = true;
+  int _vpmbConservatism = 2;
 
   bool get useSpeedColoredGraph => _useSpeedColoredGraph;
   Set<TraceType> get visibleTraces => Set.unmodifiable(_visibleTraces);
   MapLayerStyle get mapLayerStyle => _mapLayerStyle;
   double get watermarkOpacity => _watermarkOpacity;
   bool get endCountsOxygen => _endCountsOxygen;
+  int get vpmbConservatism => _vpmbConservatism;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -57,6 +60,11 @@ class SettingsNotifier extends ChangeNotifier {
     }
 
     _endCountsOxygen = prefs.getBool(_kEndCountsOxygen) ?? true;
+
+    final vpmb = prefs.getInt(_kVpmbConservatism);
+    if (vpmb != null) {
+      _vpmbConservatism = vpmb.clamp(0, 4);
+    }
 
     notifyListeners();
   }
@@ -106,5 +114,14 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_kWatermarkOpacity, clamped);
+  }
+
+  Future<void> setVpmbConservatism(int v) async {
+    final clamped = v.clamp(0, 4);
+    if (_vpmbConservatism == clamped) return;
+    _vpmbConservatism = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kVpmbConservatism, clamped);
   }
 }
