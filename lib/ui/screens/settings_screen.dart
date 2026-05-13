@@ -144,6 +144,100 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
+          const Divider(height: 32),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Text(
+              'Bailout planning',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+          ListTile(
+            title: const Text('Bailout SAC — bottom phase'),
+            subtitle: Text(
+                '${widget.notifier.bailoutSacBottom} L/min — used until ascent slows at first switch or half-pressure'),
+            trailing: SizedBox(
+              width: 160,
+              child: Slider(
+                value: widget.notifier.bailoutSacBottom.toDouble(),
+                min: 10,
+                max: 60,
+                divisions: 50,
+                onChanged: (v) =>
+                    widget.notifier.setBailoutSacBottom(v.round()),
+              ),
+            ),
+          ),
+          ListTile(
+            title: const Text('Bailout SAC — deco phase'),
+            subtitle: Text(
+                '${widget.notifier.bailoutSacDeco} L/min — used from first deco stop to surface'),
+            trailing: SizedBox(
+              width: 160,
+              child: Slider(
+                value: widget.notifier.bailoutSacDeco.toDouble(),
+                min: 10,
+                max: 60,
+                divisions: 50,
+                onChanged: (v) =>
+                    widget.notifier.setBailoutSacDeco(v.round()),
+              ),
+            ),
+          ),
+          ListTile(
+            title: const Text('Ascent rate — fast (bottom to first stop)'),
+            subtitle: Text(
+                '${widget.notifier.bailoutAscentRateFast} m/min — used from depth to first deco stop'),
+            trailing: SizedBox(
+              width: 160,
+              child: Slider(
+                value: widget.notifier.bailoutAscentRateFast.toDouble(),
+                min: 3,
+                max: 30,
+                divisions: 27,
+                onChanged: (v) =>
+                    widget.notifier.setBailoutAscentRateFast(v.round()),
+              ),
+            ),
+          ),
+          ListTile(
+            title: const Text('Ascent rate — slow (deco stops)'),
+            subtitle: Text(
+                '${widget.notifier.bailoutAscentRateSlow} m/min — used between deco stops and to the surface'),
+            trailing: SizedBox(
+              width: 160,
+              child: Slider(
+                value: widget.notifier.bailoutAscentRateSlow.toDouble(),
+                min: 3,
+                max: 30,
+                divisions: 27,
+                onChanged: (v) =>
+                    widget.notifier.setBailoutAscentRateSlow(v.round()),
+              ),
+            ),
+          ),
+          SwitchListTile(
+            title: const Text('Diluent is bailout-capable (GUE / D7 config)'),
+            subtitle: const Text(
+                'Off: assumes 2–3 L diluent, recommends a bottom-mix BO cylinder. '
+                'On: assumes diluent is sized for OC bailout.'),
+            value: widget.notifier.gueDiluentConfig,
+            onChanged: (v) => widget.notifier.setGueDiluentConfig(v),
+          ),
+          SwitchListTile(
+            title: const Text('6.8 L / 300 bar stage available'),
+            subtitle: const Text(
+                'Include a 6.8 L 300 bar stage when computing bailout gas volumes.'),
+            value: widget.notifier.tank68L300Available,
+            onChanged: (v) => widget.notifier.setTank68L300Available(v),
+          ),
+          SwitchListTile(
+            title: const Text('12 L / 300 bar stage available'),
+            subtitle: const Text(
+                'Include a 12 L 300 bar stage when computing bailout gas volumes.'),
+            value: widget.notifier.tank12L300Available,
+            onChanged: (v) => widget.notifier.setTank12L300Available(v),
+          ),
           if (widget.subsurfaceOrchestrator != null &&
               widget.subsurfaceCredentials != null &&
               widget.diveDao != null) ...[
