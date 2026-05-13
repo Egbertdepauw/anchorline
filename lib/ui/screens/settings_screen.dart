@@ -110,6 +110,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: widget.notifier.useSpeedColoredGraph,
             onChanged: (v) => widget.notifier.setUseSpeedColoredGraph(v),
           ),
+          ListenableBuilder(
+            listenable: widget.notifier,
+            builder: (context, _) {
+              final value = widget.notifier.watermarkOpacity;
+              return ListTile(
+                title: const Text('Watermark opacity'),
+                subtitle: Text(value == 0
+                    ? 'Hidden'
+                    : '${(value * 100).toStringAsFixed(0)}%'),
+                trailing: SizedBox(
+                  width: 180,
+                  child: Slider(
+                    value: value,
+                    min: 0,
+                    max: 0.20,
+                    divisions: 20,
+                    onChanged: (v) => widget.notifier.setWatermarkOpacity(v),
+                  ),
+                ),
+              );
+            },
+          ),
           if (widget.subsurfaceOrchestrator != null &&
               widget.subsurfaceCredentials != null &&
               widget.diveDao != null) ...[
