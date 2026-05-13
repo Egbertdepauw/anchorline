@@ -3098,6 +3098,17 @@ class $DiveAnnotationsTable extends DiveAnnotations
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _displayDecoAlgorithmMeta =
+      const VerificationMeta('displayDecoAlgorithm');
+  @override
+  late final GeneratedColumn<String> displayDecoAlgorithm =
+      GeneratedColumn<String>(
+        'display_deco_algorithm',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -3186,6 +3197,7 @@ class $DiveAnnotationsTable extends DiveAnnotations
     airTempC,
     waterTempC,
     weightsJson,
+    displayDecoAlgorithm,
     createdAt,
     updatedAt,
     deletedAt,
@@ -3330,6 +3342,15 @@ class $DiveAnnotationsTable extends DiveAnnotations
         ),
       );
     }
+    if (data.containsKey('display_deco_algorithm')) {
+      context.handle(
+        _displayDecoAlgorithmMeta,
+        displayDecoAlgorithm.isAcceptableOrUnknown(
+          data['display_deco_algorithm']!,
+          _displayDecoAlgorithmMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -3451,6 +3472,10 @@ class $DiveAnnotationsTable extends DiveAnnotations
         DriftSqlType.string,
         data['${effectivePrefix}weights_json'],
       ),
+      displayDecoAlgorithm: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_deco_algorithm'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -3506,6 +3531,10 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
   /// JSON array of `{"weight_kg": double, "description": string}` objects,
   /// one per `weightsystem` line in Subsurface. Null = no weight entries.
   final String? weightsJson;
+
+  /// User per-dive override of which deco algorithm to display.
+  /// Values: 'zhl16c' or 'vpmb'. NULL = use default (ZHL-16C).
+  final String? displayDecoAlgorithm;
   final int createdAt;
   final int updatedAt;
   final int? deletedAt;
@@ -3531,6 +3560,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     this.airTempC,
     this.waterTempC,
     this.weightsJson,
+    this.displayDecoAlgorithm,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -3592,6 +3622,9 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     }
     if (!nullToAbsent || weightsJson != null) {
       map['weights_json'] = Variable<String>(weightsJson);
+    }
+    if (!nullToAbsent || displayDecoAlgorithm != null) {
+      map['display_deco_algorithm'] = Variable<String>(displayDecoAlgorithm);
     }
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -3660,6 +3693,9 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       weightsJson: weightsJson == null && nullToAbsent
           ? const Value.absent()
           : Value(weightsJson),
+      displayDecoAlgorithm: displayDecoAlgorithm == null && nullToAbsent
+          ? const Value.absent()
+          : Value(displayDecoAlgorithm),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -3697,6 +3733,9 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       airTempC: serializer.fromJson<double?>(json['airTempC']),
       waterTempC: serializer.fromJson<double?>(json['waterTempC']),
       weightsJson: serializer.fromJson<String?>(json['weightsJson']),
+      displayDecoAlgorithm: serializer.fromJson<String?>(
+        json['displayDecoAlgorithm'],
+      ),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
@@ -3727,6 +3766,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       'airTempC': serializer.toJson<double?>(airTempC),
       'waterTempC': serializer.toJson<double?>(waterTempC),
       'weightsJson': serializer.toJson<String?>(weightsJson),
+      'displayDecoAlgorithm': serializer.toJson<String?>(displayDecoAlgorithm),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'deletedAt': serializer.toJson<int?>(deletedAt),
@@ -3755,6 +3795,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     Value<double?> airTempC = const Value.absent(),
     Value<double?> waterTempC = const Value.absent(),
     Value<String?> weightsJson = const Value.absent(),
+    Value<String?> displayDecoAlgorithm = const Value.absent(),
     int? createdAt,
     int? updatedAt,
     Value<int?> deletedAt = const Value.absent(),
@@ -3784,6 +3825,9 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     airTempC: airTempC.present ? airTempC.value : this.airTempC,
     waterTempC: waterTempC.present ? waterTempC.value : this.waterTempC,
     weightsJson: weightsJson.present ? weightsJson.value : this.weightsJson,
+    displayDecoAlgorithm: displayDecoAlgorithm.present
+        ? displayDecoAlgorithm.value
+        : this.displayDecoAlgorithm,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -3827,6 +3871,9 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
       weightsJson: data.weightsJson.present
           ? data.weightsJson.value
           : this.weightsJson,
+      displayDecoAlgorithm: data.displayDecoAlgorithm.present
+          ? data.displayDecoAlgorithm.value
+          : this.displayDecoAlgorithm,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -3859,6 +3906,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
           ..write('airTempC: $airTempC, ')
           ..write('waterTempC: $waterTempC, ')
           ..write('weightsJson: $weightsJson, ')
+          ..write('displayDecoAlgorithm: $displayDecoAlgorithm, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -3889,6 +3937,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
     airTempC,
     waterTempC,
     weightsJson,
+    displayDecoAlgorithm,
     createdAt,
     updatedAt,
     deletedAt,
@@ -3918,6 +3967,7 @@ class DiveAnnotation extends DataClass implements Insertable<DiveAnnotation> {
           other.airTempC == this.airTempC &&
           other.waterTempC == this.waterTempC &&
           other.weightsJson == this.weightsJson &&
+          other.displayDecoAlgorithm == this.displayDecoAlgorithm &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
@@ -3945,6 +3995,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
   final Value<double?> airTempC;
   final Value<double?> waterTempC;
   final Value<String?> weightsJson;
+  final Value<String?> displayDecoAlgorithm;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<int?> deletedAt;
@@ -3971,6 +4022,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     this.airTempC = const Value.absent(),
     this.waterTempC = const Value.absent(),
     this.weightsJson = const Value.absent(),
+    this.displayDecoAlgorithm = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -3998,6 +4050,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     this.airTempC = const Value.absent(),
     this.waterTempC = const Value.absent(),
     this.weightsJson = const Value.absent(),
+    this.displayDecoAlgorithm = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.deletedAt = const Value.absent(),
@@ -4027,6 +4080,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     Expression<double>? airTempC,
     Expression<double>? waterTempC,
     Expression<String>? weightsJson,
+    Expression<String>? displayDecoAlgorithm,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<int>? deletedAt,
@@ -4054,6 +4108,8 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
       if (airTempC != null) 'air_temp_c': airTempC,
       if (waterTempC != null) 'water_temp_c': waterTempC,
       if (weightsJson != null) 'weights_json': weightsJson,
+      if (displayDecoAlgorithm != null)
+        'display_deco_algorithm': displayDecoAlgorithm,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -4083,6 +4139,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     Value<double?>? airTempC,
     Value<double?>? waterTempC,
     Value<String?>? weightsJson,
+    Value<String?>? displayDecoAlgorithm,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<int?>? deletedAt,
@@ -4110,6 +4167,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
       airTempC: airTempC ?? this.airTempC,
       waterTempC: waterTempC ?? this.waterTempC,
       weightsJson: weightsJson ?? this.weightsJson,
+      displayDecoAlgorithm: displayDecoAlgorithm ?? this.displayDecoAlgorithm,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -4177,6 +4235,11 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
     if (weightsJson.present) {
       map['weights_json'] = Variable<String>(weightsJson.value);
     }
+    if (displayDecoAlgorithm.present) {
+      map['display_deco_algorithm'] = Variable<String>(
+        displayDecoAlgorithm.value,
+      );
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -4222,6 +4285,7 @@ class DiveAnnotationsCompanion extends UpdateCompanion<DiveAnnotation> {
           ..write('airTempC: $airTempC, ')
           ..write('waterTempC: $waterTempC, ')
           ..write('weightsJson: $weightsJson, ')
+          ..write('displayDecoAlgorithm: $displayDecoAlgorithm, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -10278,6 +10342,7 @@ typedef $$DiveAnnotationsTableCreateCompanionBuilder =
       Value<double?> airTempC,
       Value<double?> waterTempC,
       Value<String?> weightsJson,
+      Value<String?> displayDecoAlgorithm,
       required int createdAt,
       required int updatedAt,
       Value<int?> deletedAt,
@@ -10306,6 +10371,7 @@ typedef $$DiveAnnotationsTableUpdateCompanionBuilder =
       Value<double?> airTempC,
       Value<double?> waterTempC,
       Value<String?> weightsJson,
+      Value<String?> displayDecoAlgorithm,
       Value<int> createdAt,
       Value<int> updatedAt,
       Value<int?> deletedAt,
@@ -10434,6 +10500,11 @@ class $$DiveAnnotationsTableFilterComposer
 
   ColumnFilters<String> get weightsJson => $composableBuilder(
     column: $table.weightsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayDecoAlgorithm => $composableBuilder(
+    column: $table.displayDecoAlgorithm,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10585,6 +10656,11 @@ class $$DiveAnnotationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get displayDecoAlgorithm => $composableBuilder(
+    column: $table.displayDecoAlgorithm,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -10715,6 +10791,11 @@ class $$DiveAnnotationsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get displayDecoAlgorithm => $composableBuilder(
+    column: $table.displayDecoAlgorithm,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -10807,6 +10888,7 @@ class $$DiveAnnotationsTableTableManager
                 Value<double?> airTempC = const Value.absent(),
                 Value<double?> waterTempC = const Value.absent(),
                 Value<String?> weightsJson = const Value.absent(),
+                Value<String?> displayDecoAlgorithm = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
                 Value<int?> deletedAt = const Value.absent(),
@@ -10833,6 +10915,7 @@ class $$DiveAnnotationsTableTableManager
                 airTempC: airTempC,
                 waterTempC: waterTempC,
                 weightsJson: weightsJson,
+                displayDecoAlgorithm: displayDecoAlgorithm,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -10861,6 +10944,7 @@ class $$DiveAnnotationsTableTableManager
                 Value<double?> airTempC = const Value.absent(),
                 Value<double?> waterTempC = const Value.absent(),
                 Value<String?> weightsJson = const Value.absent(),
+                Value<String?> displayDecoAlgorithm = const Value.absent(),
                 required int createdAt,
                 required int updatedAt,
                 Value<int?> deletedAt = const Value.absent(),
@@ -10887,6 +10971,7 @@ class $$DiveAnnotationsTableTableManager
                 airTempC: airTempC,
                 waterTempC: waterTempC,
                 weightsJson: weightsJson,
+                displayDecoAlgorithm: displayDecoAlgorithm,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,

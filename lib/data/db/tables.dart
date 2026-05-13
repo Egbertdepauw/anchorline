@@ -161,6 +161,10 @@ class DiveAnnotations extends Table {
   /// one per `weightsystem` line in Subsurface. Null = no weight entries.
   TextColumn get weightsJson => text().nullable()();
 
+  /// User per-dive override of which deco algorithm to display.
+  /// Values: 'zhl16c' or 'vpmb'. NULL = use default (ZHL-16C).
+  TextColumn get displayDecoAlgorithm => text().nullable()();
+
   // Sync metadata.
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();

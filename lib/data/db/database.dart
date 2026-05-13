@@ -26,7 +26,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -106,6 +106,13 @@ class AppDatabase extends _$AppDatabase {
             // Subsurface "divemaster" line that we previously emitted as
             // empty. Nullable; existing rows get NULL.
             await m.addColumn(diveAnnotations, diveAnnotations.divemaster);
+          }
+          if (from < 14) {
+            // User per-dive override of which deco algorithm to display.
+            // Nullable TEXT ('zhl16c' or 'vpmb'); NULL = use default
+            // (ZHL-16C). Existing rows get NULL.
+            await m.addColumn(
+                diveAnnotations, diveAnnotations.displayDecoAlgorithm);
           }
         },
       );
