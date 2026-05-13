@@ -533,6 +533,49 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                 );
                               }),
                             ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 4),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    'Algorithm:',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .outlineVariant,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  AnimatedBuilder(
+                                    animation: _annotationsNotifier,
+                                    builder: (context, _) {
+                                      return DropdownButton<String>(
+                                        value: _annotationsNotifier
+                                            .displayDecoAlgorithm,
+                                        isDense: true,
+                                        underline: const SizedBox.shrink(),
+                                        items: const [
+                                          DropdownMenuItem(
+                                              value: 'zhl16c',
+                                              child: Text('ZHL-16C')),
+                                          DropdownMenuItem(
+                                              value: 'vpmb',
+                                              child: Text('VPM-B')),
+                                        ],
+                                        onChanged: (v) {
+                                          if (v != null) {
+                                            _annotationsNotifier
+                                                .setDisplayDecoAlgorithm(v);
+                                          }
+                                        },
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
                             TraceSegmentedBar(
                                 visibleTraces: visibleTraces,
                                 onToggle: widget.settingsNotifier.toggleTrace),
