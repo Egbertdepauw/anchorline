@@ -12,6 +12,13 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kEndCountsOxygen = 'end_counts_oxygen';
   static const _kVpmbConservatism = 'vpmb_conservatism';
   static const _kTissueHeatmapExpanded = 'tissue_heatmap_expanded';
+  static const _kBailoutSacBottom = 'bailout_sac_bottom';
+  static const _kBailoutSacDeco = 'bailout_sac_deco';
+  static const _kBailoutAscentRateFast = 'bailout_ascent_fast';
+  static const _kBailoutAscentRateSlow = 'bailout_ascent_slow';
+  static const _kGueDiluentConfig = 'gue_diluent_config';
+  static const _kTank68L300Available = 'tank_6_8l_300_available';
+  static const _kTank12L300Available = 'tank_12l_300_available';
 
   static const _defaultVisibleTraces = <TraceType>{
     TraceType.ppo2,
@@ -27,6 +34,13 @@ class SettingsNotifier extends ChangeNotifier {
   bool _endCountsOxygen = true;
   int _vpmbConservatism = 2;
   bool _tissueHeatmapExpanded = false;
+  int _bailoutSacBottom = 30;
+  int _bailoutSacDeco = 20;
+  int _bailoutAscentRateFast = 18;
+  int _bailoutAscentRateSlow = 9;
+  bool _gueDiluentConfig = false;
+  bool _tank68L300Available = false;
+  bool _tank12L300Available = false;
 
   bool get useSpeedColoredGraph => _useSpeedColoredGraph;
   Set<TraceType> get visibleTraces => Set.unmodifiable(_visibleTraces);
@@ -35,6 +49,13 @@ class SettingsNotifier extends ChangeNotifier {
   bool get endCountsOxygen => _endCountsOxygen;
   int get vpmbConservatism => _vpmbConservatism;
   bool get tissueHeatmapExpanded => _tissueHeatmapExpanded;
+  int get bailoutSacBottom => _bailoutSacBottom;
+  int get bailoutSacDeco => _bailoutSacDeco;
+  int get bailoutAscentRateFast => _bailoutAscentRateFast;
+  int get bailoutAscentRateSlow => _bailoutAscentRateSlow;
+  bool get gueDiluentConfig => _gueDiluentConfig;
+  bool get tank68L300Available => _tank68L300Available;
+  bool get tank12L300Available => _tank12L300Available;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -70,6 +91,30 @@ class SettingsNotifier extends ChangeNotifier {
     if (vpmb != null) {
       _vpmbConservatism = vpmb.clamp(0, 4);
     }
+
+    final sacBottom = prefs.getInt(_kBailoutSacBottom);
+    if (sacBottom != null) {
+      _bailoutSacBottom = sacBottom.clamp(10, 60);
+    }
+
+    final sacDeco = prefs.getInt(_kBailoutSacDeco);
+    if (sacDeco != null) {
+      _bailoutSacDeco = sacDeco.clamp(10, 60);
+    }
+
+    final ascentFast = prefs.getInt(_kBailoutAscentRateFast);
+    if (ascentFast != null) {
+      _bailoutAscentRateFast = ascentFast.clamp(3, 30);
+    }
+
+    final ascentSlow = prefs.getInt(_kBailoutAscentRateSlow);
+    if (ascentSlow != null) {
+      _bailoutAscentRateSlow = ascentSlow.clamp(3, 30);
+    }
+
+    _gueDiluentConfig = prefs.getBool(_kGueDiluentConfig) ?? false;
+    _tank68L300Available = prefs.getBool(_kTank68L300Available) ?? false;
+    _tank12L300Available = prefs.getBool(_kTank12L300Available) ?? false;
 
     notifyListeners();
   }
@@ -136,5 +181,65 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kTissueHeatmapExpanded, v);
+  }
+
+  Future<void> setBailoutSacBottom(int v) async {
+    final clamped = v.clamp(10, 60);
+    if (_bailoutSacBottom == clamped) return;
+    _bailoutSacBottom = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kBailoutSacBottom, clamped);
+  }
+
+  Future<void> setBailoutSacDeco(int v) async {
+    final clamped = v.clamp(10, 60);
+    if (_bailoutSacDeco == clamped) return;
+    _bailoutSacDeco = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kBailoutSacDeco, clamped);
+  }
+
+  Future<void> setBailoutAscentRateFast(int v) async {
+    final clamped = v.clamp(3, 30);
+    if (_bailoutAscentRateFast == clamped) return;
+    _bailoutAscentRateFast = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kBailoutAscentRateFast, clamped);
+  }
+
+  Future<void> setBailoutAscentRateSlow(int v) async {
+    final clamped = v.clamp(3, 30);
+    if (_bailoutAscentRateSlow == clamped) return;
+    _bailoutAscentRateSlow = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kBailoutAscentRateSlow, clamped);
+  }
+
+  Future<void> setGueDiluentConfig(bool v) async {
+    if (_gueDiluentConfig == v) return;
+    _gueDiluentConfig = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kGueDiluentConfig, v);
+  }
+
+  Future<void> setTank68L300Available(bool v) async {
+    if (_tank68L300Available == v) return;
+    _tank68L300Available = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kTank68L300Available, v);
+  }
+
+  Future<void> setTank12L300Available(bool v) async {
+    if (_tank12L300Available == v) return;
+    _tank12L300Available = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kTank12L300Available, v);
   }
 }

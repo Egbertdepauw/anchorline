@@ -247,6 +247,134 @@ void main() {
     });
   });
 
+  group('bailout config', () {
+    test('bailoutSacBottom defaults to 30', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.bailoutSacBottom, 30);
+    });
+
+    test('bailoutSacBottom clamps to 10..60', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      await n.setBailoutSacBottom(5);
+      expect(n.bailoutSacBottom, 10);
+      await n.setBailoutSacBottom(100);
+      expect(n.bailoutSacBottom, 60);
+    });
+
+    test('bailoutSacDeco defaults to 20', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.bailoutSacDeco, 20);
+    });
+
+    test('bailoutSacDeco clamps to 10..60', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      await n.setBailoutSacDeco(2);
+      expect(n.bailoutSacDeco, 10);
+      await n.setBailoutSacDeco(99);
+      expect(n.bailoutSacDeco, 60);
+    });
+
+    test('bailoutAscentRateFast defaults to 18, clamps 3..30', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.bailoutAscentRateFast, 18);
+      await n.setBailoutAscentRateFast(50);
+      expect(n.bailoutAscentRateFast, 30);
+      await n.setBailoutAscentRateFast(1);
+      expect(n.bailoutAscentRateFast, 3);
+    });
+
+    test('bailoutAscentRateSlow defaults to 9, clamps 3..30', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.bailoutAscentRateSlow, 9);
+      await n.setBailoutAscentRateSlow(0);
+      expect(n.bailoutAscentRateSlow, 3);
+      await n.setBailoutAscentRateSlow(40);
+      expect(n.bailoutAscentRateSlow, 30);
+    });
+
+    test('gueDiluentConfig defaults to false, flips', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.gueDiluentConfig, isFalse);
+      await n.setGueDiluentConfig(true);
+      expect(n.gueDiluentConfig, isTrue);
+    });
+
+    test('tank68L300Available defaults to false', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.tank68L300Available, isFalse);
+    });
+
+    test('tank12L300Available defaults to false', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.tank12L300Available, isFalse);
+    });
+
+    test('bailout fields persist across reload', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n1 = SettingsNotifier();
+      await n1.load();
+      await n1.setBailoutSacBottom(40);
+      await n1.setBailoutSacDeco(25);
+      await n1.setBailoutAscentRateFast(20);
+      await n1.setBailoutAscentRateSlow(6);
+      await n1.setGueDiluentConfig(true);
+      await n1.setTank68L300Available(true);
+      await n1.setTank12L300Available(true);
+      final n2 = SettingsNotifier();
+      await n2.load();
+      expect(n2.bailoutSacBottom, 40);
+      expect(n2.bailoutSacDeco, 25);
+      expect(n2.bailoutAscentRateFast, 20);
+      expect(n2.bailoutAscentRateSlow, 6);
+      expect(n2.gueDiluentConfig, isTrue);
+      expect(n2.tank68L300Available, isTrue);
+      expect(n2.tank12L300Available, isTrue);
+    });
+
+    test('int fields no-op on identical value', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      var notifyCount = 0;
+      n.addListener(() => notifyCount++);
+      await n.setBailoutSacBottom(30);
+      await n.setBailoutSacDeco(20);
+      await n.setBailoutAscentRateFast(18);
+      await n.setBailoutAscentRateSlow(9);
+      expect(notifyCount, 0);
+    });
+
+    test('bool fields no-op on identical value', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      var notifyCount = 0;
+      n.addListener(() => notifyCount++);
+      await n.setGueDiluentConfig(false);
+      await n.setTank68L300Available(false);
+      await n.setTank12L300Available(false);
+      expect(notifyCount, 0);
+    });
+  });
+
   group('vpmbConservatism', () {
     test('defaults to 2 when prefs empty', () async {
       SharedPreferences.setMockInitialValues({});
