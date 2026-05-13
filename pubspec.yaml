@@ -102,6 +102,7 @@ flutter:
 
   assets:
     - test/fixtures/dives/
+    - assets/images/watermark.png
 
   fonts:
     - family: Inter
