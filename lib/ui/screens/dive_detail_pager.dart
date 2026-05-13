@@ -28,6 +28,7 @@ import '../../sync/attachments/attachment_uploader.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import '../notifiers/dive_attachments_notifier.dart';
 import '../notifiers/settings_notifier.dart';
+import '../widgets/background_watermark.dart';
 import '../theme/tokens.dart';
 import '../util/format.dart';
 import 'dive_detail_screen.dart';
@@ -252,11 +253,16 @@ class _DiveDetailPagerState extends State<DiveDetailPager> {
         length: 4,
         child: Scaffold(
           appBar: _buildAppBar(context, currentDive, currentAnnotations),
-          body: Column(
-            children: [
-              _buildTabBar(context),
-              Expanded(
-                child: PageView.builder(
+          body: ListenableBuilder(
+            listenable: widget.settingsNotifier,
+            builder: (context, _) {
+              return BackgroundWatermark(
+                opacity: widget.settingsNotifier.watermarkOpacity,
+                child: Column(
+                  children: [
+                    _buildTabBar(context),
+                    Expanded(
+                      child: PageView.builder(
                   controller: _controller,
                   itemCount: widget.dives.length,
                   onPageChanged: _onPageChanged,
@@ -283,8 +289,11 @@ class _DiveDetailPagerState extends State<DiveDetailPager> {
                     );
                   },
                 ),
-              ),
-            ],
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),

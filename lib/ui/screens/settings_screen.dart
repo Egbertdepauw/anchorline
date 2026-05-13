@@ -15,6 +15,7 @@ import '../../sync/subsurface_git/sync_orchestrator.dart';
 import '../dev/widgetbook_screen.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/tokens.dart';
+import '../widgets/background_watermark.dart';
 import '../widgets/subsurface_sync_section.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -87,8 +88,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final auth = widget.authService;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        children: [
+      body: ListenableBuilder(
+        listenable: widget.notifier,
+        builder: (context, _) {
+          return BackgroundWatermark(
+            opacity: widget.notifier.watermarkOpacity,
+            child: ListView(
+              children: [
           if (auth != null)
             ListenableBuilder(
               listenable: auth,
@@ -155,7 +161,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-        ],
+              ],
+            ),
+          );
+        },
       ),
     );
   }

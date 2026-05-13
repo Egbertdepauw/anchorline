@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../data/db/dive_annotations_dao.dart';
 import '../notifiers/settings_notifier.dart';
+import '../widgets/background_watermark.dart';
 import '../theme/tokens.dart';
 import '../widgets/map_layer_toggle.dart';
 import '../widgets/map_tile_sources.dart';
@@ -53,27 +54,34 @@ class _SitesMapScreenState extends State<SitesMapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Dive sites')),
-      body: _sites == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListenableBuilder(
-              listenable: widget.settingsNotifier,
-              builder: (context, _) {
-                final style = widget.settingsNotifier.mapLayerStyle;
-                return Stack(
-                  children: [
-                    _buildMap(_sites!, style),
-                    Positioned(
-                      top: Spacing.sm,
-                      right: Spacing.sm,
-                      child: MapLayerToggle(
-                        current: style,
-                        onChanged: widget.settingsNotifier.setMapLayerStyle,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
+      body: ListenableBuilder(
+        listenable: widget.settingsNotifier,
+        builder: (context, _) {
+          return BackgroundWatermark(
+            opacity: widget.settingsNotifier.watermarkOpacity,
+            child: _sites == null
+                ? const Center(child: CircularProgressIndicator())
+                : Builder(
+                    builder: (context) {
+                      final style = widget.settingsNotifier.mapLayerStyle;
+                      return Stack(
+                        children: [
+                          _buildMap(_sites!, style),
+                          Positioned(
+                            top: Spacing.sm,
+                            right: Spacing.sm,
+                            child: MapLayerToggle(
+                              current: style,
+                              onChanged: widget.settingsNotifier.setMapLayerStyle,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+          );
+        },
+      ),
     );
   }
 

@@ -41,6 +41,7 @@ import 'screens/equipment/equipment_landing_screen.dart';
 import 'screens/import_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/sites_map_screen.dart';
+import 'widgets/background_watermark.dart';
 import 'widgets/sync_health_banner.dart';
 
 class AppShell extends StatefulWidget {
@@ -285,9 +286,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         children: [
           SyncHealthBanner(service: _syncHealthService),
           Expanded(
-            child: IndexedStack(
-              index: _currentIndex,
-              children: [
+            child: ListenableBuilder(
+              listenable: widget.settingsNotifier,
+              builder: (context, _) {
+                return BackgroundWatermark(
+                  opacity: widget.settingsNotifier.watermarkOpacity,
+                  child: IndexedStack(
+                    index: _currentIndex,
+                    children: [
                 DiveListScreen(
                   notifier: _diveListNotifier,
                   diveDao: _diveDao,
@@ -320,6 +326,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                   subsurfaceBootstrapImporter: _subsurfaceBootstrapImporter,
                 ),
               ],
+                  ),
+                );
+              },
             ),
           ),
         ],
