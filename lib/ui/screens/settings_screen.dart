@@ -113,6 +113,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListenableBuilder(
             listenable: widget.notifier,
             builder: (context, _) {
+              return SwitchListTile(
+                title: const Text('Count O₂ as narcotic in END'),
+                subtitle: const Text(
+                    'On: N₂ + O₂ both count (TDI/IANTD/US-Navy). Off: only N₂ counts (GUE/DIR).'),
+                value: widget.notifier.endCountsOxygen,
+                onChanged: (v) => widget.notifier.setEndCountsOxygen(v),
+              );
+            },
+          ),
+          ListenableBuilder(
+            listenable: widget.notifier,
+            builder: (context, _) {
               final value = widget.notifier.watermarkOpacity;
               return ListTile(
                 title: const Text('Watermark opacity'),
