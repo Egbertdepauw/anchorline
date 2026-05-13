@@ -38,6 +38,7 @@ import 'image_viewer_screen.dart';
 import 'pdf_viewer_screen.dart';
 import 'sites_map_screen.dart';
 import '../widgets/star_rating.dart';
+import '../widgets/tissue_saturation_heatmap.dart';
 import '../widgets/trace_segmented_bar.dart';
 import '../components/stat_tile.dart';
 import '../theme/tokens.dart';
@@ -584,6 +585,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                       },
                     ),
                     _buildStatsRow(theme),
+                    _buildTissueHeatmapSection(),
                     _buildAnnotationsSection(),
                   ],
         ],
@@ -764,6 +766,68 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         SnackBar(content: Text('Could not open: $e')),
       );
     }
+  }
+
+  Widget _buildTissueHeatmapSection() {
+    final samples = _notifier.samples;
+    return ListenableBuilder(
+      listenable: widget.settingsNotifier,
+      builder: (context, _) {
+        final expanded = widget.settingsNotifier.tissueHeatmapExpanded;
+        final algoLabel =
+            _annotationsNotifier.displayDecoAlgorithm == 'vpmb'
+                ? 'VPM-B'
+                : 'ZHL-16C';
+        return Column(
+          children: [
+            InkWell(
+              onTap: () => widget.settingsNotifier
+                  .setTissueHeatmapExpanded(!expanded),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
+                child: Row(
+                  children: [
+                    Text(
+                      'Tissue saturation [$algoLabel]',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      expanded ? Icons.expand_less : Icons.expand_more,
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (expanded && samples != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: TissueSaturationHeatmap(
+                  replay: _decoEngine.replay(
+                    diveId: widget.dive.id,
+                    samples: _SampleSetAdapter(samples),
+                    gasMixes: _decodeGasMixes(),
+                    algorithm:
+                        _annotationsNotifier.displayDecoAlgorithm == 'vpmb'
+                            ? DecoAlgorithm.vpmb
+                            : DecoAlgorithm.zhl16c,
+                    vpmbConservatism:
+                        widget.settingsNotifier.vpmbConservatism,
+                    gfLow: widget.dive.gfLow,
+                    gfHigh: widget.dive.gfHigh,
+                  ),
+                  height: 192,
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildAnnotationsSection() {

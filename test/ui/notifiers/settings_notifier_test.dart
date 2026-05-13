@@ -207,6 +207,46 @@ void main() {
     });
   });
 
+  group('tissueHeatmapExpanded', () {
+    test('defaults to false when prefs empty', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.tissueHeatmapExpanded, isFalse);
+    });
+
+    test('setTissueHeatmapExpanded flips and notifies', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      var notifyCount = 0;
+      n.addListener(() => notifyCount++);
+      await n.setTissueHeatmapExpanded(true);
+      expect(n.tissueHeatmapExpanded, isTrue);
+      expect(notifyCount, 1);
+    });
+
+    test('setTissueHeatmapExpanded no-ops on identical value', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      var notifyCount = 0;
+      n.addListener(() => notifyCount++);
+      await n.setTissueHeatmapExpanded(false);
+      expect(notifyCount, 0);
+    });
+
+    test('tissueHeatmapExpanded persists across reload', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n1 = SettingsNotifier();
+      await n1.load();
+      await n1.setTissueHeatmapExpanded(true);
+      final n2 = SettingsNotifier();
+      await n2.load();
+      expect(n2.tissueHeatmapExpanded, isTrue);
+    });
+  });
+
   group('vpmbConservatism', () {
     test('defaults to 2 when prefs empty', () async {
       SharedPreferences.setMockInitialValues({});

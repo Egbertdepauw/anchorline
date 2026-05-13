@@ -11,6 +11,7 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kWatermarkOpacity = 'watermark_opacity';
   static const _kEndCountsOxygen = 'end_counts_oxygen';
   static const _kVpmbConservatism = 'vpmb_conservatism';
+  static const _kTissueHeatmapExpanded = 'tissue_heatmap_expanded';
 
   static const _defaultVisibleTraces = <TraceType>{
     TraceType.ppo2,
@@ -25,6 +26,7 @@ class SettingsNotifier extends ChangeNotifier {
   double _watermarkOpacity = 0.06;
   bool _endCountsOxygen = true;
   int _vpmbConservatism = 2;
+  bool _tissueHeatmapExpanded = false;
 
   bool get useSpeedColoredGraph => _useSpeedColoredGraph;
   Set<TraceType> get visibleTraces => Set.unmodifiable(_visibleTraces);
@@ -32,6 +34,7 @@ class SettingsNotifier extends ChangeNotifier {
   double get watermarkOpacity => _watermarkOpacity;
   bool get endCountsOxygen => _endCountsOxygen;
   int get vpmbConservatism => _vpmbConservatism;
+  bool get tissueHeatmapExpanded => _tissueHeatmapExpanded;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -60,6 +63,8 @@ class SettingsNotifier extends ChangeNotifier {
     }
 
     _endCountsOxygen = prefs.getBool(_kEndCountsOxygen) ?? true;
+    _tissueHeatmapExpanded =
+        prefs.getBool(_kTissueHeatmapExpanded) ?? false;
 
     final vpmb = prefs.getInt(_kVpmbConservatism);
     if (vpmb != null) {
@@ -123,5 +128,13 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kVpmbConservatism, clamped);
+  }
+
+  Future<void> setTissueHeatmapExpanded(bool v) async {
+    if (_tissueHeatmapExpanded == v) return;
+    _tissueHeatmapExpanded = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kTissueHeatmapExpanded, v);
   }
 }
