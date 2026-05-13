@@ -9,6 +9,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../analysis/gas_density.dart';
+import '../../analysis/end.dart';
 import '../../data/db/database.dart';
 import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
 import '../../data/models/sample_set.dart';
@@ -90,6 +92,26 @@ final List<({double speed, Color color})> _vSpeedAnchors = [
 
 const double _ppo2Max = 2.0;
 
+// ── Density + END band colours ───────────────────────────────────
+const Color _bandGreen = Color(0xFF4ADE80);
+const Color _bandOrange = Color(0xFFF59E0B);
+const Color _bandRed = Color(0xFFDC2626);
+
+Color _colorForDensityBand(DensityBand b) => switch (b) {
+      DensityBand.green => _bandGreen,
+      DensityBand.orange => _bandOrange,
+      DensityBand.red => _bandRed,
+    };
+
+Color _colorForEndBand(EndBand b) => switch (b) {
+      EndBand.green => _bandGreen,
+      EndBand.orange => _bandOrange,
+      EndBand.red => _bandRed,
+    };
+
+/// Implicit max g/L for the density y-axis scale.
+const double _densityGLMax = 7.0;
+
 /// Petrel default per-cell calibration factor when none is available.
 /// Multiplying raw mV by this value yields PPO2 in bar.
 const double _defaultCellCal = 0.021;
@@ -135,6 +157,11 @@ class ProfileChart extends StatelessWidget {
   /// When present, drives the gas-change markers and bailout highlighting.
   final List<DiveGasMix>? gasMixes;
 
+  /// Whether oxygen counts as narcotic when computing END.
+  /// Passed through to [computeEndSeries] when the END trace is visible.
+  /// Defaults to `true` (US-Navy/TDI convention).
+  final bool endCountsOxygen;
+
   const ProfileChart({
     super.key,
     required this.samples,
@@ -148,13 +175,42 @@ class ProfileChart extends StatelessWidget {
     this.tanks,
     this.mappedCylinders,
     this.gasMixes,
+    this.endCountsOxygen = true,
   });
 
   @override
   Widget build(BuildContext context) {
+    final mixes = gasMixes;
     final showTanks = visibleTraces.contains(TraceType.tanks) &&
         (tanks?.isNotEmpty ?? false) &&
         samples.tankPressuresBar.isNotEmpty;
+
+    // Compute density + END series here so they are available to the painter
+    // without coupling the painter to SettingsNotifier.
+    final densitySeries = (visibleTraces.contains(TraceType.density) &&
+            mixes != null &&
+            mixes.isNotEmpty &&
+            samples.gasMixIndex.isNotEmpty)
+        ? computeDensitySeries(
+            depthMeters: samples.depthMeters,
+            gasMixIndex: samples.gasMixIndex,
+            gasMixes: mixes,
+            atmosphericPressureMbar: kStandardAtmosphericPressureMbar,
+          )
+        : null;
+
+    final endSeries = (visibleTraces.contains(TraceType.end) &&
+            mixes != null &&
+            mixes.isNotEmpty &&
+            samples.gasMixIndex.isNotEmpty)
+        ? computeEndSeries(
+            depthMeters: samples.depthMeters,
+            gasMixIndex: samples.gasMixIndex,
+            gasMixes: mixes,
+            countsOxygen: endCountsOxygen,
+          )
+        : null;
+
     return Stack(children: [
       CustomPaint(
         painter: ProfileChartPainter(
@@ -164,6 +220,8 @@ class ProfileChart extends StatelessWidget {
           cellCalibration: cellCalibration,
           useSpeedColoredGraph: useSpeedColoredGraph,
           gasMixes: gasMixes,
+          densitySeries: densitySeries,
+          endSeries: endSeries,
         ),
         child: const SizedBox.expand(),
       ),
@@ -292,6 +350,14 @@ class ProfileChartPainter extends CustomPainter {
   final bool useSpeedColoredGraph;
   final List<DiveGasMix>? gasMixes;
 
+  /// Pre-computed per-sample gas density (g/L). Non-null only when
+  /// [TraceType.density] is in [visibleTraces] and gas-mix data is available.
+  final Float32List? densitySeries;
+
+  /// Pre-computed per-sample END (m). Non-null only when [TraceType.end] is
+  /// in [visibleTraces] and gas-mix data is available.
+  final Float32List? endSeries;
+
   const ProfileChartPainter({
     required this.samples,
     required this.visibleTraces,
@@ -299,6 +365,8 @@ class ProfileChartPainter extends CustomPainter {
     this.cellCalibration,
     this.useSpeedColoredGraph = true,
     this.gasMixes,
+    this.densitySeries,
+    this.endSeries,
   });
 
   // ── shouldRepaint ──────────────────────────────────────────────
@@ -309,7 +377,9 @@ class ProfileChartPainter extends CustomPainter {
         !_setEquals(old.visibleTraces, visibleTraces) ||
         old.useSpeedColoredGraph != useSpeedColoredGraph ||
         !identical(old.samples, samples) ||
-        !identical(old.gasMixes, gasMixes);
+        !identical(old.gasMixes, gasMixes) ||
+        !identical(old.densitySeries, densitySeries) ||
+        !identical(old.endSeries, endSeries);
   }
 
   static bool _setEquals(Set<TraceType> a, Set<TraceType> b) {
@@ -528,6 +598,50 @@ class ProfileChartPainter extends CustomPainter {
         (gasMixes?.isNotEmpty ?? false) &&
         samples.gasMixIndex.isNotEmpty) {
       _drawGasChangeMarkers(canvas, chartRect, n, xOf);
+    }
+
+    // ── Gas density trace ──────────────────────────────────────────
+    // Mapped to an implicit 0–7 g/L scale on the same vertical space as
+    // the depth trace. Each segment is colour-coded by its density band.
+    final ds = densitySeries;
+    if (ds != null && ds.length >= 2) {
+      final segPaint = Paint()
+        ..strokeWidth = 1.6
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
+      for (var i = 1; i < ds.length && i < n; i++) {
+        final d0 = ds[i - 1];
+        final d1 = ds[i];
+        if (d0.isNaN || d1.isNaN) continue;
+        segPaint.color = _colorForDensityBand(densityBand((d0 + d1) / 2));
+        canvas.drawLine(
+          Offset(xOf(i - 1), chartTop + (d0 / _densityGLMax) * chartHeight),
+          Offset(xOf(i), chartTop + (d1 / _densityGLMax) * chartHeight),
+          segPaint,
+        );
+      }
+    }
+
+    // ── END trace ──────────────────────────────────────────────────
+    // END ≤ current depth so the trace draws above (shallower than) the
+    // depth fill.  Shares the depth y-axis scale.
+    final es = endSeries;
+    if (es != null && es.length >= 2) {
+      final segPaint = Paint()
+        ..strokeWidth = 1.6
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
+      for (var i = 1; i < es.length && i < n; i++) {
+        final e0 = es[i - 1];
+        final e1 = es[i];
+        if (e0.isNaN || e1.isNaN) continue;
+        segPaint.color = _colorForEndBand(endBand((e0 + e1) / 2));
+        canvas.drawLine(
+          Offset(xOf(i - 1), yDepth(e0)),
+          Offset(xOf(i), yDepth(e1)),
+          segPaint,
+        );
+      }
     }
 
     // ── Crosshair ──────────────────────────────────────────────────

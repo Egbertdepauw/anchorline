@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:ccrlogger/data/db/database.dart';
-import 'package:ccrlogger/data/models/dive.dart' show DiveTank;
+import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix, DiveTank;
 import 'package:ccrlogger/data/models/sample_set.dart';
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
@@ -251,6 +251,100 @@ void main() {
     expect(tankTraceLabelFor(mk(TankUsage.oxygen)), 'O2');
     expect(tankTraceLabelFor(mk(TankUsage.sidemount)), 'BO');
     expect(tankTraceLabelFor(mk(TankUsage.none, slot: 4)), 'T4');
+  });
+
+  testWidgets(
+      'ProfileChart with TraceType.density visible builds without error',
+      (tester) async {
+    const n = 60;
+    final depth = Float32List(n);
+    final gasMixIdx = Uint8List(n); // all zeros → mix index 0
+    for (var i = 0; i < n; i++) {
+      depth[i] = i < 10 ? i * 3.0 : (i < 50 ? 30.0 : (60 - i) * 3.0);
+    }
+    final samples = SampleSet(
+      diveId: 'density-test',
+      sampleCount: n,
+      sampleIntervalMs: 10000,
+      depthMeters: depth,
+      temperatureCelsius: Float32List(n),
+      ppo2Bar: Float32List(n),
+      cellMv0: Float32List(n),
+      cellMv1: Float32List(n),
+      cellMv2: Float32List(n),
+      setpointBar: Float32List(n),
+      cns: Float32List(n),
+      decoStopDepthMeters: Float32List(n),
+      decoTimeSeconds: Int32List(n),
+      ttsSeconds: Int32List(n),
+      gasMixIndex: gasMixIdx,
+      statusFlags: Uint8List(n),
+      tankPressuresBar: [],
+    );
+    final gasMixes = [
+      DiveGasMix(oxygenPercent: 21, heliumPercent: 35, isDiluent: true),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 360,
+                height: 250,
+                child: ProfileChart(
+                    samples: samples,
+                    visibleTraces: {TraceType.density},
+                    crosshairIndex: null,
+                    gasMixes: gasMixes)))));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ProfileChart), findsOneWidget);
+  });
+
+  testWidgets('ProfileChart with TraceType.end visible builds without error',
+      (tester) async {
+    const n = 60;
+    final depth = Float32List(n);
+    final gasMixIdx = Uint8List(n);
+    for (var i = 0; i < n; i++) {
+      depth[i] = i < 10 ? i * 3.0 : (i < 50 ? 30.0 : (60 - i) * 3.0);
+    }
+    final samples = SampleSet(
+      diveId: 'end-test',
+      sampleCount: n,
+      sampleIntervalMs: 10000,
+      depthMeters: depth,
+      temperatureCelsius: Float32List(n),
+      ppo2Bar: Float32List(n),
+      cellMv0: Float32List(n),
+      cellMv1: Float32List(n),
+      cellMv2: Float32List(n),
+      setpointBar: Float32List(n),
+      cns: Float32List(n),
+      decoStopDepthMeters: Float32List(n),
+      decoTimeSeconds: Int32List(n),
+      ttsSeconds: Int32List(n),
+      gasMixIndex: gasMixIdx,
+      statusFlags: Uint8List(n),
+      tankPressuresBar: [],
+    );
+    final gasMixes = [
+      DiveGasMix(oxygenPercent: 21, heliumPercent: 35, isDiluent: true),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 360,
+                height: 250,
+                child: ProfileChart(
+                    samples: samples,
+                    visibleTraces: {TraceType.end},
+                    crosshairIndex: null,
+                    gasMixes: gasMixes,
+                    endCountsOxygen: false)))));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ProfileChart), findsOneWidget);
   });
 
   test('shouldRepaint detects changes', () {

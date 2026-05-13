@@ -476,7 +476,9 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         mappedCylinders:
                                             _notifier.mappedCylinders,
                                         gasMixes: _decodeGasMixes(),
-                                        useSpeedColoredGraph: useSpeedColored),
+                                        useSpeedColoredGraph: useSpeedColored,
+                                        endCountsOxygen: widget
+                                            .settingsNotifier.endCountsOxygen),
                                     if (_notifier.crosshairIndex != null)
                                       CrosshairTooltip(
                                         samples: _notifier.samples!,
