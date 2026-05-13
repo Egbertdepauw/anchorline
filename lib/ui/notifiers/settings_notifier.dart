@@ -9,6 +9,7 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kVisibleTraces = 'visible_traces';
   static const _kMapLayerStyle = 'map_layer_style';
   static const _kWatermarkOpacity = 'watermark_opacity';
+  static const _kEndCountsOxygen = 'end_counts_oxygen';
 
   static const _defaultVisibleTraces = <TraceType>{
     TraceType.ppo2,
@@ -21,11 +22,13 @@ class SettingsNotifier extends ChangeNotifier {
   Set<TraceType> _visibleTraces = {..._defaultVisibleTraces};
   MapLayerStyle _mapLayerStyle = MapLayerStyle.normal;
   double _watermarkOpacity = 0.06;
+  bool _endCountsOxygen = true;
 
   bool get useSpeedColoredGraph => _useSpeedColoredGraph;
   Set<TraceType> get visibleTraces => Set.unmodifiable(_visibleTraces);
   MapLayerStyle get mapLayerStyle => _mapLayerStyle;
   double get watermarkOpacity => _watermarkOpacity;
+  bool get endCountsOxygen => _endCountsOxygen;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -52,6 +55,8 @@ class SettingsNotifier extends ChangeNotifier {
     if (wm != null) {
       _watermarkOpacity = wm.clamp(0.0, 0.20);
     }
+
+    _endCountsOxygen = prefs.getBool(_kEndCountsOxygen) ?? true;
 
     notifyListeners();
   }
@@ -84,6 +89,14 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kMapLayerStyle, s.name);
+  }
+
+  Future<void> setEndCountsOxygen(bool v) async {
+    if (_endCountsOxygen == v) return;
+    _endCountsOxygen = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kEndCountsOxygen, v);
   }
 
   Future<void> setWatermarkOpacity(double v) async {

@@ -166,4 +166,44 @@ void main() {
       expect(n2.watermarkOpacity, closeTo(0.09, 0.001));
     });
   });
+
+  group('endCountsOxygen', () {
+    test('defaults to true when prefs empty', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.endCountsOxygen, isTrue);
+    });
+
+    test('setEndCountsOxygen flips and notifies', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      var notifyCount = 0;
+      n.addListener(() => notifyCount++);
+      await n.setEndCountsOxygen(false);
+      expect(n.endCountsOxygen, isFalse);
+      expect(notifyCount, 1);
+    });
+
+    test('setEndCountsOxygen no-ops on identical', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      var notifyCount = 0;
+      n.addListener(() => notifyCount++);
+      await n.setEndCountsOxygen(true);
+      expect(notifyCount, 0);
+    });
+
+    test('endCountsOxygen persists across reload', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n1 = SettingsNotifier();
+      await n1.load();
+      await n1.setEndCountsOxygen(false);
+      final n2 = SettingsNotifier();
+      await n2.load();
+      expect(n2.endCountsOxygen, isFalse);
+    });
+  });
 }
