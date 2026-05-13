@@ -8,6 +8,7 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kSpeedColored = 'use_speed_colored_graph';
   static const _kVisibleTraces = 'visible_traces';
   static const _kMapLayerStyle = 'map_layer_style';
+  static const _kWatermarkOpacity = 'watermark_opacity';
 
   static const _defaultVisibleTraces = <TraceType>{
     TraceType.ppo2,
@@ -19,10 +20,12 @@ class SettingsNotifier extends ChangeNotifier {
   bool _useSpeedColoredGraph = true;
   Set<TraceType> _visibleTraces = {..._defaultVisibleTraces};
   MapLayerStyle _mapLayerStyle = MapLayerStyle.normal;
+  double _watermarkOpacity = 0.06;
 
   bool get useSpeedColoredGraph => _useSpeedColoredGraph;
   Set<TraceType> get visibleTraces => Set.unmodifiable(_visibleTraces);
   MapLayerStyle get mapLayerStyle => _mapLayerStyle;
+  double get watermarkOpacity => _watermarkOpacity;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -43,6 +46,11 @@ class SettingsNotifier extends ChangeNotifier {
               .where((s) => s.name == styleName)
               .firstOrNull ??
           MapLayerStyle.normal;
+    }
+
+    final wm = prefs.getDouble(_kWatermarkOpacity);
+    if (wm != null) {
+      _watermarkOpacity = wm.clamp(0.0, 0.20);
     }
 
     notifyListeners();
@@ -76,5 +84,14 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kMapLayerStyle, s.name);
+  }
+
+  Future<void> setWatermarkOpacity(double v) async {
+    final clamped = v.clamp(0.0, 0.20);
+    if (_watermarkOpacity == clamped) return;
+    _watermarkOpacity = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kWatermarkOpacity, clamped);
   }
 }

@@ -116,4 +116,54 @@ void main() {
       expect(notifyCount, 0);
     });
   });
+
+  group('watermarkOpacity', () {
+    test('defaults to 0.06 when prefs empty', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.watermarkOpacity, closeTo(0.06, 0.001));
+    });
+
+    test('setWatermarkOpacity persists and notifies', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      var notifyCount = 0;
+      n.addListener(() => notifyCount++);
+      await n.setWatermarkOpacity(0.12);
+      expect(n.watermarkOpacity, closeTo(0.12, 0.001));
+      expect(notifyCount, 1);
+    });
+
+    test('setWatermarkOpacity clamps to 0..0.20', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      await n.setWatermarkOpacity(-0.5);
+      expect(n.watermarkOpacity, 0.0);
+      await n.setWatermarkOpacity(0.99);
+      expect(n.watermarkOpacity, closeTo(0.20, 0.001));
+    });
+
+    test('setWatermarkOpacity no-ops when value unchanged', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      var notifyCount = 0;
+      n.addListener(() => notifyCount++);
+      await n.setWatermarkOpacity(0.06);
+      expect(notifyCount, 0);
+    });
+
+    test('watermarkOpacity persists across reload', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n1 = SettingsNotifier();
+      await n1.load();
+      await n1.setWatermarkOpacity(0.09);
+      final n2 = SettingsNotifier();
+      await n2.load();
+      expect(n2.watermarkOpacity, closeTo(0.09, 0.001));
+    });
+  });
 }
