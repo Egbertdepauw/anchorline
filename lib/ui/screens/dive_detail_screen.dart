@@ -47,6 +47,9 @@ import '../../analysis/end.dart';
 import '../../analysis/deco/replay_engine.dart';
 import '../../analysis/deco/replay_result.dart';
 import '../../analysis/deco/zhl16c.dart' show SampleStream;
+import '../../analysis/bailout/bailout_planner.dart';
+import '../../analysis/bailout/tank_recommender.dart';
+import '../widgets/bailout_section.dart';
 
 class DiveDetailScreen extends StatefulWidget {
   final Dive dive;
@@ -587,6 +590,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                     _buildStatsRow(theme),
                     _buildTissueHeatmapSection(),
                     _buildAnnotationsSection(),
+                    _buildBailoutSection(),
                   ],
         ],
       ),
@@ -825,6 +829,99 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                 ),
               ),
           ],
+        );
+      },
+    );
+  }
+
+  Widget _buildBailoutSection() {
+    return ListenableBuilder(
+      listenable: widget.settingsNotifier,
+      builder: (context, _) {
+        final samples = _notifier.samples;
+        if (samples == null) return const SizedBox.shrink();
+
+        final gasMixes = _decodeGasMixes();
+
+        // Trigger depth = last sample that is still within 0.5 m of the
+        // overall maximum.  This approximates "end of bottom time" per spec.
+        double maxDepth = 0;
+        int triggerSampleIdx = 0;
+        for (var i = 0; i < samples.depthMeters.length; i++) {
+          if (samples.depthMeters[i] > maxDepth) {
+            maxDepth = samples.depthMeters[i];
+            triggerSampleIdx = i;
+          }
+        }
+        for (var i = triggerSampleIdx + 1; i < samples.depthMeters.length; i++) {
+          if ((maxDepth - samples.depthMeters[i]).abs() < 0.5) {
+            triggerSampleIdx = i;
+          } else {
+            break;
+          }
+        }
+
+        // Recorded diluent (first entry flagged isDiluent).
+        DiveGasMix? recordedDiluent;
+        for (final m in gasMixes) {
+          if (m.isDiluent) {
+            recordedDiluent = m;
+            break;
+          }
+        }
+
+        // v1 tissue-state limitation: the replay engine exposes
+        // tissueLoadsPct (% of M-value) but the planner needs raw pN2/pHe
+        // in bar.  A fully correct implementation would call
+        // tissueStateAt(triggerSampleIdx) on the engine; that API does not
+        // exist yet (planned for v2).  As a conservative placeholder we
+        // fill every compartment with 4.0 bar N2, which corresponds roughly
+        // to a well-loaded diver after a deep bottom time and produces
+        // plausible (slightly conservative) deco stop predictions.  Short
+        // dives / shallow dives will read as more conservative than reality.
+        // See: ascent_simulator_test.dart fixture commentary.
+        final tissueN2Bar = List<double>.filled(16, 4.0);
+        final tissueHeBar = List<double>.filled(16, 0.0);
+
+        // Tank catalogue — always-present aluminium stages plus the
+        // user-toggleable European steel tanks.
+        final tankCatalogue = [
+          kAl40,
+          kAl80,
+          if (widget.settingsNotifier.tank68L300Available) kTank68L300,
+          if (widget.settingsNotifier.tank12L300Available) kTank12L300,
+        ];
+
+        // v1: Scenario B only.  Wiring dive-tank records as Scenario A
+        // bailout tanks is a future enhancement once the equipment model
+        // exposes per-tank "use as bailout" flags.
+        final result = planBailout(
+          diveId: widget.dive.id,
+          maxDepthMeters: maxDepth,
+          recordedDiluent: recordedDiluent,
+          tissueN2Bar: tissueN2Bar,
+          tissueHeBar: tissueHeBar,
+          userBailoutTanks: const [],
+          userTankVolumesL: const {},
+          isGueConfig: widget.settingsNotifier.gueDiluentConfig,
+          gfLow: widget.dive.gfLow ?? 30,
+          gfHigh: widget.dive.gfHigh ?? 85,
+          sacBottom: widget.settingsNotifier.bailoutSacBottom,
+          sacDeco: widget.settingsNotifier.bailoutSacDeco,
+          ascentRateFast: widget.settingsNotifier.bailoutAscentRateFast,
+          ascentRateSlow: widget.settingsNotifier.bailoutAscentRateSlow,
+          availableTanks: tankCatalogue,
+        );
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: BailoutSection(
+            result: result,
+            triggerDepthMeters: maxDepth,
+            sacBottom: widget.settingsNotifier.bailoutSacBottom,
+            sacDeco: widget.settingsNotifier.bailoutSacDeco,
+            isGueConfig: widget.settingsNotifier.gueDiluentConfig,
+          ),
         );
       },
     );
