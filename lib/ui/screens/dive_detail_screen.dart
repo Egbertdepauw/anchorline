@@ -833,6 +833,31 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       if (!e.isNaN && e > maxEnd) maxEnd = e;
     }
 
+    // Run replay to get Surface GF + Max GF. Uses the same cached engine
+    // instance as the chart (_decoEngine), so no redundant computation when
+    // the chart has already run the replay for the same key.
+    final decoAlgo = _annotationsNotifier.displayDecoAlgorithm == 'vpmb'
+        ? DecoAlgorithm.vpmb
+        : DecoAlgorithm.zhl16c;
+    final decoReplay = _decoEngine.replay(
+      diveId: widget.dive.id,
+      samples: _SampleSetAdapter(samples),
+      gasMixes: gasMixes,
+      algorithm: decoAlgo,
+      vpmbConservatism: widget.settingsNotifier.vpmbConservatism,
+      gfLow: widget.dive.gfLow,
+      gfHigh: widget.dive.gfHigh,
+    );
+    final surfaceGf = decoReplay.surfaceGfFinal;
+    final maxGf = decoReplay.maxGf99;
+
+    Color colourForGf(double gf) {
+      final gfHighVal = (widget.dive.gfHigh ?? 85).toDouble();
+      if (gf > 100) return const Color(0xFFDC2626); // red
+      if (gf > gfHighVal) return const Color(0xFFF59E0B); // orange
+      return const Color(0xFF4ADE80); // green
+    }
+
     Color colourForDensityValue(double v) => switch (densityBand(v)) {
           DensityBand.green => const Color(0xFF4ADE80),
           DensityBand.orange => const Color(0xFFF59E0B),
@@ -904,6 +929,18 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
           unit: 'm',
           value: maxEnd.round().toString(),
           valueColor: colourForEndValue(maxEnd),
+        ),
+        StatTile(
+          label: 'Surface GF',
+          unit: '%',
+          value: surfaceGf.round().toString(),
+          valueColor: colourForGf(surfaceGf),
+        ),
+        StatTile(
+          label: 'Max GF',
+          unit: '%',
+          value: maxGf.round().toString(),
+          valueColor: colourForGf(maxGf),
         ),
       ];
       // Width per cell at ~80px lands at 4 columns on iPhone-portrait (374
