@@ -6,7 +6,7 @@ void main() {
   Widget wrap(Widget child) =>
       MaterialApp(home: Scaffold(body: child));
 
-  testWidgets('TraceSegmentedBar renders eight segments with their labels',
+  testWidgets('TraceSegmentedBar renders ten segments with their labels',
       (tester) async {
     await tester.pumpWidget(wrap(TraceSegmentedBar(
       visibleTraces: const {TraceType.ppo2, TraceType.deco},
@@ -20,6 +20,8 @@ void main() {
     expect(find.text('Gas'), findsOneWidget);
     expect(find.text('Density'), findsOneWidget);
     expect(find.text('END'), findsOneWidget);
+    expect(find.text('GF99'), findsOneWidget);
+    expect(find.text('Ceiling'), findsOneWidget);
   });
 
   testWidgets('tapping an unselected segment calls onToggle with its TraceType',
@@ -69,6 +71,21 @@ void main() {
     expect(toggled, TraceType.density);
     await tester.tap(find.text('END'));
     expect(toggled, TraceType.end);
+  });
+
+  testWidgets('tapping GF99 / Ceiling segments calls onToggle', (tester) async {
+    TraceType? toggled;
+    await tester.pumpWidget(wrap(TraceSegmentedBar(
+      visibleTraces: const {},
+      onToggle: (t) => toggled = t,
+    )));
+    await tester.tap(find.text('GF99'));
+    expect(toggled, TraceType.gf99);
+    // Ceiling is the last segment and may be off-screen in the default
+    // 800 px test viewport — scroll to it before tapping.
+    await tester.scrollUntilVisible(find.text('Ceiling'), 50);
+    await tester.tap(find.text('Ceiling'));
+    expect(toggled, TraceType.ceiling);
   });
 
   testWidgets(
