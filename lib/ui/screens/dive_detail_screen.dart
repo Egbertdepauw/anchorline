@@ -39,6 +39,8 @@ import '../widgets/star_rating.dart';
 import '../widgets/trace_segmented_bar.dart';
 import '../components/stat_tile.dart';
 import '../theme/tokens.dart';
+import '../../analysis/gas_density.dart';
+import '../../analysis/end.dart';
 
 class DiveDetailScreen extends StatefulWidget {
   final Dive dive;
@@ -780,6 +782,38 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       sampleIntervalMs: samples.sampleIntervalMs,
     );
 
+    final densitySeries = computeDensitySeries(
+      depthMeters: samples.depthMeters,
+      gasMixIndex: samples.gasMixIndex,
+      gasMixes: gasMixes,
+      atmosphericPressureMbar: kStandardAtmosphericPressureMbar,
+    );
+    final endSeries = computeEndSeries(
+      depthMeters: samples.depthMeters,
+      gasMixIndex: samples.gasMixIndex,
+      gasMixes: gasMixes,
+      countsOxygen: widget.settingsNotifier.endCountsOxygen,
+    );
+    var maxDensity = 0.0;
+    for (final d in densitySeries) {
+      if (!d.isNaN && d > maxDensity) maxDensity = d;
+    }
+    var maxEnd = 0.0;
+    for (final e in endSeries) {
+      if (!e.isNaN && e > maxEnd) maxEnd = e;
+    }
+
+    Color colourForDensityValue(double v) => switch (densityBand(v)) {
+          DensityBand.green => const Color(0xFF4ADE80),
+          DensityBand.orange => const Color(0xFFF59E0B),
+          DensityBand.red => const Color(0xFFDC2626),
+        };
+    Color colourForEndValue(double v) => switch (endBand(v)) {
+          EndBand.green => const Color(0xFF4ADE80),
+          EndBand.orange => const Color(0xFFF59E0B),
+          EndBand.red => const Color(0xFFDC2626),
+        };
+
     final dive = widget.dive;
     final stackEnd = dive.stackRemainingAtEndSeconds;
     final stackStart = dive.stackRemainingAtStartSeconds;
@@ -829,6 +863,18 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                 .whereType<String>()
                 .join(' · '),
           ),
+        StatTile(
+          label: 'Max ρ',
+          unit: 'g/L',
+          value: maxDensity.toStringAsFixed(1),
+          valueColor: colourForDensityValue(maxDensity),
+        ),
+        StatTile(
+          label: 'Max END',
+          unit: 'm',
+          value: maxEnd.round().toString(),
+          valueColor: colourForEndValue(maxEnd),
+        ),
       ];
       // Width per cell at ~80px lands at 4 columns on iPhone-portrait (374
       // available / 80 ≈ 4.7 → 4 cells fit with spacing). Below that, wrap
