@@ -17,11 +17,30 @@ const List<DiveGasMix> kGueBottomMixes = [
   DiveGasMix(oxygenPercent: 15, heliumPercent: 55, isDiluent: true),
 ];
 
+/// Non-GUE deco gases: full ladder including EAN 32 for shallow/short
+/// deco. Used as the deco list when [gueDiluentConfig] is OFF.
 const List<DiveGasMix> kDecoMixes = [
   DiveGasMix(oxygenPercent: 32, heliumPercent: 0, isDiluent: false),
   DiveGasMix(oxygenPercent: 50, heliumPercent: 0, isDiluent: false),
   DiveGasMix(oxygenPercent: 100, heliumPercent: 0, isDiluent: false),
 ];
+
+const _ean50 = DiveGasMix(oxygenPercent: 50, heliumPercent: 0, isDiluent: false);
+const _o2 = DiveGasMix(oxygenPercent: 100, heliumPercent: 0, isDiluent: false);
+
+/// GUE bailout staging by trigger depth:
+/// - ≤ 21 m   : no deco gases — bottom mix only (1 stage)
+/// - 22–65 m  : add EAN 50 (2 stages)
+/// - > 65 m   : add EAN 50 + O₂ (3 stages)
+///
+/// Per the GUE bailout convention: shallow dives carry the bottom mix
+/// only, longer/deeper dives add EAN 50, and only the deeper-than-65 m
+/// dives bring O₂ for the 6 m / 3 m stops.
+List<DiveGasMix> gueDecoGasesForDepth(double maxDepthMeters) {
+  if (maxDepthMeters > 65) return const [_ean50, _o2];
+  if (maxDepthMeters > 21) return const [_ean50];
+  return const [];
+}
 
 const double kPpo2MaxNonGue = 1.6;
 const double kPpo2MaxGue = 1.0;

@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../analysis/bailout/ascent_simulator.dart' show AscentStop;
 import '../../analysis/bailout/bailout_result.dart';
+import '../../analysis/gas_density.dart' show mixDensityAt1Atm;
 import '../../data/models/dive.dart' show DiveGasMix;
 import '../components/section_header.dart';
 import '../theme/tokens.dart';
@@ -23,6 +24,12 @@ class BailoutSection extends StatelessWidget {
   final int sacDeco;
   final bool isGueConfig;
 
+  /// Dive runtime accumulated before the bailout trigger (i.e. depth/time
+  /// from descent + bottom phase up to the deepest sample). The stop table
+  /// adds bailout-leg durations on top of this so the RUNTIME column shows
+  /// total elapsed dive time, not just elapsed-since-trigger.
+  final Duration bottomTimeBeforeTrigger;
+
   const BailoutSection({
     super.key,
     required this.result,
@@ -30,6 +37,7 @@ class BailoutSection extends StatelessWidget {
     required this.sacBottom,
     required this.sacDeco,
     required this.isGueConfig,
+    this.bottomTimeBeforeTrigger = Duration.zero,
   });
 
   // ── Colour helpers ──────────────────────────────────────────────────
@@ -170,7 +178,11 @@ class BailoutSection extends StatelessWidget {
           // ── Per-stop table ───────────────────────────────────────────
           if (r.stops.isNotEmpty) ...[
             const SizedBox(height: Spacing.md),
-            _StopTable(stops: r.stops, scheme: scheme),
+            _StopTable(
+              stops: r.stops,
+              scheme: scheme,
+              startingRuntime: bottomTimeBeforeTrigger,
+            ),
           ],
 
           // ── Verdict banner ───────────────────────────────────────────
@@ -272,38 +284,102 @@ class _SummaryTile extends StatelessWidget {
 /// Per-stop ascent table. Adjacent minute-steps with the same gas and
 /// same depth are consolidated into single rows for readability.
 class _StopTable extends StatelessWidget {
-  const _StopTable({required this.stops, required this.scheme});
+  const _StopTable({
+    required this.stops,
+    required this.scheme,
+    this.startingRuntime = Duration.zero,
+  });
 
   final List<AscentStop> stops;
   final ColorScheme scheme;
 
+  /// Dive runtime accumulated before the bailout trigger. The RUNTIME
+  /// column counts up from here.
+  final Duration startingRuntime;
+
   // ── Row consolidation ────────────────────────────────────────────────
+  //
+  // The planner emits one leg per minute (1m ascents + 3m stop holds). The
+  // diver wants a stop-oriented view a la MultiDeco: one row per stop, plus
+  // a transit row whenever a meaningful ascent (trigger→first-stop and
+  // final stop→surface) precedes/follows a stop. Intermediate inter-stop
+  // 3m ascents fold into the *following* stop's volume since they're tiny
+  // and not separately interesting.
 
   List<_ConsolidatedRow> _consolidate() {
     final rows = <_ConsolidatedRow>[];
-    for (final stop in stops) {
-      if (rows.isNotEmpty) {
-        final last = rows.last;
-        final sameGas = last.gas == stop.gas;
-        final sameDepthRange = last.depthStartMeters == stop.depthStartMeters &&
-            last.depthEndMeters == stop.depthEndMeters;
-        if (sameGas && sameDepthRange) {
-          rows.last = _ConsolidatedRow(
-            depthStartMeters: last.depthStartMeters,
-            depthEndMeters: last.depthEndMeters,
-            duration: last.duration + stop.duration,
-            gas: last.gas,
-            volumeLitres: last.volumeLitres + stop.volumeLitresConsumed,
-          );
-          continue;
+    Duration ascentDuration = Duration.zero;
+    double ascentVolume = 0.0;
+    double ascentTargetDepth = 0;
+    DiveGasMix? ascentGas;
+    var hasAscent = false;
+    var seenAnyStop = false;
+
+    for (final leg in stops) {
+      final isRealStop = leg.isStop && leg.duration > Duration.zero;
+      if (isRealStop) {
+        // Only emit the trigger→first-stop transit as its own row. Inter-
+        // stop ascents fold into the stop they precede so the table reads
+        // as a clean stop ladder.
+        if (hasAscent && !seenAnyStop) {
+          rows.add(_ConsolidatedRow.ascent(
+            targetDepthMeters: ascentTargetDepth,
+            gas: ascentGas!,
+            volumeLitres: ascentVolume,
+            travelDuration: ascentDuration,
+          ));
+          ascentDuration = Duration.zero;
+          ascentVolume = 0.0;
+          hasAscent = false;
+          ascentGas = null;
         }
+        rows.add(_ConsolidatedRow.stop(
+          depthMeters: leg.depthStartMeters,
+          stopDuration: leg.duration,
+          gas: leg.gas,
+          // Fold pending inter-stop ascent volume into this stop so
+          // nothing falls off the totals.
+          volumeLitres: leg.volumeLitresConsumed + ascentVolume,
+        ));
+        // Inter-stop ascent time gets attributed to the stop it preceded.
+        // It's already in totalTime via the planner's sum.
+        ascentDuration = Duration.zero;
+        ascentVolume = 0.0;
+        hasAscent = false;
+        ascentGas = null;
+        seenAnyStop = true;
+      } else if (!leg.isStop) {
+        // Ascent leg. Track destination + accumulate. If the gas
+        // changes mid-ascent (e.g. 67 m → 22 m on bottom mix then 22 m →
+        // 15 m on EAN 50), emit the accumulated row first so each
+        // displayed gas matches the leg it was actually breathed on.
+        if (hasAscent && !seenAnyStop && ascentGas != leg.gas) {
+          rows.add(_ConsolidatedRow.ascent(
+            targetDepthMeters: ascentTargetDepth,
+            gas: ascentGas!,
+            volumeLitres: ascentVolume,
+            travelDuration: ascentDuration,
+          ));
+          ascentDuration = Duration.zero;
+          ascentVolume = 0.0;
+          ascentGas = null;
+        }
+        ascentDuration += leg.duration;
+        ascentVolume += leg.volumeLitresConsumed;
+        ascentTargetDepth = leg.depthEndMeters; // latest destination wins
+        ascentGas ??= leg.gas;
+        hasAscent = true;
       }
-      rows.add(_ConsolidatedRow(
-        depthStartMeters: stop.depthStartMeters,
-        depthEndMeters: stop.depthEndMeters,
-        duration: stop.duration,
-        gas: stop.gas,
-        volumeLitres: stop.volumeLitresConsumed,
+      // 0-duration "stops" (degenerate; shouldn't appear post-planner) skipped.
+    }
+
+    // Trailing ascent = final surface ascent.
+    if (hasAscent) {
+      rows.add(_ConsolidatedRow.ascent(
+        targetDepthMeters: ascentTargetDepth,
+        gas: ascentGas!,
+        volumeLitres: ascentVolume,
+        travelDuration: ascentDuration,
       ));
     }
     return rows;
@@ -311,9 +387,39 @@ class _StopTable extends StatelessWidget {
 
   // ── Runtime accumulation ─────────────────────────────────────────────
 
+  /// Diver-friendly mix name:
+  ///   21/0 -> "Air"
+  ///   other 0% He -> "EAN{O2}"
+  ///   He > 0 -> "Tx{O2}/{He}"
   static String _mixLabel(DiveGasMix g) {
-    final he = g.heliumPercent > 0 ? '/${g.heliumPercent}' : '';
-    return '${g.oxygenPercent}$he';
+    if (g.heliumPercent > 0) {
+      return 'Tx${g.oxygenPercent}/${g.heliumPercent}';
+    }
+    if (g.oxygenPercent == 21) return 'Air';
+    return 'EAN${g.oxygenPercent}';
+  }
+
+  /// Whole-minute, rounded UP so a 1:01 hold doesn't read as "1 min".
+  static String _fmtMinutes(Duration d) {
+    final m = (d.inSeconds + 59) ~/ 60;
+    return '$m min';
+  }
+
+  /// PPO2 in bar at [depthMeters] on [gas]. 1.013 bar atmospheric + 0.1
+  /// bar / m water column. Returned to 2 decimals.
+  static double ppo2At(DiveGasMix gas, double depthMeters) {
+    final ambient = 1.013 + depthMeters / 10.0;
+    return (gas.oxygenPercent / 100.0) * ambient;
+  }
+
+  /// Gas density (g/L) at [depthMeters] on [gas]: 1-ATA density × ambient.
+  static double densityAt(DiveGasMix gas, double depthMeters) {
+    final ambient = 1.013 + depthMeters / 10.0;
+    final atOneAtm = mixDensityAt1Atm(
+      gas.oxygenPercent / 100.0,
+      gas.heliumPercent / 100.0,
+    );
+    return atOneAtm * ambient;
   }
 
   @override
@@ -327,8 +433,9 @@ class _StopTable extends StatelessWidget {
       color: AppColors.wreck.textPrimary,
     );
 
-    // Track cumulative runtime
-    var runtime = Duration.zero;
+    // Cumulative runtime starts at the dive time already elapsed before
+    // the bailout trigger so the column reads as TOTAL dive runtime.
+    var runtime = startingRuntime;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -338,10 +445,12 @@ class _StopTable extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
           child: Row(
             children: [
-              Expanded(flex: 3, child: Text('DEPTH (m)', style: headerStyle)),
-              Expanded(flex: 2, child: Text('TIME', style: headerStyle)),
-              Expanded(flex: 2, child: Text('GAS', style: headerStyle)),
+              Expanded(flex: 3, child: Text('DEPTH', style: headerStyle)),
+              Expanded(flex: 2, child: Text('STOP', style: headerStyle)),
               Expanded(flex: 2, child: Text('RUNTIME', style: headerStyle)),
+              Expanded(flex: 2, child: Text('GAS', style: headerStyle)),
+              Expanded(flex: 2, child: Text('PPO2', style: headerStyle)),
+              Expanded(flex: 2, child: Text('ρ g/L', style: headerStyle)),
               Expanded(flex: 2, child: Text('VOL (L)', style: headerStyle)),
             ],
           ),
@@ -349,24 +458,38 @@ class _StopTable extends StatelessWidget {
         const Divider(height: 1, color: Color(0xFF2A3A45)), // surfaceBezel
         for (final row in rows) ...[
           Builder(builder: (context) {
-            runtime += row.duration;
-            final depthLabel = row.depthStartMeters == row.depthEndMeters
-                ? '${row.depthStartMeters.toStringAsFixed(0)} m'
-                : '${row.depthStartMeters.toStringAsFixed(0)}→'
-                    '${row.depthEndMeters.toStringAsFixed(0)} m';
-            final timeLabel = '${row.duration.inMinutes} min';
-            final runtimeLabel = '${runtime.inMinutes} min';
+            runtime += row.stopDuration;
+            final depthLabel = row.isStop
+                ? '${row.depthMeters.toStringAsFixed(0)} m'
+                : (row.depthMeters == 0
+                    ? '→ surface'
+                    : '→ ${row.depthMeters.toStringAsFixed(0)} m');
+            // "—" in the STOP column for ascent rows tells the diver this
+            // line is a transition, not a hold.
+            final stopLabel =
+                row.isStop ? _fmtMinutes(row.stopDuration) : '—';
+            final runtimeLabel = _fmtMinutes(runtime);
             final volLabel = row.volumeLitres.round().toString();
             final gasLabel = _mixLabel(row.gas);
+            // PPO2 + density evaluated at the row's effective depth — for
+            // stops that's the stop depth, for ascent rows the destination.
+            // Worst-case-on-leg lives on the deeper side; using the row
+            // depth slightly under-reads ascent rows but keeps the table
+            // single-valued per cell.
+            final ppo2Label = ppo2At(row.gas, row.depthMeters).toStringAsFixed(2);
+            final rhoLabel =
+                densityAt(row.gas, row.depthMeters).toStringAsFixed(1);
 
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
               child: Row(
                 children: [
                   Expanded(flex: 3, child: Text(depthLabel, style: cellStyle)),
-                  Expanded(flex: 2, child: Text(timeLabel, style: cellStyle)),
-                  Expanded(flex: 2, child: Text(gasLabel, style: cellStyle)),
+                  Expanded(flex: 2, child: Text(stopLabel, style: cellStyle)),
                   Expanded(flex: 2, child: Text(runtimeLabel, style: cellStyle)),
+                  Expanded(flex: 2, child: Text(gasLabel, style: cellStyle)),
+                  Expanded(flex: 2, child: Text(ppo2Label, style: cellStyle)),
+                  Expanded(flex: 2, child: Text(rhoLabel, style: cellStyle)),
                   Expanded(flex: 2, child: Text(volLabel, style: cellStyle)),
                 ],
               ),
@@ -382,19 +505,33 @@ class _StopTable extends StatelessWidget {
   }
 }
 
-/// A consolidated ascent stop row — adjacent same-gas same-depth stops merged.
+/// One displayed row in the bailout-plan table. Either a stop hold or an
+/// ascent transition. For ascent rows [stopDuration] is null and
+/// [depthMeters] is the *destination* depth (0 means surface).
 class _ConsolidatedRow {
-  const _ConsolidatedRow({
-    required this.depthStartMeters,
-    required this.depthEndMeters,
-    required this.duration,
+  const _ConsolidatedRow.stop({
+    required this.depthMeters,
+    required this.stopDuration,
     required this.gas,
     required this.volumeLitres,
-  });
+  }) : isStop = true;
 
-  final double depthStartMeters;
-  final double depthEndMeters;
-  final Duration duration;
+  const _ConsolidatedRow.ascent({
+    required double targetDepthMeters,
+    required this.gas,
+    required this.volumeLitres,
+    required Duration travelDuration,
+  })  : isStop = false,
+        depthMeters = targetDepthMeters,
+        stopDuration = travelDuration;
+
+  final bool isStop;
+  final double depthMeters;
+
+  /// Stop hold for stop rows; ascent travel duration for ascent rows.
+  /// Always counts toward runtime; the table renders "—" in the STOP TIME
+  /// column for ascent rows so the diver can tell them apart at a glance.
+  final Duration stopDuration;
   final DiveGasMix gas;
   final double volumeLitres;
 }

@@ -12,8 +12,13 @@ class TankSpec {
   double get capacityL => waterCapacityL * ratedPressureBar.toDouble();
 }
 
-const kAl40 = TankSpec(name: 'AL40', waterCapacityL: 5.7, ratedPressureBar: 207);
-const kAl80 = TankSpec(name: 'AL80', waterCapacityL: 11.1, ratedPressureBar: 207);
+// Aluminium bailout stages — sized in cuft per US convention, water
+// capacity in litres for the math. Rated pressure is the operational
+// fill cap (the European 232 bar / 3360 psi convention; some regulators
+// allow up to 3300 psi on US-spec AL tanks).
+const kAl40 = TankSpec(name: 'AL40', waterCapacityL: 5.7, ratedPressureBar: 232);
+const kAl50 = TankSpec(name: 'AL50', waterCapacityL: 7.0, ratedPressureBar: 232);
+const kAl80 = TankSpec(name: 'AL80', waterCapacityL: 11.1, ratedPressureBar: 232);
 const kTank68L300 = TankSpec(name: '6.8L/300', waterCapacityL: 6.8, ratedPressureBar: 300);
 const kTank12L300 = TankSpec(name: '12L/300', waterCapacityL: 12.0, ratedPressureBar: 300);
 

@@ -1,15 +1,18 @@
 import 'dart:typed_data';
+import 'package:ccrlogger/analysis/deco/gas_pressures.dart';
 import 'package:ccrlogger/analysis/deco/zhl16c.dart';
 import 'package:ccrlogger/analysis/deco/replay_result.dart';
 import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix;
 import 'package:flutter_test/flutter_test.dart';
 
-SampleStub _flat(double depthM, int durationSec, int intervalMs) {
+SampleStub _flat(double depthM, int durationSec, int intervalMs,
+    {double setpointBar = 0.0}) {
   final n = (durationSec * 1000 / intervalMs).round();
   return SampleStub(
     depthMeters: Float32List(n)..fillRange(0, n, depthM),
     gasMixIndex: Uint8List(n),
     sampleIntervalMs: intervalMs,
+    setpointBar: Float32List(n)..fillRange(0, n, setpointBar),
   );
 }
 
@@ -70,6 +73,69 @@ void main() {
       );
       expect(result.gf99Series.length, samples.depthMeters.length);
       expect(result.ceilingMeters.length, samples.depthMeters.length);
+    });
+
+    test(
+        'CCR setpoint 1.3 at 30 m on 18/45 diluent loads far less N2 than OC '
+        'would (Surface GF 115% bug reproducer)', () {
+      // 30 min at 30 m. OC on 18/45 trimix vs CCR with setpoint 1.3 bar.
+      // CCR keeps PPO2 at 1.3 the whole time, so the share of inerts in
+      // the loop is much smaller than the diluent's own fN2/fHe at depth.
+      final gas = DiveGasMix(oxygenPercent: 18, heliumPercent: 45, isDiluent: true);
+
+      final ocResult = Zhl16cReplay().run(
+        samples: _flat(30, 30 * 60, 10000),
+        gasMixes: [gas],
+        gfLow: 50,
+        gfHigh: 95,
+      );
+      final ccrResult = Zhl16cReplay().run(
+        samples: _flat(30, 30 * 60, 10000, setpointBar: 1.3),
+        gasMixes: [gas],
+        gfLow: 50,
+        gfHigh: 95,
+      );
+
+      // CCR with PPO2 1.3 must produce a smaller surface GF than OC on
+      // the same diluent — fewer inerts in the breathing loop.
+      expect(ccrResult.surfaceGfFinal, lessThan(ocResult.surfaceGfFinal));
+      expect(ccrResult.maxGf99, lessThan(ocResult.maxGf99));
+    });
+
+    test('CCR setpoint exceeding ambient at shallow depth → no N2 on-gassing',
+        () {
+      // 6 m on air diluent, but the setpoint is 1.3 bar — more than the
+      // depth itself can provide. Inert headroom should clip to zero, so
+      // the diver is effectively breathing pure O2.
+      final samples = _flat(6, 30 * 60, 10000, setpointBar: 1.3);
+      final result = Zhl16cReplay().run(
+        samples: samples,
+        gasMixes: [
+          DiveGasMix(oxygenPercent: 21, heliumPercent: 0, isDiluent: true)
+        ],
+        gfLow: 50,
+        gfHigh: 95,
+      );
+      // No N2 loading → tissues stay at or below the surface equilibrium.
+      // GF99 must NOT rise above its starting value.
+      expect(result.gf99Series.last, lessThan(1.0));
+      expect(result.surfaceGfFinal, lessThan(1.0));
+    });
+
+    test('exposes finalN2Bar and finalHeBar (16 elements each)', () {
+      final result = Zhl16cReplay().run(
+        samples: _flat(30, 30 * 60, 10000),
+        gasMixes: [
+          DiveGasMix(oxygenPercent: 21, heliumPercent: 0, isDiluent: true)
+        ],
+        gfLow: 50,
+        gfHigh: 95,
+      );
+      expect(result.finalN2Bar, hasLength(16));
+      expect(result.finalHeBar, hasLength(16));
+      // On air, He stays at zero; N2 loads on the faster compartments.
+      expect(result.finalHeBar.every((p) => p == 0.0), isTrue);
+      expect(result.finalN2Bar.first, greaterThan(surfaceEquilibriumN2Bar));
     });
 
     test('algorithm field on result is zhl16c', () {

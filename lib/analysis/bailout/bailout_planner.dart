@@ -14,11 +14,12 @@
 ///   - Verdict: sufficient if a tank recommendation exists for every gas.
 library;
 
+import '../../analysis/gas_density.dart' show mixDensityAt1Atm;
 import '../../data/models/dive.dart' show DiveGasMix;
 import 'ascent_simulator.dart' show AscentPlan, simulateAscent;
 import 'bailout_result.dart';
 import 'mix_resolver.dart' show resolveBottomMix;
-import 'standard_mixes.dart' show kDecoMixes;
+import 'standard_mixes.dart' show kDecoMixes, gueDecoGasesForDepth;
 import 'tank_recommender.dart' show TankSpec, recommend;
 
 // ---------------------------------------------------------------------------
@@ -66,7 +67,13 @@ BailoutResult planBailout({
   required int ascentRateFast,
   required int ascentRateSlow,
   required List<TankSpec> availableTanks,
+  double? triggerDepthMeters,
 }) {
+  // The OC ascent starts from where the bailout was triggered (typically
+  // the latest substantial-depth sample on a multi-level dive). Bottom
+  // mix selection + deco-staging tier still go off true max depth so the
+  // mix is breathable at the deepest point the diver actually visited.
+  final triggerDepth = triggerDepthMeters ?? maxDepthMeters;
   // -------------------------------------------------------------------------
   // 1. Detect scenario
   // -------------------------------------------------------------------------
@@ -77,48 +84,84 @@ BailoutResult planBailout({
   // -------------------------------------------------------------------------
   // 2. Build available-gas list
   // -------------------------------------------------------------------------
-  final List<DiveGasMix> gases;
+  List<DiveGasMix> gases;
 
   if (scenario == BailoutScenario.tanksDefined) {
     // Scenario A: sort user tanks so the bottom mix (lowest O2) comes first,
-    // then deco gases in ascending MOD order (ascending O2 %).
+    // then deco gases in ascending MOD order (ascending O2 %). If the user
+    // hasn't defined a tank that's safe at trigger depth, fall back to a
+    // resolved standard bottom mix — the diver still needs something to
+    // breathe at depth, and the planner shouldn't silently pick a deco gas.
     gases = _sortGasesForAscent(List<DiveGasMix>.from(userBailoutTanks));
+    final ppo2Limit = isGueConfig ? 1.4 : 1.6;
+    if (gases.isEmpty || !_isSafeAtDepth(gases.first, maxDepthMeters, ppo2Limit)) {
+      final fallbackBottom = resolveBottomMix(
+        recordedDiluent: recordedDiluent,
+        maxDepthMeters: maxDepthMeters,
+        isGueConfig: isGueConfig,
+      );
+      gases = [fallbackBottom, ...gases];
+    }
   } else {
-    // Scenario B: resolve bottom mix then add standard deco gases.
+    // Scenario B: resolve an OC bottom mix and prepend it to a
+    // depth-appropriate deco gas list. The bottom mix is mandatory — the
+    // diver is on OC bailout, so even if the CCR diluent would have been
+    // breathable at depth, OC bailout still needs a gas that can be
+    // inhaled at trigger depth.
     final bottomMix = resolveBottomMix(
       recordedDiluent: recordedDiluent,
       maxDepthMeters: maxDepthMeters,
       isGueConfig: isGueConfig,
     );
 
-    // For GUE configurations, if the diluent is known and its O2 is suitable
-    // (PPO2 ≤ 1.6 at max depth), omit the explicit bottom mix from the
-    // bailout gas list — the diluent covers the initial leg.
-    final omitBottomMix = isGueConfig &&
-        recordedDiluent != null &&
-        _isSuitableAtDepth(recordedDiluent, maxDepthMeters);
-
-    gases = [
-      if (!omitBottomMix) bottomMix,
-      ...kDecoMixes,
-    ];
+    // Depth-based staging applies to Scenario B regardless of the user's
+    // Settings → GUE-diluent toggle. The toggle controls bottom-mix
+    // selection + PPO2 limits during [resolveBottomMix]; the deco-gas
+    // ladder is a planning convention (1/2/3 stages by depth) that holds
+    // for any technical OC bailout.
+    final decoGases = gueDecoGasesForDepth(maxDepthMeters);
+    gases = [bottomMix, ...decoGases];
   }
 
   // -------------------------------------------------------------------------
-  // 3. Run ascent simulator
+  // 3. Run ascent simulator (with auto-escalation in Scenario B)
   // -------------------------------------------------------------------------
-  final AscentPlan plan = simulateAscent(
-    triggerDepthMeters: maxDepthMeters,
-    initialN2Bar: tissueN2Bar,
-    initialHeBar: tissueHeBar,
-    availableGases: gases,
-    gfLow: gfLow,
-    gfHigh: gfHigh,
-    ascentRateFast: ascentRateFast,
-    ascentRateSlow: ascentRateSlow,
-    sacBottom: sacBottom,
-    sacDeco: sacDeco,
-  );
+  // In Scenario B, if a deco gas's required volume exceeds what the
+  // largest tank in [availableTanks] can hold, the GUE convention is to
+  // add a richer deco gas (typically O2) and re-plan. This converts a
+  // "no tank fits" verdict into "carry one more stage". Bounded to a
+  // single escalation: bottom + EAN50 → bottom + EAN50 + O2.
+  AscentPlan plan;
+  while (true) {
+    plan = simulateAscent(
+      triggerDepthMeters: triggerDepth,
+      initialN2Bar: tissueN2Bar,
+      initialHeBar: tissueHeBar,
+      availableGases: gases,
+      gfLow: gfLow,
+      gfHigh: gfHigh,
+      ascentRateFast: ascentRateFast,
+      ascentRateSlow: ascentRateSlow,
+      sacBottom: sacBottom,
+      sacDeco: sacDeco,
+    );
+    if (scenario != BailoutScenario.gueStandards) break;
+    final largestTankCapacityL = availableTanks.isEmpty
+        ? 0.0
+        : availableTanks
+            .map((t) => t.waterCapacityL * t.ratedPressureBar)
+            .reduce((a, b) => a > b ? a : b);
+    final overflow = plan.volumeByGas.values
+        .any((v) => v > largestTankCapacityL);
+    if (!overflow) break;
+    const o2 = DiveGasMix(
+      oxygenPercent: 100,
+      heliumPercent: 0,
+      isDiluent: false,
+    );
+    if (gases.any((g) => g.oxygenPercent == 100)) break; // already maxed
+    gases = [...gases, o2];
+  }
 
   // -------------------------------------------------------------------------
   // 4. Build per-gas usage
@@ -174,7 +217,24 @@ BailoutResult planBailout({
   // -------------------------------------------------------------------------
   // 6. Build verdict details
   // -------------------------------------------------------------------------
-  final details = _buildVerdictDetails(perGas, scenario);
+  // Prepend a one-line summary of the bottom-mix's worst-case PPO2 and
+  // gas density at TRUE max depth (not the trigger). The diver needs to
+  // know the mix is breathable at the deepest moment they actually
+  // visited, not just where the bailout would start.
+  final bottomMix = gases.first;
+  final ambientAtMax = 1.013 + maxDepthMeters / 10.0;
+  final bottomPpo2 = (bottomMix.oxygenPercent / 100.0) * ambientAtMax;
+  final bottomDensity = mixDensityAt1Atm(
+        bottomMix.oxygenPercent / 100.0,
+        bottomMix.heliumPercent / 100.0,
+      ) *
+      ambientAtMax;
+  final bottomLabel = _gasLabel(bottomMix);
+  final bottomLine = 'Bottom $bottomLabel @ ${maxDepthMeters.toStringAsFixed(0)} m'
+      ' · PPO2 ${bottomPpo2.toStringAsFixed(2)}'
+      ' · ρ ${bottomDensity.toStringAsFixed(1)} g/L';
+
+  final details = [bottomLine, ..._buildVerdictDetails(perGas, scenario)];
 
   return BailoutResult(
     scenario: scenario,
@@ -197,11 +257,10 @@ List<DiveGasMix> _sortGasesForAscent(List<DiveGasMix> gases) {
   return gases;
 }
 
-/// True if [gas] has a PPO2 ≤ 1.6 bar at [depthMeters].
-bool _isSuitableAtDepth(DiveGasMix gas, double depthMeters) {
-  final ambient = (depthMeters + 10.0) / 10.0;
-  final ppo2 = (gas.oxygenPercent / 100.0) * ambient;
-  return ppo2 <= 1.6;
+/// True when [gas]'s PPO2 at [depthMeters] is ≤ [ppo2Limit] bar.
+bool _isSafeAtDepth(DiveGasMix gas, double depthMeters, double ppo2Limit) {
+  final ambient = 1.013 + depthMeters / 10.0;
+  return (gas.oxygenPercent / 100.0) * ambient <= ppo2Limit;
 }
 
 /// Verdict for Scenario A (user-defined tanks).

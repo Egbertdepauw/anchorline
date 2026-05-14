@@ -8,6 +8,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import '../../data/models/dive.dart' show DiveGasMix;
+import 'gas_pressures.dart';
 import 'replay_result.dart';
 import 'schreiner.dart';
 import 'tissue_model.dart';
@@ -16,6 +17,7 @@ import 'tissue_model.dart';
 abstract class SampleStream {
   Float32List get depthMeters;
   Uint8List get gasMixIndex;
+  Float32List get setpointBar;
   int get sampleIntervalMs;
 }
 
@@ -25,23 +27,31 @@ class SampleStub implements SampleStream {
   @override
   final Uint8List gasMixIndex;
   @override
+  final Float32List setpointBar;
+  @override
   final int sampleIntervalMs;
   SampleStub({
     required this.depthMeters,
     required this.gasMixIndex,
     required this.sampleIntervalMs,
-  });
+    Float32List? setpointBar,
+  }) : setpointBar = setpointBar ?? Float32List(depthMeters.length);
 }
 
-const double _waterVapourPressureBar = 0.0627;
 const double _surfaceAtmBar = 1.013;
 
 class Zhl16cReplay {
+  /// [triggerSampleIdx] — if non-null, additionally capture the tissue
+  /// state at that sample so the bailout planner can use it as the
+  /// "what if we'd had to bail out here?" worst-case tissue load.
+  /// Multi-level dives have peak tissue loading near the END of the
+  /// bottom phase, not at the deepest moment.
   DecoReplayResult run({
     required SampleStream samples,
     required List<DiveGasMix> gasMixes,
     required int gfLow,
     required int gfHigh,
+    int? triggerSampleIdx,
   }) {
     final n = samples.depthMeters.length;
     final gf99 = Float32List(n);
@@ -52,11 +62,7 @@ class Zhl16cReplay {
       growable: false,
     );
 
-    // Initialise compartments to surface equilibrium on air.
-    final pN2 = List<double>.generate(
-      16,
-      (_) => (_surfaceAtmBar - _waterVapourPressureBar) * 0.79,
-    );
+    final pN2 = List<double>.generate(16, (_) => surfaceEquilibriumN2Bar);
     final pHe = List<double>.filled(16, 0.0);
 
     // Use integer truncation matching how the Schreiner call works —
@@ -65,17 +71,23 @@ class Zhl16cReplay {
     final intervalSec = samples.sampleIntervalMs ~/ 1000;
     double maxGf99 = 0.0;
 
+    double maxDepthSoFar = -1;
+    List<double> peakN2 = List<double>.from(pN2);
+    List<double> peakHe = List<double>.from(pHe);
+    List<double>? triggerN2;
+    List<double>? triggerHe;
+
     for (var i = 0; i < n; i++) {
       final depth = samples.depthMeters[i];
       final ambientBar = _surfaceAtmBar + depth / 10.0;
 
       final mix =
           gasMixes[samples.gasMixIndex[i].clamp(0, gasMixes.length - 1)];
-      final fO2 = mix.oxygenPercent / 100.0;
-      final fHe = mix.heliumPercent / 100.0;
-      final fN2 = 1.0 - fO2 - fHe;
-      final paN2 = (ambientBar - _waterVapourPressureBar) * fN2;
-      final paHe = (ambientBar - _waterVapourPressureBar) * fHe;
+      final (paN2, paHe) = inertPartialPressures(
+        ambientBar: ambientBar,
+        mix: mix,
+        setpointBar: samples.setpointBar[i],
+      );
 
       for (var c = 0; c < 16; c++) {
         pN2[c] = loadCompartment(
@@ -122,6 +134,16 @@ class Zhl16cReplay {
       gf99[i] = worstGf;
       ceiling[i] = worstCeiling < 0 ? 0 : worstCeiling;
       if (worstGf > maxGf99) maxGf99 = worstGf;
+
+      if (depth > maxDepthSoFar) {
+        maxDepthSoFar = depth;
+        peakN2 = List<double>.from(pN2);
+        peakHe = List<double>.from(pHe);
+      }
+      if (triggerSampleIdx != null && i == triggerSampleIdx) {
+        triggerN2 = List<double>.from(pN2);
+        triggerHe = List<double>.from(pHe);
+      }
     }
 
     // Surface GF: re-evaluate all compartments at surface pressure.
@@ -150,6 +172,14 @@ class Zhl16cReplay {
       algorithm: DecoAlgorithm.zhl16c,
       gfLow: gfLow,
       gfHigh: gfHigh,
+      finalN2Bar: List<double>.unmodifiable(pN2),
+      finalHeBar: List<double>.unmodifiable(pHe),
+      peakDepthN2Bar: List<double>.unmodifiable(peakN2),
+      peakDepthHeBar: List<double>.unmodifiable(peakHe),
+      triggerN2Bar:
+          triggerN2 == null ? const [] : List<double>.unmodifiable(triggerN2),
+      triggerHeBar:
+          triggerHe == null ? const [] : List<double>.unmodifiable(triggerHe),
     );
   }
 }

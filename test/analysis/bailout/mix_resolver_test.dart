@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('resolveBottomMix — DC-recorded diluent', () {
-    test('returns the dive\'s recorded diluent verbatim', () {
+    test('returns the dive\'s recorded diluent verbatim when safe at depth', () {
       final mix = resolveBottomMix(
         recordedDiluent: const DiveGasMix(oxygenPercent: 18, heliumPercent: 45, isDiluent: true),
         maxDepthMeters: 60,
@@ -12,6 +12,21 @@ void main() {
       );
       expect(mix.oxygenPercent, 18);
       expect(mix.heliumPercent, 45);
+    });
+
+    test(
+        'discards the recorded diluent and snaps when PPO2 > 1.6 at depth '
+        '(regression: misflagged EAN 50 diluent on a deep dive)', () {
+      final mix = resolveBottomMix(
+        recordedDiluent:
+            const DiveGasMix(oxygenPercent: 50, heliumPercent: 0, isDiluent: true),
+        maxDepthMeters: 40,
+        isGueConfig: false,
+      );
+      // 50% at 40 m gives PPO2 2.5 → must NOT be returned. Snap should
+      // pick a safe standard mix.
+      expect(mix.oxygenPercent, lessThanOrEqualTo(32),
+          reason: 'planner must fall back to a depth-safe bottom mix');
     });
   });
 

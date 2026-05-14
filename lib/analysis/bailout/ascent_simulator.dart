@@ -1,21 +1,13 @@
-/// Bailout ascent simulator (v1 — ZHL-16C / Bühlmann GF).
+/// Bailout ascent simulator. Thin shim over [planDeco]: calls the deco
+/// planner to produce the ladder of stops + ascent legs, then decorates
+/// each leg with gas-volume math using bottom/deco SAC.
 ///
-/// Given a trigger point on a dive (depth + current tissue state) and a list
-/// of available OC bailout gases, walks an open-circuit ascent in 1-minute
-/// timesteps using the Schreiner equation.  At each step it checks whether
-/// the GF at the *target* depth would exceed gfHigh; if so, the diver holds
-/// at the current depth for one minute (a deco stop) instead of ascending.
-/// Gas switches happen when a richer mix can be breathed at ≤ 1.6 bar PPO2.
-///
-/// v1 goals: plausible output that responds to settings.  No bubble
-/// algorithms, no stop-time consolidation, no GF-slope interpolation.
+/// Public API ([AscentPlan], [AscentStop], [simulateAscent]) is unchanged
+/// so the bailout planner doesn't need to know about [DecoStep].
 library;
 
-import 'dart:math';
-
 import '../../data/models/dive.dart' show DiveGasMix;
-import '../deco/schreiner.dart';
-import '../deco/tissue_model.dart';
+import '../deco/deco_planner.dart' show planDeco;
 
 // ---------------------------------------------------------------------------
 // Public data types
@@ -44,13 +36,10 @@ class AscentStop {
 
 /// The full ascent plan returned by [simulateAscent].
 class AscentPlan {
-  /// All legs of the ascent — flat stops + moving segments.
   final List<AscentStop> stops;
-
-  /// Total ascent time across all legs.
   final Duration totalTime;
 
-  /// Gas consumption keyed by mix.  The sum of values equals the sum of
+  /// Gas consumption keyed by mix. Sum of values equals sum of
   /// [AscentStop.volumeLitresConsumed] across all [stops].
   final Map<DiveGasMix, double> volumeByGas;
 
@@ -65,12 +54,7 @@ class AscentPlan {
 // Constants
 // ---------------------------------------------------------------------------
 
-const double _waterVapourBar = 0.0627;
 const double _surfaceAtmBar = 1.013;
-
-/// Safety cap: abort after this many iterations to prevent infinite loops in
-/// degenerate cases (e.g. tissue loading so high GF99 never drops below gfHigh).
-const int _maxIterations = 300;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -78,22 +62,16 @@ const int _maxIterations = 300;
 
 /// Simulate an open-circuit bailout ascent from [triggerDepthMeters].
 ///
-/// Parameters
-/// ----------
-/// [triggerDepthMeters]  Depth at which the diver bails out (metres).
-/// [initialN2Bar]        16-element list — N2 tissue loads at trigger point (bar).
-/// [initialHeBar]        16-element list — He tissue loads at trigger point (bar).
-/// [availableGases]      Bailout gases.  First element is the bottom mix; the
-///                       rest are deco gases in any order (the function will
-///                       always pick the richest mix usable at each depth).
-/// [gfLow]               Low gradient factor (1–100).
-/// [gfHigh]              High gradient factor (1–100).  Ascent stops when GF99
-///                       at the target depth would exceed this.
-/// [ascentRateFast]      m/min — used from trigger depth down to the slowdown
-///                       point.
-/// [ascentRateSlow]      m/min — used from the slowdown point to the surface.
-/// [sacBottom]           L/min — used from trigger depth to the first deco stop.
-/// [sacDeco]             L/min — used at all deco stops and the final ascent.
+/// Delegates the deco math to [planDeco] (ZHL-16C + Erik-Baker GF, 3m
+/// stops, GF-Low-determined first stop, linearly-interpolated GF between
+/// stops). This function adds gas-volume math: bottomSAC × ambient ×
+/// duration on the ascent from trigger to the first stop, decoSAC ×
+/// ambient × duration everywhere thereafter.
+///
+/// PPO2 limits are hardcoded to 1.6 for both the bottom mix and deco
+/// switches — the user-facing GUE option (1.4) lives at the bailout
+/// planner layer (it affects which mixes get added to [availableGases],
+/// not the safety gate inside the simulator).
 AscentPlan simulateAscent({
   required double triggerDepthMeters,
   required List<double> initialN2Bar,
@@ -110,194 +88,63 @@ AscentPlan simulateAscent({
   assert(initialHeBar.length == 16, 'initialHeBar must have 16 elements');
   assert(availableGases.isNotEmpty, 'availableGases must not be empty');
 
-  final pN2 = List<double>.from(initialN2Bar);
-  final pHe = List<double>.from(initialHeBar);
-  double currentDepth = triggerDepthMeters;
+  final steps = planDeco(
+    initialN2Bar: initialN2Bar,
+    initialHeBar: initialHeBar,
+    triggerDepthMeters: triggerDepthMeters,
+    gases: availableGases,
+    gfLow: gfLow,
+    gfHigh: gfHigh,
+    ascentRateFastMPerMin: ascentRateFast,
+    ascentRateSlowMPerMin: ascentRateSlow,
+    ppo2LimitBottom: 1.6,
+    ppo2LimitDeco: 1.6,
+  );
 
+  // NDL dive: planDeco returns [] → one straight-up leg at the slow rate
+  // on the bottom mix so the bailout volume math still produces a number.
+  if (steps.isEmpty) {
+    final secs = (triggerDepthMeters / ascentRateSlow * 60).round();
+    final gas = availableGases.first;
+    final avgAmbient = _surfaceAtmBar + triggerDepthMeters / 20.0;
+    final volumeL = sacDeco * avgAmbient * (secs / 60);
+    return AscentPlan(
+      stops: [
+        AscentStop(
+          depthStartMeters: triggerDepthMeters,
+          depthEndMeters: 0,
+          duration: Duration(seconds: secs),
+          gas: gas,
+          volumeLitresConsumed: volumeL,
+        ),
+      ],
+      totalTime: Duration(seconds: secs),
+      volumeByGas: {gas: volumeL},
+    );
+  }
+
+  // Decorate each DecoStep with gas volume. Bottom SAC applies until we
+  // first hit a flat stop; deco SAC applies from that point on.
+  var inDecoZone = false;
   final stops = <AscentStop>[];
   final volumeByGas = <DiveGasMix, double>{};
   var totalTime = Duration.zero;
-
-  // ------------------------------------------------------------------
-  // Determine the slowdown depth.
-  //
-  // The diver descends fast from trigger depth to the slowdown point,
-  // then switches to the slow rate.  Slowdown is the deeper of:
-  //   - half-pressure depth: (triggerDepth - 10) / 2
-  //   - first-switch depth: deepest MOD (at PPO2 ≤ 1.6) of deco gases
-  // ------------------------------------------------------------------
-  final halfPressureDepth =
-      ((triggerDepthMeters - 10.0) / 2.0).clamp(0.0, triggerDepthMeters);
-  final firstSwitchDepth = _findFirstSwitchDepth(availableGases);
-  final slowdownDepth = max(halfPressureDepth, firstSwitchDepth);
-
-  bool reachedDecoZone = false;
-  int iterations = 0;
-
-  while (currentDepth > 0.0 && iterations < _maxIterations) {
-    iterations++;
-
-    // Gas switch: pick richest available mix usable at this depth (PPO2 ≤ 1.6).
-    final currentGas = _bestGasForDepth(availableGases, currentDepth);
-
-    final ascentRate =
-        currentDepth > slowdownDepth ? ascentRateFast : ascentRateSlow;
-    final sac = reachedDecoZone ? sacDeco : sacBottom;
-    const stepDurationMin = 1.0;
-    const stepSeconds = 60;
-
-    final targetDepth = max(0.0, currentDepth - ascentRate * stepDurationMin);
-
-    // Load tissues for one minute at currentDepth.  We always load at the
-    // current position first; the GF check then decides whether we can ascend.
-    // This is conservative: tissue loading during the actual ascent leg is
-    // modelled at the average depth, which would be slightly less than
-    // currentDepth — but using currentDepth keeps the arithmetic simple and
-    // errs on the safe side.
-    final holdAmbient = _surfaceAtmBar + currentDepth / 10.0;
-    _loadTissuesOneStep(pN2, pHe, currentGas, holdAmbient, stepSeconds);
-
-    // After loading, check GF99 at the target depth.  If it exceeds gfHigh
-    // the diver stays at currentDepth (the minute already counted as a hold).
-    final gf99atTarget = _computeGf99AtDepth(pN2, pHe, targetDepth);
-
-    if (gf99atTarget > gfHigh) {
-      // Deco stop: stay at currentDepth.
-      reachedDecoZone = true;
-      final volumeL = sac * holdAmbient * stepDurationMin;
-
-      volumeByGas[currentGas] = (volumeByGas[currentGas] ?? 0.0) + volumeL;
-      stops.add(AscentStop(
-        depthStartMeters: currentDepth,
-        depthEndMeters: currentDepth,
-        duration: const Duration(seconds: stepSeconds),
-        gas: currentGas,
-        volumeLitresConsumed: volumeL,
-      ));
-      totalTime += const Duration(seconds: stepSeconds);
-      // currentDepth does NOT change.
-    } else {
-      // Ascend.  Volume uses the average pressure of the leg.
-      final avgAmbient = (_surfaceAtmBar + currentDepth / 10.0 +
-              _surfaceAtmBar + targetDepth / 10.0) /
-          2.0;
-      final volumeL = sac * avgAmbient * stepDurationMin;
-
-      volumeByGas[currentGas] = (volumeByGas[currentGas] ?? 0.0) + volumeL;
-      stops.add(AscentStop(
-        depthStartMeters: currentDepth,
-        depthEndMeters: targetDepth,
-        duration: const Duration(seconds: stepSeconds),
-        gas: currentGas,
-        volumeLitresConsumed: volumeL,
-      ));
-      totalTime += const Duration(seconds: stepSeconds);
-      currentDepth = targetDepth;
-    }
+  for (final step in steps) {
+    if (step.isStop) inDecoZone = true;
+    final sac = inDecoZone ? sacDeco : sacBottom;
+    final avgAmbient =
+        _surfaceAtmBar + (step.depthStartMeters + step.depthEndMeters) / 20.0;
+    final minutes = step.duration.inMilliseconds / 60000.0;
+    final volumeL = sac * avgAmbient * minutes;
+    stops.add(AscentStop(
+      depthStartMeters: step.depthStartMeters,
+      depthEndMeters: step.depthEndMeters,
+      duration: step.duration,
+      gas: step.gas,
+      volumeLitresConsumed: volumeL,
+    ));
+    volumeByGas[step.gas] = (volumeByGas[step.gas] ?? 0.0) + volumeL;
+    totalTime += step.duration;
   }
-
-  return AscentPlan(
-    stops: stops,
-    totalTime: totalTime,
-    volumeByGas: volumeByGas,
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-/// Returns the richest (highest fO2) gas from [available] whose PPO2 at
-/// [depthMeters] is ≤ 1.6 bar.  Falls back to the first gas (bottom mix)
-/// if nothing else qualifies.
-DiveGasMix _bestGasForDepth(List<DiveGasMix> available, double depthMeters) {
-  final ambient = _surfaceAtmBar + depthMeters / 10.0;
-  DiveGasMix best = available.first;
-  for (final mix in available) {
-    final ppo2 = (mix.oxygenPercent / 100.0) * ambient;
-    if (ppo2 > 1.6) continue;
-    if (mix.oxygenPercent > best.oxygenPercent) {
-      best = mix;
-    }
-  }
-  return best;
-}
-
-/// Returns the deepest MOD (PPO2 ≤ 1.6) of all deco gases (gases[1..]).
-/// If there are no deco gases, returns 0.
-double _findFirstSwitchDepth(List<DiveGasMix> gases) {
-  double deepest = 0.0;
-  for (var i = 1; i < gases.length; i++) {
-    final fO2 = gases[i].oxygenPercent / 100.0;
-    if (fO2 <= 0.0) continue;
-    final modBar = 1.6 / fO2;
-    final modM = (modBar - _surfaceAtmBar) * 10.0;
-    if (modM > deepest) deepest = modM;
-  }
-  return deepest;
-}
-
-/// Advances all 16 N2 + He tissue compartments by [intervalSeconds] seconds
-/// while breathing [gas] at [ambientBar].
-void _loadTissuesOneStep(
-  List<double> pN2,
-  List<double> pHe,
-  DiveGasMix gas,
-  double ambientBar,
-  int intervalSeconds,
-) {
-  final fO2 = gas.oxygenPercent / 100.0;
-  final fHe = gas.heliumPercent / 100.0;
-  final fN2 = 1.0 - fO2 - fHe;
-  final paN2 = (ambientBar - _waterVapourBar) * fN2;
-  final paHe = (ambientBar - _waterVapourBar) * fHe;
-
-  for (var c = 0; c < 16; c++) {
-    pN2[c] = loadCompartment(
-      currentLoadBar: pN2[c],
-      inertGasPartialPressureBar: paN2,
-      halfTimeMin: zhl16cTissues[c].halfTimeN2Min,
-      intervalSeconds: intervalSeconds,
-    );
-    pHe[c] = loadCompartment(
-      currentLoadBar: pHe[c],
-      inertGasPartialPressureBar: paHe,
-      halfTimeMin: zhl16cTissues[c].halfTimeHeMin,
-      intervalSeconds: intervalSeconds,
-    );
-  }
-}
-
-/// Computes the worst-compartment GF99 evaluated at [depthMeters].
-///
-/// Follows the same M-value formula as zhl16c.dart:
-///   a = aN2*tn2 + aHe*(1-tn2)
-///   b = bN2*tn2 + bHe*(1-tn2)
-///   M_at_depth = a + ambient/b
-///   GF = (load - ambient) / (M - ambient) × 100
-double _computeGf99AtDepth(
-  List<double> pN2,
-  List<double> pHe,
-  double depthMeters,
-) {
-  final ambient = _surfaceAtmBar + depthMeters / 10.0;
-  double worst = 0.0;
-
-  for (var c = 0; c < 16; c++) {
-    final totalLoad = pN2[c] + pHe[c];
-    final tn2 = pN2[c] / max(totalLoad, 1e-9);
-    final thHe = 1.0 - tn2;
-
-    final a = zhl16cTissues[c].aN2 * tn2 + zhl16cTissues[c].aHe * thHe;
-    final b = zhl16cTissues[c].bN2 * tn2 + zhl16cTissues[c].bHe * thHe;
-
-    final mAtDepth = a + ambient / b;
-    final allowed = mAtDepth - ambient;
-    final supersat = totalLoad - ambient;
-
-    final gf = allowed > 0.0 ? (supersat / allowed) * 100.0 : 0.0;
-    if (gf > worst) worst = gf;
-  }
-
-  return worst;
+  return AscentPlan(stops: stops, totalTime: totalTime, volumeByGas: volumeByGas);
 }

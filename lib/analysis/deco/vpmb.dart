@@ -14,20 +14,23 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import '../../data/models/dive.dart' show DiveGasMix;
+import 'gas_pressures.dart';
 import 'replay_result.dart';
 import 'schreiner.dart';
 import 'tissue_model.dart';
 import 'vpmb_constants.dart';
 import 'zhl16c.dart' show SampleStream;
 
-const double _waterVapourPressureBar = 0.0627;
 const double _surfaceAtmBar = 1.013;
 
 class VpmbReplay {
+  /// [triggerSampleIdx] — same semantics as [Zhl16cReplay.run]: when
+  /// non-null, capture tissue state at that sample for bailout planning.
   DecoReplayResult run({
     required SampleStream samples,
     required List<DiveGasMix> gasMixes,
     required int conservatism,
+    int? triggerSampleIdx,
   }) {
     final n = samples.depthMeters.length;
     final gf99 = Float32List(n);
@@ -38,27 +41,29 @@ class VpmbReplay {
       growable: false,
     );
 
-    // Initialise compartments to surface equilibrium on air.
-    final pN2 = List<double>.generate(
-      16,
-      (_) => (_surfaceAtmBar - _waterVapourPressureBar) * 0.79,
-    );
+    final pN2 = List<double>.generate(16, (_) => surfaceEquilibriumN2Bar);
     final pHe = List<double>.filled(16, 0.0);
 
     final intervalSec = samples.sampleIntervalMs ~/ 1000;
     final allowedFactor = vpmbGradientFactor(conservatism);
     double maxGf99 = 0.0;
 
+    double maxDepthSoFar = -1;
+    List<double> peakN2 = List<double>.from(pN2);
+    List<double> peakHe = List<double>.from(pHe);
+    List<double>? triggerN2;
+    List<double>? triggerHe;
+
     for (var i = 0; i < n; i++) {
       final depth = samples.depthMeters[i];
       final ambientBar = _surfaceAtmBar + depth / 10.0;
       final mix =
           gasMixes[samples.gasMixIndex[i].clamp(0, gasMixes.length - 1)];
-      final fO2 = mix.oxygenPercent / 100.0;
-      final fHe = mix.heliumPercent / 100.0;
-      final fN2 = 1.0 - fO2 - fHe;
-      final paN2 = (ambientBar - _waterVapourPressureBar) * fN2;
-      final paHe = (ambientBar - _waterVapourPressureBar) * fHe;
+      final (paN2, paHe) = inertPartialPressures(
+        ambientBar: ambientBar,
+        mix: mix,
+        setpointBar: samples.setpointBar[i],
+      );
 
       for (var c = 0; c < 16; c++) {
         pN2[c] = loadCompartment(
@@ -114,6 +119,16 @@ class VpmbReplay {
       gf99[i] = worstGfSurface;
       ceiling[i] = worstCeiling < 0 ? 0 : worstCeiling;
       if (worstGfSurface > maxGf99) maxGf99 = worstGfSurface;
+
+      if (depth > maxDepthSoFar) {
+        maxDepthSoFar = depth;
+        peakN2 = List<double>.from(pN2);
+        peakHe = List<double>.from(pHe);
+      }
+      if (triggerSampleIdx != null && i == triggerSampleIdx) {
+        triggerN2 = List<double>.from(pN2);
+        triggerHe = List<double>.from(pHe);
+      }
     }
 
     return DecoReplayResult(
@@ -124,6 +139,14 @@ class VpmbReplay {
       maxGf99: maxGf99,
       algorithm: DecoAlgorithm.vpmb,
       vpmbConservatism: conservatism,
+      finalN2Bar: List<double>.unmodifiable(pN2),
+      finalHeBar: List<double>.unmodifiable(pHe),
+      peakDepthN2Bar: List<double>.unmodifiable(peakN2),
+      peakDepthHeBar: List<double>.unmodifiable(peakHe),
+      triggerN2Bar:
+          triggerN2 == null ? const [] : List<double>.unmodifiable(triggerN2),
+      triggerHeBar:
+          triggerHe == null ? const [] : List<double>.unmodifiable(triggerHe),
     );
   }
 }

@@ -30,6 +30,31 @@ class DecoReplayResult {
   final int? gfLow;
   final int? gfHigh;
 
+  /// Tissue compartment N2 partial pressures (bar) at the final sample.
+  /// 16-element list, fast-to-slow.
+  final List<double> finalN2Bar;
+
+  /// Tissue compartment He partial pressures (bar) at the final sample.
+  /// 16-element list, fast-to-slow.
+  final List<double> finalHeBar;
+
+  /// Tissue compartment N2 partial pressures (bar) at the deepest sample.
+  /// 16-element list, fast-to-slow.
+  final List<double> peakDepthN2Bar;
+
+  /// Tissue compartment He partial pressures (bar) at the deepest sample.
+  final List<double> peakDepthHeBar;
+
+  /// Tissue compartment N2 partial pressures (bar) at the bailout trigger
+  /// sample (caller-supplied; typically the latest sample at substantial
+  /// depth). Multi-level dives have worst-case loading near the END of
+  /// the bottom phase, not at the deepest moment. Empty when the caller
+  /// didn't ask for a trigger snapshot.
+  final List<double> triggerN2Bar;
+
+  /// Tissue compartment He partial pressures (bar) at the trigger sample.
+  final List<double> triggerHeBar;
+
   const DecoReplayResult({
     required this.gf99Series,
     required this.ceilingMeters,
@@ -40,5 +65,11 @@ class DecoReplayResult {
     this.vpmbConservatism,
     this.gfLow,
     this.gfHigh,
+    this.finalN2Bar = const [],
+    this.finalHeBar = const [],
+    this.peakDepthN2Bar = const [],
+    this.peakDepthHeBar = const [],
+    this.triggerN2Bar = const [],
+    this.triggerHeBar = const [],
   });
 }
