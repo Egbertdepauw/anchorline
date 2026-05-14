@@ -181,7 +181,10 @@ void main() {
       final ls = _git(bareDir, ['ls-tree', '-r', branch]);
       final out = ls.stdout.toString();
       expect(out, contains('00-Subsurface'));
-      expect(out, contains('Dive-1'));
+      // The planner prefers the dive computer's own number (705 in the
+      // fixture) when it's not in use; the bare seed has no dives so
+      // dcDiveNumber=705 is unclaimed.
+      expect(out, contains('Dive-705'));
       expect(out, contains('Divecomputer'));
     });
 

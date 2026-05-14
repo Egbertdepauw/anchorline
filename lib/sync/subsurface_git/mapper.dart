@@ -467,9 +467,12 @@ class CcrlogToSubsurfaceMapper {
       }
     }
 
-    // Events: gas-change events on `gasMixIdx` transitions. v1: gas changes
-    // are the load-bearing event type; setpoint changes / bookmarks come
-    // later.
+    // Events: gas-change events on `gasMixIdx` transitions only.
+    // Subsurface's own format (verified against Subsurface-emitted
+    // fixtures) stores setpoint exclusively as a per-sample `po2=` token
+    // — there are no setpoint events. Emitting our own setpoint events
+    // produces spurious warning triangles in Subsurface's profile chart
+    // without contributing to the stepped setpoint trace.
     lines.addAll(_buildGasChangeEvents(samples, gasMixes));
 
     // Samples: sparse columnar emission.
@@ -691,25 +694,32 @@ class CcrlogToSubsurfaceMapper {
         }
       }
 
-      // dc_supplied_ppo2: the cell-averaged PPO2 the DC computed before
-      // voting. We don't store this separately, but the per-cell sensors
-      // above give the rest. Emit when our setpoint differs (proxy).
+      // Subsurface's git format uses these two tokens with semantics
+      // OPPOSITE of how the names suggest:
+      //   - `po2=N.Nbar`         → SETPOINT (drives the stepped setpoint
+      //                            trace; delta-encoded per save-git.cpp).
+      //   - `dc_supplied_ppo2=…` → cell-averaged voted PPO2 from the DC.
+      // Earlier CCRLog builds had these wired up swapped, so Subsurface
+      // displayed CCRLog's voted-PPO2 trace as the "setpoint" line (which
+      // looked roughly right when the cells were tracking the SP) and
+      // suppressed any real setpoint trace.
+      // Precision matches Subsurface's own emission verbatim: setpoint
+      // (po2=) is 1 decimal, voted PPO2 (dc_supplied_ppo2=) is 2.
       final sp = samples.setpointBar[i];
       if (sp.isFinite && sp > 0) {
-        final lex = '${_formatDecimal(sp, 2)}bar';
-        if (lex != lastDcSuppliedPpo2) {
-          kv.add(MapEntry('dc_supplied_ppo2', lex));
-          lastDcSuppliedPpo2 = lex;
-        }
-      }
-
-      // po2: the voted value. CCRLog stores voted PPO2 in `samples.ppo2Bar`.
-      final ppo2 = samples.ppo2Bar[i];
-      if (ppo2.isFinite && ppo2 > 0) {
-        final lex = '${_formatDecimal(ppo2, 1)}bar';
+        final lex = '${_formatDecimal(sp, 1)}bar';
         if (lex != lastPo2) {
           kv.add(MapEntry('po2', lex));
           lastPo2 = lex;
+        }
+      }
+
+      final ppo2 = samples.ppo2Bar[i];
+      if (ppo2.isFinite && ppo2 > 0) {
+        final lex = '${_formatDecimal(ppo2, 2)}bar';
+        if (lex != lastDcSuppliedPpo2) {
+          kv.add(MapEntry('dc_supplied_ppo2', lex));
+          lastDcSuppliedPpo2 = lex;
         }
       }
 

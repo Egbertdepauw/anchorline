@@ -185,6 +185,7 @@ class RemoteSnapshot {
     if (diveNumber == null) return null;
 
     int? serial;
+    var divecomputerLines = const <SsLine>[];
     if (divecomputerFile != null) {
       try {
         final text = divecomputerFile.readAsStringSync();
@@ -193,10 +194,11 @@ class RemoteSnapshot {
           kind: SubsurfaceFileKind.divecomputer,
         );
         serial = _serialFromDivecomputer(parsed.lines);
+        divecomputerLines = parsed.lines;
       } catch (_) {
-        // Leave serial null; this dive won't match a CCRLog (serial,
-        // startTime) lookup but we still count its Dive-NNN towards the
-        // max counter.
+        // Leave serial + lines null/empty; this dive won't match a CCRLog
+        // (serial, startTime) lookup but we still count its Dive-NNN
+        // towards the max counter.
       }
     }
 
@@ -220,6 +222,7 @@ class RemoteSnapshot {
       serial: serial,
       startTime: startTime,
       diveLines: diveLines,
+      divecomputerLines: divecomputerLines,
     );
   }
 

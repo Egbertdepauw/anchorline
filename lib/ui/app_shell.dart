@@ -67,6 +67,7 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
+  bool _syncing = false;
   int _currentIndex = 0;
   late final DiveDao _diveDao;
   late final ImportStateDao _importStateDao;
@@ -236,12 +237,58 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _diveListNotifier.loadDives();
   }
 
+  Future<void> _syncSubsurface() async {
+    final orchestrator = _subsurfaceOrchestrator;
+    if (orchestrator == null || _syncing) return;
+    setState(() => _syncing = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await orchestrator.syncNow();
+      if (!mounted) return;
+      final aborted = result.abortedDives.length;
+      final msg = result.divesPushed == 0 && aborted == 0
+          ? 'Already up to date.'
+          : 'Pushed ${result.divesPushed} dive(s)'
+              '${aborted > 0 ? ", skipped $aborted (foreign edits)" : ""}'
+              '${result.divesSkipped > 0 ? ", ${result.divesSkipped} unchanged" : ""}.';
+      messenger.showSnackBar(SnackBar(content: Text(msg)));
+    } on NoCredentialsException {
+      if (!mounted) return;
+      messenger.showSnackBar(const SnackBar(
+        content: Text(
+          'No Subsurface Cloud credentials saved. Add them in Settings → Subsurface Cloud.',
+        ),
+      ));
+    } on SubsurfaceSyncException catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Sync failed: ${e.message}')));
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Sync failed: $e')));
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('CCRLog'),
         actions: [
+          if (_currentIndex == 0 &&
+              (_subsurfaceOrchestrator?.isPlatformSupported ?? false))
+            IconButton(
+              tooltip: _syncing ? 'Syncing…' : 'Push to Subsurface Cloud',
+              icon: _syncing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.cloud_upload_outlined),
+              onPressed: _syncing ? null : _syncSubsurface,
+            ),
           if (_currentIndex == 0)
             IconButton(
               tooltip: 'Dive sites map',

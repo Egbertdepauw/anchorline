@@ -79,6 +79,7 @@ class ExistingRemoteDive {
     required this.serial,
     required this.startTime,
     required this.diveLines,
+    this.divecomputerLines = const [],
   });
 
   /// Folder path components, e.g. `['2026', '04', '04-Sat-13=30=15']`.
@@ -102,6 +103,13 @@ class ExistingRemoteDive {
   /// CCRLog-owned lines into. Empty list is valid (a Dive-NNN with no
   /// content); null is not — populated via [RemoteSnapshot.read].
   final List<SsLine> diveLines;
+
+  /// Parsed lines of the existing `<folder>/Divecomputer` file. CCRLog
+  /// normally leaves this file alone (preserves what Subsurface
+  /// recorded). The exception is when our mapper has data the existing
+  /// file lacks — currently just "SP change" events for the setpoint
+  /// trace. Empty when the file is missing or unreadable.
+  final List<SsLine> divecomputerLines;
 }
 
 /// Diagnostic counters the orchestrator surfaces in its result.
@@ -253,6 +261,16 @@ class SyncPlanner {
     var skipped = 0;
 
     var nextDiveNumber = existingMaxDiveNumber;
+    // Set of dive numbers already present in the remote — used so we can
+    // prefer the dive computer's own `dcDiveNumber` for new dives (= the
+    // user's "real" dive count), only falling back to max+1 when that
+    // number is already in use. Without this preference, an outlier or
+    // orphaned Dive-NNN file in the remote (e.g. Dive-1153 from a
+    // previous corrupted sync) would force every subsequent new dive to
+    // start from 1154 instead of the dc number the user expects.
+    final remoteDiveNumbers = <int>{
+      for (final entry in existingDivesBySerialAndStart.values) entry.diveNumber,
+    };
 
     // Build coords → existing hexId map from Subsurface's Site files.
     // Subsurface's UUIDs are random-at-creation; CCRLog's _siteIdFor is
@@ -331,11 +349,55 @@ class SyncPlanner {
           diveIdsPlanned.add(dive.id);
           updatedDives.add(dive);
         }
-        // CRITICAL: never emit the Divecomputer file for an existing dive.
+        // The Divecomputer file is normally left alone on update (the
+        // safety hold against the 2026-05-08 force-push regression).
+        // Narrow exception: if our mapper has "SP change" events for the
+        // setpoint trace AND the existing Divecomputer has none, inject
+        // them in place. Subsurface keys its setpoint graph off these
+        // events; the per-sample `dc_supplied_ppo2` line is not enough.
+        // Subsurface's own Divecomputer files NEVER contain SP-change
+        // events (its setpoint trace is driven exclusively by per-sample
+        // `po2=` deltas). So any SP-change-named event in an existing
+        // file is a sure CCRLog-origin signature. Earlier CCRLog builds
+        // ALSO had the per-sample `po2` / `dc_supplied_ppo2` swapped, so
+        // we rewrite the entire Divecomputer from the now-correct
+        // mapper output. This is the only path that breaks the "never
+        // rewrite Divecomputer on update" rule, and only for files we
+        // ourselves wrote incorrectly.
+        final ccrlogOriginSignature = existing.divecomputerLines
+            .whereType<EventLine>()
+            .any(_looksLikeSpChangeEvent);
+        if (ccrlogOriginSignature) {
+          final folderPath = folderSegments.join('/');
+          filesToWrite['$folderPath/Divecomputer'] = serializeSubsurfaceFile(
+            SubsurfaceFile(lines: ours.divecomputerLines),
+          );
+          if (!diveIdsPlanned.contains(dive.id)) {
+            diveIdsPlanned.add(dive.id);
+            updatedDives.add(dive);
+          }
+        }
       } else {
         // ── New dive: full Dive-NNN + Divecomputer write
-        nextDiveNumber += 1;
-        diveNumber = nextDiveNumber;
+        // Prefer the dive computer's own number when it's not already
+        // taken in the remote. That keeps Subsurface's numbering in
+        // lockstep with the user's "real" dive count even when an
+        // orphan / outlier Dive-NNN bumped existingMaxDiveNumber way
+        // beyond the live dive count.
+        if (dive.dcDiveNumber > 0 &&
+            !remoteDiveNumbers.contains(dive.dcDiveNumber)) {
+          diveNumber = dive.dcDiveNumber;
+          remoteDiveNumbers.add(diveNumber);
+          if (diveNumber > nextDiveNumber) nextDiveNumber = diveNumber;
+        } else {
+          // Walk forward past any collisions so two new dives in one
+          // sync don't grab the same fallback number.
+          do {
+            nextDiveNumber += 1;
+          } while (remoteDiveNumbers.contains(nextDiveNumber));
+          diveNumber = nextDiveNumber;
+          remoteDiveNumbers.add(diveNumber);
+        }
         folderSegments = _utcFolderSegments(dive.startTime);
 
         final mapped = _mapper.mapDive(
@@ -513,6 +575,22 @@ class SyncPlanner {
       merged.addAll(entry.value);
     }
     return merged;
+  }
+
+  /// True when the line is an SP-change-named event. Subsurface's own
+  /// Divecomputer files never contain these, so the presence of any
+  /// SP-change event is a CCRLog-origin signature — used by the merge
+  /// to decide that a Divecomputer file needs a full rewrite (since
+  /// older CCRLog builds also had the per-sample `po2` /
+  /// `dc_supplied_ppo2` tokens swapped).
+  static bool _looksLikeSpChangeEvent(EventLine e) {
+    for (final field in e.fields) {
+      if (field.key == 'name') {
+        final v = field.value;
+        return v == '"SP change"' || v == '"setpoint change"';
+      }
+    }
+    return false;
   }
 
   /// Return the key for any [SsLine] that has one, else null.
