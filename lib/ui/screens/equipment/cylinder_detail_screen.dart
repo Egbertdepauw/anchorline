@@ -19,7 +19,6 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
   final _label = TextEditingController();
   final _vol = TextEditingController();
   final _press = TextEditingController();
-  final _gas = TextEditingController();
   final _notes = TextEditingController();
   final _bailoutOrder = TextEditingController();
   String _role = CylinderRole.bailout;
@@ -50,7 +49,6 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
       _label.text = c.label;
       _vol.text = c.volumeLiters.toString();
       _press.text = c.workingPressureBar.toString();
-      _gas.text = c.gasMix ?? '';
       _notes.text = c.notes ?? '';
       _bailoutOrder.text = (c.bailoutOrder ?? '').toString();
       _role = c.role;
@@ -68,7 +66,6 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
             : null,
         volumeLiters: _parseDecimal(_vol.text) ?? 5,
         workingPressureBar: int.tryParse(_press.text.trim()) ?? 200,
-        gasMix: _gas.text.trim(),
         notes: _notes.text.trim(),
       );
       if (!mounted) return;
@@ -83,7 +80,6 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
             : null,
         volumeLiters: _parseDecimal(_vol.text),
         workingPressureBar: int.tryParse(_press.text.trim()),
-        gasMix: _gas.text.trim(),
         notes: _notes.text.trim(),
       );
       await _load();
@@ -112,7 +108,6 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
     _label.dispose();
     _vol.dispose();
     _press.dispose();
-    _gas.dispose();
     _notes.dispose();
     _bailoutOrder.dispose();
     super.dispose();
@@ -188,11 +183,6 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
                       labelText: 'Working pressure (bar)'),
-                ),
-                TextField(
-                  controller: _gas,
-                  decoration: const InputDecoration(
-                      labelText: 'Gas mix (e.g. 21/35)'),
                 ),
                 TextField(
                   controller: _notes,

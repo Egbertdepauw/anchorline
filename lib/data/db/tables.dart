@@ -235,7 +235,8 @@ class ScrubberSessions extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// User-managed cylinders (O2, diluent, bailout, offboard).
+/// User-managed cylinders (physical vessels). Volume + working pressure;
+/// per-dive gas is recorded in [DiveBailoutCarry] / `dive_cylinders`.
 class Cylinders extends Table {
   TextColumn get id => text()();
   TextColumn get label => text()(); // "AL40 stage", "12L steel"
@@ -243,7 +244,6 @@ class Cylinders extends Table {
   IntColumn get bailoutOrder => integer().nullable()(); // only when role == 'bailout'
   RealColumn get volumeLiters => real()();
   IntColumn get workingPressureBar => integer()();
-  TextColumn get gasMix => text().nullable()(); // "21/35", "100", null
   TextColumn get notes => text().nullable()();
 
   IntColumn get createdAt => integer()();
@@ -293,6 +293,29 @@ class DiveCylinders extends Table {
 
   @override
   Set<Column> get primaryKey => {diveId, gasMixIndex};
+}
+
+/// Per-dive list of OC bailout cylinders the diver carried.
+/// One row per (diveId, cylinderId). The composite is encoded into [id]
+/// as `<diveId>:<cylinderId>` so PowerSync syncs it under a single PK.
+class DiveBailoutCarry extends Table {
+  TextColumn get id => text()();
+  TextColumn get diveId => text().references(Dives, #id)();
+  TextColumn get cylinderId => text().references(Cylinders, #id)();
+  TextColumn get gasMix => text()(); // "21/35", "100", "32"
+  IntColumn get fillPressureBar =>
+      integer().nullable()(); // null → use cylinder.workingPressureBar
+  IntColumn get bailoutOrder => integer()();
+
+  IntColumn get createdAt => integer()();
+  IntColumn get updatedAt => integer()();
+  IntColumn get deletedAt => integer().nullable()();
+  IntColumn get version => integer().withDefault(const Constant(1))();
+  IntColumn get syncStatus => integer().withDefault(const Constant(0))();
+  TextColumn get ownerId => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 /// Import state for incremental sync per dive computer.

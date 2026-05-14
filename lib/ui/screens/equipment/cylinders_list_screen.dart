@@ -96,7 +96,7 @@ class _CylindersListScreenState extends State<CylindersListScreen> {
               ? '#${c.bailoutOrder ?? '?'} · ${c.label}'
               : c.label),
           subtitle: Text(
-              '${c.volumeLiters}L @ ${c.workingPressureBar} bar · ${c.gasMix ?? '—'}'),
+              '${c.volumeLiters}L @ ${c.workingPressureBar} bar'),
           onTap: () async {
             await Navigator.of(context).push(MaterialPageRoute(
               builder: (_) => CylinderDetailScreen(dao: widget.dao, id: c.id),

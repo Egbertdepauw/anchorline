@@ -689,7 +689,6 @@ class EquipmentDao {
     int? bailoutOrder,
     required double volumeLiters,
     required int workingPressureBar,
-    String? gasMix,
     String? notes,
   }) async {
     if (!CylinderRole.all.contains(role)) {
@@ -703,11 +702,11 @@ class EquipmentDao {
     await _ps.execute(
       'INSERT INTO cylinders '
       '(id, owner_id, label, role, bailout_order, volume_liters, '
-      'working_pressure_bar, gas_mix, notes, '
+      'working_pressure_bar, notes, '
       'created_at, updated_at, deleted_at, version, sync_status) '
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [id, _ownerId, label, role, effectiveOrder, volumeLiters,
-        workingPressureBar, gasMix, notes, now, now, null, 1, 0],
+        workingPressureBar, notes, now, now, null, 1, 0],
     );
     return id;
   }
@@ -750,7 +749,6 @@ class EquipmentDao {
     int? bailoutOrder,
     double? volumeLiters,
     int? workingPressureBar,
-    String? gasMix,
     String? notes,
   }) async {
     if (role != null && !CylinderRole.all.contains(role)) {
@@ -776,16 +774,15 @@ class EquipmentDao {
       }
       final newVolume = volumeLiters ?? (existing['volume_liters'] as num).toDouble();
       final newPressure = workingPressureBar ?? existing['working_pressure_bar'] as int;
-      final newGas = gasMix ?? existing['gas_mix'] as String?;
       final newNotes = notes ?? existing['notes'] as String?;
       await tx.execute(
         'UPDATE cylinders SET '
         'owner_id = ?, label = ?, role = ?, bailout_order = ?, '
-        'volume_liters = ?, working_pressure_bar = ?, gas_mix = ?, notes = ?, '
+        'volume_liters = ?, working_pressure_bar = ?, notes = ?, '
         'updated_at = ?, version = ? '
         'WHERE id = ?',
         [_ownerId, newLabel, newRole, newBailoutOrder, newVolume,
-          newPressure, newGas, newNotes, now, newVersion, id],
+          newPressure, newNotes, now, newVersion, id],
       );
     });
   }
@@ -871,7 +868,6 @@ class EquipmentDao {
       role: CylinderRole.oxygen,
       volumeLiters: 2.0,
       workingPressureBar: 207,
-      gasMix: '100',
     );
     await addCylinder(
       label: 'Diluent',
@@ -887,6 +883,146 @@ class EquipmentDao {
       workingPressureBar: 232,
     );
   }
+
+  // ── DiveBailoutCarry ────────────────────────────────────────────────────
+  //
+  // Per-dive list of OC bailout cylinders the diver carried. Each row pairs a
+  // physical [Cylinder] with the gas it held on this dive and a fill pressure;
+  // null fill means "assume the cylinder's working pressure (full)". The
+  // bailout planner reads these rows for the active dive — empty list → fall
+  // through to standard Scenario B.
+
+  // Two screens subscribe to bailout-carry changes simultaneously when
+  // the dive-detail TabBarView keeps Details + Equipment tabs alive at
+  // once. PowerSync's underlying `_ps.watch(sql)` returns a single-
+  // subscription stream, so we cache + broadcast once per DAO instance
+  // — multiple listeners now coexist without "Bad state: Stream has
+  // already been listened to".
+  Stream<void>? _diveBailoutCarryWatchStream;
+  Stream<void> watchDiveBailoutCarry() => _diveBailoutCarryWatchStream ??= _ps
+      .watch('SELECT 1 FROM dive_bailout_carry LIMIT 1')
+      .map((_) {})
+      .asBroadcastStream();
+
+  Future<List<DiveBailoutCarryData>> listBailoutCarry(String diveId) async {
+    final rows = await _ps.getAll(
+      'SELECT * FROM dive_bailout_carry '
+      'WHERE dive_id = ? AND deleted_at IS NULL '
+      'ORDER BY bailout_order ASC',
+      [diveId],
+    );
+    return rows.map(_rowToBailoutCarry).toList();
+  }
+
+  Future<List<({DiveBailoutCarryData carry, Cylinder cylinder})>>
+      listBailoutCarryWithCylinders(String diveId) async {
+    final rows = await _ps.getAll(
+      'SELECT bc.id AS bc_id, bc.dive_id, bc.cylinder_id, bc.gas_mix, '
+      '       bc.fill_pressure_bar, bc.bailout_order, '
+      '       bc.created_at AS bc_created_at, bc.updated_at AS bc_updated_at, '
+      '       bc.deleted_at AS bc_deleted_at, bc.version AS bc_version, '
+      '       bc.sync_status AS bc_sync_status, bc.owner_id AS bc_owner_id, '
+      '       c.* '
+      'FROM dive_bailout_carry bc '
+      'JOIN cylinders c ON c.id = bc.cylinder_id '
+      'WHERE bc.dive_id = ? AND bc.deleted_at IS NULL '
+      'ORDER BY bc.bailout_order ASC',
+      [diveId],
+    );
+    return rows.map((r) {
+      final carry = DiveBailoutCarryData(
+        id: r['bc_id'] as String,
+        diveId: r['dive_id'] as String,
+        cylinderId: r['cylinder_id'] as String,
+        gasMix: r['gas_mix'] as String,
+        fillPressureBar: r['fill_pressure_bar'] as int?,
+        bailoutOrder: r['bailout_order'] as int,
+        createdAt: r['bc_created_at'] as int,
+        updatedAt: r['bc_updated_at'] as int,
+        deletedAt: r['bc_deleted_at'] as int?,
+        version: r['bc_version'] as int? ?? 1,
+        syncStatus: r['bc_sync_status'] as int? ?? 0,
+        ownerId: r['bc_owner_id'] as String?,
+      );
+      return (carry: carry, cylinder: _rowToCylinder(r));
+    }).toList();
+  }
+
+  Future<String> addBailoutCarry({
+    required String diveId,
+    required String cylinderId,
+    required String gasMix,
+    int? fillPressureBar,
+    required int bailoutOrder,
+  }) async {
+    final id = '$diveId:$cylinderId';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _ps.execute(
+      'INSERT INTO dive_bailout_carry '
+      '(id, owner_id, dive_id, cylinder_id, gas_mix, fill_pressure_bar, '
+      ' bailout_order, created_at, updated_at, deleted_at, version, sync_status) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, 0)',
+      [id, _ownerId, diveId, cylinderId, gasMix, fillPressureBar,
+        bailoutOrder, now, now],
+    );
+    return id;
+  }
+
+  Future<void> updateBailoutCarry(
+    String id, {
+    String? gasMix,
+    int? fillPressureBar,
+    int? bailoutOrder,
+  }) async {
+    final sets = <String>[];
+    final args = <Object?>[];
+    if (gasMix != null) {
+      sets.add('gas_mix = ?');
+      args.add(gasMix);
+    }
+    if (fillPressureBar != null) {
+      sets.add('fill_pressure_bar = ?');
+      args.add(fillPressureBar);
+    }
+    if (bailoutOrder != null) {
+      sets.add('bailout_order = ?');
+      args.add(bailoutOrder);
+    }
+    if (sets.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    sets.add('updated_at = ?');
+    args.add(now);
+    args.add(id);
+    await _ps.execute(
+      'UPDATE dive_bailout_carry SET ${sets.join(", ")} WHERE id = ?',
+      args,
+    );
+  }
+
+  Future<void> deleteBailoutCarry(String id) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _ps.execute(
+      'UPDATE dive_bailout_carry '
+      'SET deleted_at = ?, updated_at = ? WHERE id = ?',
+      [now, now, id],
+    );
+  }
+
+  DiveBailoutCarryData _rowToBailoutCarry(Map<String, dynamic> r) =>
+      DiveBailoutCarryData(
+        id: r['id'] as String,
+        diveId: r['dive_id'] as String,
+        cylinderId: r['cylinder_id'] as String,
+        gasMix: r['gas_mix'] as String,
+        fillPressureBar: r['fill_pressure_bar'] as int?,
+        bailoutOrder: r['bailout_order'] as int,
+        createdAt: r['created_at'] as int,
+        updatedAt: r['updated_at'] as int,
+        deletedAt: r['deleted_at'] as int?,
+        version: r['version'] as int? ?? 1,
+        syncStatus: r['sync_status'] as int? ?? 0,
+        ownerId: r['owner_id'] as String?,
+      );
 
   // ── Mapping helpers ─────────────────────────────────────────────────────
 
@@ -953,7 +1089,6 @@ class EquipmentDao {
         bailoutOrder: r['bailout_order'] as int?,
         volumeLiters: (r['volume_liters'] as num).toDouble(),
         workingPressureBar: r['working_pressure_bar'] as int,
-        gasMix: r['gas_mix'] as String?,
         notes: r['notes'] as String?,
         createdAt: r['created_at'] as int,
         updatedAt: r['updated_at'] as int,

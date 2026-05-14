@@ -472,7 +472,6 @@ void main() {
         bailoutOrder: 1,
         volumeLiters: 5.7,
         workingPressureBar: 207,
-        gasMix: '21/35',
       );
       final list = await dao.listCylinders();
       expect(list, hasLength(1));

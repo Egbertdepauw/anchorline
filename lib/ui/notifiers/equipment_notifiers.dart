@@ -284,7 +284,6 @@ class CylindersNotifier extends ChangeNotifier {
     int? bailoutOrder,
     required double volumeLiters,
     required int workingPressureBar,
-    String? gasMix,
     String? notes,
   }) async {
     final id = await _dao.addCylinder(
@@ -293,7 +292,6 @@ class CylindersNotifier extends ChangeNotifier {
       bailoutOrder: bailoutOrder,
       volumeLiters: volumeLiters,
       workingPressureBar: workingPressureBar,
-      gasMix: gasMix,
       notes: notes,
     );
     await load();
@@ -307,7 +305,6 @@ class CylindersNotifier extends ChangeNotifier {
     int? bailoutOrder,
     double? volumeLiters,
     int? workingPressureBar,
-    String? gasMix,
     String? notes,
   }) async {
     await _dao.updateCylinder(
@@ -317,7 +314,6 @@ class CylindersNotifier extends ChangeNotifier {
       bailoutOrder: bailoutOrder,
       volumeLiters: volumeLiters,
       workingPressureBar: workingPressureBar,
-      gasMix: gasMix,
       notes: notes,
     );
     await load();

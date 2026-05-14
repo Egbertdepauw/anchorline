@@ -146,11 +146,11 @@ class OwnerIdBackfiller {
       await _ps.execute(
         'INSERT INTO cylinders '
         '(id, owner_id, label, role, bailout_order, volume_liters, '
-        'working_pressure_bar, gas_mix, notes, '
+        'working_pressure_bar, notes, '
         'created_at, updated_at, deleted_at, version, sync_status) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [r.id, userId, r.label, r.role, r.bailoutOrder, r.volumeLiters,
-          r.workingPressureBar, r.gasMix, r.notes,
+          r.workingPressureBar, r.notes,
           r.createdAt, r.updatedAt, r.deletedAt, r.version, r.syncStatus],
       );
       n++;

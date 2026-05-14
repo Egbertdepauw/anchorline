@@ -19,6 +19,7 @@ part 'database.g.dart';
     Cylinders,
     PressureMappings,
     DiveCylinders,
+    DiveBailoutCarry,
     ImportStates,
   ],
 )
@@ -26,7 +27,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -113,6 +114,22 @@ class AppDatabase extends _$AppDatabase {
             // (ZHL-16C). Existing rows get NULL.
             await m.addColumn(
                 diveAnnotations, diveAnnotations.displayDecoAlgorithm);
+          }
+          if (from < 15) {
+            // Cylinders become physical-only (volume + pressure). Per-dive
+            // gas now lives in dive_bailout_carry. SQLite < 3.35 had no
+            // ALTER DROP COLUMN; alterTable rebuilds the table.
+            // Guard with a sqlite_master probe so partial test fixtures
+            // that never created `cylinders` don't crash here — production
+            // databases always have it by v8.
+            final hasCylinders = await customSelect(
+              "SELECT 1 FROM sqlite_master "
+              "WHERE type = 'table' AND name = 'cylinders'",
+            ).get();
+            if (hasCylinders.isNotEmpty) {
+              await m.alterTable(TableMigration(cylinders));
+            }
+            await m.createTable(diveBailoutCarry);
           }
         },
       );

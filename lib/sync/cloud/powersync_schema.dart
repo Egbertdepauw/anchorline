@@ -67,8 +67,24 @@ const appSchema = Schema([
     Column.integer('bailout_order'),
     Column.real('volume_liters'),
     Column.integer('working_pressure_bar'),
-    Column.text('gas_mix'),
     Column.text('notes'),
+    Column.integer('created_at'),
+    Column.integer('updated_at'),
+    Column.integer('deleted_at'),
+    Column.integer('version'),
+    Column.integer('sync_status'),
+  ]),
+  // Composite PK in Drift (dive_id, cylinder_id); synthetic id =
+  // "{dive_id}:{cylinder_id}" upstream. Records the OC bailout cylinders
+  // a diver carried on a given dive, with the gas the cylinder held
+  // (per-dive — vessels themselves are gas-agnostic).
+  Table('dive_bailout_carry', [
+    Column.text('owner_id'),
+    Column.text('dive_id'),
+    Column.text('cylinder_id'),
+    Column.text('gas_mix'),
+    Column.integer('fill_pressure_bar'),
+    Column.integer('bailout_order'),
     Column.integer('created_at'),
     Column.integer('updated_at'),
     Column.integer('deleted_at'),

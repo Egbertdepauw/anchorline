@@ -37,10 +37,13 @@ void main() {
       );
 
       // 1776611925 = 2026-04-19T15:18:45Z (UTC).
+      // The planner now prefers the dive computer's own number (705 in
+      // the fixture) over max+1 when it's not already taken in the
+      // remote — keeps Subsurface's numbering aligned with CCRLog.
       expect(
         plan.filesToWrite.keys,
         containsAll([
-          '2026/04/19-Sun-15=18=45/Dive-101',
+          '2026/04/19-Sun-15=18=45/Dive-705',
           '2026/04/19-Sun-15=18=45/Divecomputer',
         ]),
       );
@@ -50,7 +53,7 @@ void main() {
 
       // Dive file content has expected fields.
       final diveText =
-          plan.filesToWrite['2026/04/19-Sun-15=18=45/Dive-101']!;
+          plan.filesToWrite['2026/04/19-Sun-15=18=45/Dive-705']!;
       expect(diveText, contains('duration 57:30 min'));
 
       final dcText =
@@ -413,8 +416,10 @@ void main() {
       expect(plan.filesToWrite, isEmpty);
     });
 
-    test('multiple new dives allocate sequential Dive-NNN', () {
+    test('multiple new dives: first claims dcDiveNumber, second falls back', () {
       final planner = SyncPlanner();
+      // Both fixture bundles share dcDiveNumber=705; the first new dive
+      // claims 705, the second collides and increments to 706.
       final bundleA = _bundle(diveId: _diveIdA);
       final bundleB = _bundle(
         diveId: _diveIdB,
@@ -432,7 +437,33 @@ void main() {
           .map((k) => k.split('/').last)
           .toList()
         ..sort();
-      expect(diveFileNames, containsAll(['Dive-51', 'Dive-52']));
+      expect(diveFileNames, containsAll(['Dive-705', 'Dive-706']));
+    });
+
+    test(
+        'new dive prefers dcDiveNumber even when existingMaxDiveNumber is '
+        'much higher (regression: orphan Dive-1153 produced Dive-1154)', () {
+      final planner = SyncPlanner();
+      final bundle = _bundle(diveId: _diveIdA);
+      final plan = planner.plan(
+        ccrlogDives: [bundle],
+        existingDivesBySerialAndStart: const {},
+        // Simulate the user's bug scenario: an orphan Dive-1153 in the
+        // remote (no corresponding live dive entry) pushed
+        // existingMaxDiveNumber way past the live count.
+        existingMaxDiveNumber: 1153,
+        existingTopLevel: const [],
+        existingSites: const {},
+      );
+      // dcDiveNumber=705 isn't a key in the remote → use it.
+      expect(
+        plan.filesToWrite.keys,
+        contains('2026/04/19-Sun-15=18=45/Dive-705'),
+      );
+      expect(
+        plan.filesToWrite.keys.any((k) => k.endsWith('Dive-1154')),
+        isFalse,
+      );
     });
 
     test('SyncPlan exposes empty abortedDives by default', () {

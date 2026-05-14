@@ -13,6 +13,7 @@ void main() {
         'scrubber_sessions',
         'pressure_mappings',
         'dive_cylinders',
+        'dive_bailout_carry',
         'dive_computers',
         // Phase 2.5: dive metadata + samples sync too.
         'dives',

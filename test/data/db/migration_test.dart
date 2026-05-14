@@ -8,9 +8,15 @@ import 'package:sqlite3/sqlite3.dart';
 
 /// Seed the v1-era sync-eligible tables that the v8 migration ALTERs.
 /// Called from legacy tests that don't already create these themselves.
+///
+/// [withOwnerId] = true seeds the v8+ shape (cylinders, pressure_mappings,
+/// scrubber_sessions, dive_annotations all have owner_id). Use this when
+/// the test's starting `PRAGMA user_version` is ≥ 8 — otherwise the v15
+/// alterTable cascade fails trying to copy a column that doesn't exist.
 void _seedV1SyncTables(
   Database raw, {
   Set<String> except = const {},
+  bool withOwnerId = false,
 }) {
   if (!except.contains('dive_annotations')) {
     raw.execute('''
@@ -82,6 +88,7 @@ void _seedV1SyncTables(
     ''');
   }
   if (!except.contains('cylinders')) {
+    final ownerCol = withOwnerId ? ',\n        owner_id TEXT' : '';
     raw.execute('''
       CREATE TABLE cylinders (
         id TEXT NOT NULL PRIMARY KEY,
@@ -96,7 +103,7 @@ void _seedV1SyncTables(
         updated_at INTEGER NOT NULL,
         deleted_at INTEGER,
         version INTEGER NOT NULL DEFAULT 1,
-        sync_status INTEGER NOT NULL DEFAULT 0
+        sync_status INTEGER NOT NULL DEFAULT 0$ownerCol
       );
     ''');
   }
@@ -186,7 +193,7 @@ void main() {
   test('schema v2: has cylinders, pressure_mappings, oxygen_cells.label', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    expect(db.schemaVersion, 14);
+    expect(db.schemaVersion, 15);
 
     // Inserting a row exercises the full schema.
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -271,7 +278,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 14);
+    expect(db.schemaVersion, 15);
 
     // Step 5: verify the seeded oxygen_cells row survived.
     final cells = await db.select(db.oxygenCells).get();
@@ -348,7 +355,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 14);
+    expect(db.schemaVersion, 15);
 
     // Step 5: verify the seeded annotation row survived.
     final annotations = await db.select(db.diveAnnotations).get();
@@ -395,7 +402,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 14);
+    expect(db.schemaVersion, 15);
 
     final dives = await db.select(db.dives).get();
     expect(dives, hasLength(1));
@@ -439,7 +446,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 14);
+    expect(db.schemaVersion, 15);
 
     // Migrated row: tanks_json is null on the existing v4 row.
     final migrated = await db.select(db.dives).get();
@@ -526,7 +533,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 14);
+    expect(db.schemaVersion, 15);
 
     // The migrated row's tank_pressures_blob is null.
     final migrated = await db.select(db.diveSamples).get();
@@ -617,7 +624,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 14);
+    expect(db.schemaVersion, 15);
 
     // The migrated row has a null subsurface_uploaded_at.
     final migrated = await db.select(db.dives).get();
@@ -825,7 +832,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 14);
+    expect(db.schemaVersion, 15);
 
     // Pre-existing rows survive the migration with owner_id null.
     expect((await db.select(db.diveAnnotations).get()).single.ownerId, isNull);
@@ -932,7 +939,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 14);
+    expect(db.schemaVersion, 15);
 
     // Pre-existing dive survives with deleted_at null (visible in queries).
     final migrated = await db.select(db.dives).get();
@@ -1039,7 +1046,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 14);
+    expect(db.schemaVersion, 15);
 
     // Pre-existing v10 row survives with sensor_calibration_json null —
     // the mapper's fallback (Petrel default 0.021) is what handles legacy
@@ -1141,7 +1148,8 @@ void main() {
         deleted_at INTEGER
       );
     ''');
-    _seedV1SyncTables(raw, except: const {'dive_annotations'});
+    _seedV1SyncTables(raw,
+        except: const {'dive_annotations'}, withOwnerId: true);
     raw.execute('PRAGMA user_version = 11;');
 
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -1155,7 +1163,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 14);
+    expect(db.schemaVersion, 15);
 
     // Pre-existing v11 row survives; new columns default to null/empty.
     final migrated = await db.select(db.diveAnnotations).get();
@@ -1273,7 +1281,8 @@ void main() {
         deleted_at INTEGER
       );
     ''');
-    _seedV1SyncTables(raw, except: const {'dive_annotations'});
+    _seedV1SyncTables(raw,
+        except: const {'dive_annotations'}, withOwnerId: true);
     raw.execute('PRAGMA user_version = 13;');
 
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -1287,7 +1296,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 14);
+    expect(db.schemaVersion, 15);
 
     // Pre-existing v13 row survives; new column defaults to null.
     final migrated = await db.select(db.diveAnnotations).get();

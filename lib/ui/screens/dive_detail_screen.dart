@@ -28,6 +28,7 @@ import '../util/tank_labels.dart';
 import '../widgets/crosshair_overlay.dart';
 import '../widgets/crosshair_tooltip.dart';
 import '../widgets/dive_annotations_section.dart';
+import '../widgets/dive_bailout_carry_section.dart';
 import '../widgets/dive_cylinders_section.dart';
 import '../widgets/dive_information_section.dart';
 import '../widgets/dive_media_tab.dart';
@@ -663,6 +664,10 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
             activeSecondsByMix: activeByMix,
             equipmentDao: widget.equipmentDao,
           ),
+          DiveBailoutCarrySection(
+            diveId: widget.dive.id,
+            dao: widget.equipmentDao,
+          ),
           DiveEquipmentSection(
             notifier: _annotationsNotifier,
             annotationsDao: widget.annotationsDao,
@@ -825,7 +830,9 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                     gfLow: widget.dive.gfLow,
                     gfHigh: widget.dive.gfHigh,
                   ),
-                  height: 192,
+                  totalDuration:
+                      Duration(seconds: widget.dive.durationSeconds),
+                  height: 320,
                 ),
               ),
           ],
@@ -835,6 +842,25 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   }
 
   Widget _buildBailoutSection() {
+    // Subscribe to dive_bailout_carry changes so adding/editing a carry row
+    // re-plans automatically. Combined with settingsNotifier for SAC /
+    // ascent-rate / GUE-config changes.
+    return StreamBuilder<void>(
+      stream: widget.equipmentDao.watchDiveBailoutCarry(),
+      builder: (context, _) => FutureBuilder<
+          List<({DiveBailoutCarryData carry, Cylinder cylinder})>>(
+        future:
+            widget.equipmentDao.listBailoutCarryWithCylinders(widget.dive.id),
+        builder: (context, snap) {
+          final carry = snap.data ?? const [];
+          return _bailoutSectionBody(carry);
+        },
+      ),
+    );
+  }
+
+  Widget _bailoutSectionBody(
+      List<({DiveBailoutCarryData carry, Cylinder cylinder})> carry) {
     return ListenableBuilder(
       listenable: widget.settingsNotifier,
       builder: (context, _) {
@@ -843,23 +869,32 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
 
         final gasMixes = _decodeGasMixes();
 
-        // Trigger depth = last sample that is still within 0.5 m of the
-        // overall maximum.  This approximates "end of bottom time" per spec.
+        // Bailout trigger = the LATEST sample where the diver is still at
+        // a "substantial" depth (≥ 50 % of max depth). On a square dive
+        // this lands at end-of-bottom-time, same as max-depth; on a
+        // multi-level dive it picks up the start of the final ascent,
+        // where tissues have been loading longest and the bailout is
+        // genuinely worst-case. The bailout planner walks the OC ascent
+        // from this point; tissue state at the trigger comes from the
+        // replay engine (triggerSampleIdx capture).
         double maxDepth = 0;
-        int triggerSampleIdx = 0;
         for (var i = 0; i < samples.depthMeters.length; i++) {
           if (samples.depthMeters[i] > maxDepth) {
             maxDepth = samples.depthMeters[i];
-            triggerSampleIdx = i;
           }
         }
-        for (var i = triggerSampleIdx + 1; i < samples.depthMeters.length; i++) {
-          if ((maxDepth - samples.depthMeters[i]).abs() < 0.5) {
-            triggerSampleIdx = i;
-          } else {
+        final substantialDepth = maxDepth * 0.5;
+        var triggerIdx = 0;
+        for (var i = samples.depthMeters.length - 1; i >= 0; i--) {
+          if (samples.depthMeters[i] >= substantialDepth) {
+            triggerIdx = i;
             break;
           }
         }
+        final triggerDepth = samples.depthMeters[triggerIdx].toDouble();
+        final bottomTimeBeforeTrigger = Duration(
+          milliseconds: triggerIdx * samples.sampleIntervalMs,
+        );
 
         // Recorded diluent (first entry flagged isDiluent).
         DiveGasMix? recordedDiluent;
@@ -870,39 +905,64 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
           }
         }
 
-        // v1 tissue-state limitation: the replay engine exposes
-        // tissueLoadsPct (% of M-value) but the planner needs raw pN2/pHe
-        // in bar.  A fully correct implementation would call
-        // tissueStateAt(triggerSampleIdx) on the engine; that API does not
-        // exist yet (planned for v2).  As a conservative placeholder we
-        // fill every compartment with 4.0 bar N2, which corresponds roughly
-        // to a well-loaded diver after a deep bottom time and produces
-        // plausible (slightly conservative) deco stop predictions.  Short
-        // dives / shallow dives will read as more conservative than reality.
-        // See: ascent_simulator_test.dart fixture commentary.
-        final tissueN2Bar = List<double>.filled(16, 4.0);
-        final tissueHeBar = List<double>.filled(16, 0.0);
+        final replay = _decoEngine.replay(
+          diveId: widget.dive.id,
+          samples: _SampleSetAdapter(samples),
+          gasMixes: gasMixes,
+          algorithm: _annotationsNotifier.displayDecoAlgorithm == 'vpmb'
+              ? DecoAlgorithm.vpmb
+              : DecoAlgorithm.zhl16c,
+          vpmbConservatism: widget.settingsNotifier.vpmbConservatism,
+          gfLow: widget.dive.gfLow,
+          gfHigh: widget.dive.gfHigh,
+          triggerSampleIdx: triggerIdx,
+        );
+        // Trigger-sample tissue state if the engine captured it; fall back
+        // to peak-depth state for safety.
+        final tissueN2Bar = replay.triggerN2Bar.isNotEmpty
+            ? replay.triggerN2Bar
+            : replay.peakDepthN2Bar;
+        final tissueHeBar = replay.triggerHeBar.isNotEmpty
+            ? replay.triggerHeBar
+            : replay.peakDepthHeBar;
 
         // Tank catalogue — always-present aluminium stages plus the
         // user-toggleable European steel tanks.
         final tankCatalogue = [
           kAl40,
+          kAl50,
           kAl80,
           if (widget.settingsNotifier.tank68L300Available) kTank68L300,
           if (widget.settingsNotifier.tank12L300Available) kTank12L300,
         ];
 
-        // v1: Scenario B only.  Wiring dive-tank records as Scenario A
-        // bailout tanks is a future enhancement once the equipment model
-        // exposes per-tank "use as bailout" flags.
+        // Build Scenario A inputs from dive_bailout_carry rows. Empty carry
+        // list → planBailout treats it as Scenario B (GUE standards).
+        final userBailoutTanks = <DiveGasMix>[];
+        final userTankVolumesL = <DiveGasMix, double>{};
+        for (final entry in carry) {
+          final mix = _parseBailoutGasMix(entry.carry.gasMix);
+          if (mix == null) continue;
+          userBailoutTanks.add(mix);
+          final fillBar = entry.carry.fillPressureBar ??
+              entry.cylinder.workingPressureBar;
+          userTankVolumesL[mix] = (userTankVolumesL[mix] ?? 0.0) +
+              entry.cylinder.volumeLiters * fillBar;
+        }
+
         final result = planBailout(
           diveId: widget.dive.id,
+          // Bottom-mix selection + staging tier use TRUE max depth so the
+          // mix is breathable at the deepest moment the diver actually
+          // visited. The OC ascent itself starts from the (potentially
+          // shallower) trigger depth — see triggerDepthMeters below.
           maxDepthMeters: maxDepth,
+          triggerDepthMeters: triggerDepth,
           recordedDiluent: recordedDiluent,
           tissueN2Bar: tissueN2Bar,
           tissueHeBar: tissueHeBar,
-          userBailoutTanks: const [],
-          userTankVolumesL: const {},
+          userBailoutTanks: userBailoutTanks,
+          userTankVolumesL: userTankVolumesL,
           isGueConfig: widget.settingsNotifier.gueDiluentConfig,
           gfLow: widget.dive.gfLow ?? 30,
           gfHigh: widget.dive.gfHigh ?? 85,
@@ -917,10 +977,11 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: BailoutSection(
             result: result,
-            triggerDepthMeters: maxDepth,
+            triggerDepthMeters: triggerDepth,
             sacBottom: widget.settingsNotifier.bailoutSacBottom,
             sacDeco: widget.settingsNotifier.bailoutSacDeco,
             isGueConfig: widget.settingsNotifier.gueDiluentConfig,
+            bottomTimeBeforeTrigger: bottomTimeBeforeTrigger,
           ),
         );
       },
@@ -1123,25 +1184,25 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                 .join(' · '),
           ),
         StatTile(
-          label: 'Max ρ',
+          label: 'Density',
           unit: 'g/L',
           value: maxDensity.toStringAsFixed(1),
           valueColor: colourForDensityValue(maxDensity),
         ),
         StatTile(
-          label: 'Max END',
+          label: 'END',
           unit: 'm',
           value: maxEnd.round().toString(),
           valueColor: colourForEndValue(maxEnd),
         ),
         StatTile(
-          label: 'Surface GF',
+          label: 'SurfGF',
           unit: '%',
           value: surfaceGf.round().toString(),
           valueColor: colourForGf(surfaceGf),
         ),
         StatTile(
-          label: 'Max GF',
+          label: 'GF',
           unit: '%',
           value: maxGf.round().toString(),
           valueColor: colourForGf(maxGf),
@@ -1213,6 +1274,23 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   }
 }
 
+/// Parses a `dive_bailout_carry.gas_mix` string ("21/35", "100", "32") into
+/// a [DiveGasMix]. Returns null on empty / malformed input — the planner
+/// can simply skip the carry row.
+DiveGasMix? _parseBailoutGasMix(String raw) {
+  if (raw.isEmpty) return null;
+  final parts = raw.split('/');
+  final o2 = int.tryParse(parts[0]);
+  if (o2 == null || o2 <= 0 || o2 > 100) return null;
+  final he = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+  if (he < 0 || o2 + he > 100) return null;
+  return DiveGasMix(
+    oxygenPercent: o2,
+    heliumPercent: he,
+    isDiluent: false,
+  );
+}
+
 /// Adapts [SampleSet] to the [SampleStream] interface expected by
 /// [DecoReplayEngine]. Bridges field names without copying data.
 class _SampleSetAdapter implements SampleStream {
@@ -1224,6 +1302,9 @@ class _SampleSetAdapter implements SampleStream {
 
   @override
   Uint8List get gasMixIndex => _s.gasMixIndex;
+
+  @override
+  Float32List get setpointBar => _s.setpointBar;
 
   @override
   int get sampleIntervalMs => _s.sampleIntervalMs;
