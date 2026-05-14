@@ -110,8 +110,16 @@ Color _colorForEndBand(EndBand b) => switch (b) {
       EndBand.red => _bandRed,
     };
 
-/// Implicit max g/L for the density y-axis scale.
-const double _densityGLMax = 7.0;
+/// Implicit max g/L for the density y-axis scale. Sized to fit air at
+/// ~60 m (≈8.6 g/L) — the colour thresholds (5.2 orange / 5.7 red) are
+/// absolute values, so they map to sensible y-positions on this scale.
+const double _densityGLMax = 10.0;
+
+/// Depth (m) below which a sample counts as "in the water". Density and
+/// END traces only render while this holds — once the diver surfaces, the
+/// values collapse to surface values and the trace just runs into post-dive
+/// logging time.
+const double _surfaceDepthM = 1.0;
 
 /// Petrel default per-cell calibration factor when none is available.
 /// Multiplying raw mV by this value yields PPO2 in bar.
@@ -615,6 +623,11 @@ class ProfileChartPainter extends CustomPainter {
       _drawGasChangeMarkers(canvas, chartRect, n, xOf);
     }
 
+    // Both density and END are only meaningful while the diver is in the
+    // water — once they surface, the traces collapse to surface values and
+    // visually run off into post-dive logging time. Skip those samples.
+    bool isUnderwater(int i) => samples.depthMeters[i] >= _surfaceDepthM;
+
     // ── Gas density trace ──────────────────────────────────────────
     // Mapped to an implicit 0–7 g/L scale on the same vertical space as
     // the depth trace. Each segment is colour-coded by its density band.
@@ -625,6 +638,7 @@ class ProfileChartPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round;
       for (var i = 1; i < ds.length && i < n; i++) {
+        if (!isUnderwater(i - 1) || !isUnderwater(i)) continue;
         final d0 = ds[i - 1];
         final d1 = ds[i];
         if (d0.isNaN || d1.isNaN) continue;
@@ -647,6 +661,7 @@ class ProfileChartPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round;
       for (var i = 1; i < es.length && i < n; i++) {
+        if (!isUnderwater(i - 1) || !isUnderwater(i)) continue;
         final e0 = es[i - 1];
         final e1 = es[i];
         if (e0.isNaN || e1.isNaN) continue;

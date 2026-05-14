@@ -3,12 +3,14 @@
 /// 16 Float32List series (one per ZHL-16 compartment) where each value
 /// is the compartment load as a percentage of its current M-value.
 ///
-/// X-axis = dive time (sample index). Y-axis = compartment (top = fastest).
+/// Y-axis = compartment number (1 = fastest, 16 = slowest), labelled
+/// on the left gutter. A colour legend below names each saturation band.
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../analysis/deco/replay_result.dart';
+import '../../analysis/deco/tissue_model.dart';
 
 /// Colour for a saturation value (% of M-value).
 Color tissueSaturationColour(double pct) {
@@ -18,23 +20,179 @@ Color tissueSaturationColour(double pct) {
   return const Color(0xFF3B82F6); // blue
 }
 
+const double _gutterWidth = 56;
+const double _legendHeight = 28;
+const double _timeAxisHeight = 14;
+
 class TissueSaturationHeatmap extends StatelessWidget {
   final DecoReplayResult replay;
+  final Duration? totalDuration;
   final double height;
 
   const TissueSaturationHeatmap({
     super.key,
     required this.replay,
+    this.totalDuration,
     this.height = 256,
   });
 
   @override
   Widget build(BuildContext context) {
+    final labelStyle = TextStyle(
+      fontSize: 10,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
     return SizedBox(
       height: height,
-      child: CustomPaint(
-        painter: _HeatmapPainter(replay: replay),
-        size: Size.infinite,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                SizedBox(
+                  width: _gutterWidth,
+                  child: _CompartmentLabels(style: labelStyle),
+                ),
+                Expanded(
+                  child: CustomPaint(
+                    painter: _HeatmapPainter(replay: replay),
+                    size: Size.infinite,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (totalDuration != null)
+            SizedBox(
+              height: _timeAxisHeight,
+              child: Padding(
+                padding: const EdgeInsets.only(left: _gutterWidth),
+                child: _TimeAxis(total: totalDuration!, style: labelStyle),
+              ),
+            ),
+          SizedBox(
+            height: _legendHeight,
+            child: _ColourLegend(style: labelStyle),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimeAxis extends StatelessWidget {
+  final Duration total;
+  final TextStyle style;
+  const _TimeAxis({required this.total, required this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    const ticks = 5;
+    String fmt(int seconds) {
+      final m = seconds ~/ 60;
+      if (m < 60) return '${m}m';
+      final h = m ~/ 60;
+      final mm = m % 60;
+      return mm == 0 ? '${h}h' : '${h}h${mm}m';
+    }
+
+    return LayoutBuilder(builder: (ctx, c) {
+      final w = c.maxWidth;
+      return Stack(
+        children: [
+          for (var i = 0; i < ticks; i++)
+            Positioned(
+              left: i * (w / (ticks - 1)) - 16,
+              width: 32,
+              top: 0,
+              bottom: 0,
+              child: Align(
+                alignment: i == 0
+                    ? Alignment.centerLeft
+                    : i == ticks - 1
+                        ? Alignment.centerRight
+                        : Alignment.center,
+                child: Text(
+                  fmt(total.inSeconds * i ~/ (ticks - 1)),
+                  style: style,
+                ),
+              ),
+            ),
+        ],
+      );
+    });
+  }
+}
+
+class _CompartmentLabels extends StatelessWidget {
+  final TextStyle style;
+  const _CompartmentLabels({required this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (ctx, c) {
+      final bandHeight = c.maxHeight / 16;
+      return Stack(
+        children: [
+          for (var i = 0; i < 16; i++)
+            Positioned(
+              left: 0,
+              right: 4,
+              top: i * bandHeight,
+              height: bandHeight,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  '${i + 1}: ${zhl16cTissues[i].halfTimeN2Min.toStringAsFixed(0)}′',
+                  style: style,
+                  maxLines: 1,
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
+                ),
+              ),
+            ),
+        ],
+      );
+    });
+  }
+}
+
+class _ColourLegend extends StatelessWidget {
+  final TextStyle style;
+  const _ColourLegend({required this.style});
+
+  static const _bands = [
+    ('< 70%', Color(0xFF3B82F6)),
+    ('70–95%', Color(0xFFFACC15)),
+    ('95–100%', Color(0xFFF97316)),
+    ('> 100%', Color(0xFFDC2626)),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: _gutterWidth, top: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          for (final (label, colour) in _bands)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 14,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: colour,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(label, style: style),
+              ],
+            ),
+        ],
       ),
     );
   }
@@ -57,12 +215,10 @@ class _HeatmapPainter extends CustomPainter {
       // Sample at pixel resolution so a 4000-sample dive renders smoothly.
       final pixelW = size.width.ceil();
       for (var px = 0; px < pixelW; px++) {
-        // Map pixel column to sample index.
         final i = ((px / size.width) * (n - 1)).round();
         final value = series[i];
         if (value.isNaN) continue;
         paint.color = tissueSaturationColour(value);
-        // Draw a 1-px-wide vertical strip at this column for this band.
         canvas.drawRect(
           Rect.fromLTWH(px.toDouble(), c * bandHeight, 1, bandHeight),
           paint,
