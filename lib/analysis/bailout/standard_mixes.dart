@@ -27,17 +27,32 @@ const List<DiveGasMix> kDecoMixes = [
 
 const _ean50 = DiveGasMix(oxygenPercent: 50, heliumPercent: 0, isDiluent: false);
 const _o2 = DiveGasMix(oxygenPercent: 100, heliumPercent: 0, isDiluent: false);
+const _tx2135 =
+    DiveGasMix(oxygenPercent: 21, heliumPercent: 35, isDiluent: false);
+const _tx3525 =
+    DiveGasMix(oxygenPercent: 35, heliumPercent: 25, isDiluent: false);
 
 /// GUE bailout staging by trigger depth:
-/// - ≤ 21 m   : no deco gases — bottom mix only (1 stage)
-/// - 22–65 m  : add EAN 50 (2 stages)
-/// - > 65 m   : add EAN 50 + O₂ (3 stages)
+/// - ≤ 21 m    : no deco gases — bottom mix only (1 stage)
+/// - 22–65 m   : add EAN 50 (2 stages: bottom + EAN50)
+/// - 66–100 m  : add TX 21/35, EAN 50, O₂  (4 stages: bottom + 3)
+/// - > 100 m   : add TX 21/35, TX 35/25, EAN 50, O₂  (5 stages:
+///   bottom + 4 — the extra TX 35/25 intermediate keeps the bottom-
+///   mix-volume from blowing up on really deep ascents)
 ///
-/// Per the GUE bailout convention: shallow dives carry the bottom mix
-/// only, longer/deeper dives add EAN 50, and only the deeper-than-65 m
-/// dives bring O₂ for the 6 m / 3 m stops.
+/// Why the intermediate trimixes on deeper dives: a bailout from say
+/// 145 m on TX 10/70 would otherwise have to breathe the helium-rich
+/// bottom mix all the way from 145 m to the EAN 50 switch at 21 m,
+/// consuming 5000+ litres of bottom mix and forcing 2× bottom-stage
+/// redundancy. Adding TX 21/35 as a travel/intermediate gas at its
+/// 57 m switch depth drops the bottom-mix-volume by ~75 % and keeps
+/// the stage count practical. TX 35/25 (switch 36 m) covers the
+/// shallower portion of the same ascent.
 List<DiveGasMix> gueDecoGasesForDepth(double maxDepthMeters) {
-  if (maxDepthMeters > 65) return const [_ean50, _o2];
+  if (maxDepthMeters > 100) {
+    return const [_tx2135, _tx3525, _ean50, _o2];
+  }
+  if (maxDepthMeters > 65) return const [_tx2135, _ean50, _o2];
   if (maxDepthMeters > 21) return const [_ean50];
   return const [];
 }

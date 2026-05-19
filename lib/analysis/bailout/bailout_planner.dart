@@ -323,8 +323,9 @@ List<String> _buildVerdictDetails(
     } else {
       final rec = usage.recommendedTank;
       if (rec != null) {
+        final qty = rec.count > 1 ? '${rec.count}× ' : '';
         lines.add(
-          '$label ${reqL}L → ${rec.tank.name} @ ${rec.minFillPressureBar} bar',
+          '$label ${reqL}L → $qty${rec.tank.name} @ ${rec.minFillPressureBar} bar',
         );
       } else {
         lines.add('$label ${reqL}L → no suitable tank in catalogue');

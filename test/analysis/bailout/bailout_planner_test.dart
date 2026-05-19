@@ -309,5 +309,56 @@ void main() {
       expect(firstGas.heliumPercent, greaterThan(0),
           reason: 'a 51 m bailout must start on trimix, not nitrox');
     });
+
+    test(
+        'GUE config at 145 m (deep trimix dive) adds TX 21/35 + TX 35/25 '
+        'as intermediate trimixes between bottom mix and EAN 50', () {
+      // Reproducer for the 145 m cave-dive feedback (2026-05-19): a
+      // bailout on TX 10/70 from 145 m used to ride the bottom mix all
+      // the way to EAN 50's 21 m switch, burning ~5000 L of TMX and
+      // needing 2× bottom stages plus singletons of EAN 50 and O₂. The
+      // intermediate trimixes drop bottom-mix volume by ~75 %.
+      const dil10_70 = DiveGasMix(
+        oxygenPercent: 10,
+        heliumPercent: 70,
+        isDiluent: true,
+      );
+      final result = _plan(
+        maxDepth: 145.0,
+        recordedDiluent: dil10_70,
+        isGue: true,
+      );
+      // At >100 m the planner must offer all four "next" stages.
+      final gases = result.perGas.keys.toSet();
+      bool hasMix(int o2, int he) => gases.any(
+          (g) => g.oxygenPercent == o2 && g.heliumPercent == he);
+      expect(hasMix(21, 35), isTrue,
+          reason: 'TX 21/35 intermediate must be in the plan');
+      expect(hasMix(35, 25), isTrue,
+          reason: 'TX 35/25 intermediate must be in the plan');
+      expect(hasMix(50, 0), isTrue, reason: 'EAN 50 must be present');
+      expect(hasMix(100, 0), isTrue, reason: 'O₂ must be present');
+    });
+
+    test(
+        'GUE config at 80 m (single-intermediate dive) adds TX 21/35 but '
+        'NOT TX 35/25 — keeps the stage count down at moderate depths', () {
+      const dil18_45 = DiveGasMix(
+        oxygenPercent: 18,
+        heliumPercent: 45,
+        isDiluent: true,
+      );
+      final result = _plan(
+        maxDepth: 80.0,
+        recordedDiluent: dil18_45,
+        isGue: true,
+      );
+      final gases = result.perGas.keys.toSet();
+      bool hasMix(int o2, int he) => gases.any(
+          (g) => g.oxygenPercent == o2 && g.heliumPercent == he);
+      expect(hasMix(21, 35), isTrue);
+      expect(hasMix(35, 25), isFalse,
+          reason: 'TX 35/25 should NOT appear below 100 m');
+    });
   });
 }

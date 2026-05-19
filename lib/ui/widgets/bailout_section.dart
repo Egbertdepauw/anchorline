@@ -94,9 +94,12 @@ class BailoutSection extends StatelessWidget {
   int? _stagesNeeded() {
     if (result == null) return null;
     if (result!.scenario != BailoutScenario.gueStandards) return null;
+    // Sum tanks across all gases (a single gas that overflows one tank
+    // contributes multiple stages — the user carries N cylinders of
+    // the same gas to cover the required volume).
     return result!.perGas.values
         .where((u) => u.recommendedTank != null)
-        .length;
+        .fold<int>(0, (sum, u) => sum + u.recommendedTank!.count);
   }
 
   // ── Summary tile label/value for the third column ──────────────────
