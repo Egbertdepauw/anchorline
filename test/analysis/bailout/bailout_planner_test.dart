@@ -19,6 +19,18 @@ List<double> get _surfaceHe => List.filled(16, 0.0);
 /// to guarantee at least one stop.
 List<double> get _loadedN2 => List.generate(16, (i) => i < 4 ? 1.1 : 0.75);
 
+/// Heavily-loaded tissue state representing a real tech bailout from
+/// 80–145 m after ~30 min of bottom time. Forces multi-stop deco so
+/// deco-gas consumption is non-trivial (above the planner's "useful
+/// stage" threshold of 200 L). Surface tissues with deep depth give a
+/// "blink-and-bailout" plan with trivial deco gas use, which the trivial-
+/// gas filter correctly drops — useful behaviour but not what these
+/// depth-driven tests are pinning.
+List<double> get _techLoadedN2 =>
+    List.generate(16, (i) => i < 8 ? 2.6 : 1.6);
+List<double> get _techLoadedHe =>
+    List.generate(16, (i) => i < 8 ? 0.7 : 0.3);
+
 const _ean32 = DiveGasMix(oxygenPercent: 32, heliumPercent: 0, isDiluent: false);
 const _ean50 = DiveGasMix(oxygenPercent: 50, heliumPercent: 0, isDiluent: false);
 const _o2 = DiveGasMix(oxygenPercent: 100, heliumPercent: 0, isDiluent: false);
@@ -327,6 +339,12 @@ void main() {
         maxDepth: 80.0,
         recordedDiluent: dil18_45,
         isGue: true,
+        // Moderate tissue load — enough deco for EAN 50 / O₂ to see real
+        // use (≥ 200 L, above the trivial-stage threshold) without
+        // pushing bottom-mix volume past AL80. Heavier load would force
+        // an intermediate trimix; lighter would filter EAN 50 out.
+        n2: List.generate(16, (i) => i < 8 ? 2.0 : 1.2),
+        he: List.generate(16, (i) => i < 8 ? 0.3 : 0.1),
       );
       final gases = result.perGas.keys.toSet();
       bool hasMix(int o2, int he) => gases.any(
@@ -359,6 +377,10 @@ void main() {
         // breathing diver tips bottom-mix over the edge at this depth.
         availableTanks: const [kAl40, kAl80],
         sacBottom: 50,
+        // Realistic deep-trimix loading so the deco gases (EAN 50, O₂)
+        // see meaningful use and survive the trivial-gas filter.
+        n2: _techLoadedN2,
+        he: _techLoadedHe,
       );
       final gases = result.perGas.keys.toSet();
       bool hasMix(int o2, int he) => gases.any(

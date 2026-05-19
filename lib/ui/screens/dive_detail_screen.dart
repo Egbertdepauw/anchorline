@@ -904,12 +904,31 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
           milliseconds: triggerIdx * samples.sampleIntervalMs,
         );
 
-        // Recorded diluent (first entry flagged isDiluent).
+        // Recorded diluent = the gas actually breathed on the CCR loop at
+        // the trigger sample (deepest moment of the dive). Petrels log all
+        // configured gases; a diver may have several diluents enabled from
+        // past tech dives even though only one was active here. Picking the
+        // first-flagged isDiluent gas — the previous approach — could grab
+        // 21/35 from a stale configuration even when this dive ran on 21/0
+        // air. The active-gas index at trigger always identifies the
+        // diluent that was on the loop at depth.
         DiveGasMix? recordedDiluent;
-        for (final m in gasMixes) {
-          if (m.isDiluent) {
-            recordedDiluent = m;
-            break;
+        if (triggerIdx < samples.gasMixIndex.length) {
+          final activeIdx = samples.gasMixIndex[triggerIdx];
+          if (activeIdx >= 0 && activeIdx < gasMixes.length) {
+            final active = gasMixes[activeIdx];
+            if (active.isDiluent) recordedDiluent = active;
+          }
+        }
+        // Fallback: if the active gas isn't flagged as diluent (mis-flagged
+        // import, or an OC dive in CC-mode logging), fall back to the
+        // first-flagged diluent in the list.
+        if (recordedDiluent == null) {
+          for (final m in gasMixes) {
+            if (m.isDiluent) {
+              recordedDiluent = m;
+              break;
+            }
           }
         }
 

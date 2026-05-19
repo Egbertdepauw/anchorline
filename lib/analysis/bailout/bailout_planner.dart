@@ -197,6 +197,41 @@ BailoutResult planBailout({
   }
 
   // -------------------------------------------------------------------------
+  // 3b. Trivial-gas pruning (Scenario B only)
+  // -------------------------------------------------------------------------
+  // The simulator picks the "best gas" at every depth, so on an NDL
+  // bailout from say 25 m it switches to EAN 50 at the 21 m switch
+  // and uses 30 L of it on the way to surface. That isn't a real
+  // "stage to carry" — no one carries an AL40 for 30 L of gas. Drop
+  // deco gases whose consumption is below the meaningful-stage
+  // threshold and re-simulate so the table + perGas reflect the
+  // actually-needed ladder.
+  if (scenario == BailoutScenario.gueStandards) {
+    const minUsefulStageL = 200.0;
+    final bottomMix = gases
+        .reduce((a, b) => a.oxygenPercent <= b.oxygenPercent ? a : b);
+    final trivial = plan.volumeByGas.entries
+        .where((e) => e.key != bottomMix && e.value < minUsefulStageL)
+        .map((e) => e.key)
+        .toSet();
+    if (trivial.isNotEmpty) {
+      gases = gases.where((g) => !trivial.contains(g)).toList();
+      plan = simulateAscent(
+        triggerDepthMeters: triggerDepth,
+        initialN2Bar: tissueN2Bar,
+        initialHeBar: tissueHeBar,
+        availableGases: gases,
+        gfLow: gfLow,
+        gfHigh: gfHigh,
+        ascentRateFast: ascentRateFast,
+        ascentRateSlow: ascentRateSlow,
+        sacBottom: sacBottom,
+        sacDeco: sacDeco,
+      );
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // 4. Build per-gas usage
   // -------------------------------------------------------------------------
   final perGas = <DiveGasMix, GasUsage>{};
