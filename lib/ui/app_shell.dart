@@ -23,7 +23,8 @@ import '../sync/attachments/attachment_uploader.dart';
 import '../sync/attachments/attachment_uploader_impl.dart';
 import '../sync/attachments/pending_upload_store.dart';
 import '../sync/cloud/auth_service.dart';
-import '../sync/cloud/ccrlogger_backend_connector.dart' show SupabaseAuthSessionSource;
+import '../sync/cloud/ccrlogger_backend_connector.dart'
+    show SupabaseAuthSessionSource;
 import '../sync/cloud/cloud_config.dart';
 import '../sync/cloud/cloud_data_wiper.dart';
 import '../sync/cloud/cloud_sync_coordinator.dart';
@@ -141,15 +142,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _syncHealthService = SyncHealthService(
       SupabaseSyncHealthClient(Supabase.instance.client),
     );
-    _authSignInSub = Supabase.instance.client.auth.onAuthStateChange.listen(
-      (event) {
-        if (event.session != null) {
-          _syncHealthService.start();
-        } else {
-          _syncHealthService.stop();
-        }
-      },
-    );
+    _authSignInSub = Supabase.instance.client.auth.onAuthStateChange.listen((
+      event,
+    ) {
+      if (event.session != null) {
+        _syncHealthService.start();
+      } else {
+        _syncHealthService.stop();
+      }
+    });
     if (Supabase.instance.client.auth.currentSession != null) {
       _syncHealthService.start();
     }
@@ -185,8 +186,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Future<void> _initSubsurfaceSync() async {
     try {
       final docsDir = await getApplicationDocumentsDirectory();
-      final cloneRoot =
-          Directory(p.join(docsDir.path, 'subsurface_clone'));
+      final cloneRoot = Directory(p.join(docsDir.path, 'subsurface_clone'));
       if (!mounted) return;
       setState(() {
         _subsurfaceOrchestrator = SubsurfaceSyncOrchestrator(
@@ -210,6 +210,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     } catch (e, st) {
       debugPrint('Subsurface sync init failed: $e\n$st');
     }
+
+    // Future.delayed(const Duration(seconds: 5), () {
+    //   throw Exception('Sentry smoke test — please ignore');
+    // });
   }
 
   @override
@@ -249,19 +253,23 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       final msg = result.divesPushed == 0 && aborted == 0
           ? 'Already up to date.'
           : 'Pushed ${result.divesPushed} dive(s)'
-              '${aborted > 0 ? ", skipped $aborted (foreign edits)" : ""}'
-              '${result.divesSkipped > 0 ? ", ${result.divesSkipped} unchanged" : ""}.';
+                '${aborted > 0 ? ", skipped $aborted (foreign edits)" : ""}'
+                '${result.divesSkipped > 0 ? ", ${result.divesSkipped} unchanged" : ""}.';
       messenger.showSnackBar(SnackBar(content: Text(msg)));
     } on NoCredentialsException {
       if (!mounted) return;
-      messenger.showSnackBar(const SnackBar(
-        content: Text(
-          'No Subsurface Cloud credentials saved. Add them in Settings → Subsurface Cloud.',
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No Subsurface Cloud credentials saved. Add them in Settings → Subsurface Cloud.',
+          ),
         ),
-      ));
+      );
     } on SubsurfaceSyncException catch (e) {
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text('Sync failed: ${e.message}')));
+      messenger.showSnackBar(
+        SnackBar(content: Text('Sync failed: ${e.message}')),
+      );
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text('Sync failed: $e')));
@@ -294,14 +302,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               tooltip: 'Dive sites map',
               icon: const Icon(Icons.map_outlined),
               onPressed: () {
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => SitesMapScreen(
-                    dao: _diveAnnotationsDao,
-                    currentLat: null,
-                    currentLon: null,
-                    settingsNotifier: widget.settingsNotifier,
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => SitesMapScreen(
+                      dao: _diveAnnotationsDao,
+                      currentLat: null,
+                      currentLon: null,
+                      settingsNotifier: widget.settingsNotifier,
+                    ),
                   ),
-                ));
+                );
               },
             ),
           if (_currentIndex == 0)
@@ -309,22 +319,23 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               tooltip: 'Settings',
               icon: const Icon(Icons.settings_outlined),
               onPressed: () {
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => SettingsScreen(
-                    notifier: widget.settingsNotifier,
-                    authService: widget.authService,
-                    syncStatusSource: _syncStatusSource,
-                    db: widget.db,
-                    powerSyncDb: widget.powerSyncDb,
-                    cloudDataWiper: widget.cloudDataWiper,
-                    attachmentObjectWiper: _attachmentObjectWiper,
-                    subsurfaceOrchestrator: _subsurfaceOrchestrator,
-                    subsurfaceCredentials: _subsurfaceCredentials,
-                    diveDao: _diveDao,
-                    subsurfaceBootstrapImporter:
-                        _subsurfaceBootstrapImporter,
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => SettingsScreen(
+                      notifier: widget.settingsNotifier,
+                      authService: widget.authService,
+                      syncStatusSource: _syncStatusSource,
+                      db: widget.db,
+                      powerSyncDb: widget.powerSyncDb,
+                      cloudDataWiper: widget.cloudDataWiper,
+                      attachmentObjectWiper: _attachmentObjectWiper,
+                      subsurfaceOrchestrator: _subsurfaceOrchestrator,
+                      subsurfaceCredentials: _subsurfaceCredentials,
+                      diveDao: _diveDao,
+                      subsurfaceBootstrapImporter: _subsurfaceBootstrapImporter,
+                    ),
                   ),
-                ));
+                );
               },
             ),
         ],
@@ -341,38 +352,41 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                   child: IndexedStack(
                     index: _currentIndex,
                     children: [
-                DiveListScreen(
-                  notifier: _diveListNotifier,
-                  diveDao: _diveDao,
-                  annotationsDao: _diveAnnotationsDao,
-                  equipmentDao: _equipmentDao,
-                  attachmentsDao: _diveAttachmentsDao,
-                  attachmentUploader: _attachmentUploader,
-                  attachmentDownloader: _attachmentDownloader,
-                  settingsNotifier: widget.settingsNotifier,
-                ),
-                ImportScreen(
-                    notifier: _importNotifier, onViewDives: _onViewDives),
-                EquipmentLandingScreen(
-                  dao: _equipmentDao,
-                  diveDao: _diveDao,
-                  annotationsDao: _diveAnnotationsDao,
-                  settingsNotifier: widget.settingsNotifier,
-                ),
-                SettingsScreen(
-                  notifier: widget.settingsNotifier,
-                  authService: widget.authService,
-                  syncStatusSource: _syncStatusSource,
-                  db: widget.db,
-                  powerSyncDb: widget.powerSyncDb,
-                  cloudDataWiper: widget.cloudDataWiper,
-                  attachmentObjectWiper: _attachmentObjectWiper,
-                  subsurfaceOrchestrator: _subsurfaceOrchestrator,
-                  subsurfaceCredentials: _subsurfaceCredentials,
-                  diveDao: _diveDao,
-                  subsurfaceBootstrapImporter: _subsurfaceBootstrapImporter,
-                ),
-              ],
+                      DiveListScreen(
+                        notifier: _diveListNotifier,
+                        diveDao: _diveDao,
+                        annotationsDao: _diveAnnotationsDao,
+                        equipmentDao: _equipmentDao,
+                        attachmentsDao: _diveAttachmentsDao,
+                        attachmentUploader: _attachmentUploader,
+                        attachmentDownloader: _attachmentDownloader,
+                        settingsNotifier: widget.settingsNotifier,
+                      ),
+                      ImportScreen(
+                        notifier: _importNotifier,
+                        onViewDives: _onViewDives,
+                      ),
+                      EquipmentLandingScreen(
+                        dao: _equipmentDao,
+                        diveDao: _diveDao,
+                        annotationsDao: _diveAnnotationsDao,
+                        settingsNotifier: widget.settingsNotifier,
+                      ),
+                      SettingsScreen(
+                        notifier: widget.settingsNotifier,
+                        authService: widget.authService,
+                        syncStatusSource: _syncStatusSource,
+                        db: widget.db,
+                        powerSyncDb: widget.powerSyncDb,
+                        cloudDataWiper: widget.cloudDataWiper,
+                        attachmentObjectWiper: _attachmentObjectWiper,
+                        subsurfaceOrchestrator: _subsurfaceOrchestrator,
+                        subsurfaceCredentials: _subsurfaceCredentials,
+                        diveDao: _diveDao,
+                        subsurfaceBootstrapImporter:
+                            _subsurfaceBootstrapImporter,
+                      ),
+                    ],
                   ),
                 );
               },
@@ -385,10 +399,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         onTap: (index) => setState(() => _currentIndex = index),
         type: BottomNavigationBarType.fixed,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.scuba_diving), label: 'Dives'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.scuba_diving),
+            label: 'Dives',
+          ),
           BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: 'Import'),
-          BottomNavigationBarItem(icon: Icon(Icons.build_outlined), label: 'Equipment'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), label: 'Settings'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.build_outlined),
+            label: 'Equipment',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings_outlined),
+            label: 'Settings',
+          ),
         ],
       ),
     );
