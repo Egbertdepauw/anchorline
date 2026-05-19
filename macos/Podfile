@@ -38,5 +38,14 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_macos_build_settings(target)
+    # Some pods (geolocator_apple's privacy-bundle target as of 14.0.x)
+    # ship a podspec with `s.osx.deployment_target = '10.11'` even though
+    # Xcode 26+ has dropped support for anything below 10.13. Override it
+    # here so the build doesn't warn on every invocation.
+    target.build_configurations.each do |config|
+      if config.build_settings['MACOSX_DEPLOYMENT_TARGET'].to_f < 10.13
+        config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '10.15'
+      end
+    end
   end
 end
