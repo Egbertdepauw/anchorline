@@ -46,17 +46,29 @@ class DiveListNotifier extends ChangeNotifier {
   Map<String, dom.DiveAnnotation> get annotationsByDiveId =>
       Map.unmodifiable(_annotationsByDiveId);
 
-  /// CCRLog-internal sequential dive number, keyed by dive id. Computed
-  /// over all non-deleted dives sorted by `start_time` ascending — the
-  /// chronologically-oldest dive is `#1`, newest is `#N`. Stable across
-  /// filter changes (filtering hides rows; it doesn't renumber). The
-  /// number replaces the dive computer's own counter for display purposes
-  /// so divers with multiple DCs (or DCs that have been factory-reset)
-  /// still see one continuous sequence.
+  /// Display dive number keyed by dive id.
+  ///
+  /// Returns the dive computer's own counter (`dcDiveNumber`). This
+  /// matches what the Petrel itself shows AND what Subsurface displays,
+  /// so users who cross-check between the three systems don't see
+  /// confusing off-by-N mismatches.
+  ///
+  /// Previously this returned a CCRLog-internal chronological sequence
+  /// (1..N over all imported dives). That worked cleanly when every
+  /// single dive lived in CCRLog — but as soon as the user had dives in
+  /// Subsurface or on the DC that hadn't been imported into CCRLog yet,
+  /// CCRLog's numbering lagged the others and confused anyone trying
+  /// to find "dive #692" across all three UIs.
+  ///
+  /// Trade-off: for users who switch dive computers (or factory-reset
+  /// one), `dcDiveNumber` can collide across DCs — two different dives
+  /// can both display as e.g. "#147". A future revision could namespace
+  /// the display by serial when collisions are detected. Manual entries
+  /// with `dcDiveNumber == 0` currently display as "#0"; revisit when
+  /// manual-dive entry is a real feature.
   Map<String, int> get sequenceByDiveId {
-    final n = _dives.length;
     return {
-      for (var i = 0; i < n; i++) _dives[i].id: n - i,
+      for (final d in _dives) d.id: d.dcDiveNumber,
     };
   }
 
