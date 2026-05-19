@@ -1,23 +1,25 @@
-/// Team bailout distribution — splits a solo bailout plan across a
-/// buddy team so the per-diver carry shrinks.
+/// Team bailout distribution — splits the SET of bailout stages across
+/// a buddy team so the per-diver carry count shrinks.
 ///
-/// Model: total team-carried volume per gas equals the solo-required
-/// volume (one OC bailout, the team supports the bailing-out diver).
+/// Volume model: full redundancy, NOT shared. Every stage a diver carries
+/// holds the same volume the solo plan requires — if a diver is the one
+/// bailing out and gets separated from the team, their own stages must
+/// last the whole ascent. Sharing volumes across divers (so each carries
+/// 1/N of the requirement) creates a dependency on team handoffs that
+/// fails the moment the team is split.
 ///
 /// Distribution rules:
-///   1. Every diver carries one stage of the bottom mix. Each diver's
-///      stage holds `solo_bottom_volume / team_size` litres — the team's
-///      total bottom-mix carry equals the solo requirement.
+///   1. Every diver carries one stage of the bottom mix at the FULL
+///      solo-required volume.
 ///   2. Every diver ALSO carries the "must-have" shallow deco gas (the
-///      richest non-O₂ deco gas in the plan — typically EAN 50). This
-///      guarantees that, even if the team gets separated, every diver
-///      can self-bailout to at least the 6 m stop: bottom-mix down low,
-///      switch to EAN 50 at 21 m, finish deco to surface on it. Per-
-///      stage volume = solo-required / N (same sharing model).
-///   3. Remaining deco-gas stages (intermediates, O₂) are carried by ONE
-///      diver each — you can't half-fill an O₂ tank across two people.
-///      Stages assigned round-robin to whichever diver has the fewest
-///      stages so far.
+///      richest non-O₂ deco gas in the plan — typically EAN 50) at the
+///      FULL solo-required volume. Together with the bottom mix, this
+///      gives every diver an independent self-bailout chain to the 6 m
+///      stop even if the team is separated.
+///   3. Remaining deco-gas stages (intermediates, O₂) are carried by
+///      one diver each, also at the full solo-required volume. Stages
+///      assigned round-robin to whichever diver has the fewest stages
+///      so far.
 ///   4. Tank picks come from the same [recommend] used for solo plans.
 library;
 
@@ -122,13 +124,9 @@ List<TeamCarry> distributeForTeam({
     assigned[minIdx].add(gas);
   }
 
-  // Step 3: build TeamCarry records. Per-stage volume = required / N_carriers.
-  final carriersByGas = <DiveGasMix, int>{};
-  for (final list in assigned) {
-    for (final gas in list) {
-      carriersByGas[gas] = (carriersByGas[gas] ?? 0) + 1;
-    }
-  }
+  // Step 4: build TeamCarry records. Per-stage volume = full solo
+  // requirement (NOT divided across carriers — see redundancy note in
+  // the library doc above).
   final volumeByGas = {
     for (final entry in usedGases) entry.key: entry.value.requiredL,
   };
@@ -137,7 +135,7 @@ List<TeamCarry> distributeForTeam({
   for (var i = 0; i < teamSize; i++) {
     final stages = <TeamGasStage>[];
     for (final gas in assigned[i]) {
-      final perStage = volumeByGas[gas]! / carriersByGas[gas]!;
+      final perStage = volumeByGas[gas]!;
       stages.add(TeamGasStage(
         gas: gas,
         perStageVolumeL: perStage,

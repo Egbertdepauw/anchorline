@@ -38,7 +38,7 @@ void main() {
   });
 
   test('team of 2 with 3-stage solo: both carry bottom + EAN 50, '
-      'one additionally carries O₂', () {
+      'one additionally carries O₂ — each at FULL solo volume', () {
     final out = distributeForTeam(
       solo: _result({_tx968: 1800, _ean50: 770, _o2: 600}),
       teamSize: 2,
@@ -50,13 +50,13 @@ void main() {
     expect(out.every((d) => d.stages.any((s) => s.gas == _tx968)), isTrue);
     expect(out.every((d) => d.stages.any((s) => s.gas == _ean50)), isTrue);
 
-    // Bottom per-stage volume = 1800 / 2 = 900 L.
+    // Full-redundancy volumes — each diver's stage = full solo requirement
+    // (NOT divided across the team). A separated diver must self-bailout
+    // on their own gas.
     final bottom = out.first.stages.firstWhere((s) => s.gas == _tx968);
-    expect(bottom.perStageVolumeL, closeTo(900, 1));
-
-    // EAN 50 per-stage volume = 770 / 2 = 385 L (also shared).
+    expect(bottom.perStageVolumeL, closeTo(1800, 1));
     final ean = out.first.stages.firstWhere((s) => s.gas == _ean50);
-    expect(ean.perStageVolumeL, closeTo(385, 1));
+    expect(ean.perStageVolumeL, closeTo(770, 1));
 
     // O₂ is carried by exactly one diver — only one stage in the team.
     final o2Carriers =
@@ -81,9 +81,9 @@ void main() {
     expect(out.every((d) => d.stages.any((s) => s.gas == _tx968)), isTrue);
     expect(out.every((d) => d.stages.any((s) => s.gas == _ean50)), isTrue);
 
-    // Bottom per-stage volume = 1800 / 3 = 600 L.
+    // Full solo volume on every diver's stage (no division by team size).
     final bottom = out.first.stages.firstWhere((s) => s.gas == _tx968);
-    expect(bottom.perStageVolumeL, closeTo(600, 1));
+    expect(bottom.perStageVolumeL, closeTo(1800, 1));
 
     // O₂ carried by exactly one diver.
     final o2Carriers =
