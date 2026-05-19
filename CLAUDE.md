@@ -166,6 +166,20 @@ This order isolates the risk and keeps something demonstrable at every step.
    ```
    Upstream issue: https://github.com/DartGit-dev/git2dart_binaries/issues/14. When upstream ships a fixed version, pin it in pubspec and delete this section.
 
+- **Xcode 26 + Command Line Tools "MacOSX SDK shadowing" breaks iOS builds.** Symptom (release-mode `flutter build ios` or `flutter build ipa` only — debug `flutter run` is unaffected):
+  ```
+  ld: building for 'iOS', but linking in dylib
+  (/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk/usr/lib/libobjc.A.tbd)
+  built for 'macOS macCatalyst zippered(macOS/Catalyst)'
+  ```
+  Both Xcode.app's iPhoneOS SDK and CommandLineTools' MacOSX SDK ship a `usr/lib/libobjc.A.tbd`. On Xcode 26 the linker's fallback resolution finds the CLT MacOSX one first — even with `xcode-select -p`, `DEVELOPER_DIR`, `-isysroot`, and `SUPPORTS_MACCATALYST=NO` all set correctly. iPhoneOS's `libobjc.A.tbd` only carries iOS targets, CLT MacOSX's only carries macOS/maccatalyst targets, so the build fails the platform check at link time.
+  **Workaround applied locally on egbert's MBP** — CLT's SDK directory moved aside:
+  ```bash
+  sudo mv /Library/Developer/CommandLineTools/SDKs /Library/Developer/CommandLineTools/SDKs.bak
+  ```
+  Reversible if anything that relies on CLT's MacOSX SDK headers (some Homebrew formulas compiled from source, some Python native extensions) breaks — `sudo mv` it back.
+  Defensive `SUPPORTS_MACCATALYST = NO` is also set in `ios/Podfile`'s `post_install` (commit 5582556) — doesn't fix THIS issue alone but covers other future pods that might trip on the same class of bug.
+
 ## Sync recovery procedures
 
 These are the recovery paths for issues we've actually hit on the live deployment. Follow them in order — most are fast and safe, the last is destructive.
