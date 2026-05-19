@@ -50,6 +50,7 @@ import '../../analysis/deco/replay_result.dart';
 import '../../analysis/deco/zhl16c.dart' show SampleStream;
 import '../../analysis/bailout/bailout_planner.dart';
 import '../../analysis/bailout/tank_recommender.dart';
+import '../../analysis/bailout/team_bailout.dart' show distributeForTeam;
 import '../widgets/bailout_section.dart';
 
 class DiveDetailScreen extends StatefulWidget {
@@ -980,6 +981,15 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
           availableTanks: tankCatalogue,
         );
 
+        // Team bailout = self + buddies. The Team tab is hidden when
+        // teamSize == 1 (no buddies on the dive).
+        final teamSize = 1 + _annotationsNotifier.buddies.length;
+        final teamCarry = distributeForTeam(
+          solo: result,
+          teamSize: teamSize,
+          availableTanks: tankCatalogue,
+        );
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: BailoutSection(
@@ -989,6 +999,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
             sacDeco: widget.settingsNotifier.bailoutSacDeco,
             isGueConfig: widget.settingsNotifier.gueDiluentConfig,
             bottomTimeBeforeTrigger: bottomTimeBeforeTrigger,
+            teamCarry: teamCarry,
           ),
         );
       },

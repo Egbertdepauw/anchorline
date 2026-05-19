@@ -12,6 +12,10 @@ import 'package:flutter/material.dart';
 
 import '../../analysis/bailout/ascent_simulator.dart' show AscentStop;
 import '../../analysis/bailout/bailout_result.dart';
+import '../../analysis/bailout/icd.dart'
+    show IcdRisk, IcdSeverity, detectIcdRisks;
+import '../../analysis/bailout/team_bailout.dart'
+    show TeamCarry, TeamGasStage;
 import '../../analysis/gas_density.dart' show mixDensityAt1Atm;
 import '../../data/models/dive.dart' show DiveGasMix;
 import '../components/section_header.dart';
@@ -30,6 +34,10 @@ class BailoutSection extends StatelessWidget {
   /// total elapsed dive time, not just elapsed-since-trigger.
   final Duration bottomTimeBeforeTrigger;
 
+  /// Team-bailout per-diver carry suggestion. Empty when the dive has no
+  /// buddies (team size 1) — the solo verdict already IS the carry.
+  final List<TeamCarry> teamCarry;
+
   const BailoutSection({
     super.key,
     required this.result,
@@ -38,6 +46,7 @@ class BailoutSection extends StatelessWidget {
     required this.sacDeco,
     required this.isGueConfig,
     this.bottomTimeBeforeTrigger = Duration.zero,
+    this.teamCarry = const [],
   });
 
   // ── Colour helpers ──────────────────────────────────────────────────
@@ -134,7 +143,7 @@ class BailoutSection extends StatelessWidget {
           const Center(child: CircularProgressIndicator()),
           const SizedBox(height: Spacing.lg),
         ] else ...[
-          // ── Scenario banner ─────────────────────────────────────────
+          // ── Scenario banner (always above any tabs) ─────────────────
           _Banner(
             accent: _scenarioAccent,
             child: Text(
@@ -144,70 +153,253 @@ class BailoutSection extends StatelessWidget {
               ),
             ),
           ),
-
-          // ── Summary row ─────────────────────────────────────────────
           const SizedBox(height: Spacing.sm),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _SummaryTile(
-                    label: 'Total time',
-                    value: '${r.totalTime.inMinutes} min',
-                    scheme: scheme,
-                  ),
-                ),
-                const SizedBox(width: Spacing.sm),
-                Expanded(
-                  child: _SummaryTile(
-                    label: 'Total vol',
-                    value: '${_totalVolumeL().round()} L',
-                    scheme: scheme,
-                  ),
-                ),
-                const SizedBox(width: Spacing.sm),
-                Expanded(
-                  child: _SummaryTile(
-                    label: _thirdTile().$1,
-                    value: _thirdTile().$2,
-                    scheme: scheme,
-                  ),
-                ),
-              ],
-            ),
-          ),
 
-          // ── Per-stop table ───────────────────────────────────────────
-          if (r.stops.isNotEmpty) ...[
-            const SizedBox(height: Spacing.md),
-            _StopTable(
-              stops: r.stops,
-              scheme: scheme,
-              startingRuntime: bottomTimeBeforeTrigger,
-            ),
-          ],
-
-          // ── Verdict banner ───────────────────────────────────────────
-          const SizedBox(height: Spacing.sm),
-          _Banner(
-            accent: _verdictAccent,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final line in r.verdictDetails)
-                  Text(
-                    line,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.wreck.textPrimary,
-                    ),
-                  ),
-              ],
-            ),
-          ),
+          if (teamCarry.isEmpty)
+            _buildSoloContent(context, r, scheme)
+          else
+            _buildTabbedContent(context, r, scheme),
         ],
       ],
     );
+  }
+
+  // ── Tabbed wrapper ─────────────────────────────────────────────────────
+
+  Widget _buildTabbedContent(
+      BuildContext context, BailoutResult r, ColorScheme scheme) {
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const TabBar(
+            tabs: [Tab(text: 'Solo'), Tab(text: 'Team')],
+            isScrollable: false,
+          ),
+          const SizedBox(height: Spacing.sm),
+          // No fixed TabBarView height — instead select via the inherited
+          // controller so each tab body sizes to its content. The bailout
+          // stop table can be ~25 rows on a deep dive; a Team view is only
+          // a handful of lines. Letting each tab size to its content keeps
+          // the parent ListView's scroll height honest.
+          Builder(builder: (context) {
+            final controller = DefaultTabController.of(context);
+            return AnimatedBuilder(
+              animation: controller,
+              builder: (_, _) {
+                return controller.index == 0
+                    ? _buildSoloContent(context, r, scheme)
+                    : _buildTeamContent(context, r);
+              },
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  // ── Solo content (the worst-case ascent + table + verdict) ────────────
+
+  Widget _buildSoloContent(
+      BuildContext context, BailoutResult r, ColorScheme scheme) {
+    final icdRisks = detectIcdRisks(r.stops);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Summary row
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _SummaryTile(
+                  label: 'Total time',
+                  value: '${r.totalTime.inMinutes} min',
+                  scheme: scheme,
+                ),
+              ),
+              const SizedBox(width: Spacing.sm),
+              Expanded(
+                child: _SummaryTile(
+                  label: 'Total vol',
+                  value: '${_totalVolumeL().round()} L',
+                  scheme: scheme,
+                ),
+              ),
+              const SizedBox(width: Spacing.sm),
+              Expanded(
+                child: _SummaryTile(
+                  label: _thirdTile().$1,
+                  value: _thirdTile().$2,
+                  scheme: scheme,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Per-stop table
+        if (r.stops.isNotEmpty) ...[
+          const SizedBox(height: Spacing.md),
+          _StopTable(
+            stops: r.stops,
+            scheme: scheme,
+            startingRuntime: bottomTimeBeforeTrigger,
+          ),
+        ],
+        // ICD warning (above verdict so it's seen before the green/amber
+        // verdict colour conditions the diver's read of the plan).
+        if (icdRisks.isNotEmpty) ...[
+          const SizedBox(height: Spacing.sm),
+          _IcdBanner(risks: icdRisks),
+        ],
+        // Verdict banner
+        const SizedBox(height: Spacing.sm),
+        _Banner(
+          accent: _verdictAccent,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final line in r.verdictDetails)
+                Text(
+                  line,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.wreck.textPrimary,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Team content (per-diver carry) ────────────────────────────────────
+
+  Widget _buildTeamContent(BuildContext context, BailoutResult r) {
+    final icdRisks = detectIcdRisks(r.stops);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Banner(
+          accent: _blue,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Team of ${teamCarry.length} — suggested per-diver carry',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.wreck.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              for (final diver in teamCarry) ...[
+                Text(
+                  'Diver ${diver.diverIndex}',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.wreck.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                for (final s in diver.stages)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Text(
+                      _formatStage(s),
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.wreck.textPrimary,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 4),
+              ],
+            ],
+          ),
+        ),
+        if (icdRisks.isNotEmpty) ...[
+          const SizedBox(height: Spacing.sm),
+          _IcdBanner(risks: icdRisks),
+        ],
+      ],
+    );
+  }
+
+  /// "  TMX 9/68 — 900 L → AL40 @ 158 bar"
+  static String _formatStage(TeamGasStage stage) {
+    final mix = _StopTable._mixLabel(stage.gas);
+    final vol = stage.perStageVolumeL.round();
+    final tank = stage.tank;
+    if (tank == null) return '  $mix — $vol L';
+    final count = tank.count > 1 ? '${tank.count}× ' : '';
+    return '  $mix — $vol L → $count${tank.tank.name} @ '
+        '${tank.minFillPressureBar} bar';
+  }
+}
+
+/// ICD risk banner — amber for marginal, red for severe. Lists each flagged
+/// switch with its from/to gases, switch depth, and the rule it broke.
+class _IcdBanner extends StatelessWidget {
+  const _IcdBanner({required this.risks});
+
+  final List<IcdRisk> risks;
+
+  @override
+  Widget build(BuildContext context) {
+    final anySevere = risks.any((r) => r.severity == IcdSeverity.severe);
+    final accent = anySevere
+        ? BailoutSection._red
+        : BailoutSection._amber;
+    final header = anySevere
+        ? 'ICD risk — severe gas switch(es) detected'
+        : 'ICD risk — switch breaks the 5:1 rule';
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: Spacing.xs),
+      padding: const EdgeInsets.all(Spacing.sm + 2),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.12),
+        borderRadius: Radii.cardBr,
+        border: Border(left: BorderSide(color: accent, width: 3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            header,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.wreck.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          for (final risk in risks)
+            Text(
+              _formatRisk(risk),
+              style: AppTypography.caption.copyWith(
+                color: AppColors.wreck.textSecondary,
+              ),
+            ),
+          const SizedBox(height: 4),
+          Text(
+            'Doolette/Mitchell: ΔO₂ should not exceed |ΔHe|/5. Inserting an '
+            'intermediate trimix reduces the helium gradient at each switch.',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.wreck.textSecondary,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatRisk(IcdRisk r) {
+    final from = _StopTable._mixLabel(r.fromGas);
+    final to = _StopTable._mixLabel(r.toGas);
+    final depth = r.switchDepthMeters.toStringAsFixed(0);
+    final severity = r.severity == IcdSeverity.severe ? 'severe' : 'marginal';
+    final dO2 = r.deltaO2 >= 0 ? '+${r.deltaO2}' : '${r.deltaO2}';
+    return '  • $from → $to at $depth m '
+        '(ΔO₂ $dO2 / ΔHe ${r.deltaHe} — $severity)';
   }
 }
 
