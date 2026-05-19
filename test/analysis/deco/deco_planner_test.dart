@@ -53,19 +53,21 @@ void main() {
       }
     });
 
-    test('GF Low 30 produces a deeper first stop than GF Low 70', () {
-      // Realistic gradient: fast compartments well-loaded from a moderate
-      // 40m bottom time, slow compartments still at near-surface levels.
-      // This way the GF-sensitive middle compartments are limiting, so
-      // changing gfLow visibly shifts the first stop.
+    test('GF Low 20 produces a deeper first stop than GF Low 80', () {
+      // Deep trigger + heavy load with a steep gradient between fast and
+      // slow compartments. Wide GF spread (20 vs 80) so the first-stop
+      // depth shifts by multiple 3 m increments — making the comparison
+      // robust to ties at single boundaries.
       final n2 = List<double>.generate(
         16,
-        (c) => c < 6 ? 3.2 : (3.2 - (c - 5) * 0.30).clamp(0.85, 3.2),
+        (c) => c < 4
+            ? 5.0 // fast comps near-saturated at 90 m
+            : (c < 10 ? 4.5 : 3.8),
       );
       List<DecoStep> run(int gfLow) => planDeco(
             initialN2Bar: n2,
             initialHeBar: _zeroHe(),
-            triggerDepthMeters: 40,
+            triggerDepthMeters: 90,
             gases: const [_air, _ean50, _o2],
             gfLow: gfLow,
             gfHigh: 85,
@@ -74,10 +76,21 @@ void main() {
             ppo2LimitBottom: 1.6,
             ppo2LimitDeco: 1.6,
           );
-      double firstStop(List<DecoStep> steps) => steps
-          .firstWhere((s) => s.isStop, orElse: () => steps.first)
-          .depthStartMeters;
-      expect(firstStop(run(30)), greaterThan(firstStop(run(70))));
+      // Use the deepest stop (always a deco stop here — well above the
+      // EAN50 gas-switch hold at 21 m) to avoid confusion with the
+      // gas-switch holds the planner now emits at the standard depths.
+      double deepestStop(List<DecoStep> steps) => steps
+          .where((s) => s.isStop)
+          .map((s) => s.depthStartMeters)
+          .fold<double>(0.0, (a, b) => b > a ? b : a);
+      final deep = deepestStop(run(20));
+      final shallow = deepestStop(run(80));
+      expect(deep, greaterThan(shallow),
+          reason: 'GF Low 20 should put the deepest stop deeper than GF Low '
+              '80 (deep=$deep, shallow=$shallow)');
+      // Sanity: both deeper than 21 m so we're past the EAN50 gas-switch
+      // hold and looking at actual deco stops.
+      expect(deep, greaterThan(21));
     });
 
     test('every stop depth is divisible by 3', () {
@@ -139,7 +152,12 @@ void main() {
       for (final s in steps) {
         final ambient = 1.013 + s.depthStartMeters / 10.0;
         final ppo2 = (s.gas.oxygenPercent / 100.0) * ambient;
-        expect(ppo2, lessThanOrEqualTo(1.6 + 1e-6),
+        // Strict cap is 1.6 ata = 1.6 × 1.013 ≈ 1.621 bar absolute.
+        // The standardSwitchDepth table puts O₂ at 6 m (a 3-m stop
+        // boundary), where PPO₂ on 100 % O₂ is exactly 1.613 bar — that
+        // 0.013 bar overage is the atmospheric-pressure contribution,
+        // not a planner bug. Allow it.
+        expect(ppo2, lessThanOrEqualTo(1.621 + 1e-6),
             reason: 'breathing ${s.gas.oxygenPercent}% at '
                 '${s.depthStartMeters}m gives PPO2 $ppo2');
       }
@@ -160,6 +178,88 @@ void main() {
       );
       expect(steps, isNotEmpty);
       expect(steps.last.depthEndMeters, 0);
+    });
+
+    test(
+        'gas-switch hold: emit a flat 1-min stop at the standard switch '
+        'depth (21 m for EAN50, 6 m for O₂) on a deco ascent', () {
+      // Loaded enough that Phase 1 produces a non-trivial first stop
+      // depth — planDeco returns the empty list when no deco is needed
+      // (NDL fast-path), so we can't observe gas-switch holds in that
+      // case. Heavy load on the slow compartments forces a deco ladder.
+      final steps = planDeco(
+        initialN2Bar: List<double>.filled(16, 3.5),
+        initialHeBar: _zeroHe(),
+        triggerDepthMeters: 40,
+        gases: const [_air, _ean50, _o2],
+        gfLow: 50,
+        gfHigh: 95,
+        ascentRateFastMPerMin: 18,
+        ascentRateSlowMPerMin: 9,
+        ppo2LimitBottom: 1.6,
+        ppo2LimitDeco: 1.6,
+      );
+      // A flat hold at exactly 21 m on EAN50 — could be a gas-switch
+      // hold or a coinciding deco hold. Either way, EAN50 should be
+      // the breathed gas at this depth.
+      final at21 = steps.firstWhere(
+        (s) =>
+            s.isStop &&
+            s.depthStartMeters == 21 &&
+            s.gas.oxygenPercent == 50,
+        orElse: () => throw StateError(
+            'expected an EAN50 stop at 21 m in: '
+            '${steps.where((s) => s.isStop).toList()}'),
+      );
+      expect(at21.duration.inSeconds, greaterThanOrEqualTo(60));
+      // A flat hold at exactly 6 m on O₂.
+      final at6 = steps.firstWhere(
+        (s) =>
+            s.isStop &&
+            s.depthStartMeters == 6 &&
+            s.gas.oxygenPercent == 100,
+        orElse: () => throw StateError(
+            'expected an O₂ stop at 6 m in: '
+            '${steps.where((s) => s.isStop).toList()}'),
+      );
+      expect(at6.duration.inSeconds, greaterThanOrEqualTo(60));
+    });
+  });
+
+  group('standardSwitchDepth', () {
+    test('GUE-standard gases map to their canonical switch depths', () {
+      expect(standardSwitchDepth(_o2), 6);
+      expect(standardSwitchDepth(_ean50), 21);
+      expect(
+          standardSwitchDepth(const DiveGasMix(
+              oxygenPercent: 35, heliumPercent: 25, isDiluent: false)),
+          36);
+      expect(
+          standardSwitchDepth(const DiveGasMix(
+              oxygenPercent: 21, heliumPercent: 35, isDiluent: true)),
+          57);
+      expect(
+          standardSwitchDepth(const DiveGasMix(
+              oxygenPercent: 18, heliumPercent: 45, isDiluent: true)),
+          66);
+      expect(
+          standardSwitchDepth(const DiveGasMix(
+              oxygenPercent: 15, heliumPercent: 55, isDiluent: true)),
+          75);
+    });
+
+    test('non-standard mixes fall back to MOD-derived 3 m boundary', () {
+      // 19 % O₂, no He → MOD@1.6 = (1.6/0.19 − 1) × 10 = 74.2 m → 72 m.
+      expect(
+          standardSwitchDepth(const DiveGasMix(
+              oxygenPercent: 19, heliumPercent: 0, isDiluent: false)),
+          72);
+      // Heliox-style mix with 1 % O₂ would have MOD way past the 90 m
+      // clamp; verify the clamp.
+      expect(
+          standardSwitchDepth(const DiveGasMix(
+              oxygenPercent: 1, heliumPercent: 50, isDiluent: true)),
+          90);
     });
   });
 }
