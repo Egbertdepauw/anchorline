@@ -6,6 +6,8 @@ library;
 
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+
 import '../parser/decompressor.dart';
 import 'packet.dart';
 import 'slip_codec.dart';
@@ -248,8 +250,7 @@ class ShearwaterProtocol {
       if (blockMs < minBlockMs) minBlockMs = blockMs;
       blocksRead++;
       if (blocksRead <= 3 || blocksRead % 25 == 0) {
-        // ignore: avoid_print
-        print('  block $blocksRead: ${blockMs}ms '
+        debugPrint('  block $blocksRead: ${blockMs}ms '
             '(read ${_lastReadMs}ms × ${_lastReadFrameCount}f'
             '${pipelineWindow > 1 ? ', pipelined w=$pipelineWindow' : ', write ${_lastWriteMs}ms × ${_lastWriteFrameCount}f'})');
       }
@@ -371,8 +372,7 @@ class ShearwaterProtocol {
         blocksRead > 0 ? (totalWriteMs / blocksRead).toStringAsFixed(1) : '0';
     final avgReadMs =
         blocksRead > 0 ? (totalReadMs / blocksRead).toStringAsFixed(1) : '0';
-    // ignore: avoid_print
-    print('download(addr=0x${address.toRadixString(16)}) '
+    debugPrint('download(addr=0x${address.toRadixString(16)}) '
         '$blocksRead blocks, ${nbytes}B, ${totalMs}ms '
         '($kbps KB/s, first block ${firstBlockMs ?? 0}ms, '
         'block min/max ${minBlockMs == 1 << 30 ? 0 : minBlockMs}/${maxBlockMs}ms, '

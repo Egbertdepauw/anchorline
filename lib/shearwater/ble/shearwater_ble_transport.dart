@@ -6,8 +6,8 @@
 library;
 
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../parser/byte_reader.dart';
@@ -238,8 +238,7 @@ class ShearwaterBleTransport {
         final size = entry.compressedSize > 0 && entry.compressedSize < 0xFFFFFF
             ? entry.compressedSize
             : 0xFFFFFF;
-        // ignore: avoid_print
-        print('download dive #${entry.diveNumber}: '
+        debugPrint('download dive #${entry.diveNumber}: '
             'addr=0x${entry.address.toRadixString(16)} '
             'endAddr=0x${entry.endAddress.toRadixString(16)} '
             'compressedSize=${entry.compressedSize} '
@@ -257,8 +256,7 @@ class ShearwaterBleTransport {
           // unwinds through the stream consumer and the only sign of
           // trouble is the eventual BLE disconnect timeout — useless
           // for diagnosing which dive / which block / why.
-          // ignore: avoid_print
-          print('downloadDives: dive #${entry.diveNumber} '
+          debugPrint('downloadDives: dive #${entry.diveNumber} '
               '(addr=0x${entry.address.toRadixString(16)}) FAILED: $e\n$st');
           rethrow;
         }
