@@ -37,8 +37,8 @@ void main() {
     expect(out, isEmpty);
   });
 
-  test('team of 2 splits 3-stage solo plan: each diver carries bottom + 1 deco',
-      () {
+  test('team of 2 with 3-stage solo: both carry bottom + EAN 50, '
+      'one additionally carries O₂', () {
     final out = distributeForTeam(
       solo: _result({_tx968: 1800, _ean50: 770, _o2: 600}),
       teamSize: 2,
@@ -46,29 +46,29 @@ void main() {
     );
     expect(out.length, 2);
 
-    // Both divers carry bottom mix.
-    final bottomCarriers =
-        out.where((d) => d.stages.any((s) => s.gas == _tx968)).length;
-    expect(bottomCarriers, 2);
+    // Every diver carries bottom AND EAN 50 (must-have shallow deco).
+    expect(out.every((d) => d.stages.any((s) => s.gas == _tx968)), isTrue);
+    expect(out.every((d) => d.stages.any((s) => s.gas == _ean50)), isTrue);
 
-    // Bottom-mix per-stage volume = solo / 2 = 900 L.
-    final bottomStage =
-        out.first.stages.firstWhere((s) => s.gas == _tx968);
-    expect(bottomStage.perStageVolumeL, closeTo(900, 1));
+    // Bottom per-stage volume = 1800 / 2 = 900 L.
+    final bottom = out.first.stages.firstWhere((s) => s.gas == _tx968);
+    expect(bottom.perStageVolumeL, closeTo(900, 1));
 
-    // EAN 50 and O₂ each carried by exactly one diver.
-    final eanCarriers =
-        out.where((d) => d.stages.any((s) => s.gas == _ean50)).length;
+    // EAN 50 per-stage volume = 770 / 2 = 385 L (also shared).
+    final ean = out.first.stages.firstWhere((s) => s.gas == _ean50);
+    expect(ean.perStageVolumeL, closeTo(385, 1));
+
+    // O₂ is carried by exactly one diver — only one stage in the team.
     final o2Carriers =
         out.where((d) => d.stages.any((s) => s.gas == _o2)).length;
-    expect(eanCarriers, 1);
     expect(o2Carriers, 1);
 
-    // Each diver carries 2 stages total.
-    expect(out.every((d) => d.stages.length == 2), isTrue);
+    final stageCounts = out.map((d) => d.stages.length).toList()..sort();
+    expect(stageCounts, [2, 3]);
   });
 
-  test('team of 3 with 3-stage solo: one diver carries only bottom', () {
+  test('team of 3 with 3-stage solo: every diver has bottom + EAN 50 '
+      '(no one is left with only bottom mix)', () {
     final out = distributeForTeam(
       solo: _result({_tx968: 1800, _ean50: 770, _o2: 600}),
       teamSize: 3,
@@ -76,21 +76,28 @@ void main() {
     );
     expect(out.length, 3);
 
-    // Each diver carries bottom mix.
+    // Every diver carries bottom AND EAN 50 — minimum self-bailout chain
+    // to the 6 m stop. This was the original gap the user flagged.
     expect(out.every((d) => d.stages.any((s) => s.gas == _tx968)), isTrue);
+    expect(out.every((d) => d.stages.any((s) => s.gas == _ean50)), isTrue);
 
     // Bottom per-stage volume = 1800 / 3 = 600 L.
     final bottom = out.first.stages.firstWhere((s) => s.gas == _tx968);
     expect(bottom.perStageVolumeL, closeTo(600, 1));
 
-    // One diver ends up with bottom-only (the round-robin assigns
-    // EAN 50 to one, O₂ to the next, nothing to the third).
+    // O₂ carried by exactly one diver.
+    final o2Carriers =
+        out.where((d) => d.stages.any((s) => s.gas == _o2)).length;
+    expect(o2Carriers, 1);
+
+    // Two divers carry 2 stages (bottom + EAN50), one carries 3
+    // (bottom + EAN50 + O2).
     final stageCounts = out.map((d) => d.stages.length).toList()..sort();
-    expect(stageCounts, [1, 2, 2]);
+    expect(stageCounts, [2, 2, 3]);
   });
 
-  test('team of 2 with 5-stage solo (deep dive): each carries bottom + 2 deco',
-      () {
+  test('team of 3 with 5-stage solo (deep dive): every diver carries '
+      'bottom + EAN 50; intermediates split symmetrically', () {
     final out = distributeForTeam(
       solo: _result({
         _tx968: 4000,
@@ -98,14 +105,19 @@ void main() {
         _ean50: 800,
         _o2: 600,
       }),
-      teamSize: 2,
+      teamSize: 3,
       availableTanks: _tanks,
     );
-    expect(out.length, 2);
-    // 4 distinct gases, 2 divers → bottom on both, 3 deco gases split
-    // unevenly (2 on one diver, 1 on the other).
+    expect(out.length, 3);
+
+    // Every diver has the must-haves.
+    expect(out.every((d) => d.stages.any((s) => s.gas == _tx968)), isTrue);
+    expect(out.every((d) => d.stages.any((s) => s.gas == _ean50)), isTrue);
+
+    // Remaining gases (TX 21/35 + O₂) distributed across the 3 divers
+    // so each carries 3 stages total.
     final stageCounts = out.map((d) => d.stages.length).toList()..sort();
-    expect(stageCounts, [2, 3]);
+    expect(stageCounts, [2, 3, 3]);
   });
 
   test('empty solo plan returns empty', () {

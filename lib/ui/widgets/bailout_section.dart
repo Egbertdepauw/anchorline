@@ -13,7 +13,7 @@ import 'package:flutter/material.dart';
 import '../../analysis/bailout/ascent_simulator.dart' show AscentStop;
 import '../../analysis/bailout/bailout_result.dart';
 import '../../analysis/bailout/icd.dart'
-    show IcdRisk, IcdSeverity, detectIcdRisks;
+    show IcdRisk, IcdSeverity, detectIcdRisks, icdSeverityBetween;
 import '../../analysis/bailout/team_bailout.dart'
     show TeamCarry, TeamGasStage;
 import '../../analysis/gas_density.dart' show mixDensityAt1Atm;
@@ -278,6 +278,28 @@ class BailoutSection extends StatelessWidget {
 
   Widget _buildTeamContent(BuildContext context, BailoutResult r) {
     final icdRisks = detectIcdRisks(r.stops);
+    final hasSevere = icdRisks.any((x) => x.severity == IcdSeverity.severe);
+
+    // Suggest the next missing standard intermediate when there's still
+    // a severe switch — TX 21/35 first (deepest standard intermediate),
+    // then TX 35/25 if TX 21/35 is already on the team.
+    final teamGases = <DiveGasMix>{};
+    for (final d in teamCarry) {
+      for (final s in d.stages) {
+        teamGases.add(s.gas);
+      }
+    }
+    bool hasMix(int o2, int he) =>
+        teamGases.any((g) => g.oxygenPercent == o2 && g.heliumPercent == he);
+    String? suggestion;
+    if (hasSevere) {
+      if (!hasMix(21, 35)) {
+        suggestion = 'TX 21/35 (57 m switch depth)';
+      } else if (!hasMix(35, 25)) {
+        suggestion = 'TX 35/25 (36 m switch depth)';
+      }
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -319,6 +341,19 @@ class BailoutSection extends StatelessWidget {
         if (icdRisks.isNotEmpty) ...[
           const SizedBox(height: Spacing.sm),
           _IcdBanner(risks: icdRisks),
+        ],
+        if (suggestion != null) ...[
+          const SizedBox(height: Spacing.sm),
+          _Banner(
+            accent: _amber,
+            child: Text(
+              'Suggestion: add $suggestion to one diver\'s carry to '
+              'shrink the helium gradient at the bottom-mix switch.',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.wreck.textPrimary,
+              ),
+            ),
+          ),
         ],
       ],
     );
@@ -633,6 +668,19 @@ class _StopTable extends StatelessWidget {
     // the bailout trigger so the column reads as TOTAL dive runtime.
     var runtime = startingRuntime;
 
+    // ICD severity per row, by comparing each row's gas to the one
+    // breathed on the previous row. The row where a risky switch
+    // *starts* (i.e. first row on the new gas) gets the tint.
+    final rowSeverities = <IcdSeverity>[];
+    DiveGasMix? prevGas;
+    for (final row in rows) {
+      final severity = (prevGas != null && row.gas != prevGas)
+          ? icdSeverityBetween(prevGas, row.gas)
+          : IcdSeverity.none;
+      rowSeverities.add(severity);
+      prevGas = row.gas;
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -652,8 +700,9 @@ class _StopTable extends StatelessWidget {
           ),
         ),
         const Divider(height: 1, color: Color(0xFF2A3A45)), // surfaceBezel
-        for (final row in rows) ...[
+        for (var i = 0; i < rows.length; i++) ...[
           Builder(builder: (context) {
+            final row = rows[i];
             runtime += row.stopDuration;
             final depthLabel = row.isStop
                 ? '${row.depthMeters.toStringAsFixed(0)} m'
@@ -676,7 +725,17 @@ class _StopTable extends StatelessWidget {
             final rhoLabel =
                 densityAt(row.gas, row.depthMeters).toStringAsFixed(1);
 
-            return Padding(
+            final severity = rowSeverities[i];
+            final tint = switch (severity) {
+              IcdSeverity.severe =>
+                BailoutSection._red.withValues(alpha: 0.16),
+              IcdSeverity.marginal =>
+                BailoutSection._amber.withValues(alpha: 0.14),
+              IcdSeverity.none => Colors.transparent,
+            };
+
+            return Container(
+              color: tint,
               padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
               child: Row(
                 children: [

@@ -47,6 +47,15 @@ class IcdRisk {
   });
 }
 
+/// Severity of switching directly from [from] to [to]. Useful for
+/// row-by-row UI tinting where the caller already has the gas pair.
+IcdSeverity icdSeverityBetween(DiveGasMix from, DiveGasMix to) {
+  return _severityFor(
+    deltaO2: to.oxygenPercent - from.oxygenPercent,
+    deltaHe: to.heliumPercent - from.heliumPercent,
+  );
+}
+
 /// Walks [stops] in ascent order and returns one [IcdRisk] per
 /// flagged gas switch. Switches with [IcdSeverity.none] are omitted.
 List<IcdRisk> detectIcdRisks(List<AscentStop> stops) {

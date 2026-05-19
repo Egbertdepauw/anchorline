@@ -8,10 +8,16 @@
 ///   1. Every diver carries one stage of the bottom mix. Each diver's
 ///      stage holds `solo_bottom_volume / team_size` litres — the team's
 ///      total bottom-mix carry equals the solo requirement.
-///   2. Each deco-gas stage is carried by ONE diver (you can't half-fill
-///      an O₂ tank across two people). Stages are assigned round-robin
-///      to whichever diver has the smallest count of stages so far.
-///   3. For deco gases, per-stage volume = solo-required / N_carriers.
+///   2. Every diver ALSO carries the "must-have" shallow deco gas (the
+///      richest non-O₂ deco gas in the plan — typically EAN 50). This
+///      guarantees that, even if the team gets separated, every diver
+///      can self-bailout to at least the 6 m stop: bottom-mix down low,
+///      switch to EAN 50 at 21 m, finish deco to surface on it. Per-
+///      stage volume = solo-required / N (same sharing model).
+///   3. Remaining deco-gas stages (intermediates, O₂) are carried by ONE
+///      diver each — you can't half-fill an O₂ tank across two people.
+///      Stages assigned round-robin to whichever diver has the fewest
+///      stages so far.
 ///   4. Tank picks come from the same [recommend] used for solo plans.
 library;
 
@@ -73,6 +79,21 @@ List<TeamCarry> distributeForTeam({
       .map((e) => e.key)
       .reduce((a, b) => a.oxygenPercent <= b.oxygenPercent ? a : b);
 
+  // Must-have shallow deco gas = richest non-O₂ deco gas in the plan,
+  // typically EAN 50. The "minimum self-bailout chain" is bottom +
+  // this gas, getting any diver from depth to a 6 m hold solo. Null
+  // when the plan has no deco gas at all (shallow dive) or only O₂.
+  DiveGasMix? mustHaveDeco;
+  for (final entry in usedGases) {
+    final gas = entry.key;
+    if (gas == bottomMix) continue;
+    if (gas.oxygenPercent >= 100) continue; // skip pure O₂
+    if (mustHaveDeco == null ||
+        gas.oxygenPercent > mustHaveDeco.oxygenPercent) {
+      mustHaveDeco = gas;
+    }
+  }
+
   // Track per-diver gas assignments.
   final assigned = List.generate(teamSize, (_) => <DiveGasMix>[]);
 
@@ -81,11 +102,19 @@ List<TeamCarry> distributeForTeam({
     list.add(bottomMix);
   }
 
-  // Step 2: distribute deco-gas stages round-robin to the diver with
-  // the fewest stages so far.
+  // Step 2: every diver also carries the must-have shallow deco gas.
+  if (mustHaveDeco != null) {
+    for (final list in assigned) {
+      list.add(mustHaveDeco);
+    }
+  }
+
+  // Step 3: remaining deco gases distribute round-robin to the diver
+  // with the fewest stages so far.
   for (final entry in usedGases) {
     final gas = entry.key;
     if (gas == bottomMix) continue;
+    if (gas == mustHaveDeco) continue;
     var minIdx = 0;
     for (var i = 1; i < teamSize; i++) {
       if (assigned[i].length < assigned[minIdx].length) minIdx = i;
