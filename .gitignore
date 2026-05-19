@@ -51,3 +51,9 @@ app.*.map.json
 
 # Flutter screenshot dumps from `flutter screenshot` land at repo root.
 flutter_*.png
+
+# Build-time --dart-define values, including the Sentry DSN. Not strictly
+# secret (Sentry DSNs are public ingest URLs designed to ship in client
+# code) but kept out of the repo so it's not trivially grepable by drive-by
+# observers. `dart_defines.example.json` IS committed as a template.
+dart_defines.json
