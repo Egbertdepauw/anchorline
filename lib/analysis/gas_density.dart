@@ -6,6 +6,7 @@ library;
 import 'dart:typed_data';
 
 import '../data/models/dive.dart' show DiveGasMix;
+import 'loop_gas.dart';
 
 /// Standard atmospheric pressure constant (mbar) used as a fallback.
 const int kStandardAtmosphericPressureMbar = 1013;
@@ -43,18 +44,38 @@ double mixDensityAt1Atm(double o2Fraction, double heFraction) {
       n2Fraction * kN2DensityAt1Atm;
 }
 
-/// Per-sample gas density (g/L) at ambient pressure. Walks
-/// [depthMeters] and [gasMixIndex] in parallel; multiplies the mix's
-/// 1 ATA density by ambient pressure (atm + depth/10).
+/// Per-sample gas density (g/L) at ambient pressure.
+///
+/// For OC samples (no setpoint, or no diluent in [gasMixes]) the density
+/// is computed from the static gas mix at the sample's [gasMixIndex] —
+/// the original behaviour.
+///
+/// For CCR samples (signalled by a positive [ppo2Bar] and the presence
+/// of a diluent in [gasMixes]) the density uses the LIVE LOOP GAS at
+/// that sample, computed by [loopGasAt] from the diluent's inert
+/// composition + the per-sample PPO₂. This matches what the dive
+/// computer displays as "current gas" and produces the correct value
+/// at depth — previously CCR samples would silently use whichever
+/// static mix the parser happened to assign (often the OC bailout),
+/// which gave density values almost a factor of 2 too high.
+///
+/// [ppo2Bar] should be the per-sample VOTED / measured PPO₂ (not the
+/// setpoint target) so transient cell drift / solenoid lag / dil
+/// flushes show up correctly in the density trace. Pass null for OC
+/// dives, or for CCR dives where the per-sample voted PPO₂ isn't
+/// available (fall back to the setpoint trace if you must).
 Float32List computeDensitySeries({
   required Float32List depthMeters,
   required Uint8List gasMixIndex,
   required List<DiveGasMix> gasMixes,
   required int atmosphericPressureMbar,
+  Float32List? ppo2Bar,
 }) {
   assert(depthMeters.length == gasMixIndex.length);
+  assert(ppo2Bar == null || ppo2Bar.length == depthMeters.length);
   final out = Float32List(depthMeters.length);
-  // Pre-compute density at 1 ATA per mix — avoid recomputing in the loop.
+  // Pre-compute density at 1 ATA per static mix — avoid recomputing in
+  // the loop. CCR loop-gas density is computed per sample below.
   final densityByMix = Float32List(gasMixes.length);
   for (var i = 0; i < gasMixes.length; i++) {
     densityByMix[i] = mixDensityAt1Atm(
@@ -63,13 +84,26 @@ Float32List computeDensitySeries({
     );
   }
   final atmBar = atmosphericPressureMbar / 1000.0;
+  final diluentIdx = diluentIndex(gasMixes);
+  final diluent = diluentIdx != null ? gasMixes[diluentIdx] : null;
   for (var i = 0; i < depthMeters.length; i++) {
+    final ambientBar = atmBar + depthMeters[i] / 10.0;
+    final live = ppo2Bar?[i] ?? 0.0;
+    if (live > 0 && diluent != null) {
+      final loop = loopGasAt(
+        depthMeters: depthMeters[i],
+        ppo2Bar: live,
+        diluent: diluent,
+        atmosphericPressureBar: atmBar,
+      );
+      out[i] = mixDensityAt1Atm(loop.o2Fraction, loop.heFraction) * ambientBar;
+      continue;
+    }
     final mixIdx = gasMixIndex[i];
     if (mixIdx >= densityByMix.length) {
       out[i] = double.nan;
       continue;
     }
-    final ambientBar = atmBar + depthMeters[i] / 10.0;
     out[i] = densityByMix[mixIdx] * ambientBar;
   }
   return out;

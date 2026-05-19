@@ -515,6 +515,11 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         useSpeedColoredGraph: useSpeedColored,
                                         endCountsOxygen: widget
                                             .settingsNotifier.endCountsOxygen,
+                                        // Same int-set test as the
+                                        // density/END max-stat path
+                                        // below — see comment there.
+                                        isCcr: const {0, 4, 5}
+                                            .contains(widget.dive.diveMode),
                                         decoReplay: decoReplay),
                                     if (_notifier.crosshairIndex != null)
                                       CrosshairTooltip(
@@ -1077,17 +1082,31 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       sampleIntervalMs: samples.sampleIntervalMs,
     );
 
+    // For CCR dives, pass the voted/measured PPO2 trace so density and
+    // END are computed against the live LOOP gas (diluent inert +
+    // PPO2-derived O2) instead of whichever static mix the parser
+    // happened to assign per-sample. Skip for OC — passing null falls
+    // back to the static-mix path.
+    // Dive.diveMode is the raw int (per DiveMode enum values in
+    // shearwater/parser/constants.dart): 0=cc, 4=sc, 5=cc2 — all CCR.
+    // Avoiding the import here keeps this file's imports terse; full
+    // DiveMode handling lives in dive_mode_color.dart.
+    const ccrModes = {0, 4, 5};
+    final isCcrDive = ccrModes.contains(widget.dive.diveMode);
+    final ppo2Trace = isCcrDive ? samples.ppo2Bar : null;
     final densitySeries = computeDensitySeries(
       depthMeters: samples.depthMeters,
       gasMixIndex: samples.gasMixIndex,
       gasMixes: gasMixes,
       atmosphericPressureMbar: kStandardAtmosphericPressureMbar,
+      ppo2Bar: ppo2Trace,
     );
     final endSeries = computeEndSeries(
       depthMeters: samples.depthMeters,
       gasMixIndex: samples.gasMixIndex,
       gasMixes: gasMixes,
       countsOxygen: widget.settingsNotifier.endCountsOxygen,
+      ppo2Bar: ppo2Trace,
     );
     var maxDensity = 0.0;
     for (final d in densitySeries) {

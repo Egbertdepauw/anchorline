@@ -168,8 +168,19 @@ class ProfileChart extends StatelessWidget {
 
   /// Whether oxygen counts as narcotic when computing END.
   /// Passed through to [computeEndSeries] when the END trace is visible.
-  /// Defaults to `true` (US-Navy/TDI convention).
+  /// Defaults to `true` — the GUE / DIR convention (O₂ has narcotic
+  /// potency equivalent to N₂), which is also standard tech-diving.
+  /// `false` falls back to the older N₂-only formula.
   final bool endCountsOxygen;
+
+  /// True when the dive is a closed-circuit / semi-closed CCR dive.
+  /// Enables loop-gas-aware density + END computation: instead of using
+  /// the static gas at the sample's `gasMixIndex`, density/END are
+  /// derived from the diluent's inert composition + the per-sample
+  /// voted PPO₂. Critical for CCR dives where the parser may have
+  /// assigned the wrong static mix per sample (e.g. the bailout air
+  /// instead of the helium diluent).
+  final bool isCcr;
 
   /// Optional deco replay result. When non-null and [visibleTraces] contains
   /// [TraceType.gf99] or [TraceType.ceiling], the corresponding traces are
@@ -190,6 +201,7 @@ class ProfileChart extends StatelessWidget {
     this.mappedCylinders,
     this.gasMixes,
     this.endCountsOxygen = true,
+    this.isCcr = false,
     this.decoReplay,
   });
 
@@ -202,6 +214,13 @@ class ProfileChart extends StatelessWidget {
 
     // Compute density + END series here so they are available to the painter
     // without coupling the painter to SettingsNotifier.
+    //
+    // For CCR dives, feed the voted/measured PPO2 trace through so the
+    // analyses run against the LIVE LOOP GAS (diluent inert + PPO2-derived
+    // O2) at each sample, instead of whichever static mix the parser
+    // happened to assign. For OC dives, ppo2Bar is null and the analyses
+    // use the static gas at each sample's gasMixIndex.
+    final ppo2Trace = isCcr ? samples.ppo2Bar : null;
     final densitySeries = (visibleTraces.contains(TraceType.density) &&
             mixes != null &&
             mixes.isNotEmpty &&
@@ -211,6 +230,7 @@ class ProfileChart extends StatelessWidget {
             gasMixIndex: samples.gasMixIndex,
             gasMixes: mixes,
             atmosphericPressureMbar: kStandardAtmosphericPressureMbar,
+            ppo2Bar: ppo2Trace,
           )
         : null;
 
@@ -223,6 +243,7 @@ class ProfileChart extends StatelessWidget {
             gasMixIndex: samples.gasMixIndex,
             gasMixes: mixes,
             countsOxygen: endCountsOxygen,
+            ppo2Bar: ppo2Trace,
           )
         : null;
 
