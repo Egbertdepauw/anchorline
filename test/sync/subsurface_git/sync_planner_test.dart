@@ -466,6 +466,54 @@ void main() {
       );
     });
 
+    test(
+        'orphan Dive-NNN past the real max does not push collision-walk '
+        'beyond the real sequence (regression: orphan 1145 produced 1146 '
+        'when real max was 712)', () {
+      final planner = SyncPlanner();
+      // Bundle's dcDiveNumber is 705 (per _bundle default). We populate
+      // existingDivesBySerialAndStart with parseable dives 700..712 that
+      // include 705 — so dcDiveNumber=705 collides and the planner falls
+      // into the walk-forward branch. Before the fix, that branch started
+      // from existingMaxDiveNumber=1145 (the orphan), allocating Dive-1146.
+      // After the fix it starts from max(remoteDiveNumbers)=712 and
+      // allocates Dive-713.
+      final existingDivesByKey =
+          <({int serial, int startTime}), ExistingRemoteDive>{};
+      for (var n = 700; n <= 712; n++) {
+        existingDivesByKey[(serial: 0xCAFE0000 + n, startTime: 1700000000 + n)] =
+            ExistingRemoteDive(
+          folderSegments: ['2024', '01', '01-Mon-00=00=00'],
+          diveNumber: n,
+          serial: 0xCAFE0000 + n,
+          startTime: 1700000000 + n,
+          diveLines: parseSubsurfaceFile(
+            'duration 30:00 min\n',
+            kind: SubsurfaceFileKind.dive,
+          ).lines,
+        );
+      }
+      final bundle = _bundle(diveId: _diveIdA);
+      final plan = planner.plan(
+        ccrlogDives: [bundle],
+        existingDivesBySerialAndStart: existingDivesByKey,
+        // Orphan Dive-1145 file with no parseable Divecomputer pushes the
+        // overall max up; it does NOT appear in existingDivesBySerialAndStart.
+        existingMaxDiveNumber: 1145,
+        existingTopLevel: const [],
+        existingSites: const {},
+      );
+      final newDiveFile = plan.filesToWrite.keys
+          .firstWhere((k) => k.contains('19-Sun-15=18=45/Dive-'));
+      expect(newDiveFile.endsWith('/Dive-713'), isTrue,
+          reason: 'expected next-after-real-max (712 → 713), '
+              'got $newDiveFile');
+      expect(
+        plan.filesToWrite.keys.any((k) => k.endsWith('Dive-1146')),
+        isFalse,
+      );
+    });
+
     test('SyncPlan exposes empty abortedDives by default', () {
       final planner = SyncPlanner();
       final plan = planner.plan(

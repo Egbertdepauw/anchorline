@@ -260,7 +260,6 @@ class SyncPlanner {
     final abortedDives = <AbortedDive>[];
     var skipped = 0;
 
-    var nextDiveNumber = existingMaxDiveNumber;
     // Set of dive numbers already present in the remote — used so we can
     // prefer the dive computer's own `dcDiveNumber` for new dives (= the
     // user's "real" dive count), only falling back to max+1 when that
@@ -271,6 +270,20 @@ class SyncPlanner {
     final remoteDiveNumbers = <int>{
       for (final entry in existingDivesBySerialAndStart.values) entry.diveNumber,
     };
+
+    // Walk forward from the highest *parseable* Dive-NNN, not from
+    // `existingMaxDiveNumber` (which counts ALL Dive-NNN filenames,
+    // including orphans whose Divecomputer file failed to parse). An
+    // orphan Dive-1145 left behind by a corrupted past sync would
+    // otherwise push every new dive to 1146+ when the visible-in-
+    // Subsurface max is only 712 and the user expects 713. The cost is
+    // a theoretical eventual overwrite of the orphan when the sequence
+    // catches up to it — fine, the orphan is broken anyway and the
+    // existing-merge path would refuse to merge an unreadable Dive-NNN.
+    var nextDiveNumber = 0;
+    for (final n in remoteDiveNumbers) {
+      if (n > nextDiveNumber) nextDiveNumber = n;
+    }
 
     // Build coords → existing hexId map from Subsurface's Site files.
     // Subsurface's UUIDs are random-at-creation; CCRLog's _siteIdFor is
