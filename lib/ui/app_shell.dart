@@ -30,6 +30,7 @@ import '../sync/cloud/cloud_data_wiper.dart';
 import '../sync/cloud/cloud_sync_coordinator.dart';
 import '../sync/cloud/sync_health_service.dart';
 import '../sync/cloud/sync_status_source.dart';
+import '../sync/cloud/usage_tracker.dart';
 import '../sync/subsurface_git/bootstrap_importer.dart';
 import '../sync/subsurface_git/credentials.dart';
 import '../sync/subsurface_git/dao_subsurface_sync_data_source.dart';
@@ -52,6 +53,7 @@ class AppShell extends StatefulWidget {
   final AuthService authService;
   final CloudSyncCoordinator cloudSyncCoordinator;
   final CloudDataWiper? cloudDataWiper;
+  final UsageTracker usageTracker;
 
   const AppShell({
     super.key,
@@ -60,6 +62,7 @@ class AppShell extends StatefulWidget {
     required this.settingsNotifier,
     required this.authService,
     required this.cloudSyncCoordinator,
+    required this.usageTracker,
     this.cloudDataWiper,
   });
 
@@ -106,6 +109,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    // Beta telemetry: one "session_started" event per app launch. Drops
+    // silently if no signed-in user yet (very-first launch is unsigned
+    // until the user enters credentials; subsequent launches fire on
+    // restored sessions). Platform tag separates iOS / Android / macOS
+    // usage in the dashboard.
+    widget.usageTracker.track('session_started', {
+      'platform': defaultTargetPlatform.name,
+    });
+
     _diveDao = DiveDao(
       widget.db,
       widget.powerSyncDb,
@@ -130,6 +143,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       dao: _diveDao,
       importStateDao: _importStateDao,
       equipmentDao: _equipmentDao,
+      usageTracker: widget.usageTracker,
       useMock: kDebugMode,
     );
     _syncStatusSource = PowerSyncStatusSource(widget.powerSyncDb);

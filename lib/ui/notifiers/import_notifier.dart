@@ -20,6 +20,7 @@ import '../../shearwater/ble/shearwater_ble_transport.dart';
 import '../../shearwater/parser/dive_converter.dart';
 import '../../shearwater/parser/dive_parser.dart';
 import '../../shearwater/parser/manifest_parser.dart';
+import '../../sync/cloud/usage_tracker.dart';
 
 /// Phases of the import flow.
 ///
@@ -44,6 +45,7 @@ class ImportNotifier extends ChangeNotifier {
   final DiveDao _dao;
   final ImportStateDao _importStateDao;
   final EquipmentDao _equipmentDao;
+  final UsageTracker? _usageTracker;
   final bool useMock;
 
   bool _disposed = false;
@@ -70,10 +72,12 @@ class ImportNotifier extends ChangeNotifier {
     required DiveDao dao,
     required ImportStateDao importStateDao,
     required EquipmentDao equipmentDao,
+    UsageTracker? usageTracker,
     this.useMock = false,
   })  : _dao = dao,
         _importStateDao = importStateDao,
-        _equipmentDao = equipmentDao;
+        _equipmentDao = equipmentDao,
+        _usageTracker = usageTracker;
 
   // ── Accessors ──────────────────────────────────────────────────────────────
 
@@ -397,6 +401,30 @@ class ImportNotifier extends ChangeNotifier {
 
     if (_state != ImportFlowState.error) {
       _state = ImportFlowState.done;
+    }
+
+    // Beta telemetry: success / failure of the BLE import flow. Fires on
+    // both the happy path and the error path so we can see the success
+    // rate in the field. Mock-device imports are tagged separately so
+    // they don't pollute the real-hardware signal.
+    if (_state == ImportFlowState.done) {
+      _usageTracker?.track('import_completed', {
+        'dives': _downloadedCount,
+        'total': _totalToDownload,
+        'mock': useMock,
+      });
+    } else if (_state == ImportFlowState.error) {
+      _usageTracker?.track('import_failed', {
+        'dives': _downloadedCount,
+        'total': _totalToDownload,
+        // Truncate to keep telemetry rows small and avoid leaking
+        // long-string user context in the rare case the error string
+        // includes them.
+        'reason': (_errorMessage ?? '').length > 200
+            ? (_errorMessage ?? '').substring(0, 200)
+            : (_errorMessage ?? ''),
+        'mock': useMock,
+      });
     }
 
     // Save fingerprint for incremental sync on real BLE imports

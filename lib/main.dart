@@ -18,6 +18,7 @@ import 'sync/cloud/cloud_data_wiper.dart';
 import 'sync/cloud/cloud_sync_coordinator.dart';
 import 'sync/cloud/dives_powersync_migrator.dart';
 import 'sync/cloud/powersync_database.dart';
+import 'sync/cloud/usage_tracker.dart';
 import 'ui/app_shell.dart';
 import 'ui/notifiers/settings_notifier.dart';
 import 'ui/theme/app_theme.dart';
@@ -64,6 +65,8 @@ void main() async {
     authService: authService,
   )..start();
 
+  final usageTracker = UsageTracker(Supabase.instance.client);
+
   final app = CCRLogApp(
     db: db,
     powerSyncDb: powerSyncDb,
@@ -71,6 +74,7 @@ void main() async {
     authService: authService,
     cloudSyncCoordinator: cloudSyncCoordinator,
     cloudDataWiper: CloudDataWiper(Supabase.instance.client),
+    usageTracker: usageTracker,
   );
 
   // Sentry crash + unhandled-exception reporting is gated on TWO things:
@@ -104,6 +108,7 @@ class CCRLogApp extends StatelessWidget {
   final AuthService authService;
   final CloudSyncCoordinator cloudSyncCoordinator;
   final CloudDataWiper cloudDataWiper;
+  final UsageTracker usageTracker;
 
   const CCRLogApp({
     super.key,
@@ -113,6 +118,7 @@ class CCRLogApp extends StatelessWidget {
     required this.authService,
     required this.cloudSyncCoordinator,
     required this.cloudDataWiper,
+    required this.usageTracker,
   });
 
   @override
@@ -127,6 +133,7 @@ class CCRLogApp extends StatelessWidget {
         authService: authService,
         cloudSyncCoordinator: cloudSyncCoordinator,
         cloudDataWiper: cloudDataWiper,
+        usageTracker: usageTracker,
       ),
       debugShowCheckedModeBanner: false,
     );
