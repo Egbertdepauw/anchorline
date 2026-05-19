@@ -1,7 +1,7 @@
 import 'package:ccrlogger/analysis/bailout/bailout_planner.dart';
 import 'package:ccrlogger/analysis/bailout/bailout_result.dart';
 import 'package:ccrlogger/analysis/bailout/tank_recommender.dart'
-    show kAl40, kAl80, kTank12L300, kTank68L300;
+    show TankSpec, kAl40, kAl80, kTank12L300, kTank68L300;
 import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -34,6 +34,8 @@ BailoutResult _plan({
   List<DiveGasMix> userTanks = const [],
   Map<DiveGasMix, double> userVolumes = const {},
   bool isGue = false,
+  List<TankSpec> availableTanks = _defaultTanks,
+  int sacBottom = 20,
 }) =>
     planBailout(
       diveId: 'test-dive',
@@ -46,11 +48,11 @@ BailoutResult _plan({
       isGueConfig: isGue,
       gfLow: 30,
       gfHigh: 80,
-      sacBottom: 20,
+      sacBottom: sacBottom,
       sacDeco: 15,
       ascentRateFast: 18,
       ascentRateSlow: 9,
-      availableTanks: _defaultTanks,
+      availableTanks: availableTanks,
     );
 
 // ---------------------------------------------------------------------------
@@ -311,38 +313,11 @@ void main() {
     });
 
     test(
-        'GUE config at 145 m (deep trimix dive) adds TX 21/35 + TX 35/25 '
-        'as intermediate trimixes between bottom mix and EAN 50', () {
-      // Reproducer for the 145 m cave-dive feedback (2026-05-19): a
-      // bailout on TX 10/70 from 145 m used to ride the bottom mix all
-      // the way to EAN 50's 21 m switch, burning ~5000 L of TMX and
-      // needing 2× bottom stages plus singletons of EAN 50 and O₂. The
-      // intermediate trimixes drop bottom-mix volume by ~75 %.
-      const dil10_70 = DiveGasMix(
-        oxygenPercent: 10,
-        heliumPercent: 70,
-        isDiluent: true,
-      );
-      final result = _plan(
-        maxDepth: 145.0,
-        recordedDiluent: dil10_70,
-        isGue: true,
-      );
-      // At >100 m the planner must offer all four "next" stages.
-      final gases = result.perGas.keys.toSet();
-      bool hasMix(int o2, int he) => gases.any(
-          (g) => g.oxygenPercent == o2 && g.heliumPercent == he);
-      expect(hasMix(21, 35), isTrue,
-          reason: 'TX 21/35 intermediate must be in the plan');
-      expect(hasMix(35, 25), isTrue,
-          reason: 'TX 35/25 intermediate must be in the plan');
-      expect(hasMix(50, 0), isTrue, reason: 'EAN 50 must be present');
-      expect(hasMix(100, 0), isTrue, reason: 'O₂ must be present');
-    });
-
-    test(
-        'GUE config at 80 m (single-intermediate dive) adds TX 21/35 but '
-        'NOT TX 35/25 — keeps the stage count down at moderate depths', () {
+        'GUE config at 80 m with normal catalogue: NO intermediate trimix — '
+        '3 stages (bottom + EAN50 + O2) is enough', () {
+      // Volume-driven escalation: at 80 m on 18/45 with the default
+      // catalogue (largest tank = 12L/300 = 3600 L), bottom-mix on the OC
+      // ascent fits comfortably in one stage. No reason to carry TX 21/35.
       const dil18_45 = DiveGasMix(
         oxygenPercent: 18,
         heliumPercent: 45,
@@ -356,9 +331,42 @@ void main() {
       final gases = result.perGas.keys.toSet();
       bool hasMix(int o2, int he) => gases.any(
           (g) => g.oxygenPercent == o2 && g.heliumPercent == he);
-      expect(hasMix(21, 35), isTrue);
+      expect(hasMix(21, 35), isFalse,
+          reason: 'TX 21/35 not needed — bottom mix fits in one tank');
       expect(hasMix(35, 25), isFalse,
-          reason: 'TX 35/25 should NOT appear below 100 m');
+          reason: 'TX 35/25 not needed at 80 m');
+      expect(hasMix(50, 0), isTrue);
+      expect(hasMix(100, 0), isTrue);
+    });
+
+    test(
+        'GUE config at 145 m with constrained catalogue (AL80 only) adds '
+        'intermediate trimixes when bottom-mix would overflow one tank', () {
+      // Reproducer for the deep-cave-dive feedback (2026-05-19): once
+      // bottom-mix volume overflows the largest tank in the catalogue,
+      // the planner must insert TX 21/35 (57 m switch) and then TX 35/25
+      // (36 m switch) to drop bottom-mix consumption.
+      const dil10_70 = DiveGasMix(
+        oxygenPercent: 10,
+        heliumPercent: 70,
+        isDiluent: true,
+      );
+      final result = _plan(
+        maxDepth: 145.0,
+        recordedDiluent: dil10_70,
+        isGue: true,
+        // Force overflow: AL80 (2575 L) caps the largest stage; a heavily
+        // breathing diver tips bottom-mix over the edge at this depth.
+        availableTanks: const [kAl40, kAl80],
+        sacBottom: 50,
+      );
+      final gases = result.perGas.keys.toSet();
+      bool hasMix(int o2, int he) => gases.any(
+          (g) => g.oxygenPercent == o2 && g.heliumPercent == he);
+      expect(hasMix(21, 35), isTrue,
+          reason: 'TX 21/35 must be added once bottom-mix overflows AL80');
+      expect(hasMix(50, 0), isTrue, reason: 'EAN 50 must be present');
+      expect(hasMix(100, 0), isTrue, reason: 'O₂ must be present');
     });
   });
 }

@@ -19,7 +19,8 @@ import '../../data/models/dive.dart' show DiveGasMix;
 import 'ascent_simulator.dart' show AscentPlan, simulateAscent;
 import 'bailout_result.dart';
 import 'mix_resolver.dart' show resolveBottomMix;
-import 'standard_mixes.dart' show kDecoMixes, gueDecoGasesForDepth;
+import 'standard_mixes.dart'
+    show kDecoMixes, kO2, kTx2135, kTx3525, gueDecoGasesForDepth;
 import 'tank_recommender.dart' show TankSpec, recommend;
 
 // ---------------------------------------------------------------------------
@@ -124,13 +125,21 @@ BailoutResult planBailout({
   }
 
   // -------------------------------------------------------------------------
-  // 3. Run ascent simulator (with auto-escalation in Scenario B)
+  // 3. Run ascent simulator (with volume-driven escalation in Scenario B)
   // -------------------------------------------------------------------------
-  // In Scenario B, if a deco gas's required volume exceeds what the
-  // largest tank in [availableTanks] can hold, the GUE convention is to
-  // add a richer deco gas (typically O2) and re-plan. This converts a
-  // "no tank fits" verdict into "carry one more stage". Bounded to a
-  // single escalation: bottom + EAN50 → bottom + EAN50 + O2.
+  // Scenario B starts from the minimum ladder (see [gueDecoGasesForDepth])
+  // and escalates only when an actual gas volume overflows the largest
+  // tank in the catalogue:
+  //
+  //   - bottom-mix overflow → insert TX 21/35 (deeper switch first), then
+  //     TX 35/25 if even that isn't enough. The diver carries the fewest
+  //     intermediate stages that keep bottom-mix inside one tank.
+  //   - deco-gas overflow with no O₂ yet → add O₂ to shorten the EAN 50
+  //     leg (covers the 22–65 m window where the minimum ladder is just
+  //     [bottom, EAN50]).
+  //
+  // Bounded to one of each escalation step, so the loop is guaranteed to
+  // terminate.
   AscentPlan plan;
   while (true) {
     plan = simulateAscent(
@@ -151,16 +160,40 @@ BailoutResult planBailout({
         : availableTanks
             .map((t) => t.waterCapacityL * t.ratedPressureBar)
             .reduce((a, b) => a > b ? a : b);
-    final overflow = plan.volumeByGas.values
-        .any((v) => v > largestTankCapacityL);
-    if (!overflow) break;
-    const o2 = DiveGasMix(
-      oxygenPercent: 100,
-      heliumPercent: 0,
-      isDiluent: false,
-    );
-    if (gases.any((g) => g.oxygenPercent == 100)) break; // already maxed
-    gases = [...gases, o2];
+
+    // Find the first gas (if any) whose required volume overflows one tank.
+    DiveGasMix? overflowGas;
+    for (final entry in plan.volumeByGas.entries) {
+      if (entry.value > largestTankCapacityL) {
+        overflowGas = entry.key;
+        break;
+      }
+    }
+    if (overflowGas == null) break;
+
+    // Identify the bottom mix as the lowest-O2 gas currently in the list.
+    final bottomMix = gases
+        .reduce((a, b) => a.oxygenPercent <= b.oxygenPercent ? a : b);
+
+    var escalated = false;
+    if (overflowGas == bottomMix) {
+      // Insert intermediate trimixes deepest-first. Only useful if the
+      // dive is actually deeper than the intermediate's switch depth.
+      if (maxDepthMeters > 57 && !gases.contains(kTx2135)) {
+        gases = [...gases, kTx2135];
+        escalated = true;
+      } else if (maxDepthMeters > 36 && !gases.contains(kTx3525)) {
+        gases = [...gases, kTx3525];
+        escalated = true;
+      }
+    }
+    if (!escalated && !gases.contains(kO2)) {
+      // Deco-gas overflow (or unhandled bottom-mix overflow at shallow
+      // depths) — add O₂ if it isn't already on the list.
+      gases = [...gases, kO2];
+      escalated = true;
+    }
+    if (!escalated) break; // exhausted escalations, accept the overflow
   }
 
   // -------------------------------------------------------------------------

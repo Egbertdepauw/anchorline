@@ -25,35 +25,28 @@ const List<DiveGasMix> kDecoMixes = [
   DiveGasMix(oxygenPercent: 100, heliumPercent: 0, isDiluent: false),
 ];
 
-const _ean50 = DiveGasMix(oxygenPercent: 50, heliumPercent: 0, isDiluent: false);
-const _o2 = DiveGasMix(oxygenPercent: 100, heliumPercent: 0, isDiluent: false);
-const _tx2135 =
+const kEan50 = DiveGasMix(oxygenPercent: 50, heliumPercent: 0, isDiluent: false);
+const kO2 = DiveGasMix(oxygenPercent: 100, heliumPercent: 0, isDiluent: false);
+const kTx2135 =
     DiveGasMix(oxygenPercent: 21, heliumPercent: 35, isDiluent: false);
-const _tx3525 =
+const kTx3525 =
     DiveGasMix(oxygenPercent: 35, heliumPercent: 25, isDiluent: false);
 
-/// GUE bailout staging by trigger depth:
-/// - ≤ 21 m    : no deco gases — bottom mix only (1 stage)
-/// - 22–65 m   : add EAN 50 (2 stages: bottom + EAN50)
-/// - 66–100 m  : add TX 21/35, EAN 50, O₂  (4 stages: bottom + 3)
-/// - > 100 m   : add TX 21/35, TX 35/25, EAN 50, O₂  (5 stages:
-///   bottom + 4 — the extra TX 35/25 intermediate keeps the bottom-
-///   mix-volume from blowing up on really deep ascents)
+/// Minimum GUE-flavoured deco-gas ladder by max depth. The planner starts
+/// from this list and escalates volume-by-volume — inserting TX 21/35
+/// (57 m switch) and TX 35/25 (36 m switch) only when bottom-mix volume
+/// would overflow the largest tank in the user's catalogue. The goal is
+/// the fewest stages that still fit in normal tanks (AL80 / 12L@300).
 ///
-/// Why the intermediate trimixes on deeper dives: a bailout from say
-/// 145 m on TX 10/70 would otherwise have to breathe the helium-rich
-/// bottom mix all the way from 145 m to the EAN 50 switch at 21 m,
-/// consuming 5000+ litres of bottom mix and forcing 2× bottom-stage
-/// redundancy. Adding TX 21/35 as a travel/intermediate gas at its
-/// 57 m switch depth drops the bottom-mix-volume by ~75 % and keeps
-/// the stage count practical. TX 35/25 (switch 36 m) covers the
-/// shallower portion of the same ascent.
+/// - ≤ 21 m   : bottom only (1 stage)
+/// - 22–65 m  : bottom + EAN 50 (2 stages)
+/// - > 65 m   : bottom + EAN 50 + O₂ (3 stages baseline)
+///
+/// Intermediates are not on this list — they're a planner concern (see
+/// `bailout_planner.dart`'s escalation loop).
 List<DiveGasMix> gueDecoGasesForDepth(double maxDepthMeters) {
-  if (maxDepthMeters > 100) {
-    return const [_tx2135, _tx3525, _ean50, _o2];
-  }
-  if (maxDepthMeters > 65) return const [_tx2135, _ean50, _o2];
-  if (maxDepthMeters > 21) return const [_ean50];
+  if (maxDepthMeters > 65) return const [kEan50, kO2];
+  if (maxDepthMeters > 21) return const [kEan50];
   return const [];
 }
 
