@@ -5,6 +5,7 @@
 /// to interact with a dive computer.
 library;
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -73,6 +74,17 @@ class DownloadedDive {
 /// await transport.disconnect();
 /// ```
 class ShearwaterBleTransport {
+  /// Number of `0x36` block requests kept in flight when downloading a
+  /// dive. Default 2 = "send the next request while still receiving the
+  /// current one", which roughly halves wall time on slow BLE links if
+  /// the Petrel firmware queues commands (verified empirically against
+  /// Shearwater's own app, which is much faster than the strict
+  /// sequential libdc protocol would allow). Set to 1 in trace-replay
+  /// tests, where the recorded fixtures only support sequential order.
+  final int divePipelineWindow;
+
+  ShearwaterBleTransport({this.divePipelineWindow = 2});
+
   FlutterBluePlusBleIo? _bleIo;
   ShearwaterProtocol? _protocol;
   DeviceInfo? _deviceInfo;
@@ -187,17 +199,72 @@ class ShearwaterBleTransport {
     final p = _protocol!;
     final info = _deviceInfo!;
 
-    for (final entry in manifest) {
-      if (!entry.isValid) continue;
+    // Re-nudge the link to high priority before the bulk transfer starts.
+    // Android often silently drops the request made at connect() time but
+    // accepts it once the GATT link has done real work.
+    //
+    // Then keep nudging every 6 s for the duration of the download.
+    // Android's `requestConnectionPriority(HIGH)` is NOT sticky — empirically
+    // the Petrel link reverts to balanced (~177 ms inter-notification gap,
+    // matching ~537 ms/block) about 5–10 s after the last priority request,
+    // unless we keep asserting it. Per-dive nudging isn't enough — a single
+    // dive blob takes 30–60 s on a slow link, much longer than the timeout.
+    //
+    // Interval was 4 s; bumped to 6 s after the app was observed losing
+    // connection mid-import. 6 s sits well under the ~8-10 s expiry but
+    // halves the rate of LL parameter requests we put on the air.
+    // We deliberately do NOT re-issue setPreferredPhy here — that produced
+    // a fresh LL_PHY_REQ on every call and was the most likely culprit
+    // for the mid-import disconnects.
+    await _bleIo?.requestHighPerformanceLink();
+    Timer? refresher;
+    if (_bleIo != null) {
+      refresher = Timer.periodic(const Duration(seconds: 6), (_) {
+        // Fire-and-forget; the call itself shouldn't block the read loop.
+        unawaited(_bleIo!.requestHighPerformanceLink());
+      });
+    }
 
-      final address = info.baseAddress + entry.address;
-      final data = await p.download(
-        address: address,
-        size: 0xFFFFFF, // DIVE_SIZE
-        compressed: true,
-      );
+    try {
+      for (final entry in manifest) {
+        if (!entry.isValid) continue;
 
-      yield DownloadedDive(manifest: entry, data: data);
+        final address = info.baseAddress + entry.address;
+        // The manifest records each dive's exact compressed size as the
+        // gap between its start and end address. Pass that as the request
+        // size — without it the Petrel happily streams the next-younger
+        // dive's data right after this one because LRE end-markers only
+        // fire at the very end of the on-flash log, not per dive.
+        final size = entry.compressedSize > 0 && entry.compressedSize < 0xFFFFFF
+            ? entry.compressedSize
+            : 0xFFFFFF;
+        // ignore: avoid_print
+        print('download dive #${entry.diveNumber}: '
+            'addr=0x${entry.address.toRadixString(16)} '
+            'endAddr=0x${entry.endAddress.toRadixString(16)} '
+            'compressedSize=${entry.compressedSize} '
+            'requestSize=$size');
+        try {
+          final data = await p.download(
+            address: address,
+            size: size,
+            compressed: true,
+            pipelineWindow: divePipelineWindow,
+          );
+          yield DownloadedDive(manifest: entry, data: data);
+        } catch (e, st) {
+          // Surface the failure visibly. Without this the exception
+          // unwinds through the stream consumer and the only sign of
+          // trouble is the eventual BLE disconnect timeout — useless
+          // for diagnosing which dive / which block / why.
+          // ignore: avoid_print
+          print('downloadDives: dive #${entry.diveNumber} '
+              '(addr=0x${entry.address.toRadixString(16)}) FAILED: $e\n$st');
+          rethrow;
+        }
+      }
+    } finally {
+      refresher?.cancel();
     }
   }
 

@@ -42,6 +42,27 @@ class FlutterBluePlusBleIo implements BleIo {
   /// Discover services, find Shearwater characteristics, enable notifications.
   Future<void> connect() async {
     await device.connect(timeout: const Duration(seconds: 10));
+
+    // Android defaults are catastrophic for bulk transfer:
+    //   MTU=23 → 20-byte ATT payload (iOS auto-negotiates ~185 B)
+    //   connection interval ~50 ms (iOS ~15 ms)
+    // At those defaults a single dive blob from a Petrel takes ~7 minutes.
+    // iOS handles both for us; on Android we have to ask. MTU is done now
+    // (must be negotiated before any data exchange); connection-priority
+    // and PHY are deferred until after notifications are enabled — some
+    // Android stacks ignore those requests issued before the link is fully
+    // provisioned, and the Shearwater iOS/Android app appears to time its
+    // request the same way (we get ~30 ms inter-notification gaps from
+    // their sessions in HCI snoops, vs ~177 ms here on the same hardware).
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final mtu = await device.requestMtu(247);
+        debugPrint('BLE Android: negotiated MTU=${mtu}B');
+      } catch (e) {
+        debugPrint('BLE Android: requestMtu failed: $e');
+      }
+    }
+
     final services = await device.discoverServices();
 
     BluetoothService? swService;
@@ -70,6 +91,26 @@ class FlutterBluePlusBleIo implements BleIo {
     }
 
     await _notifyChar!.setNotifyValue(true);
+
+    // Now that the link is fully provisioned (services discovered, notify
+    // descriptor written), ask for a faster connection interval and
+    // BLE 5.0 PHY 2M. Doing this earlier — directly after device.connect()
+    // — is what most Flutter/Android examples show, but in practice many
+    // Android stacks silently ignore the requests until the GATT link has
+    // produced traffic in both directions. Shearwater's own app achieves
+    // ~30 ms notification cadence which is only possible at a ~15-30 ms
+    // connection interval, so the request clearly *can* succeed on this
+    // Petrel firmware — it's a timing question, not a capability one.
+    // Negotiate link-layer parameters now that notifications are live.
+    // PHY is set once and never re-asserted — every setPreferredPhy()
+    // call triggers an LL_PHY_REQ on the air even if we're already at the
+    // target PHY, and repeating that during a download destabilises the
+    // link (observed: app loses connection mid-dive when PHY refresh
+    // fires every few seconds). Connection priority is a separate concern
+    // and IS safe to re-issue; see requestHighPerformanceLink below.
+    await _setPhy2M();
+    await _requestHighPriority();
+
     int? rssi;
     try {
       rssi = await device.readRssi();
@@ -88,6 +129,52 @@ class FlutterBluePlusBleIo implements BleIo {
       }
     });
   }
+
+  /// Set PHY 2M once. Idempotent in *intent* but NOT idempotent on the
+  /// wire — every setPreferredPhy() call triggers an LL_PHY_REQ even if
+  /// the link is already at 2M. Calling this repeatedly destabilises the
+  /// link, so it must only fire from [connect].
+  Future<void> _setPhy2M() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    // PHY 2M doubles the radio bit rate on BLE 5.0 capable peripherals.
+    // Petrel 3 supports it; older Petrels (1/2/Perdix) silently fall back
+    // to 1M. Bumping PHY also tends to make the link layer accept tighter
+    // connection intervals, which is the real prize — the firmware-side
+    // pacing we're fighting compounds with the connection interval.
+    try {
+      await device.setPreferredPhy(
+        txPhy: Phy.le2m.mask,
+        rxPhy: Phy.le2m.mask,
+        option: PhyCoding.noPreferred,
+      );
+      debugPrint('BLE Android: requested PHY 2M');
+    } catch (e) {
+      debugPrint('BLE Android: setPreferredPhy failed: $e');
+    }
+  }
+
+  /// Ask the controller to bump the link to a tight (~15-30 ms) connection
+  /// interval. Safe to re-issue periodically; the stack rate-limits and
+  /// dedupes internally. Each call still produces an LL_CONNECTION_PARAM_REQ
+  /// on the air if it actually changes anything, so don't spam it.
+  Future<void> _requestHighPriority() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await device.requestConnectionPriority(
+        connectionPriorityRequest: ConnectionPriority.high,
+      );
+      debugPrint('BLE Android: requested connection priority HIGH');
+    } catch (e) {
+      debugPrint('BLE Android: requestConnectionPriority failed: $e');
+    }
+  }
+
+  /// Public re-trigger for the transport to keep the connection in
+  /// high-priority mode during a long download. Android's
+  /// `requestConnectionPriority(HIGH)` is not sticky — it expires after
+  /// 5–10 s, and the link reverts to the balanced (~177 ms) interval.
+  /// PHY is NOT re-asserted here; see [_setPhy2M] for why.
+  Future<void> requestHighPerformanceLink() => _requestHighPriority();
 
   /// Disconnect and clean up.
   Future<void> disconnect() async {

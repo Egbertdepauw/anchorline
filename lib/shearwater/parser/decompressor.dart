@@ -18,16 +18,16 @@ class LreResult {
 /// - Bit 8 clear, value > 0: run of N zero bytes
 /// - Bit 8 clear, value == 0: end of compressed stream
 ///
-/// The input byte count * 8 must be a multiple of 9.
+/// Any leftover bits at the end (fewer than 9) are ignored — this lets the
+/// download path feed a partial / mid-stream buffer here every block to
+/// look for the end marker without waiting for a 9-bit-aligned tail.
+/// A complete stream is by construction 9-bit-aligned and contains the
+/// `0` end marker, so the tail-bit tolerance only matters for streaming
+/// callers that don't yet have the whole input.
 ///
 /// Ported from `shearwater_common_decompress_lre` in libdivecomputer.
 LreResult lreDecode(Uint8List compressed) {
   final nbits = compressed.length * 8;
-  if (nbits % 9 != 0) {
-    throw ArgumentError(
-        'LRE input size ${compressed.length} bytes ($nbits bits) '
-        'is not a multiple of 9 bits');
-  }
 
   final buffer = BytesBuilder(copy: false);
   var isFinal = false;

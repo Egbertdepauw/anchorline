@@ -119,12 +119,24 @@ void main() {
       expect(result.isFinal, isFalse);
     });
 
-    test('rejects input whose bit count is not a multiple of 9', () {
-      // 1 byte = 8 bits, 8 % 9 != 0
-      expect(
-        () => lreDecode(Uint8List.fromList([0x00])),
-        throwsArgumentError,
-      );
+    test('tolerates non-9-aligned input by ignoring leftover tail bits', () {
+      // The streaming download path feeds growing partial buffers here
+      // every BLE block so it can poll for the end marker before the
+      // full 9-bit-aligned stream has arrived. We promised lreDecode
+      // would handle that gracefully — process every complete 9-bit
+      // value and silently discard the leftover <9 bits at the end.
+      //
+      // 1 byte = 8 bits, fewer than 9 → produces no values, no isFinal.
+      final result = lreDecode(Uint8List.fromList([0x00]));
+      expect(result.data, isEmpty);
+      expect(result.isFinal, isFalse);
+
+      // 2 bytes = 16 bits → exactly one 9-bit value (top of byte 0 + top
+      // bit of byte 1), 7 leftover bits discarded. Encoding 0x100 in the
+      // top 9 bits → literal 0x00.
+      final twoByte = lreDecode(Uint8List.fromList([0x80, 0x00]));
+      expect(twoByte.data, equals([0x00]));
+      expect(twoByte.isFinal, isFalse);
     });
 
     test('handles empty input (0 bytes)', () {

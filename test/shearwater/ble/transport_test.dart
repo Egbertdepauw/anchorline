@@ -14,7 +14,8 @@ void main() {
   setUp(() {
     final mockBle =
         TraceMockBle('test/fixtures/raw/subsurface2.combined.txt');
-    transport = ShearwaterBleTransport();
+    // The recorded trace is strictly sequential — replay it that way.
+    transport = ShearwaterBleTransport(divePipelineWindow: 1);
     transport.connectWithIo(mockBle);
   });
 

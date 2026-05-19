@@ -56,6 +56,7 @@ class MockBleTransport {
           startTimestamp: 1776591525 + (n - 711) * 86400,
           endTimestamp: 1776591525 + (n - 711) * 86400 + 3600,
           address: n * 0x10000,
+          endAddress: n * 0x10000 + 0x10000,
         )).toList().reversed.toList();
   }
 

@@ -31,6 +31,18 @@ class ManifestEntry {
   /// at offset 20).
   final int address;
 
+  /// End address of the dive data in flash memory (exclusive, relative to
+  /// the same base, at offset 24). [endAddress] - [address] is the exact
+  /// number of compressed bytes the Petrel will return when we download
+  /// this dive. Without this, we'd request a generic upper bound (16 MB)
+  /// and the Petrel happily streams the next-younger dive's data right
+  /// after this one — the LRE end-marker convention only fires at the
+  /// very end of the on-flash log, not between dives.
+  final int endAddress;
+
+  /// Compressed dive size in bytes, derived from [endAddress] - [address].
+  int get compressedSize => endAddress - address;
+
   bool get isValid => header == manifestHeaderValid;
   bool get isDeleted => header == manifestHeaderDeleted;
 
@@ -41,6 +53,7 @@ class ManifestEntry {
     required this.startTimestamp,
     required this.endTimestamp,
     required this.address,
+    required this.endAddress,
   });
 }
 
@@ -67,6 +80,7 @@ class ManifestParser {
         startTimestamp: uint32BE(data, offset + 4), // fingerprint = start time
         endTimestamp: uint32BE(data, offset + 8),
         address: uint32BE(data, offset + 20),
+        endAddress: uint32BE(data, offset + 24),
       ));
 
       offset += manifestRecordSize;
