@@ -71,6 +71,11 @@ dependencies:
   git2dart_binaries: ^1.10.3
   flutter_secure_storage: ^10.1.0
 
+  # Crash + unhandled-exception reporting for release / beta builds.
+  # Gated by kReleaseMode AND --dart-define=SENTRY_DSN=... at build time
+  # (see main.dart) so debug builds never init the SDK or report.
+  sentry_flutter: ^9.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

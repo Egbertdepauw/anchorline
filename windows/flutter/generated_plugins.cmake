@@ -9,6 +9,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   geolocator_windows
   git2dart_binaries
   pdfx
+  sentry_flutter
   share_plus
   url_launcher_windows
 )

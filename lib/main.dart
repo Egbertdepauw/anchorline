@@ -1,10 +1,12 @@
 import 'dart:io';
 
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'data/db/database.dart';
@@ -62,14 +64,37 @@ void main() async {
     authService: authService,
   )..start();
 
-  runApp(CCRLogApp(
+  final app = CCRLogApp(
     db: db,
     powerSyncDb: powerSyncDb,
     settings: settings,
     authService: authService,
     cloudSyncCoordinator: cloudSyncCoordinator,
     cloudDataWiper: CloudDataWiper(Supabase.instance.client),
-  ));
+  );
+
+  // Sentry crash + unhandled-exception reporting is gated on TWO things:
+  // (1) we're in release mode — keeps dev iterations out of the beta
+  //     error stream and avoids eating into the free 5 k quota;
+  // (2) a SENTRY_DSN was injected at build time via
+  //     `flutter build ... --dart-define=SENTRY_DSN=https://...@sentry.io/...`.
+  //     Without the define the string is empty and we skip init entirely.
+  // Debug, profile, and DSN-less release builds just call runApp directly.
+  const sentryDsn = String.fromEnvironment('SENTRY_DSN');
+  if (kReleaseMode && sentryDsn.isNotEmpty) {
+    await SentryFlutter.init(
+      (options) {
+        options.dsn = sentryDsn;
+        // Crashes + unhandled exceptions only — no performance traces.
+        // tracesSampleRate: 0 keeps overhead minimal and stays inside
+        // the free-tier quota for a small beta cohort.
+        options.tracesSampleRate = 0;
+      },
+      appRunner: () => runApp(app),
+    );
+  } else {
+    runApp(app);
+  }
 }
 
 class CCRLogApp extends StatelessWidget {
