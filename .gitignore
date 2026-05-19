@@ -48,3 +48,6 @@ app.*.map.json
 # *.g.dart — keep in version control
 .claude/
 .superpowers/
+
+# Flutter screenshot dumps from `flutter screenshot` land at repo root.
+flutter_*.png
