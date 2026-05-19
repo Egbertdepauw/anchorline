@@ -874,21 +874,23 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
 
         final gasMixes = _decodeGasMixes();
 
-        // Bailout trigger = the LATEST sample where the diver is still at
-        // a "substantial" depth (≥ 50 % of max depth). On a square dive
-        // this lands at end-of-bottom-time, same as max-depth; on a
-        // multi-level dive it picks up the start of the final ascent,
-        // where tissues have been loading longest and the bailout is
-        // genuinely worst-case. The bailout planner walks the OC ascent
-        // from this point; tissue state at the trigger comes from the
-        // replay engine (triggerSampleIdx capture).
+        // Bailout trigger = the LATEST sample within 5 m of max depth.
+        // This captures end-of-bottom-time on both square and multi-level
+        // profiles: the diver can't pass through the "within 5 m of max"
+        // band on ascent without actually having been there, so the band
+        // always lies inside bottom time. A wider band (e.g. ≥ 50 % of
+        // max) gets fooled by a deep ascent — the loop locks onto the
+        // last sample mid-ascent, well above bottom, and the planner
+        // then under-counts bottom-mix gas by 5×. The bailout planner
+        // walks the OC ascent from this point; tissue state at the
+        // trigger comes from the replay engine (triggerSampleIdx capture).
         double maxDepth = 0;
         for (var i = 0; i < samples.depthMeters.length; i++) {
           if (samples.depthMeters[i] > maxDepth) {
             maxDepth = samples.depthMeters[i];
           }
         }
-        final substantialDepth = maxDepth * 0.5;
+        final substantialDepth = maxDepth - 5.0;
         var triggerIdx = 0;
         for (var i = samples.depthMeters.length - 1; i >= 0; i--) {
           if (samples.depthMeters[i] >= substantialDepth) {
