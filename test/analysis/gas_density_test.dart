@@ -116,6 +116,39 @@ void main() {
       expect(series[0], lessThan(6.5));
     });
 
+    test(
+        'regression: dive 691 multi-diluent — sample on second diluent uses '
+        'IT, not the first one in the list', () {
+      // Dive 691 carries two diluents: 9/68 (idx 0) and 10/70 (idx 3).
+      // At max depth the diver is on the 10/70 diluent (gasMixIndex=3).
+      // The active diluent — not the first one in the list — must drive
+      // the loop-gas calculation; otherwise multi-diluent dives display
+      // ~5 % wrong density at depth (we got 8.08 vs the correct 7.6).
+      final series = computeDensitySeries(
+        depthMeters: Float32List.fromList([145.6]),
+        gasMixIndex: Uint8List.fromList([3]),
+        gasMixes: [
+          DiveGasMix(oxygenPercent: 9, heliumPercent: 68, isDiluent: true),
+          DiveGasMix(oxygenPercent: 100, heliumPercent: 0, isDiluent: false),
+          DiveGasMix(oxygenPercent: 50, heliumPercent: 0, isDiluent: true),
+          DiveGasMix(oxygenPercent: 10, heliumPercent: 70, isDiluent: true),
+          DiveGasMix(oxygenPercent: 20, heliumPercent: 48, isDiluent: false),
+          DiveGasMix(oxygenPercent: 100, heliumPercent: 0, isDiluent: false),
+        ],
+        atmosphericPressureMbar: 1013,
+        ppo2Bar: Float32List.fromList([1.41]),
+      );
+      // Loop gas on 10/70 at 145.6 m, sp 1.41:
+      //   pAmb = 15.57 bar, loopO2 = 1.41/15.57 = 0.0906
+      //   loopHe = (1 − 0.0906) × (0.70 / 0.90) = 0.707
+      //   loopN2 = 1 − 0.0906 − 0.707 = 0.202
+      // Density 1 ATA: 0.091×1.314 + 0.707×0.166 + 0.202×1.2013 ≈ 0.480
+      // At 15.57 bar: ~7.5 g/L (we accept ±0.3)
+      expect(series[0], closeTo(7.5, 0.4));
+      // And NOT the wrong-diluent (9/68) value of ~8.1.
+      expect(series[0], lessThan(7.9));
+    });
+
     test('OC dive (no ppo2Bar) preserves the static-mix behaviour', () {
       final series = computeDensitySeries(
         depthMeters: Float32List.fromList([55.3]),

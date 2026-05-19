@@ -70,28 +70,39 @@ Float32List computeEndSeries({
       countsOxygen: countsOxygen,
     );
   }
-  final diluentIdx = diluentIndex(gasMixes);
-  final diluent = diluentIdx != null ? gasMixes[diluentIdx] : null;
+  // Pre-resolve a fallback diluent (first one). Used only when the
+  // sample's own gasMixIndex doesn't point at a diluent — multi-diluent
+  // dives still pick the *active* diluent per sample (see in-loop
+  // logic), but a parser-mis-indexed CCR sample (dive 702 case) still
+  // gets reasonable values from the first diluent.
+  final fallbackDilIdx = diluentIndex(gasMixes);
+  final fallbackDil = fallbackDilIdx != null ? gasMixes[fallbackDilIdx] : null;
   for (var i = 0; i < depthMeters.length; i++) {
+    final mixIdx = gasMixIndex[i];
+    if (mixIdx >= factorByMix.length) {
+      out[i] = double.nan;
+      continue;
+    }
     final live = ppo2Bar?[i] ?? 0.0;
     double factor;
-    if (live > 0 && diluent != null) {
-      final loop = loopGasAt(
-        depthMeters: depthMeters[i],
-        ppo2Bar: live,
-        diluent: diluent,
-      );
-      factor = _narcoticFactor(
-        o2: loop.o2Fraction,
-        he: loop.heFraction,
-        countsOxygen: countsOxygen,
-      );
-    } else {
-      final mixIdx = gasMixIndex[i];
-      if (mixIdx >= factorByMix.length) {
-        out[i] = double.nan;
-        continue;
+    if (live > 0) {
+      final atIdx = gasMixes[mixIdx];
+      final activeDil = atIdx.isDiluent ? atIdx : fallbackDil;
+      if (activeDil != null) {
+        final loop = loopGasAt(
+          depthMeters: depthMeters[i],
+          ppo2Bar: live,
+          diluent: activeDil,
+        );
+        factor = _narcoticFactor(
+          o2: loop.o2Fraction,
+          he: loop.heFraction,
+          countsOxygen: countsOxygen,
+        );
+      } else {
+        factor = factorByMix[mixIdx];
       }
+    } else {
       factor = factorByMix[mixIdx];
     }
     final end = (depthMeters[i] + 10.0) * factor - 10.0;

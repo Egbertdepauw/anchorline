@@ -84,25 +84,39 @@ Float32List computeDensitySeries({
     );
   }
   final atmBar = atmosphericPressureMbar / 1000.0;
-  final diluentIdx = diluentIndex(gasMixes);
-  final diluent = diluentIdx != null ? gasMixes[diluentIdx] : null;
+  // Pre-resolve a fallback diluent (first one in the list). Used only
+  // when the sample's own gasMixIndex doesn't point at a diluent —
+  // i.e. multi-diluent dives still pick the *active* diluent per
+  // sample, but a parser that mis-indexed a CCR sample to the bailout
+  // cylinder (the dive-702 bug) still gets reasonable values.
+  final fallbackDilIdx = diluentIndex(gasMixes);
+  final fallbackDil = fallbackDilIdx != null ? gasMixes[fallbackDilIdx] : null;
   for (var i = 0; i < depthMeters.length; i++) {
     final ambientBar = atmBar + depthMeters[i] / 10.0;
     final live = ppo2Bar?[i] ?? 0.0;
-    if (live > 0 && diluent != null) {
-      final loop = loopGasAt(
-        depthMeters: depthMeters[i],
-        ppo2Bar: live,
-        diluent: diluent,
-        atmosphericPressureBar: atmBar,
-      );
-      out[i] = mixDensityAt1Atm(loop.o2Fraction, loop.heFraction) * ambientBar;
-      continue;
-    }
     final mixIdx = gasMixIndex[i];
     if (mixIdx >= densityByMix.length) {
       out[i] = double.nan;
       continue;
+    }
+    if (live > 0) {
+      // CCR loop-gas mode. Prefer the gas the sample is currently on if
+      // it IS a diluent (handles multi-diluent dives), else fall back
+      // to the first diluent in the list.
+      final atIdx = gasMixes[mixIdx];
+      final activeDil =
+          atIdx.isDiluent ? atIdx : fallbackDil;
+      if (activeDil != null) {
+        final loop = loopGasAt(
+          depthMeters: depthMeters[i],
+          ppo2Bar: live,
+          diluent: activeDil,
+          atmosphericPressureBar: atmBar,
+        );
+        out[i] =
+            mixDensityAt1Atm(loop.o2Fraction, loop.heFraction) * ambientBar;
+        continue;
+      }
     }
     out[i] = densityByMix[mixIdx] * ambientBar;
   }
