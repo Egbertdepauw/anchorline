@@ -399,10 +399,11 @@ class _StopTable extends StatelessWidget {
     return 'EAN${g.oxygenPercent}';
   }
 
-  /// Whole-minute, rounded UP so a 1:01 hold doesn't read as "1 min".
+  /// Whole-minute, rounded UP so a 1:01 hold doesn't read as "1". Returns
+  /// just the integer — the column headers carry the unit.
   static String _fmtMinutes(Duration d) {
     final m = (d.inSeconds + 59) ~/ 60;
-    return '$m min';
+    return '$m';
   }
 
   /// PPO2 in bar at [depthMeters] on [gas]. 1.013 bar atmospheric + 0.1
@@ -446,8 +447,8 @@ class _StopTable extends StatelessWidget {
           child: Row(
             children: [
               Expanded(flex: 3, child: Text('DEPTH', style: headerStyle)),
-              Expanded(flex: 2, child: Text('STOP', style: headerStyle)),
-              Expanded(flex: 2, child: Text('RUNTIME', style: headerStyle)),
+              Expanded(flex: 2, child: Text('T', style: headerStyle)),
+              Expanded(flex: 2, child: Text('RT', style: headerStyle)),
               Expanded(flex: 2, child: Text('GAS', style: headerStyle)),
               Expanded(flex: 2, child: Text('PPO2', style: headerStyle)),
               Expanded(flex: 2, child: Text('ρ g/L', style: headerStyle)),

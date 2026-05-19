@@ -58,10 +58,31 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('saturationColour band thresholds match spec', () {
-    expect(tissueSaturationColour(60), const Color(0xFF3B82F6)); // blue
-    expect(tissueSaturationColour(80), const Color(0xFFFACC15)); // yellow
-    expect(tissueSaturationColour(97), const Color(0xFFF97316)); // orange
-    expect(tissueSaturationColour(120), const Color(0xFFDC2626)); // red
+  test('saturationColour hits anchor stops exactly', () {
+    // Anchor stops should pass through unchanged.
+    expect(tissueSaturationColour(0), const Color(0xFF1E3A8A));
+    expect(tissueSaturationColour(40), const Color(0xFF3B82F6));
+    expect(tissueSaturationColour(70), const Color(0xFF06B6D4));
+    expect(tissueSaturationColour(85), const Color(0xFF22C55E));
+    expect(tissueSaturationColour(95), const Color(0xFFFACC15));
+    expect(tissueSaturationColour(100), const Color(0xFFF97316));
+    expect(tissueSaturationColour(115), const Color(0xFFDC2626));
+  });
+
+  test('saturationColour clamps outside the ramp', () {
+    expect(tissueSaturationColour(-20), const Color(0xFF1E3A8A));
+    expect(tissueSaturationColour(140), const Color(0xFFDC2626));
+  });
+
+  test('saturationColour interpolates linearly between stops', () {
+    // Midpoint between green (85%) and yellow (95%) should equal
+    // Color.lerp of those two at t=0.5.
+    final mid = tissueSaturationColour(90);
+    final expected = Color.lerp(
+      const Color(0xFF22C55E),
+      const Color(0xFFFACC15),
+      0.5,
+    )!;
+    expect(mid, expected);
   });
 }
