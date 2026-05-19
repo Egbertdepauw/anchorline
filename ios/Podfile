@@ -48,6 +48,14 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       config.build_settings['SUPPORTED_PLATFORMS'] = 'iphoneos iphonesimulator'
+      # Belt-and-braces: SUPPORTED_PLATFORMS alone isn't enough on
+      # Xcode 26. Sentry-Cocoa (and a handful of others) declare
+      # macCatalyst support in their podspecs and CocoaPods will
+      # otherwise produce zippered iOS+macCatalyst binaries that the
+      # iOS-only linker rejects with:
+      #   "linking in dylib ... built for 'macOS macCatalyst zippered'"
+      # Forcing NO here strips macCatalyst from every Pod target.
+      config.build_settings['SUPPORTS_MACCATALYST'] = 'NO'
     end
   end
 end
