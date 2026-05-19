@@ -103,11 +103,14 @@ AscentPlan simulateAscent({
 
   // NDL dive: planDeco returns [] → one straight-up leg at the slow rate
   // on the bottom mix so the bailout volume math still produces a number.
+  // Uses sacBottom: the user's rule is that bottom SAC applies until the
+  // first deco-or-gas-switch stop. With no stops at all (true NDL), the
+  // diver is in bottom-phase mindset the whole way up — bottom SAC.
   if (steps.isEmpty) {
     final secs = (triggerDepthMeters / ascentRateSlow * 60).round();
     final gas = availableGases.first;
     final avgAmbient = _surfaceAtmBar + triggerDepthMeters / 20.0;
-    final volumeL = sacDeco * avgAmbient * (secs / 60);
+    final volumeL = sacBottom * avgAmbient * (secs / 60);
     return AscentPlan(
       stops: [
         AscentStop(
