@@ -89,3 +89,24 @@ int? diluentIndex(List<DiveGasMix> gasMixes) {
   }
   return null;
 }
+
+/// The "deepest" diluent in [gasMixes] — the one with the LOWEST O₂
+/// fraction (= highest He, most depth-tolerant). Used by density / END
+/// as the loop-gas fallback when the sample's own `gasMixIndex` points
+/// at a non-diluent (e.g. Subsurface mis-recorded a gaschange event on
+/// a CCR dive to a deco / bailout cylinder the diver never actually
+/// breathed). Picking the deepest diluent here matches the user's
+/// actual breathing gas at depth, and at shallower points it gives
+/// slightly-too-low density — which the max-density / max-END stats
+/// don't care about anyway.
+///
+/// Returns null when no diluent exists (pure-OC dive — caller should
+/// fall back to static gas at gasMixIndex).
+DiveGasMix? deepestDiluent(List<DiveGasMix> gasMixes) {
+  DiveGasMix? best;
+  for (final m in gasMixes) {
+    if (!m.isDiluent) continue;
+    if (best == null || m.oxygenPercent < best.oxygenPercent) best = m;
+  }
+  return best;
+}

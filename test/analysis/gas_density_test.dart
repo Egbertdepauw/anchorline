@@ -117,6 +117,44 @@ void main() {
     });
 
     test(
+        'regression: dive 692 (145.6 m cave) — sample wrongly indexed at a '
+        'non-diluent deco gas (50/0) falls back to the deepest diluent '
+        '(8/70), NOT the first diluent in the list', () {
+      // Reproduces dive-692 max-density bug: Subsurface had spurious
+      // gaschange events to 50/0 (a deco gas) at depth on a CCR dive
+      // whose actual loop diluent was 8/70. Density spiked to 10.6 g/L
+      // because the old fallback was "first diluent in list" (which was
+      // 50/0 with isDiluent=true — a weird configuration artifact).
+      // Falling back to the deepest diluent (lowest O₂, 8/70) gives the
+      // correct ~7.7 g/L instead.
+      final series = computeDensitySeries(
+        depthMeters: Float32List.fromList([145.6]),
+        gasMixIndex: Uint8List.fromList([1]), // 50/0 non-diluent
+        gasMixes: [
+          DiveGasMix(oxygenPercent: 99, heliumPercent: 0, isDiluent: false),
+          DiveGasMix(oxygenPercent: 50, heliumPercent: 0, isDiluent: false),
+          DiveGasMix(oxygenPercent: 20, heliumPercent: 48, isDiluent: false),
+          DiveGasMix(oxygenPercent: 10, heliumPercent: 70, isDiluent: false),
+          DiveGasMix(oxygenPercent: 50, heliumPercent: 0, isDiluent: true),
+          DiveGasMix(oxygenPercent: 20, heliumPercent: 48, isDiluent: true),
+          DiveGasMix(oxygenPercent: 10, heliumPercent: 70, isDiluent: true),
+          DiveGasMix(oxygenPercent: 8, heliumPercent: 70, isDiluent: true),
+        ],
+        atmosphericPressureMbar: 1013,
+        ppo2Bar: Float32List.fromList([1.4]),
+      );
+      // Loop gas on 8/70 (the deepest diluent) at 145.6 m, sp 1.4:
+      //   pAmb = 15.57, loopO2 = 0.090
+      //   loopHe = (1 − 0.090) × 0.70 / 0.92 = 0.692
+      //   loopN2 = 0.218
+      // Density 1 ATA: ≈ 0.497 → at 15.57 bar ≈ 7.7 g/L (the right
+      // answer). The buggy old value (10.6 from a no-He fallback) is
+      // explicitly rejected.
+      expect(series[0], closeTo(7.7, 0.3));
+      expect(series[0], lessThan(9.0));
+    });
+
+    test(
         'regression: dive 691 multi-diluent — sample on second diluent uses '
         'IT, not the first one in the list', () {
       // Dive 691 carries two diluents: 9/68 (idx 0) and 10/70 (idx 3).

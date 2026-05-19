@@ -84,13 +84,24 @@ Float32List computeDensitySeries({
     );
   }
   final atmBar = atmosphericPressureMbar / 1000.0;
-  // Pre-resolve a fallback diluent (first one in the list). Used only
-  // when the sample's own gasMixIndex doesn't point at a diluent —
-  // i.e. multi-diluent dives still pick the *active* diluent per
-  // sample, but a parser that mis-indexed a CCR sample to the bailout
-  // cylinder (the dive-702 bug) still gets reasonable values.
-  final fallbackDilIdx = diluentIndex(gasMixes);
-  final fallbackDil = fallbackDilIdx != null ? gasMixes[fallbackDilIdx] : null;
+  // Pre-resolve a fallback diluent — the one with the LOWEST O₂
+  // fraction (= most He = depth-tolerant). Used only when the sample's
+  // own gasMixIndex doesn't point at a diluent. This handles two
+  // cases at once:
+  //
+  // (a) Multi-diluent dives where Subsurface recorded a gas change to a
+  //     non-diluent cylinder (deco / bailout) at depth. The diver wasn't
+  //     actually breathing that gas on a CCR loop — they stayed on the
+  //     deepest diluent. Falling back to that diluent reflects reality.
+  //
+  // (b) Single-diluent dives where the parser mis-indexed the sample
+  //     (dive-702 bug). Falling back to the diluent gives the correct
+  //     loop-gas answer.
+  //
+  // Multi-diluent dives where the sample's gasMixIndex DOES point at a
+  // diluent (e.g. a mid-dive switch to a shallower-rated diluent) still
+  // use that diluent per the active-diluent path below.
+  final fallbackDil = deepestDiluent(gasMixes);
   for (var i = 0; i < depthMeters.length; i++) {
     final ambientBar = atmBar + depthMeters[i] / 10.0;
     final live = ppo2Bar?[i] ?? 0.0;

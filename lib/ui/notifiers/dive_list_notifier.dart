@@ -46,29 +46,21 @@ class DiveListNotifier extends ChangeNotifier {
   Map<String, dom.DiveAnnotation> get annotationsByDiveId =>
       Map.unmodifiable(_annotationsByDiveId);
 
-  /// Display dive number keyed by dive id.
+  /// CCRLog-internal sequential dive number, keyed by dive id. Computed
+  /// over all non-deleted dives sorted by `start_time` ascending — the
+  /// chronologically-oldest dive is `#1`, newest is `#N`. Stable across
+  /// filter changes (filtering hides rows; it doesn't renumber).
   ///
-  /// Returns the dive computer's own counter (`dcDiveNumber`). This
-  /// matches what the Petrel itself shows AND what Subsurface displays,
-  /// so users who cross-check between the three systems don't see
-  /// confusing off-by-N mismatches.
-  ///
-  /// Previously this returned a CCRLog-internal chronological sequence
-  /// (1..N over all imported dives). That worked cleanly when every
-  /// single dive lived in CCRLog — but as soon as the user had dives in
-  /// Subsurface or on the DC that hadn't been imported into CCRLog yet,
-  /// CCRLog's numbering lagged the others and confused anyone trying
-  /// to find "dive #692" across all three UIs.
-  ///
-  /// Trade-off: for users who switch dive computers (or factory-reset
-  /// one), `dcDiveNumber` can collide across DCs — two different dives
-  /// can both display as e.g. "#147". A future revision could namespace
-  /// the display by serial when collisions are detected. Manual entries
-  /// with `dcDiveNumber == 0` currently display as "#0"; revisit when
-  /// manual-dive entry is a real feature.
+  /// Deliberately NOT the dive computer's own counter. dc_dive_number
+  /// can have gaps (factory-reset DCs, deleted-on-device dives) and
+  /// can collide across multiple dive computers — neither is what the
+  /// user wants to see in the dive list. The user explicitly prefers
+  /// a continuous 1..N sequence even if it disagrees with what the
+  /// Petrel and Subsurface display per-dive.
   Map<String, int> get sequenceByDiveId {
+    final n = _dives.length;
     return {
-      for (final d in _dives) d.id: d.dcDiveNumber,
+      for (var i = 0; i < n; i++) _dives[i].id: n - i,
     };
   }
 

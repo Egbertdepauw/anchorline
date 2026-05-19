@@ -112,11 +112,12 @@ void main() {
     await tester.pump();
 
     expect(find.byType(DiveTile), findsOneWidget);
-    // The tile now renders the DC's own dcDiveNumber so CCRLog, the
-    // dive computer and Subsurface all show the same number.
+    // The DC's own number (718) still matches the search query, but the
+    // tile renders the CCRLog-internal chronological sequence number —
+    // dive 718 is the newest of three seeded dives, so it's `#3`.
     expect(
         find.descendant(
-            of: find.byType(DiveTile), matching: find.text('#718')),
+            of: find.byType(DiveTile), matching: find.text('#3')),
         findsOneWidget);
   });
 

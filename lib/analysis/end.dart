@@ -70,13 +70,13 @@ Float32List computeEndSeries({
       countsOxygen: countsOxygen,
     );
   }
-  // Pre-resolve a fallback diluent (first one). Used only when the
-  // sample's own gasMixIndex doesn't point at a diluent — multi-diluent
-  // dives still pick the *active* diluent per sample (see in-loop
-  // logic), but a parser-mis-indexed CCR sample (dive 702 case) still
-  // gets reasonable values from the first diluent.
-  final fallbackDilIdx = diluentIndex(gasMixes);
-  final fallbackDil = fallbackDilIdx != null ? gasMixes[fallbackDilIdx] : null;
+  // Pre-resolve a fallback diluent — the deepest (lowest-O₂, most-He)
+  // one. Used only when the sample's own gasMixIndex doesn't point at a
+  // diluent. Picks the diluent the diver was actually breathing at
+  // depth, ignoring spurious gas-change events Subsurface may have
+  // recorded against non-diluent cylinders. See computeDensitySeries
+  // for full rationale.
+  final fallbackDil = deepestDiluent(gasMixes);
   for (var i = 0; i < depthMeters.length; i++) {
     final mixIdx = gasMixIndex[i];
     if (mixIdx >= factorByMix.length) {
