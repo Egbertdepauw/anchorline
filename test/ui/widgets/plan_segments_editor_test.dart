@@ -96,6 +96,74 @@ void main() {
     expect(replaced!.depthMeters, 45);
   });
 
+  testWidgets(
+      'gas dropdown hides gases whose OC PPO2 exceeds 1.61 at the row depth',
+      (tester) async {
+    // 60 m on EAN 50: PPO₂ ≈ 0.50 × 7.013 ≈ 3.5 — way over the cap.
+    // The dropdown should drop EAN 50 from its items. Tx 18/45 (deep
+    // diluent) and the currently-selected gas (index 0 — Tx 18/45)
+    // must stay.
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PlanSegmentsEditor(
+          gases: const [
+            DivePlanGas(oxygenPercent: 18, heliumPercent: 45, isDiluent: true),
+            DivePlanGas(oxygenPercent: 50, heliumPercent: 0, isDiluent: false),
+            DivePlanGas(oxygenPercent: 100, heliumPercent: 0, isDiluent: false),
+          ],
+          segments: const [
+            DivePlanSegment(
+                depthMeters: 60,
+                durationMinutes: 20,
+                gasMixIndex: 0,
+                setpoint: 1.3),
+          ],
+          onAdd: (_) {},
+          onRemove: (_) {},
+          onReplace: (_, _) {},
+          onReorder: (_, _) {},
+          mode: DivePlanMode.cc,
+        ),
+      ),
+    ));
+    await tester.tap(find.byType(DropdownButton<int>));
+    await tester.pumpAndSettle();
+    // Tx 18/45 is the selection — present.
+    expect(find.text('Tx18/45'), findsWidgets);
+    // EAN 50 and pure O2 must be HIDDEN at 60 m.
+    expect(find.text('EAN50'), findsNothing);
+    expect(find.text('EAN100'), findsNothing);
+  });
+
+  testWidgets('segment row shows a red warning line when chosen gas '
+      'OC PPO2 exceeds 1.51 at the row depth', (tester) async {
+    // EAN 32 at 50 m: PPO₂ = 0.32 × (1.013 + 5) ≈ 1.92 → unsafe red.
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PlanSegmentsEditor(
+          gases: const [
+            DivePlanGas(oxygenPercent: 32, heliumPercent: 0, isDiluent: true),
+          ],
+          segments: const [
+            DivePlanSegment(
+                depthMeters: 50,
+                durationMinutes: 20,
+                gasMixIndex: 0,
+                setpoint: 1.3),
+          ],
+          onAdd: (_) {},
+          onRemove: (_) {},
+          onReplace: (_, _) {},
+          onReorder: (_, _) {},
+          mode: DivePlanMode.cc,
+        ),
+      ),
+    ));
+    // Warning text appears below the row when the chosen gas is unsafe.
+    expect(find.textContaining('PPO₂'), findsWidgets);
+    expect(find.textContaining('1.51'), findsWidgets);
+  });
+
   testWidgets('editing time fires onReplace; 0 = instant switch',
       (tester) async {
     DivePlanSegment? replaced;

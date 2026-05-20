@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/dive_plan.dart';
 import '../theme/tokens.dart';
+import 'gas_safety_readout.dart';
 
 class PlanSegmentsEditor extends StatelessWidget {
   const PlanSegmentsEditor({
@@ -185,103 +186,146 @@ class _SegmentRowState extends State<_SegmentRow> {
 
   @override
   Widget build(BuildContext context) {
+    // Per-segment safety readout: evaluate the chosen gas at THIS row's
+    // depth. The dropdown below filters by [isGasSelectableAt] (PPO₂
+    // hard-cap 1.61) so the diver can't pick a worse one — but the
+    // currently-stored selection may already be unsafe (e.g. depth was
+    // edited after the gas was picked), so we keep it pickable in the
+    // dropdown items and let the warning line flag it.
+    final segDepth = widget.segment.depthMeters;
+    final selectedGas =
+        widget.segment.gasMixIndex < widget.gases.length
+            ? widget.gases[widget.segment.gasMixIndex]
+            : null;
+    final safety = selectedGas == null
+        ? null
+        : computeGasSafetyReadout(selectedGas, segDepth);
+
+    // Items: only safe-at-this-depth gases, except always include the
+    // currently-selected one so DropdownButton doesn't assert.
+    final items = <DropdownMenuItem<int>>[];
+    for (var gi = 0; gi < widget.gases.length; gi++) {
+      final isSafe = isGasSelectableAt(widget.gases[gi], segDepth);
+      final isSelected = gi == widget.segment.gasMixIndex;
+      if (!isSafe && !isSelected) continue;
+      items.add(
+        DropdownMenuItem(
+          value: gi,
+          child: Text(
+            PlanSegmentsEditor.gasLabel(widget.gases[gi]),
+            style: AppTypography.readoutSm.copyWith(
+              color: isSafe ? null : const Color(0xFFE74C3C),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 72,
-            child: TextField(
-              controller: _depthCtrl,
-              focusNode: _depthFocus,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                isDense: true,
-                suffixText: 'm',
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-              ),
-              onChanged: (s) {
-                final v = double.tryParse(s);
-                if (v != null) _emit(depthMeters: v);
-              },
-            ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 88,
-            child: TextField(
-              controller: _timeCtrl,
-              focusNode: _timeFocus,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                isDense: true,
-                suffixText: 'min',
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-              ),
-              onChanged: (s) {
-                final v = int.tryParse(s);
-                if (v != null) _emit(durationMinutes: v);
-              },
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: DropdownButton<int>(
-              value: widget.segment.gasMixIndex < widget.gases.length
-                  ? widget.segment.gasMixIndex
-                  : null,
-              isDense: true,
-              isExpanded: true,
-              underline: const SizedBox.shrink(),
-              hint: const Text('Gas'),
-              items: [
-                for (var gi = 0; gi < widget.gases.length; gi++)
-                  DropdownMenuItem(
-                    value: gi,
-                    child: Text(
-                      PlanSegmentsEditor.gasLabel(widget.gases[gi]),
-                      style: AppTypography.readoutSm,
-                    ),
+          Row(
+            children: [
+              SizedBox(
+                width: 72,
+                child: TextField(
+                  controller: _depthCtrl,
+                  focusNode: _depthFocus,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    suffixText: 'm',
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                   ),
-              ],
-              onChanged: (v) {
-                if (v != null) _emit(gasMixIndex: v);
-              },
-            ),
+                  onChanged: (s) {
+                    final v = double.tryParse(s);
+                    if (v != null) _emit(depthMeters: v);
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 88,
+                child: TextField(
+                  controller: _timeCtrl,
+                  focusNode: _timeFocus,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    suffixText: 'min',
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                  ),
+                  onChanged: (s) {
+                    final v = int.tryParse(s);
+                    if (v != null) _emit(durationMinutes: v);
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButton<int>(
+                  value: widget.segment.gasMixIndex < widget.gases.length
+                      ? widget.segment.gasMixIndex
+                      : null,
+                  isDense: true,
+                  isExpanded: true,
+                  underline: const SizedBox.shrink(),
+                  hint: const Text('Gas'),
+                  items: items,
+                  onChanged: (v) {
+                    if (v != null) _emit(gasMixIndex: v);
+                  },
+                ),
+              ),
+              if (widget.mode == DivePlanMode.cc)
+                SizedBox(
+                  width: 64,
+                  child: DropdownButton<double?>(
+                    value: _normalisedSp(widget.segment.setpoint),
+                    isDense: true,
+                    isExpanded: true,
+                    underline: const SizedBox.shrink(),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('—')),
+                      DropdownMenuItem(value: 0.5, child: Text('0.5')),
+                      DropdownMenuItem(value: 0.7, child: Text('0.7')),
+                      DropdownMenuItem(value: 1.0, child: Text('1.0')),
+                      DropdownMenuItem(value: 1.2, child: Text('1.2')),
+                      DropdownMenuItem(value: 1.3, child: Text('1.3')),
+                      DropdownMenuItem(value: 1.4, child: Text('1.4')),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) {
+                        _emit(clearSetpoint: true);
+                      } else {
+                        _emit(setpoint: v);
+                      }
+                    },
+                  ),
+                ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => widget.onRemove(widget.index),
+              ),
+            ],
           ),
-          if (widget.mode == DivePlanMode.cc)
-            SizedBox(
-              width: 64,
-              child: DropdownButton<double?>(
-                value: _normalisedSp(widget.segment.setpoint),
-                isDense: true,
-                isExpanded: true,
-                underline: const SizedBox.shrink(),
-                items: const [
-                  DropdownMenuItem(value: null, child: Text('—')),
-                  DropdownMenuItem(value: 0.5, child: Text('0.5')),
-                  DropdownMenuItem(value: 0.7, child: Text('0.7')),
-                  DropdownMenuItem(value: 1.0, child: Text('1.0')),
-                  DropdownMenuItem(value: 1.2, child: Text('1.2')),
-                  DropdownMenuItem(value: 1.3, child: Text('1.3')),
-                  DropdownMenuItem(value: 1.4, child: Text('1.4')),
-                ],
-                onChanged: (v) {
-                  if (v == null) {
-                    _emit(clearSetpoint: true);
-                  } else {
-                    _emit(setpoint: v);
-                  }
-                },
+          // Per-segment safety line — only when the chosen gas reports
+          // a warning or hard-unsafe state at THIS segment's depth.
+          // Green / neutral states are silent here to keep the editor
+          // uncluttered; the gas editor's status line carries those.
+          if (safety != null && (safety.isUnsafe || safety.isWarning))
+            Padding(
+              padding: const EdgeInsets.only(top: 2, left: 4),
+              child: Text(
+                safety.text,
+                style: AppTypography.caption.copyWith(color: safety.color),
               ),
             ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => widget.onRemove(widget.index),
-          ),
         ],
       ),
     );

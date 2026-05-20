@@ -35,6 +35,12 @@ PlanResult runPlan({
   required double decoSetpoint,
   required double lastStopDepthMeters,
   required List<TankSpec> availableTanks,
+  // Depth at/above which the loop switches from the ascent SP to the
+  // deco SP. 0.0 (default) = always use deco SP on the ascent (legacy).
+  double decoSwitchDepthMeters = 0.0,
+  // Per-minute breathing rate for OC consumption math. CC plans burn
+  // a small metabolic O2 share; OC plans burn ambient × sac × time.
+  int ocSacLPerMin = 20,
 }) {
   final fastMpm = ascentRateFastMpm ?? ascentRateMpm;
   final slowMpm = ascentRateSlowMpm ?? ascentRateMpm;
@@ -62,12 +68,40 @@ PlanResult runPlan({
   // of the diluent) — `planDeco`'s `setpointBar` plumbs that into the
   // inert-pp helper. lastStopDepthMeters extends the final hold so the
   // diver can surface from 6 m / 9 m instead of 3 m if they prefer.
+  //
+  // CCR gas handling: planDeco's default behaviour is MultiDeco-style
+  // "pick the richest safe gas at each stop", which auto-switches the
+  // diluent at every standard switch depth. That's wrong on a CCR —
+  // the diver doesn't swap diluent at 21 m just because EAN 50 is in
+  // the gas list; they breathe the loop. We restrict planDeco to the
+  // *single* gas active at the end of the segment walk so deco runs on
+  // that diluent throughout. A diver who wants a mid-deco diluent
+  // switch composes it with a 0-time segment in the segment list,
+  // which moves the "active at end" gas to the desired mix.
+  //
+  // OC retains the original auto-select behaviour — that IS how OC
+  // deco gas planning is supposed to work.
   final diveGasMixes = gases.map(_toDiveGasMix).toList();
+  final List<DiveGasMix> decoGases;
+  if (mode == DivePlanMode.cc && gases.isNotEmpty && segments.isNotEmpty) {
+    var activeIdx = segments.first.gasMixIndex;
+    for (final s in segments) {
+      activeIdx = s.gasMixIndex;
+    }
+    final safeIdx = activeIdx < gases.length ? activeIdx : 0;
+    decoGases = [diveGasMixes[safeIdx]];
+  } else {
+    decoGases = diveGasMixes;
+  }
+  // On CCR, switch from ascent SP → deco SP when ascending through
+  // [decoSwitchDepthMeters]. A deep dive with bottom SP 1.3 typically
+  // wants the high "deco" SP (e.g. 1.5) to kick in only at ~36 m or
+  // shallower, not for the deep first-stop leg.
   final diveAscent = planDeco(
     initialN2Bar: sim.triggerN2Bar,
     initialHeBar: sim.triggerHeBar,
     triggerDepthMeters: sim.triggerDepthMeters,
-    gases: diveGasMixes,
+    gases: decoGases,
     gfLow: gfLow,
     gfHigh: gfHigh,
     ascentRateFastMPerMin: fastMpm,
@@ -75,22 +109,63 @@ PlanResult runPlan({
     ppo2LimitBottom: 1.6,
     ppo2LimitDeco: 1.6,
     setpointBar: mode == DivePlanMode.cc ? decoSetpoint : 0.0,
+    ascentSetpointBar:
+        mode == DivePlanMode.cc && decoSwitchDepthMeters > 0
+            ? ascentSetpoint
+            : null,
+    decoSwitchDepthMeters: decoSwitchDepthMeters,
     lastStopDepthMeters: lastStopDepthMeters,
   );
 
   // Convert DecoStep → AscentStop and stamp the setpoint used so the
   // output table can display it as the row's PPO2 (CC) without each
-  // consumer reaching back into the planner config.
-  final diveAscentStops = diveAscent
-      .map((s) => AscentStop(
-            depthStartMeters: s.depthStartMeters,
-            depthEndMeters: s.depthEndMeters,
-            duration: s.duration,
-            gas: s.gas,
-            volumeLitresConsumed: 0,
-            setpointBar: mode == DivePlanMode.cc ? decoSetpoint : null,
-          ))
-      .toList();
+  // consumer reaching back into the planner config. The per-row
+  // setpoint follows the same depth-switch rule the planner used —
+  // a deep first-stop leg gets the ascent SP, a shallow stop the deco
+  // SP. Volume = SAC × avg-ambient × minutes (OC) or metabolic O2
+  // burn (CC).
+  double rowSp(double avgDepthM) {
+    if (mode != DivePlanMode.cc) return 0;
+    final useAscent =
+        decoSwitchDepthMeters > 0 && avgDepthM > decoSwitchDepthMeters;
+    return useAscent ? ascentSetpoint : decoSetpoint;
+  }
+
+  double legVolumeLitres(double avgDepthM, Duration d) {
+    final minutes = d.inSeconds / 60.0;
+    if (mode == DivePlanMode.cc) {
+      return _ccrMetabolicO2LPerMin * minutes;
+    }
+    final ambient = 1.013 + avgDepthM / 10.0;
+    return ocSacLPerMin * ambient * minutes;
+  }
+
+  final diveAscentStops = diveAscent.map((s) {
+    final avg = (s.depthStartMeters + s.depthEndMeters) / 2.0;
+    return AscentStop(
+      depthStartMeters: s.depthStartMeters,
+      depthEndMeters: s.depthEndMeters,
+      duration: s.duration,
+      gas: s.gas,
+      volumeLitresConsumed: legVolumeLitres(avg, s.duration),
+      setpointBar: mode == DivePlanMode.cc ? rowSp(avg) : null,
+    );
+  }).toList();
+
+  // Stamp volumes on the simulator's bottom-phase profile too. The
+  // simulator returns legs without consumption — fill them in here so
+  // the VOL column reads non-zero across the whole dive.
+  final simProfile = sim.profile.map((s) {
+    final avg = (s.depthStartMeters + s.depthEndMeters) / 2.0;
+    return AscentStop(
+      depthStartMeters: s.depthStartMeters,
+      depthEndMeters: s.depthEndMeters,
+      duration: s.duration,
+      gas: s.gas,
+      volumeLitresConsumed: legVolumeLitres(avg, s.duration),
+      setpointBar: s.setpointBar,
+    );
+  }).toList();
 
   // Phase 4: bailout plan (Scenario A — user-supplied tanks).
   final userBailoutTanks = <DiveGasMix>[];
@@ -144,15 +219,101 @@ PlanResult runPlan({
       ascentOtu += math.pow(base, 5.0 / 6.0).toDouble() * minutes;
     }
   }
+  final totalRuntime = sim.totalRuntime + ascentDuration;
+  final oxygenConsumedLitres = _estimateOxygenConsumed(
+    mode: mode,
+    profile: simProfile,
+    diveAscent: diveAscentStops,
+    decoSetpoint: decoSetpoint,
+    totalRuntime: totalRuntime,
+    ocSacLPerMin: ocSacLPerMin,
+  );
+  // Total OC gas litres = sum of per-leg volumeLitresConsumed across
+  // profile + diveAscent. On CC mode each leg's stamped volume is the
+  // tiny metabolic O2 burn (≈ runtime × 1 L/min), so this stays near
+  // oxygenConsumedLitres — the OC chip checks mode and hides itself
+  // when CC, so the small number isn't misleading. OC mode: this is
+  // the headline number for cylinder-capacity sanity.
+  //
+  // Per-gas breakdown: sum each gas's contribution separately so the
+  // OC chip strip can render "Tx18/45 3400 L · EAN50 980 L" instead of
+  // one lumped number.
+  double gasConsumedLitres = 0;
+  final perGasLitres = <DiveGasMix, double>{};
+  void tallyLeg(AscentStop s) {
+    gasConsumedLitres += s.volumeLitresConsumed;
+    if (s.volumeLitresConsumed <= 0) return;
+    perGasLitres.update(
+      s.gas,
+      (existing) => existing + s.volumeLitresConsumed,
+      ifAbsent: () => s.volumeLitresConsumed,
+    );
+  }
+
+  for (final s in simProfile) {
+    tallyLeg(s);
+  }
+  for (final s in diveAscentStops) {
+    tallyLeg(s);
+  }
+  final gasConsumedByMix = perGasLitres.entries
+      .map((e) => (gas: e.key, litres: e.value))
+      .toList()
+    ..sort((a, b) => b.litres.compareTo(a.litres));
+
   return PlanResult(
-    profile: sim.profile,
+    profile: simProfile,
     diveAscent: diveAscentStops,
     bailout: bailoutResult,
     cnsPercent: sim.cnsPercent + ascentCns,
     otuTotal: sim.otuTotal + ascentOtu,
     maxDensityGramsPerLitre: sim.maxDensityGramsPerLitre,
-    totalRuntime: sim.totalRuntime + ascentDuration,
+    totalRuntime: totalRuntime,
+    oxygenConsumedLitres: oxygenConsumedLitres,
+    gasConsumedLitres: gasConsumedLitres,
+    gasConsumedByMix: gasConsumedByMix,
   );
+}
+
+/// Standard metabolic O2 burn for an adult diver under load. Used as
+/// the CCR estimate — the loop is closed, so the only O2 leaving the
+/// system is what the diver metabolises (plus any vented gas, which a
+/// well-tuned CCR keeps near zero).
+const double _ccrMetabolicO2LPerMin = 1.0;
+
+/// Estimates litres of O2 consumed over the planned dive.
+///
+/// CCR: metabolic rate × runtime — depth-independent.
+///
+/// OC: each leg uses fO2 × ambient × SAC × duration, where SAC comes
+/// from the caller (defaults to 20 L/min if omitted).
+double _estimateOxygenConsumed({
+  required DivePlanMode mode,
+  required List<AscentStop> profile,
+  required List<AscentStop> diveAscent,
+  required double decoSetpoint,
+  required Duration totalRuntime,
+  int ocSacLPerMin = 20,
+}) {
+  if (mode == DivePlanMode.cc) {
+    return _ccrMetabolicO2LPerMin * (totalRuntime.inSeconds / 60.0);
+  }
+  // OC — sum the per-leg consumption.
+  final sacLPerMin = ocSacLPerMin.toDouble();
+  double total = 0;
+  void accumulate(List<AscentStop> legs) {
+    for (final s in legs) {
+      final avgDepth = (s.depthStartMeters + s.depthEndMeters) / 2.0;
+      final ambient = 1.013 + avgDepth / 10.0;
+      final fO2 = s.gas.oxygenPercent / 100.0;
+      final minutes = s.duration.inSeconds / 60.0;
+      total += sacLPerMin * ambient * fO2 * minutes;
+    }
+  }
+
+  accumulate(profile);
+  accumulate(diveAscent);
+  return total;
 }
 
 DiveGasMix _toDiveGasMix(DivePlanGas g) => DiveGasMix(

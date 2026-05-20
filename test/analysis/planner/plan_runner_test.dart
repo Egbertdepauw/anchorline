@@ -301,6 +301,82 @@ void main() {
     expect(r.cnsPercent, greaterThan(35));
   });
 
+  test('CCR deco does NOT auto-switch to a richer non-active gas', () {
+    // Diver dives EAN32 (active diluent) with EAN50 sitting in the gas
+    // list but not selected on any segment. The deco ascent should
+    // stay on EAN32 throughout — not auto-pick EAN50 at the 21 m
+    // standard switch depth like MultiDeco would. The diver opts in
+    // to a switch by adding a 0-time segment.
+    final result = runPlan(
+      gases: const [
+        DivePlanGas(oxygenPercent: 32, heliumPercent: 0, isDiluent: true),
+        DivePlanGas(oxygenPercent: 50, heliumPercent: 0, isDiluent: false),
+      ],
+      segments: const [
+        DivePlanSegment(
+            depthMeters: 30,
+            durationMinutes: 60,
+            gasMixIndex: 0,
+            setpoint: 1.3),
+      ],
+      bailout: const [],
+      mode: DivePlanMode.cc,
+      gfLow: 50,
+      gfHigh: 95,
+      useVpmb: false,
+      vpmbConservatism: 2,
+      ascentRateMpm: 9,
+      descentRateMpm: 18,
+      bottomSetpoint: 1.3,
+      ascentSetpoint: 0.7,
+      decoSetpoint: 1.3,
+      lastStopDepthMeters: 6,
+      availableTanks: const [kAl40, kAl80],
+    );
+    final usedOxygens = result.diveAscent.map((s) => s.gas.oxygenPercent).toSet();
+    expect(usedOxygens, equals({32}),
+        reason: 'CCR deco must stay on the active diluent, not auto-switch');
+  });
+
+  test('CCR deco follows an explicit 0-time switch segment to a new gas', () {
+    // Same setup as above but with an explicit 0-time switch at 21 m
+    // to EAN 50. The deco should now run on EAN 50 from end-of-bottom.
+    final result = runPlan(
+      gases: const [
+        DivePlanGas(oxygenPercent: 32, heliumPercent: 0, isDiluent: true),
+        DivePlanGas(oxygenPercent: 50, heliumPercent: 0, isDiluent: false),
+      ],
+      segments: const [
+        DivePlanSegment(
+            depthMeters: 30,
+            durationMinutes: 60,
+            gasMixIndex: 0,
+            setpoint: 1.3),
+        DivePlanSegment(
+            depthMeters: 21,
+            durationMinutes: 0,
+            gasMixIndex: 1,
+            setpoint: 1.3),
+      ],
+      bailout: const [],
+      mode: DivePlanMode.cc,
+      gfLow: 50,
+      gfHigh: 95,
+      useVpmb: false,
+      vpmbConservatism: 2,
+      ascentRateMpm: 9,
+      descentRateMpm: 18,
+      bottomSetpoint: 1.3,
+      ascentSetpoint: 0.7,
+      decoSetpoint: 1.3,
+      lastStopDepthMeters: 6,
+      availableTanks: const [kAl40, kAl80],
+    );
+    final usedOxygens = result.diveAscent.map((s) => s.gas.oxygenPercent).toSet();
+    expect(usedOxygens, equals({50}),
+        reason: 'explicit 0-time switch should park deco on EAN 50');
+  });
+
   test('OC plan leaves setpointBar null on diveAscent legs', () {
     final result = runPlan(
       gases: const [

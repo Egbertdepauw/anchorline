@@ -12,6 +12,16 @@ abstract class DivePlansDaoLike {
   Future<List<SavedDivePlan>> listSaved();
   Future<DivePlanDraft?> loadSaved(String id);
   Future<SavedDivePlan> saveAs({required String name});
+
+  /// Overwrites the content of an already-saved plan row in place.
+  /// Used by the smart-save flow when the diver clicks Save on a
+  /// loaded plan whose name hasn't changed.
+  Future<void> updateSaved({
+    required String id,
+    required DivePlanDraft draft,
+    required String name,
+  });
+
   Future<void> softDelete(String id);
   Future<void> renameSaved(String id, String name);
   Stream<void> watchChanges();

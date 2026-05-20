@@ -42,11 +42,25 @@ List<DecoStep> planDeco({
   // gas-fraction-times-inhaled — same lever the replay engine uses.
   // 0 (default) = open circuit, original bailout behaviour.
   double setpointBar = 0.0,
+  // Optional second loop SP applied when depth > [decoSwitchDepthMeters].
+  // When null, [setpointBar] is used at every depth (legacy behaviour).
+  // Use case: a deep dive with bottom SP 1.3 may want the high "deco"
+  // SP (e.g. 1.5) only on the shallow part of the ascent — typically
+  // 36 m or shallower. Passing ascentSetpointBar=0.7, decoSwitchDepth=36
+  // means depths > 36 m use 0.7, ≤ 36 m use [setpointBar].
+  double? ascentSetpointBar,
+  double decoSwitchDepthMeters = 0.0,
   // Where deco "ends" — the diver surfaces directly from this stop
   // rather than continuing to 3 m. Time at this stop extends to compensate.
   // Default 3.0 = original behaviour.
   double lastStopDepthMeters = 3.0,
 }) {
+  double spAt(double depth) {
+    if (ascentSetpointBar != null && depth > decoSwitchDepthMeters) {
+      return ascentSetpointBar;
+    }
+    return setpointBar;
+  }
   assert(initialN2Bar.length == 16);
   assert(initialHeBar.length == 16);
   assert(gases.isNotEmpty);
@@ -73,7 +87,7 @@ List<DecoStep> planDeco({
       gas: gas,
       ambientBar: avgAmbient,
       intervalSeconds: secs,
-      setpointBar: setpointBar,
+      setpointBar: spAt(depth),
     );
     final ceiling = _ceilingMetersFor(
       pN2: pN2,
@@ -136,7 +150,7 @@ List<DecoStep> planDeco({
         gas: gas,
         ambientBar: ambient,
         intervalSeconds: switchHoldSec,
-        setpointBar: setpointBar,
+        setpointBar: spAt(currentDepth),
       );
       steps.add(DecoStep(
         depthStartMeters: currentDepth,
@@ -154,7 +168,7 @@ List<DecoStep> planDeco({
       gas: gas,
       ambientBar: avgAmbient,
       intervalSeconds: secs,
-      setpointBar: setpointBar,
+      setpointBar: spAt(currentDepth),
     );
     steps.add(DecoStep(
       depthStartMeters: currentDepth,
@@ -213,7 +227,7 @@ List<DecoStep> planDeco({
         gas: stopGas,
         ambientBar: ambient,
         intervalSeconds: stopStepSec,
-        setpointBar: setpointBar,
+        setpointBar: spAt(currentDepth),
       );
       minutesHeld++;
     }
@@ -227,7 +241,7 @@ List<DecoStep> planDeco({
         gas: stopGas,
         ambientBar: ambient,
         intervalSeconds: stopStepSec,
-        setpointBar: setpointBar,
+        setpointBar: spAt(currentDepth),
       );
       minutesHeld = 1;
     }
@@ -254,7 +268,7 @@ List<DecoStep> planDeco({
         gas: ascentGas,
         ambientBar: avgAmbient,
         intervalSeconds: secs,
-        setpointBar: setpointBar,
+        setpointBar: spAt(currentDepth),
       );
       steps.add(DecoStep(
         depthStartMeters: currentDepth,

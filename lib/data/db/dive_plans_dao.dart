@@ -37,6 +37,13 @@ export '../models/dive_plan.dart'
 
 /// In-memory representation of an editable plan. The draft and saved
 /// rows share this shape; the DAO maps it to/from the row data.
+///
+/// [planName] is the diver-chosen label ("Cave dive at Zevenhuizerplas").
+/// On the draft row it's the *intended* name being typed inline before
+/// promotion to a saved plan; on a loaded-saved-plan it's the name the
+/// user gave it. Persisted via the `notes` column with a `__name__:`
+/// prefix so an editing name survives app restarts without a schema
+/// migration.
 class DivePlanDraft {
   final DivePlanMode mode;
   final List<DivePlanGas> gases;
@@ -44,6 +51,7 @@ class DivePlanDraft {
   final List<DivePlanBailoutBottle> bailout;
   final DivePlanSettings? settings;
   final String? notes;
+  final String? planName;
   const DivePlanDraft({
     required this.mode,
     required this.gases,
@@ -51,6 +59,7 @@ class DivePlanDraft {
     required this.bailout,
     required this.settings,
     this.notes,
+    this.planName,
   });
 }
 
@@ -240,15 +249,53 @@ class DivePlansDao implements DivePlansDaoLike {
   }
 
   /// Loads a saved plan into a draft-shaped object. The caller can then
-  /// pass it to [upsertDraft] to replace the active draft.
+  /// pass it to [upsertDraft] to replace the active draft. The returned
+  /// draft's [DivePlanDraft.planName] is populated from the row's `name`
+  /// column so the editor can show the diver-chosen label inline.
   @override
   Future<DivePlanDraft?> loadSaved(String id) async {
     final row = await _ps.getOptional(
-      'SELECT mode, gases_json, segments_json, bailout_json, settings_json, '
-      'notes FROM dive_plans WHERE id = ? AND deleted_at IS NULL',
+      'SELECT name, mode, gases_json, segments_json, bailout_json, '
+      'settings_json, notes FROM dive_plans '
+      'WHERE id = ? AND deleted_at IS NULL',
       [id],
     );
-    return row == null ? null : _toDraft(row);
+    if (row == null) return null;
+    final base = _toDraft(row);
+    return DivePlanDraft(
+      mode: base.mode,
+      gases: base.gases,
+      segments: base.segments,
+      bailout: base.bailout,
+      settings: base.settings,
+      notes: base.notes,
+      planName: row['name'] as String?,
+    );
+  }
+
+  @override
+  Future<void> updateSaved({
+    required String id,
+    required DivePlanDraft draft,
+    required String name,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _ps.execute(
+      'UPDATE dive_plans SET name = ?, mode = ?, gases_json = ?, '
+      'segments_json = ?, bailout_json = ?, settings_json = ?, '
+      'notes = ?, updated_at = ? WHERE id = ?',
+      [
+        name,
+        draft.mode.name,
+        encodeGases(draft.gases),
+        encodeSegments(draft.segments),
+        encodeBailout(draft.bailout),
+        encodeSettings(draft.settings),
+        draft.notes,
+        now,
+        id,
+      ],
+    );
   }
 
   @override

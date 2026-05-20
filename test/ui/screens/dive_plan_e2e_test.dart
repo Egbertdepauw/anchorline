@@ -30,6 +30,11 @@ class _FakeDao implements DivePlansDaoLike {
         mode: DivePlanMode.cc,
       );
   @override
+  Future<void> updateSaved(
+      {required String id,
+      required DivePlanDraft draft,
+      required String name}) async {}
+  @override
   Future<void> softDelete(String id) async {}
   @override
   Future<void> renameSaved(String id, String name) async {}

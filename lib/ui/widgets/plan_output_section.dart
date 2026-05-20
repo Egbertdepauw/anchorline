@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../analysis/bailout/ascent_simulator.dart' show AscentStop;
 import '../../analysis/planner/plan_result.dart';
+import '../../data/models/dive_plan.dart' show DivePlanMode;
 import '../theme/tokens.dart';
 import 'stop_ladder_table.dart' show StopLadderTable;
 
@@ -14,10 +15,16 @@ class PlanOutputSection extends StatelessWidget {
     super.key,
     required this.result,
     required this.scheme,
+    this.mode = DivePlanMode.cc,
   });
 
   final PlanResult? result;
   final ColorScheme scheme;
+
+  /// Drives which consumption chip is shown — CC plans surface the
+  /// metabolic O2 burn (loop math), OC plans surface total breathing-
+  /// gas litres (cylinder-capacity sanity).
+  final DivePlanMode mode;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +66,7 @@ class PlanOutputSection extends StatelessWidget {
         const SizedBox(height: Spacing.sm),
         Wrap(
           spacing: 16,
+          runSpacing: 4,
           children: [
             Text('CNS ${r.cnsPercent.toStringAsFixed(1)} %',
                 style: AppTypography.caption),
@@ -68,6 +76,24 @@ class PlanOutputSection extends StatelessWidget {
                 style: AppTypography.caption),
             Text('TTS ${r.totalRuntime.inMinutes} min',
                 style: AppTypography.caption),
+            // CC: metabolic O2 (loop is closed, no gas litres to report).
+            // OC: per-gas breakdown so the diver sees which tank
+            // carries the bulk of the consumption ("Tx18/45 3400 L ·
+            // EAN50 980 L"). Falls back to a single "Gas N L" chip
+            // when only one gas is in play.
+            if (mode == DivePlanMode.cc)
+              Text('O₂ ${r.oxygenConsumedLitres.round()} L',
+                  style: AppTypography.caption)
+            else if (r.gasConsumedByMix.isEmpty)
+              Text('Gas ${r.gasConsumedLitres.round()} L',
+                  style: AppTypography.caption)
+            else
+              for (final entry in r.gasConsumedByMix)
+                Text(
+                  '${StopLadderTable.mixLabel(entry.gas)} '
+                  '${entry.litres.round()} L',
+                  style: AppTypography.caption,
+                ),
           ],
         ),
       ],

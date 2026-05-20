@@ -238,6 +238,220 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: widget.notifier.tank12L300Available,
             onChanged: (v) => widget.notifier.setTank12L300Available(v),
           ),
+          const Divider(height: 32),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Text(
+              'Gas blending',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+          ListTile(
+            title: const Text('O₂ price per litre'),
+            subtitle: Text(
+                '${widget.notifier.blendOxygenCostPerLitre.toStringAsFixed(3)} / L — '
+                'used to cost the O₂ side of a blend'),
+            trailing: SizedBox(
+              width: 120,
+              child: TextFormField(
+                key: const ValueKey('settings-blend-o2-cost'),
+                initialValue: widget.notifier.blendOxygenCostPerLitre
+                    .toStringAsFixed(3),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                textAlign: TextAlign.end,
+                onChanged: (s) {
+                  final v = double.tryParse(s);
+                  if (v != null) {
+                    widget.notifier.setBlendOxygenCostPerLitre(v);
+                  }
+                },
+              ),
+            ),
+          ),
+          ListTile(
+            title: const Text('He price per litre'),
+            subtitle: Text(
+                '${widget.notifier.blendHeliumCostPerLitre.toStringAsFixed(3)} / L — '
+                'used to cost the helium side of a blend'),
+            trailing: SizedBox(
+              width: 120,
+              child: TextFormField(
+                key: const ValueKey('settings-blend-he-cost'),
+                initialValue: widget.notifier.blendHeliumCostPerLitre
+                    .toStringAsFixed(3),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                textAlign: TextAlign.end,
+                onChanged: (s) {
+                  final v = double.tryParse(s);
+                  if (v != null) {
+                    widget.notifier.setBlendHeliumCostPerLitre(v);
+                  }
+                },
+              ),
+            ),
+          ),
+          ListTile(
+            title: const Text('Air / EAN top-off flat fee'),
+            subtitle: Text(
+                '${widget.notifier.blendAirFlatFee.toStringAsFixed(2)} per fill — '
+                'shop fill charge, applied whenever the blend uses a top-off'),
+            trailing: SizedBox(
+              width: 120,
+              child: TextFormField(
+                key: const ValueKey('settings-blend-air-fee'),
+                initialValue:
+                    widget.notifier.blendAirFlatFee.toStringAsFixed(2),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                textAlign: TextAlign.end,
+                onChanged: (s) {
+                  final v = double.tryParse(s);
+                  if (v != null) widget.notifier.setBlendAirFlatFee(v);
+                },
+              ),
+            ),
+          ),
+          ListTile(
+            title: const Text('Default top-off mix'),
+            subtitle: Text(
+                '${widget.notifier.blendTopoffOxygenPercent}/'
+                '${widget.notifier.blendTopoffHeliumPercent} — '
+                'pre-fills the top-off field on the Blend tab'),
+            trailing: SizedBox(
+              width: 180,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 70,
+                    child: TextFormField(
+                      key: const ValueKey('settings-blend-topoff-o2'),
+                      initialValue:
+                          '${widget.notifier.blendTopoffOxygenPercent}',
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(suffixText: '%'),
+                      onChanged: (s) {
+                        final v = int.tryParse(s);
+                        if (v != null) {
+                          widget.notifier.setBlendTopoff(v,
+                              widget.notifier.blendTopoffHeliumPercent);
+                        }
+                      },
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Text('/'),
+                  ),
+                  SizedBox(
+                    width: 70,
+                    child: TextFormField(
+                      key: const ValueKey('settings-blend-topoff-he'),
+                      initialValue:
+                          '${widget.notifier.blendTopoffHeliumPercent}',
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(suffixText: '%'),
+                      onChanged: (s) {
+                        final v = int.tryParse(s);
+                        if (v != null) {
+                          widget.notifier.setBlendTopoff(
+                              widget.notifier.blendTopoffOxygenPercent, v);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          ListTile(
+            title: const Text('Default fill order'),
+            subtitle: const Text(
+                'Used as the starting fill order on the Blend tab; '
+                'override per blend on the tab itself.'),
+            trailing: SizedBox(
+              width: 200,
+              child: DropdownButton<String>(
+                key: const ValueKey('settings-blend-sequence'),
+                value: widget.notifier.blendFillSequence,
+                isDense: true,
+                isExpanded: true,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'heThenO2ThenTopoff',
+                    child: Text('He → O₂ → top-off'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'o2ThenHeThenTopoff',
+                    child: Text('O₂ → He → top-off'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'o2ThenTopoffThenHe',
+                    child: Text('O₂ → top-off → He'),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v != null) widget.notifier.setBlendFillSequence(v);
+                },
+              ),
+            ),
+          ),
+          SwitchListTile(
+            title: const Text('Real-gas Z-factor correction'),
+            subtitle: const Text(
+                'On: van der Waals real-gas math (matches reference '
+                'blender tools). Off: ideal-gas math.'),
+            value: widget.notifier.blendUseRealGas,
+            onChanged: (v) => widget.notifier.setBlendUseRealGas(v),
+          ),
+          ListTile(
+            title: const Text('Default fill temperature'),
+            subtitle: Text(
+                '${widget.notifier.blendFillTempC.toStringAsFixed(0)} °C — '
+                'cylinder temperature during blending; affects how many '
+                'moles fit at gauge pressure'),
+            trailing: SizedBox(
+              width: 100,
+              child: TextFormField(
+                key: const ValueKey('settings-blend-fill-temp'),
+                initialValue: widget.notifier.blendFillTempC.toStringAsFixed(0),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                textAlign: TextAlign.end,
+                decoration: const InputDecoration(suffixText: '°C'),
+                onChanged: (s) {
+                  final v = double.tryParse(s);
+                  if (v != null) widget.notifier.setBlendFillTempC(v);
+                },
+              ),
+            ),
+          ),
+          ListTile(
+            title: const Text('Default settled temperature'),
+            subtitle: Text(
+                '${widget.notifier.blendSettledTempC.toStringAsFixed(0)} °C — '
+                'where the cylinder ends up after cooling; when this '
+                'differs from fill temp the blender adds hot-fill '
+                'compensation'),
+            trailing: SizedBox(
+              width: 100,
+              child: TextFormField(
+                key: const ValueKey('settings-blend-settled-temp'),
+                initialValue:
+                    widget.notifier.blendSettledTempC.toStringAsFixed(0),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                textAlign: TextAlign.end,
+                decoration: const InputDecoration(suffixText: '°C'),
+                onChanged: (s) {
+                  final v = double.tryParse(s);
+                  if (v != null) widget.notifier.setBlendSettledTempC(v);
+                },
+              ),
+            ),
+          ),
           if (widget.subsurfaceOrchestrator != null &&
               widget.subsurfaceCredentials != null &&
               widget.diveDao != null) ...[

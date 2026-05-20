@@ -27,6 +27,17 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kPlannerAscentSp = 'planner_sp_ascent';
   static const _kPlannerDecoSp = 'planner_sp_deco';
   static const _kPlannerLastStop = 'planner_last_stop_m';
+  static const _kPlannerOcSac = 'planner_oc_sac';
+  static const _kPlannerDecoSwitchDepth = 'planner_deco_sp_switch_m';
+  static const _kBlendO2CostPerL = 'blend_o2_cost_per_l';
+  static const _kBlendHeCostPerL = 'blend_he_cost_per_l';
+  static const _kBlendAirFee = 'blend_air_flat_fee';
+  static const _kBlendTopoffO2 = 'blend_topoff_o2_pct';
+  static const _kBlendTopoffHe = 'blend_topoff_he_pct';
+  static const _kBlendSequence = 'blend_fill_sequence';
+  static const _kBlendUseRealGas = 'blend_use_real_gas';
+  static const _kBlendFillTempC = 'blend_fill_temp_c';
+  static const _kBlendSettledTempC = 'blend_settled_temp_c';
 
   static const _defaultVisibleTraces = <TraceType>{
     TraceType.ppo2,
@@ -57,6 +68,33 @@ class SettingsNotifier extends ChangeNotifier {
   double _plannerAscentSetpoint = 0.7;
   double _plannerDecoSetpoint = 1.4;
   double _plannerLastStopDepthMeters = 6.0;
+  int _plannerOcSac = 20;
+  // Depth at/above which the deco SP applies. Deeper than this the
+  // planner uses the ascent SP. 99 m = "always use deco SP" (no
+  // crossover), matching the pre-feature behaviour.
+  double _plannerDecoSwitchDepthMeters = 99.0;
+  // ── Gas blending ────────────────────────────────────────────────
+  // Per-litre cost (at 1 atm) for the O2 and He banks the blender
+  // draws from. Air uses a flat fee per fill rather than a metered
+  // cost — that's the typical fill-station billing model.
+  double _blendOxygenCostPerLitre = 0.05;
+  double _blendHeliumCostPerLitre = 0.10;
+  double _blendAirFlatFee = 5.0;
+  // Default top-off mix. 21/0 = air; pickable in the blender per fill.
+  int _blendTopoffOxygenPercent = 21;
+  int _blendTopoffHeliumPercent = 0;
+  // Default fill sequence — He first by tech-diving convention.
+  // Storage is the enum name so an unknown value can fall back safely.
+  String _blendFillSequence = 'heThenO2ThenTopoff';
+  // Apply Z-factor correction to the top-off bar.
+  bool _blendUseRealGas = true;
+  // Fill temp = temperature at the fill station (cylinder during
+  // blending, typically warm). Settled temp = where the cylinder will
+  // end up (storage / dive site). When they differ, the blender adds
+  // a hot-fill compensation so the diver fills to a higher gauge that
+  // settles to the target on cooldown.
+  double _blendFillTempC = 18;
+  double _blendSettledTempC = 18;
 
   bool get useSpeedColoredGraph => _useSpeedColoredGraph;
   Set<TraceType> get visibleTraces => Set.unmodifiable(_visibleTraces);
@@ -80,6 +118,17 @@ class SettingsNotifier extends ChangeNotifier {
   double get plannerAscentSetpoint => _plannerAscentSetpoint;
   double get plannerDecoSetpoint => _plannerDecoSetpoint;
   double get plannerLastStopDepthMeters => _plannerLastStopDepthMeters;
+  int get plannerOcSac => _plannerOcSac;
+  double get plannerDecoSwitchDepthMeters => _plannerDecoSwitchDepthMeters;
+  double get blendOxygenCostPerLitre => _blendOxygenCostPerLitre;
+  double get blendHeliumCostPerLitre => _blendHeliumCostPerLitre;
+  double get blendAirFlatFee => _blendAirFlatFee;
+  int get blendTopoffOxygenPercent => _blendTopoffOxygenPercent;
+  int get blendTopoffHeliumPercent => _blendTopoffHeliumPercent;
+  String get blendFillSequence => _blendFillSequence;
+  bool get blendUseRealGas => _blendUseRealGas;
+  double get blendFillTempC => _blendFillTempC;
+  double get blendSettledTempC => _blendSettledTempC;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -161,6 +210,30 @@ class SettingsNotifier extends ChangeNotifier {
     if (pLast != null) {
       _plannerLastStopDepthMeters = pLast.clamp(3.0, 9.0);
     }
+    final pOcSac = prefs.getInt(_kPlannerOcSac);
+    if (pOcSac != null) _plannerOcSac = pOcSac.clamp(5, 60);
+    final pDecoSwitch = prefs.getDouble(_kPlannerDecoSwitchDepth);
+    if (pDecoSwitch != null) {
+      _plannerDecoSwitchDepthMeters = pDecoSwitch.clamp(0.0, 200.0);
+    }
+
+    final bO2 = prefs.getDouble(_kBlendO2CostPerL);
+    if (bO2 != null) _blendOxygenCostPerLitre = bO2.clamp(0.0, 1000.0);
+    final bHe = prefs.getDouble(_kBlendHeCostPerL);
+    if (bHe != null) _blendHeliumCostPerLitre = bHe.clamp(0.0, 1000.0);
+    final bAir = prefs.getDouble(_kBlendAirFee);
+    if (bAir != null) _blendAirFlatFee = bAir.clamp(0.0, 1000.0);
+    final bTopO2 = prefs.getInt(_kBlendTopoffO2);
+    if (bTopO2 != null) _blendTopoffOxygenPercent = bTopO2.clamp(1, 100);
+    final bTopHe = prefs.getInt(_kBlendTopoffHe);
+    if (bTopHe != null) _blendTopoffHeliumPercent = bTopHe.clamp(0, 99);
+    final bSeq = prefs.getString(_kBlendSequence);
+    if (bSeq != null) _blendFillSequence = bSeq;
+    _blendUseRealGas = prefs.getBool(_kBlendUseRealGas) ?? true;
+    final bFill = prefs.getDouble(_kBlendFillTempC);
+    if (bFill != null) _blendFillTempC = bFill.clamp(-20.0, 80.0);
+    final bSettled = prefs.getDouble(_kBlendSettledTempC);
+    if (bSettled != null) _blendSettledTempC = bSettled.clamp(-20.0, 80.0);
 
     notifyListeners();
   }
@@ -358,5 +431,98 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_kPlannerLastStop, clamped);
+  }
+
+  Future<void> setPlannerOcSac(int v) async {
+    final clamped = v.clamp(5, 60);
+    if (_plannerOcSac == clamped) return;
+    _plannerOcSac = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kPlannerOcSac, clamped);
+  }
+
+  Future<void> setPlannerDecoSwitchDepthMeters(double v) async {
+    final clamped = v.clamp(0.0, 200.0);
+    if (_plannerDecoSwitchDepthMeters == clamped) return;
+    _plannerDecoSwitchDepthMeters = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kPlannerDecoSwitchDepth, clamped);
+  }
+
+  Future<void> setBlendOxygenCostPerLitre(double v) async {
+    final clamped = v.clamp(0.0, 1000.0);
+    if (_blendOxygenCostPerLitre == clamped) return;
+    _blendOxygenCostPerLitre = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kBlendO2CostPerL, clamped);
+  }
+
+  Future<void> setBlendHeliumCostPerLitre(double v) async {
+    final clamped = v.clamp(0.0, 1000.0);
+    if (_blendHeliumCostPerLitre == clamped) return;
+    _blendHeliumCostPerLitre = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kBlendHeCostPerL, clamped);
+  }
+
+  Future<void> setBlendAirFlatFee(double v) async {
+    final clamped = v.clamp(0.0, 1000.0);
+    if (_blendAirFlatFee == clamped) return;
+    _blendAirFlatFee = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kBlendAirFee, clamped);
+  }
+
+  Future<void> setBlendTopoff(int oxygenPercent, int heliumPercent) async {
+    final o = oxygenPercent.clamp(1, 100);
+    final h = heliumPercent.clamp(0, 99);
+    if (_blendTopoffOxygenPercent == o && _blendTopoffHeliumPercent == h) {
+      return;
+    }
+    _blendTopoffOxygenPercent = o;
+    _blendTopoffHeliumPercent = h;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kBlendTopoffO2, o);
+    await prefs.setInt(_kBlendTopoffHe, h);
+  }
+
+  Future<void> setBlendFillSequence(String name) async {
+    if (_blendFillSequence == name) return;
+    _blendFillSequence = name;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kBlendSequence, name);
+  }
+
+  Future<void> setBlendUseRealGas(bool v) async {
+    if (_blendUseRealGas == v) return;
+    _blendUseRealGas = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kBlendUseRealGas, v);
+  }
+
+  Future<void> setBlendFillTempC(double v) async {
+    final clamped = v.clamp(-20.0, 80.0);
+    if (_blendFillTempC == clamped) return;
+    _blendFillTempC = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kBlendFillTempC, clamped);
+  }
+
+  Future<void> setBlendSettledTempC(double v) async {
+    final clamped = v.clamp(-20.0, 80.0);
+    if (_blendSettledTempC == clamped) return;
+    _blendSettledTempC = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kBlendSettledTempC, clamped);
   }
 }

@@ -10,6 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeDao implements DivePlansDaoLike {
   DivePlanDraft? draft;
+  String? lastSaveName;
+  int saveAsCalls = 0;
   @override
   Future<DivePlanDraft?> loadDraft() async => draft;
   @override
@@ -23,12 +25,31 @@ class _FakeDao implements DivePlansDaoLike {
   @override
   Future<DivePlanDraft?> loadSaved(String id) async => null;
   @override
-  Future<SavedDivePlan> saveAs({required String name}) async => SavedDivePlan(
-        id: 'x',
-        name: name,
-        updatedAt: DateTime.now(),
-        mode: DivePlanMode.cc,
-      );
+  Future<SavedDivePlan> saveAs({required String name}) async {
+    saveAsCalls++;
+    lastSaveName = name;
+    // Mirror the real DAO: saveAs deletes the draft as part of promotion.
+    draft = null;
+    return SavedDivePlan(
+      id: 'x',
+      name: name,
+      updatedAt: DateTime.now(),
+      mode: DivePlanMode.cc,
+    );
+  }
+
+  int updateSavedCalls = 0;
+  String? lastUpdateId;
+  @override
+  Future<void> updateSaved(
+      {required String id,
+      required DivePlanDraft draft,
+      required String name}) async {
+    updateSavedCalls++;
+    lastUpdateId = id;
+    lastSaveName = name;
+  }
+
   @override
   Future<void> softDelete(String id) async {}
   @override
@@ -42,7 +63,7 @@ class _FakeDao implements DivePlansDaoLike {
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('renders SETTINGS, GASES, SEGMENTS, BAILOUT BOTTLES sections',
+  testWidgets('renders SETTINGS, GASES, SEGMENTS on Plan tab and BAILOUT BOTTLES on Bailout tab',
       (tester) async {
     final settings = SettingsNotifier();
     await settings.load();
@@ -55,17 +76,19 @@ void main() {
     expect(find.text('SETTINGS'), findsOneWidget);
     expect(find.text('GASES'), findsOneWidget);
     expect(find.text('SEGMENTS'), findsOneWidget);
+    // Bailout tab — switch and verify the bailout-bottles editor surfaces.
+    await tester.tap(find.text('Bailout'));
+    await tester.pumpAndSettle();
     expect(find.text('BAILOUT BOTTLES'), findsOneWidget);
   });
 
-  testWidgets('Save-as button opens a name dialog, calls saveAs on confirm',
+  testWidgets('inline name + Save button persists the plan and keeps editor state',
       (tester) async {
     final settings = SettingsNotifier();
     await settings.load();
     final dao = _FakeDao();
     final notifier = DivePlanNotifier(dao: dao, settings: settings);
     await notifier.load();
-    // Seed an editable draft so the plan isn't trivially empty.
     notifier.addGas(const DivePlanGas(
         oxygenPercent: 21, heliumPercent: 35, isDiluent: true));
     notifier.addSegment(const DivePlanSegment(
@@ -73,21 +96,22 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: DivePlanScreen(notifier: notifier, settings: settings),
     ));
-    await tester.tap(find.byKey(const ValueKey('save-as')));
-    await tester.pumpAndSettle();
-    // Scope to the AlertDialog — the screen also has TextFields in the
-    // segment-row editor, and `find.byType(TextField).first` would match
-    // the depth input by tree order.
+    // Type into the app-bar name field. It's the first TextField in the tree.
     await tester.enterText(
       find.descendant(
-        of: find.byType(AlertDialog),
+        of: find.byType(AppBar),
         matching: find.byType(TextField),
       ),
       'Test plan',
     );
-    await tester.tap(find.text('Save'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('save-as')));
     await tester.pumpAndSettle();
-    // After save the draft is cleared on the notifier side.
-    expect(notifier.gases, isEmpty);
+    expect(dao.saveAsCalls, equals(1));
+    expect(dao.lastSaveName, equals('Test plan'));
+    // Editor state survives the save — that was the bug we fixed.
+    expect(notifier.gases, isNotEmpty);
+    expect(notifier.segments, isNotEmpty);
+    expect(notifier.planName, equals('Test plan'));
   });
 }

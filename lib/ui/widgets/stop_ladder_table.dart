@@ -24,6 +24,7 @@ class StopLadderTable extends StatelessWidget {
     this.startingRuntime = Duration.zero,
     this.icdRedAccent = const Color(0xFFE74C3C),
     this.icdAmberAccent = const Color(0xFFF39C12),
+    this.gasSwitchAccent = const Color(0xFF60A5FA),
   });
 
   final List<AscentStop> stops;
@@ -38,6 +39,11 @@ class StopLadderTable extends StatelessWidget {
 
   /// Colour used for marginal ICD tints (default: statusWarning amber).
   final Color icdAmberAccent;
+
+  /// Colour used for benign gas-switch tints — rows where the diver
+  /// changed gas but the switch carries no ICD penalty. A subtle blue
+  /// flag so the eye picks the switch out of the ladder at a glance.
+  final Color gasSwitchAccent;
 
   // ── Row consolidation ────────────────────────────────────────────────
   //
@@ -161,6 +167,33 @@ class StopLadderTable extends StatelessWidget {
     return (gas.oxygenPercent / 100.0) * ambient;
   }
 
+  /// Equivalent Narcotic Depth (m) at [depthMeters] on [gas]. Treats O2
+  /// as non-narcotic (the conservative "countsOxygen=false" convention
+  /// most tech divers use day-to-day). On CCR (setpointBar set), the
+  /// loop's helium fraction is the diluent's helium scaled into the
+  /// inert headroom left after the setpoint claim — at shallow depths
+  /// where the loop runs O2-rich, fHe drops and END creeps toward depth.
+  static double endAt(DiveGasMix gas, double depthMeters,
+      {double? setpointBar}) {
+    double fHe = gas.heliumPercent / 100.0;
+    if (setpointBar != null && setpointBar > 0.1) {
+      final ambient = 1.013 + depthMeters / 10.0;
+      final loopO2 = (setpointBar / ambient).clamp(0.0, 1.0);
+      final dilO2 = gas.oxygenPercent / 100.0;
+      final dilHe = gas.heliumPercent / 100.0;
+      final dilN2 = 1.0 - dilO2 - dilHe;
+      final dilInert = dilHe + dilN2;
+      if (dilInert > 0 && loopO2 < 1.0) {
+        final inert = 1.0 - loopO2;
+        fHe = inert * (dilHe / dilInert);
+      }
+    }
+    // END = (depth + 10) × (1 - fHe) − 10. Negative results clamp to 0 —
+    // a high-He mix at shallow depth has no narcotic load.
+    final end = (depthMeters + 10) * (1.0 - fHe) - 10;
+    return end < 0 ? 0 : end;
+  }
+
   /// Gas density (g/L) at [depthMeters] on [gas]. On CCR (setpointBar
   /// set), the loop's O2 fraction is setpoint / ambient and the inert
   /// fractions are the diluent's inerts scaled to fill what's left.
@@ -200,23 +233,29 @@ class StopLadderTable extends StatelessWidget {
     // the bailout trigger so the column reads as TOTAL dive runtime.
     var runtime = startingRuntime;
 
-    // ICD severity per row, by comparing each row's gas to the one
-    // breathed on the previous row. The row where a risky switch
-    // *starts* (i.e. first row on the new gas) gets the tint.
+    // ICD severity + benign-gas-switch flag per row. ICD takes precedence
+    // — a marginal/severe switch already implies a gas change, no need
+    // to double-tint. A "switch" is the first row on a different gas
+    // than the previous row.
     final rowSeverities = <IcdSeverity>[];
+    final rowIsBenignSwitch = <bool>[];
     DiveGasMix? prevGas;
     for (final row in rows) {
-      final severity = (prevGas != null && row.gas != prevGas)
+      final isSwitch = prevGas != null && row.gas != prevGas;
+      final severity = isSwitch
           ? icdSeverityBetween(prevGas, row.gas)
           : IcdSeverity.none;
       rowSeverities.add(severity);
+      rowIsBenignSwitch.add(isSwitch && severity == IcdSeverity.none);
       prevGas = row.gas;
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Header
+        // Header — DEPTH | T | RT | GAS | PPO2 | END | ρ g/L | VOL (L).
+        // END sits between PPO2 and density so the narcosis / density
+        // sanity check reads left-to-right (oxy → narcotic → physical).
         Padding(
           padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
           child: Row(
@@ -226,6 +265,7 @@ class StopLadderTable extends StatelessWidget {
               Expanded(flex: 2, child: Text('RT', style: headerStyle)),
               Expanded(flex: 2, child: Text('GAS', style: headerStyle)),
               Expanded(flex: 2, child: Text('PPO2', style: headerStyle)),
+              Expanded(flex: 2, child: Text('END', style: headerStyle)),
               Expanded(flex: 2, child: Text('ρ g/L', style: headerStyle)),
               Expanded(flex: 2, child: Text('VOL (L)', style: headerStyle)),
             ],
@@ -248,25 +288,29 @@ class StopLadderTable extends StatelessWidget {
             final runtimeLabel = _fmtMinutes(runtime);
             final volLabel = row.volumeLitres.round().toString();
             final gasLabel = mixLabel(row.gas);
-            // PPO2 + density evaluated at the row's effective depth — for
-            // stops that's the stop depth, for ascent rows the destination.
+            // PPO2 + END + density evaluated at the row's effective depth —
+            // for stops that's the stop depth, for ascent rows the destination.
             // Worst-case-on-leg lives on the deeper side; using the row
             // depth slightly under-reads ascent rows but keeps the table
             // single-valued per cell.
             final ppo2Label = ppo2At(row.gas, row.depthMeters,
                     setpointBar: row.setpointBar)
                 .toStringAsFixed(2);
+            final endLabel = '${endAt(row.gas, row.depthMeters, setpointBar: row.setpointBar).round()} m';
             final rhoLabel = densityAt(row.gas, row.depthMeters,
                     setpointBar: row.setpointBar)
                 .toStringAsFixed(1);
 
             final severity = rowSeverities[i];
+            final isBenignSwitch = rowIsBenignSwitch[i];
             final tint = switch (severity) {
               IcdSeverity.severe =>
                 icdRedAccent.withValues(alpha: 0.16),
               IcdSeverity.marginal =>
                 icdAmberAccent.withValues(alpha: 0.14),
-              IcdSeverity.none => Colors.transparent,
+              IcdSeverity.none => isBenignSwitch
+                  ? gasSwitchAccent.withValues(alpha: 0.12)
+                  : Colors.transparent,
             };
 
             return Container(
@@ -279,6 +323,7 @@ class StopLadderTable extends StatelessWidget {
                   Expanded(flex: 2, child: Text(runtimeLabel, style: cellStyle)),
                   Expanded(flex: 2, child: Text(gasLabel, style: cellStyle)),
                   Expanded(flex: 2, child: Text(ppo2Label, style: cellStyle)),
+                  Expanded(flex: 2, child: Text(endLabel, style: cellStyle)),
                   Expanded(flex: 2, child: Text(rhoLabel, style: cellStyle)),
                   Expanded(flex: 2, child: Text(volLabel, style: cellStyle)),
                 ],

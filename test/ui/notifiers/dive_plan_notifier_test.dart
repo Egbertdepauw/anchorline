@@ -8,7 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeDao implements DivePlansDaoLike {
   DivePlanDraft? draft;
+  final Map<String, DivePlanDraft> saved = {};
   int upsertCalls = 0;
+  int saveAsCalls = 0;
+  int updateSavedCalls = 0;
   @override
   Future<DivePlanDraft?> loadDraft() async => draft;
   @override
@@ -16,21 +19,66 @@ class _FakeDao implements DivePlansDaoLike {
     draft = d;
     upsertCalls++;
   }
+
   @override
   Stream<void> watchChanges() => const Stream.empty();
   @override
-  Future<List<SavedDivePlan>> listSaved() async => const [];
+  Future<List<SavedDivePlan>> listSaved() async => [
+        for (final e in saved.entries)
+          SavedDivePlan(
+            id: e.key,
+            name: e.value.planName ?? '(unnamed)',
+            updatedAt: DateTime.now(),
+            mode: e.value.mode,
+          ),
+      ];
   @override
-  Future<DivePlanDraft?> loadSaved(String id) async => null;
+  Future<DivePlanDraft?> loadSaved(String id) async => saved[id];
   @override
-  Future<SavedDivePlan> saveAs({required String name}) async => SavedDivePlan(
-        id: 'x',
-        name: name,
-        updatedAt: DateTime.now(),
-        mode: DivePlanMode.cc,
-      );
+  Future<SavedDivePlan> saveAs({required String name}) async {
+    saveAsCalls++;
+    final id = 'saved-${saved.length + 1}';
+    saved[id] = DivePlanDraft(
+      mode: draft?.mode ?? DivePlanMode.cc,
+      gases: draft?.gases ?? const [],
+      segments: draft?.segments ?? const [],
+      bailout: draft?.bailout ?? const [],
+      settings: draft?.settings,
+      notes: draft?.notes,
+      planName: name,
+    );
+    // Mirror real DAO behaviour: saveAs deletes the draft row.
+    draft = null;
+    return SavedDivePlan(
+      id: id,
+      name: name,
+      updatedAt: DateTime.now(),
+      mode: DivePlanMode.cc,
+    );
+  }
+
   @override
-  Future<void> softDelete(String id) async {}
+  Future<void> updateSaved(
+      {required String id,
+      required DivePlanDraft draft,
+      required String name}) async {
+    updateSavedCalls++;
+    saved[id] = DivePlanDraft(
+      mode: draft.mode,
+      gases: draft.gases,
+      segments: draft.segments,
+      bailout: draft.bailout,
+      settings: draft.settings,
+      notes: draft.notes,
+      planName: name,
+    );
+  }
+
+  @override
+  Future<void> softDelete(String id) async {
+    saved.remove(id);
+  }
+
   @override
   Future<void> renameSaved(String id, String name) async {}
   @override
@@ -69,5 +117,62 @@ void main() {
     await Future.delayed(const Duration(milliseconds: 350));
     expect(n.result, isNotNull);
     expect(dao.upsertCalls, greaterThan(0));
+  });
+
+  test('isDirty: false on empty plan, true after edit, false after save',
+      () async {
+    final settings = SettingsNotifier();
+    await settings.load();
+    final dao = _FakeDao();
+    final n = DivePlanNotifier(dao: dao, settings: settings);
+    await n.load();
+    expect(n.isDirty, isFalse, reason: 'empty plan is clean');
+    n.addGas(const DivePlanGas(
+        oxygenPercent: 21, heliumPercent: 0, isDiluent: true));
+    expect(n.isDirty, isTrue, reason: 'edit dirties the plan');
+    n.setPlanName('Test');
+    await n.save();
+    expect(n.isDirty, isFalse, reason: 'save clears the dirty flag');
+  });
+
+  test('save overwrites when a loaded plan\'s name is unchanged', () async {
+    final settings = SettingsNotifier();
+    await settings.load();
+    final dao = _FakeDao();
+    final n = DivePlanNotifier(dao: dao, settings: settings);
+    await n.load();
+    n.addGas(const DivePlanGas(
+        oxygenPercent: 21, heliumPercent: 0, isDiluent: true));
+    n.setPlanName('My plan');
+    await n.save();
+    expect(dao.saveAsCalls, equals(1));
+    expect(dao.updateSavedCalls, equals(0));
+
+    // Edit + save again with the same name → overwrite.
+    n.addSegment(const DivePlanSegment(
+        depthMeters: 30, durationMinutes: 15, gasMixIndex: 0, setpoint: 1.3));
+    final result = await n.save();
+    expect(result.wasOverwrite, isTrue);
+    expect(dao.saveAsCalls, equals(1), reason: 'no new saved row was created');
+    expect(dao.updateSavedCalls, equals(1));
+  });
+
+  test('save creates a new row when the name is changed after load', () async {
+    final settings = SettingsNotifier();
+    await settings.load();
+    final dao = _FakeDao();
+    final n = DivePlanNotifier(dao: dao, settings: settings);
+    await n.load();
+    n.addGas(const DivePlanGas(
+        oxygenPercent: 21, heliumPercent: 0, isDiluent: true));
+    n.setPlanName('Original');
+    await n.save();
+
+    // Rename + save → new saved row, not overwrite.
+    n.setPlanName('Renamed copy');
+    final result = await n.save();
+    expect(result.wasOverwrite, isFalse);
+    expect(dao.saveAsCalls, equals(2));
+    expect(dao.updateSavedCalls, equals(0));
   });
 }

@@ -129,6 +129,11 @@ class DivePlanSettings {
   final double? ascentSetpoint;
   final double? decoSetpoint;
   final double? lastStopDepthMeters;
+  final int? ocSac;
+  // At/above this depth the planner switches the loop from the ascent
+  // SP to the deco SP. Null = use the diver's default
+  // (settings.plannerDecoSwitchDepthMeters).
+  final double? decoSwitchDepthMeters;
 
   const DivePlanSettings({
     this.gfLow,
@@ -141,6 +146,8 @@ class DivePlanSettings {
     this.ascentSetpoint,
     this.decoSetpoint,
     this.lastStopDepthMeters,
+    this.ocSac,
+    this.decoSwitchDepthMeters,
   });
 
   Map<String, dynamic> toJson() {
@@ -155,6 +162,8 @@ class DivePlanSettings {
     if (ascentSetpoint != null) m['spAsc'] = ascentSetpoint;
     if (decoSetpoint != null) m['spDec'] = decoSetpoint;
     if (lastStopDepthMeters != null) m['last'] = lastStopDepthMeters;
+    if (ocSac != null) m['ocSac'] = ocSac;
+    if (decoSwitchDepthMeters != null) m['spSwM'] = decoSwitchDepthMeters;
     return m;
   }
 
@@ -170,6 +179,8 @@ class DivePlanSettings {
         ascentSetpoint: (j['spAsc'] as num?)?.toDouble(),
         decoSetpoint: (j['spDec'] as num?)?.toDouble(),
         lastStopDepthMeters: (j['last'] as num?)?.toDouble(),
+        ocSac: j['ocSac'] as int?,
+        decoSwitchDepthMeters: (j['spSwM'] as num?)?.toDouble(),
       );
 
   DivePlanSettings copyWith({
@@ -183,6 +194,8 @@ class DivePlanSettings {
     double? ascentSetpoint,
     double? decoSetpoint,
     double? lastStopDepthMeters,
+    int? ocSac,
+    double? decoSwitchDepthMeters,
   }) =>
       DivePlanSettings(
         gfLow: gfLow ?? this.gfLow,
@@ -196,6 +209,9 @@ class DivePlanSettings {
         decoSetpoint: decoSetpoint ?? this.decoSetpoint,
         lastStopDepthMeters:
             lastStopDepthMeters ?? this.lastStopDepthMeters,
+        ocSac: ocSac ?? this.ocSac,
+        decoSwitchDepthMeters:
+            decoSwitchDepthMeters ?? this.decoSwitchDepthMeters,
       );
 }
 
