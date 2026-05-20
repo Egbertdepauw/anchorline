@@ -171,6 +171,18 @@ List<DecoStep> planDeco({
   // one 3m increment at the slow rate.
   const stopStepSec = 60;
   const stopSafetyCap = 600; // 10h per stop — runaway protection.
+
+  // Borderline-NDL convention (matches MultiDeco / Shearwater Petrel):
+  // when Phase 1's only required stop lands at the user's preferred
+  // last stop, the dive is essentially a deep safety stop, not real
+  // tech deco. Anchor GF at gfHigh for that single hold instead of
+  // applying gfLow to a synthetic "deepest stop" the diver isn't using
+  // as a real conservatism anchor. Without this, a 30 m / 30 min CCR-on-
+  // Air dive at GF 50/95 holds ~10 min at 6 m where MultiDeco gives 40 s.
+  // Standard Erik-Baker conservatism still applies whenever the dive
+  // actually has multiple stops (firstStop strictly deeper than lastStop).
+  final isBorderlineSingleStop = firstStopDepth == lastStopDepthMeters;
+
   while (currentDepth > 0) {
     final candidateNext = currentDepth - 3.0;
     // Skip stops that fall *between* the user's chosen last-stop depth
@@ -181,12 +193,14 @@ List<DecoStep> planDeco({
         candidateNext < lastStopDepthMeters && candidateNext > 0
             ? 0.0
             : max(0.0, candidateNext);
-    final gfFractionHere = _gfAt(
-      currentDepth: currentDepth,
-      firstStopDepth: firstStopDepth,
-      gfLow: gfLow,
-      gfHigh: gfHigh,
-    );
+    final gfFractionHere = isBorderlineSingleStop
+        ? gfHigh / 100.0
+        : _gfAt(
+            currentDepth: currentDepth,
+            firstStopDepth: firstStopDepth,
+            gfLow: gfLow,
+            gfHigh: gfHigh,
+          );
     final stopGas =
         _bestGasAtSwitchDepth(gases: gases, depthMeters: currentDepth);
     // A gas change is happening at this stop boundary when stopGas

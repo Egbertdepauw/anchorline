@@ -226,6 +226,47 @@ void main() {
         reason: '6 m hold on CCR loop must not stretch to 50 min');
   });
 
+  test('borderline single-stop dive uses gfHigh at the hold (MultiDeco '
+      'convention)', () {
+    // 30 m / 30 min CCR Air at GF 50/95 with lastStop=6 m: Phase 1 lands
+    // a single 6 m stop. Standard Erik-Baker would apply gfLow here and
+    // hold ~10 min; MultiDeco/Petrel apply gfHigh and emit ~40 s. We
+    // match the latter so the planner doesn't disagree with the
+    // user's MultiDeco numbers on this very common case.
+    final result = runPlan(
+      gases: const [
+        DivePlanGas(oxygenPercent: 21, heliumPercent: 0, isDiluent: true),
+      ],
+      segments: const [
+        DivePlanSegment(
+            depthMeters: 30,
+            durationMinutes: 30,
+            gasMixIndex: 0,
+            setpoint: 1.3),
+      ],
+      bailout: const [],
+      mode: DivePlanMode.cc,
+      gfLow: 50,
+      gfHigh: 95,
+      useVpmb: false,
+      vpmbConservatism: 2,
+      ascentRateMpm: 9,
+      descentRateMpm: 18,
+      bottomSetpoint: 1.3,
+      ascentSetpoint: 0.7,
+      decoSetpoint: 1.3,
+      lastStopDepthMeters: 6,
+      availableTanks: const [kAl40, kAl80],
+    );
+    final holdAt6Sec = result.diveAscent
+        .where((s) => s.isStop && s.depthStartMeters == 6.0)
+        .map((s) => s.duration.inSeconds)
+        .fold<int>(0, (a, b) => a + b);
+    expect(holdAt6Sec, lessThanOrEqualTo(120),
+        reason: '6 m hold must be ≤ 2 min on a borderline NDL dive '
+            '(MultiDeco gives 40 s for an equivalent plan)');
+  });
+
   test('OC plan leaves setpointBar null on diveAscent legs', () {
     final result = runPlan(
       gases: const [
