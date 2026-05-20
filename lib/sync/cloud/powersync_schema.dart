@@ -212,6 +212,23 @@ const appSchema = Schema([
     Column.integer('version'),
     Column.integer('sync_status'),
   ]),
+  // One row per plan: draft row has name IS NULL; named rows are saved
+  // plans. Body columns are JSON-encoded (gases/segments/bailout/settings).
+  Table('dive_plans', [
+    Column.text('owner_id'),
+    Column.text('name'),
+    Column.text('mode'),
+    Column.text('gases_json'),
+    Column.text('segments_json'),
+    Column.text('bailout_json'),
+    Column.text('settings_json'),
+    Column.text('notes'),
+    Column.integer('created_at'),
+    Column.integer('updated_at'),
+    Column.integer('deleted_at'),
+    Column.integer('version'),
+    Column.integer('sync_status'),
+  ]),
   // PK = dive_id, 1:1 with dives. Sample blobs are base64 strings.
   Table('dive_samples', [
     Column.text('owner_id'),

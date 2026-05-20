@@ -20,6 +20,8 @@ void main() {
         'dive_samples',
         // Phase 3: per-dive attachments (files + links).
         'dive_attachments',
+        // Dive Plan tab: draft + saved plans.
+        'dive_plans',
       });
     });
 
