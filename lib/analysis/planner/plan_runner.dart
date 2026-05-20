@@ -22,7 +22,13 @@ PlanResult runPlan({
   required int gfHigh,
   required bool useVpmb,
   required int vpmbConservatism,
+  // MultiDeco / Petrel convention: bottom→first-stop walks at the
+  // "Opgang" (transit / ascent) rate, between-stop and final-ascent
+  // legs at the "Deco" rate. Defaults preserve the pre-split call-
+  // site by tying both to ascentRateMpm.
   required int ascentRateMpm,
+  int? ascentRateFastMpm,
+  int? ascentRateSlowMpm,
   required int descentRateMpm,
   required double bottomSetpoint,
   required double ascentSetpoint,
@@ -30,18 +36,22 @@ PlanResult runPlan({
   required double lastStopDepthMeters,
   required List<TankSpec> availableTanks,
 }) {
+  final fastMpm = ascentRateFastMpm ?? ascentRateMpm;
+  final slowMpm = ascentRateSlowMpm ?? ascentRateMpm;
   // VPM-B forward-simulation is deferred (spec §9). The toggle is
   // accepted to keep the call-site stable; we always compute with
   // ZHL-16C until the existing vpmb.dart is verified to work outside
   // the replay engine.
 
   // Phase 1+2: walk the segments, get trigger tissues + summary stats.
+  // Inter-segment ascents (multi-level: deeper → shallower) use the
+  // FAST / "Opgang" rate — the diver is transiting, not decompressing.
   final sim = simulatePlan(
     gases: gases,
     segments: segments,
     mode: mode,
     descentRateMpm: descentRateMpm,
-    ascentRateMpm: ascentRateMpm,
+    ascentRateMpm: fastMpm,
     bottomSetpoint: bottomSetpoint,
     ascentSetpoint: ascentSetpoint,
     decoSetpoint: decoSetpoint,
@@ -60,8 +70,8 @@ PlanResult runPlan({
     gases: diveGasMixes,
     gfLow: gfLow,
     gfHigh: gfHigh,
-    ascentRateFastMPerMin: ascentRateMpm,
-    ascentRateSlowMPerMin: ascentRateMpm,
+    ascentRateFastMPerMin: fastMpm,
+    ascentRateSlowMPerMin: slowMpm,
     ppo2LimitBottom: 1.6,
     ppo2LimitDeco: 1.6,
     setpointBar: mode == DivePlanMode.cc ? decoSetpoint : 0.0,

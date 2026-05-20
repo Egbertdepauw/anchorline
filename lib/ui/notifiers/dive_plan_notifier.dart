@@ -195,8 +195,13 @@ class DivePlanNotifier extends ChangeNotifier {
       useVpmb: _overrides.useVpmb ?? settings.plannerUseVpmb,
       vpmbConservatism:
           _overrides.vpmbConservatism ?? settings.plannerVpmbConservatism,
+      // ascentRateMpm is the legacy single-rate parameter; the planner
+      // also receives separate fast (transit / "Opgang") + slow (between
+      // deco stops) rates that match MultiDeco / Petrel conventions.
       ascentRateMpm:
           _overrides.ascentRateMpm ?? settings.bailoutAscentRateSlow,
+      ascentRateFastMpm: settings.bailoutAscentRateFast,
+      ascentRateSlowMpm: settings.bailoutAscentRateSlow,
       descentRateMpm: _overrides.descentRateMpm ?? 18,
       bottomSetpoint:
           _overrides.bottomSetpoint ?? settings.plannerBottomSetpoint,
