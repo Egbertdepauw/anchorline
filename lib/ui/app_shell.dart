@@ -36,10 +36,12 @@ import '../sync/subsurface_git/bootstrap_importer.dart';
 import '../sync/subsurface_git/credentials.dart';
 import '../sync/subsurface_git/dao_subsurface_sync_data_source.dart';
 import '../sync/subsurface_git/sync_orchestrator.dart';
+import 'notifiers/blend_notifier.dart';
 import 'notifiers/dive_list_notifier.dart';
 import 'notifiers/dive_plan_notifier.dart';
 import 'notifiers/import_notifier.dart';
 import 'notifiers/settings_notifier.dart';
+import 'screens/blend_screen.dart';
 import 'screens/dive_list_screen.dart';
 import 'screens/dive_plan_screen.dart';
 import 'screens/equipment/equipment_landing_screen.dart';
@@ -84,6 +86,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final DiveListNotifier _diveListNotifier;
   late final DivePlansDao _divePlansDao;
   late final DivePlanNotifier _divePlanNotifier;
+  late final BlendNotifier _blendNotifier;
   late final ImportNotifier _importNotifier;
   late final SyncStatusSource _syncStatusSource;
   late final SyncHealthService _syncHealthService;
@@ -153,6 +156,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       settings: widget.settingsNotifier,
     );
     _divePlanNotifier.load();
+    _blendNotifier = BlendNotifier(settings: widget.settingsNotifier);
     _importNotifier = ImportNotifier(
       dao: _diveDao,
       importStateDao: _importStateDao,
@@ -251,6 +255,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _syncHealthService.dispose();
     _diveListNotifier.dispose();
     _divePlanNotifier.dispose();
+    _blendNotifier.dispose();
     _importNotifier.dispose();
     super.dispose();
   }
@@ -395,6 +400,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                         notifier: _divePlanNotifier,
                         settings: widget.settingsNotifier,
                       ),
+                      BlendScreen(
+                        notifier: _blendNotifier,
+                        settings: widget.settingsNotifier,
+                      ),
                       ImportScreen(
                         notifier: _importNotifier,
                         onViewDives: _onViewDives,
@@ -439,6 +448,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           BottomNavigationBarItem(
             icon: Icon(Icons.event_note_outlined),
             label: 'Plan',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.science_outlined),
+            label: 'Blend',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: 'Import'),
           BottomNavigationBarItem(
