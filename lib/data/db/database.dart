@@ -19,6 +19,7 @@ part 'database.g.dart';
     Cylinders,
     PressureMappings,
     DiveCylinders,
+    DivePlans,
     DiveBailoutCarry,
     ImportStates,
   ],
@@ -27,7 +28,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -130,6 +131,18 @@ class AppDatabase extends _$AppDatabase {
               await m.alterTable(TableMigration(cylinders));
             }
             await m.createTable(diveBailoutCarry);
+          }
+          if (from < 16) {
+            await m.createTable(divePlans);
+            await customStatement(
+              'CREATE UNIQUE INDEX IF NOT EXISTS idx_dive_plans_owner_draft '
+              'ON dive_plans (owner_id) '
+              'WHERE name IS NULL AND deleted_at IS NULL',
+            );
+            await customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_dive_plans_owner_updated '
+              'ON dive_plans (owner_id, deleted_at, updated_at DESC)',
+            );
           }
         },
       );

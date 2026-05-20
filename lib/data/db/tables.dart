@@ -318,6 +318,31 @@ class DiveBailoutCarry extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Multilevel dive plans (CC + Bailout v1, OC future). One row per
+/// plan: a single per-user "draft" row (name IS NULL) auto-saves on
+/// edit; named rows are explicitly saved plans. Body is JSON-encoded
+/// because gases/segments/bottles are always loaded as a unit.
+class DivePlans extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text().nullable()();
+  TextColumn get mode => text()(); // 'cc' or 'oc'
+  TextColumn get gasesJson => text()();
+  TextColumn get segmentsJson => text()();
+  TextColumn get bailoutJson => text()();
+  TextColumn get settingsJson => text().nullable()();
+  TextColumn get notes => text().nullable()();
+
+  IntColumn get createdAt => integer()();
+  IntColumn get updatedAt => integer()();
+  IntColumn get deletedAt => integer().nullable()();
+  IntColumn get version => integer().withDefault(const Constant(1))();
+  IntColumn get syncStatus => integer().withDefault(const Constant(0))();
+  TextColumn get ownerId => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Import state for incremental sync per dive computer.
 class ImportStates extends Table {
   /// Dive computer serial as string.

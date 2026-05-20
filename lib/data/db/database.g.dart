@@ -8257,6 +8257,816 @@ class DiveCylindersCompanion extends UpdateCompanion<DiveCylinder> {
   }
 }
 
+class $DivePlansTable extends DivePlans
+    with TableInfo<$DivePlansTable, DivePlan> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DivePlansTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _modeMeta = const VerificationMeta('mode');
+  @override
+  late final GeneratedColumn<String> mode = GeneratedColumn<String>(
+    'mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _gasesJsonMeta = const VerificationMeta(
+    'gasesJson',
+  );
+  @override
+  late final GeneratedColumn<String> gasesJson = GeneratedColumn<String>(
+    'gases_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _segmentsJsonMeta = const VerificationMeta(
+    'segmentsJson',
+  );
+  @override
+  late final GeneratedColumn<String> segmentsJson = GeneratedColumn<String>(
+    'segments_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bailoutJsonMeta = const VerificationMeta(
+    'bailoutJson',
+  );
+  @override
+  late final GeneratedColumn<String> bailoutJson = GeneratedColumn<String>(
+    'bailout_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _settingsJsonMeta = const VerificationMeta(
+    'settingsJson',
+  );
+  @override
+  late final GeneratedColumn<String> settingsJson = GeneratedColumn<String>(
+    'settings_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
+  @override
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _syncStatusMeta = const VerificationMeta(
+    'syncStatus',
+  );
+  @override
+  late final GeneratedColumn<int> syncStatus = GeneratedColumn<int>(
+    'sync_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    mode,
+    gasesJson,
+    segmentsJson,
+    bailoutJson,
+    settingsJson,
+    notes,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    version,
+    syncStatus,
+    ownerId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'dive_plans';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DivePlan> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('mode')) {
+      context.handle(
+        _modeMeta,
+        mode.isAcceptableOrUnknown(data['mode']!, _modeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_modeMeta);
+    }
+    if (data.containsKey('gases_json')) {
+      context.handle(
+        _gasesJsonMeta,
+        gasesJson.isAcceptableOrUnknown(data['gases_json']!, _gasesJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_gasesJsonMeta);
+    }
+    if (data.containsKey('segments_json')) {
+      context.handle(
+        _segmentsJsonMeta,
+        segmentsJson.isAcceptableOrUnknown(
+          data['segments_json']!,
+          _segmentsJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_segmentsJsonMeta);
+    }
+    if (data.containsKey('bailout_json')) {
+      context.handle(
+        _bailoutJsonMeta,
+        bailoutJson.isAcceptableOrUnknown(
+          data['bailout_json']!,
+          _bailoutJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_bailoutJsonMeta);
+    }
+    if (data.containsKey('settings_json')) {
+      context.handle(
+        _settingsJsonMeta,
+        settingsJson.isAcceptableOrUnknown(
+          data['settings_json']!,
+          _settingsJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    }
+    if (data.containsKey('sync_status')) {
+      context.handle(
+        _syncStatusMeta,
+        syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
+      );
+    }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DivePlan map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DivePlan(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      ),
+      mode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mode'],
+      )!,
+      gasesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}gases_json'],
+      )!,
+      segmentsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}segments_json'],
+      )!,
+      bailoutJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}bailout_json'],
+      )!,
+      settingsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}settings_json'],
+      ),
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notes'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+      syncStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sync_status'],
+      )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      ),
+    );
+  }
+
+  @override
+  $DivePlansTable createAlias(String alias) {
+    return $DivePlansTable(attachedDatabase, alias);
+  }
+}
+
+class DivePlan extends DataClass implements Insertable<DivePlan> {
+  final String id;
+  final String? name;
+  final String mode;
+  final String gasesJson;
+  final String segmentsJson;
+  final String bailoutJson;
+  final String? settingsJson;
+  final String? notes;
+  final int createdAt;
+  final int updatedAt;
+  final int? deletedAt;
+  final int version;
+  final int syncStatus;
+  final String? ownerId;
+  const DivePlan({
+    required this.id,
+    this.name,
+    required this.mode,
+    required this.gasesJson,
+    required this.segmentsJson,
+    required this.bailoutJson,
+    this.settingsJson,
+    this.notes,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+    required this.version,
+    required this.syncStatus,
+    this.ownerId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    if (!nullToAbsent || name != null) {
+      map['name'] = Variable<String>(name);
+    }
+    map['mode'] = Variable<String>(mode);
+    map['gases_json'] = Variable<String>(gasesJson);
+    map['segments_json'] = Variable<String>(segmentsJson);
+    map['bailout_json'] = Variable<String>(bailoutJson);
+    if (!nullToAbsent || settingsJson != null) {
+      map['settings_json'] = Variable<String>(settingsJson);
+    }
+    if (!nullToAbsent || notes != null) {
+      map['notes'] = Variable<String>(notes);
+    }
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<int>(deletedAt);
+    }
+    map['version'] = Variable<int>(version);
+    map['sync_status'] = Variable<int>(syncStatus);
+    if (!nullToAbsent || ownerId != null) {
+      map['owner_id'] = Variable<String>(ownerId);
+    }
+    return map;
+  }
+
+  DivePlansCompanion toCompanion(bool nullToAbsent) {
+    return DivePlansCompanion(
+      id: Value(id),
+      name: name == null && nullToAbsent ? const Value.absent() : Value(name),
+      mode: Value(mode),
+      gasesJson: Value(gasesJson),
+      segmentsJson: Value(segmentsJson),
+      bailoutJson: Value(bailoutJson),
+      settingsJson: settingsJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(settingsJson),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      version: Value(version),
+      syncStatus: Value(syncStatus),
+      ownerId: ownerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownerId),
+    );
+  }
+
+  factory DivePlan.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DivePlan(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String?>(json['name']),
+      mode: serializer.fromJson<String>(json['mode']),
+      gasesJson: serializer.fromJson<String>(json['gasesJson']),
+      segmentsJson: serializer.fromJson<String>(json['segmentsJson']),
+      bailoutJson: serializer.fromJson<String>(json['bailoutJson']),
+      settingsJson: serializer.fromJson<String?>(json['settingsJson']),
+      notes: serializer.fromJson<String?>(json['notes']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
+      version: serializer.fromJson<int>(json['version']),
+      syncStatus: serializer.fromJson<int>(json['syncStatus']),
+      ownerId: serializer.fromJson<String?>(json['ownerId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String?>(name),
+      'mode': serializer.toJson<String>(mode),
+      'gasesJson': serializer.toJson<String>(gasesJson),
+      'segmentsJson': serializer.toJson<String>(segmentsJson),
+      'bailoutJson': serializer.toJson<String>(bailoutJson),
+      'settingsJson': serializer.toJson<String?>(settingsJson),
+      'notes': serializer.toJson<String?>(notes),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'deletedAt': serializer.toJson<int?>(deletedAt),
+      'version': serializer.toJson<int>(version),
+      'syncStatus': serializer.toJson<int>(syncStatus),
+      'ownerId': serializer.toJson<String?>(ownerId),
+    };
+  }
+
+  DivePlan copyWith({
+    String? id,
+    Value<String?> name = const Value.absent(),
+    String? mode,
+    String? gasesJson,
+    String? segmentsJson,
+    String? bailoutJson,
+    Value<String?> settingsJson = const Value.absent(),
+    Value<String?> notes = const Value.absent(),
+    int? createdAt,
+    int? updatedAt,
+    Value<int?> deletedAt = const Value.absent(),
+    int? version,
+    int? syncStatus,
+    Value<String?> ownerId = const Value.absent(),
+  }) => DivePlan(
+    id: id ?? this.id,
+    name: name.present ? name.value : this.name,
+    mode: mode ?? this.mode,
+    gasesJson: gasesJson ?? this.gasesJson,
+    segmentsJson: segmentsJson ?? this.segmentsJson,
+    bailoutJson: bailoutJson ?? this.bailoutJson,
+    settingsJson: settingsJson.present ? settingsJson.value : this.settingsJson,
+    notes: notes.present ? notes.value : this.notes,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    version: version ?? this.version,
+    syncStatus: syncStatus ?? this.syncStatus,
+    ownerId: ownerId.present ? ownerId.value : this.ownerId,
+  );
+  DivePlan copyWithCompanion(DivePlansCompanion data) {
+    return DivePlan(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      mode: data.mode.present ? data.mode.value : this.mode,
+      gasesJson: data.gasesJson.present ? data.gasesJson.value : this.gasesJson,
+      segmentsJson: data.segmentsJson.present
+          ? data.segmentsJson.value
+          : this.segmentsJson,
+      bailoutJson: data.bailoutJson.present
+          ? data.bailoutJson.value
+          : this.bailoutJson,
+      settingsJson: data.settingsJson.present
+          ? data.settingsJson.value
+          : this.settingsJson,
+      notes: data.notes.present ? data.notes.value : this.notes,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      version: data.version.present ? data.version.value : this.version,
+      syncStatus: data.syncStatus.present
+          ? data.syncStatus.value
+          : this.syncStatus,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DivePlan(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('mode: $mode, ')
+          ..write('gasesJson: $gasesJson, ')
+          ..write('segmentsJson: $segmentsJson, ')
+          ..write('bailoutJson: $bailoutJson, ')
+          ..write('settingsJson: $settingsJson, ')
+          ..write('notes: $notes, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('version: $version, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    mode,
+    gasesJson,
+    segmentsJson,
+    bailoutJson,
+    settingsJson,
+    notes,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    version,
+    syncStatus,
+    ownerId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DivePlan &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.mode == this.mode &&
+          other.gasesJson == this.gasesJson &&
+          other.segmentsJson == this.segmentsJson &&
+          other.bailoutJson == this.bailoutJson &&
+          other.settingsJson == this.settingsJson &&
+          other.notes == this.notes &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.version == this.version &&
+          other.syncStatus == this.syncStatus &&
+          other.ownerId == this.ownerId);
+}
+
+class DivePlansCompanion extends UpdateCompanion<DivePlan> {
+  final Value<String> id;
+  final Value<String?> name;
+  final Value<String> mode;
+  final Value<String> gasesJson;
+  final Value<String> segmentsJson;
+  final Value<String> bailoutJson;
+  final Value<String?> settingsJson;
+  final Value<String?> notes;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int?> deletedAt;
+  final Value<int> version;
+  final Value<int> syncStatus;
+  final Value<String?> ownerId;
+  final Value<int> rowid;
+  const DivePlansCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.mode = const Value.absent(),
+    this.gasesJson = const Value.absent(),
+    this.segmentsJson = const Value.absent(),
+    this.bailoutJson = const Value.absent(),
+    this.settingsJson = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.version = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DivePlansCompanion.insert({
+    required String id,
+    this.name = const Value.absent(),
+    required String mode,
+    required String gasesJson,
+    required String segmentsJson,
+    required String bailoutJson,
+    this.settingsJson = const Value.absent(),
+    this.notes = const Value.absent(),
+    required int createdAt,
+    required int updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.version = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       mode = Value(mode),
+       gasesJson = Value(gasesJson),
+       segmentsJson = Value(segmentsJson),
+       bailoutJson = Value(bailoutJson),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<DivePlan> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<String>? mode,
+    Expression<String>? gasesJson,
+    Expression<String>? segmentsJson,
+    Expression<String>? bailoutJson,
+    Expression<String>? settingsJson,
+    Expression<String>? notes,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? deletedAt,
+    Expression<int>? version,
+    Expression<int>? syncStatus,
+    Expression<String>? ownerId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (mode != null) 'mode': mode,
+      if (gasesJson != null) 'gases_json': gasesJson,
+      if (segmentsJson != null) 'segments_json': segmentsJson,
+      if (bailoutJson != null) 'bailout_json': bailoutJson,
+      if (settingsJson != null) 'settings_json': settingsJson,
+      if (notes != null) 'notes': notes,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (version != null) 'version': version,
+      if (syncStatus != null) 'sync_status': syncStatus,
+      if (ownerId != null) 'owner_id': ownerId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DivePlansCompanion copyWith({
+    Value<String>? id,
+    Value<String?>? name,
+    Value<String>? mode,
+    Value<String>? gasesJson,
+    Value<String>? segmentsJson,
+    Value<String>? bailoutJson,
+    Value<String?>? settingsJson,
+    Value<String?>? notes,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int?>? deletedAt,
+    Value<int>? version,
+    Value<int>? syncStatus,
+    Value<String?>? ownerId,
+    Value<int>? rowid,
+  }) {
+    return DivePlansCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      mode: mode ?? this.mode,
+      gasesJson: gasesJson ?? this.gasesJson,
+      segmentsJson: segmentsJson ?? this.segmentsJson,
+      bailoutJson: bailoutJson ?? this.bailoutJson,
+      settingsJson: settingsJson ?? this.settingsJson,
+      notes: notes ?? this.notes,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      version: version ?? this.version,
+      syncStatus: syncStatus ?? this.syncStatus,
+      ownerId: ownerId ?? this.ownerId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (mode.present) {
+      map['mode'] = Variable<String>(mode.value);
+    }
+    if (gasesJson.present) {
+      map['gases_json'] = Variable<String>(gasesJson.value);
+    }
+    if (segmentsJson.present) {
+      map['segments_json'] = Variable<String>(segmentsJson.value);
+    }
+    if (bailoutJson.present) {
+      map['bailout_json'] = Variable<String>(bailoutJson.value);
+    }
+    if (settingsJson.present) {
+      map['settings_json'] = Variable<String>(settingsJson.value);
+    }
+    if (notes.present) {
+      map['notes'] = Variable<String>(notes.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<int>(deletedAt.value);
+    }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    if (syncStatus.present) {
+      map['sync_status'] = Variable<int>(syncStatus.value);
+    }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DivePlansCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('mode: $mode, ')
+          ..write('gasesJson: $gasesJson, ')
+          ..write('segmentsJson: $segmentsJson, ')
+          ..write('bailoutJson: $bailoutJson, ')
+          ..write('settingsJson: $settingsJson, ')
+          ..write('notes: $notes, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('version: $version, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $DiveBailoutCarryTable extends DiveBailoutCarry
     with TableInfo<$DiveBailoutCarryTable, DiveBailoutCarryData> {
   @override
@@ -9298,6 +10108,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $DiveCylindersTable diveCylinders = $DiveCylindersTable(this);
+  late final $DivePlansTable divePlans = $DivePlansTable(this);
   late final $DiveBailoutCarryTable diveBailoutCarry = $DiveBailoutCarryTable(
     this,
   );
@@ -9317,6 +10128,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     cylinders,
     pressureMappings,
     diveCylinders,
+    divePlans,
     diveBailoutCarry,
     importStates,
   ];
@@ -13968,6 +14780,379 @@ typedef $$DiveCylindersTableProcessedTableManager =
       DiveCylinder,
       PrefetchHooks Function({bool diveId})
     >;
+typedef $$DivePlansTableCreateCompanionBuilder =
+    DivePlansCompanion Function({
+      required String id,
+      Value<String?> name,
+      required String mode,
+      required String gasesJson,
+      required String segmentsJson,
+      required String bailoutJson,
+      Value<String?> settingsJson,
+      Value<String?> notes,
+      required int createdAt,
+      required int updatedAt,
+      Value<int?> deletedAt,
+      Value<int> version,
+      Value<int> syncStatus,
+      Value<String?> ownerId,
+      Value<int> rowid,
+    });
+typedef $$DivePlansTableUpdateCompanionBuilder =
+    DivePlansCompanion Function({
+      Value<String> id,
+      Value<String?> name,
+      Value<String> mode,
+      Value<String> gasesJson,
+      Value<String> segmentsJson,
+      Value<String> bailoutJson,
+      Value<String?> settingsJson,
+      Value<String?> notes,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int?> deletedAt,
+      Value<int> version,
+      Value<int> syncStatus,
+      Value<String?> ownerId,
+      Value<int> rowid,
+    });
+
+class $$DivePlansTableFilterComposer
+    extends Composer<_$AppDatabase, $DivePlansTable> {
+  $$DivePlansTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mode => $composableBuilder(
+    column: $table.mode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get gasesJson => $composableBuilder(
+    column: $table.gasesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get segmentsJson => $composableBuilder(
+    column: $table.segmentsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bailoutJson => $composableBuilder(
+    column: $table.bailoutJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get settingsJson => $composableBuilder(
+    column: $table.settingsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DivePlansTableOrderingComposer
+    extends Composer<_$AppDatabase, $DivePlansTable> {
+  $$DivePlansTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mode => $composableBuilder(
+    column: $table.mode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get gasesJson => $composableBuilder(
+    column: $table.gasesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get segmentsJson => $composableBuilder(
+    column: $table.segmentsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get bailoutJson => $composableBuilder(
+    column: $table.bailoutJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get settingsJson => $composableBuilder(
+    column: $table.settingsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DivePlansTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DivePlansTable> {
+  $$DivePlansTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get mode =>
+      $composableBuilder(column: $table.mode, builder: (column) => column);
+
+  GeneratedColumn<String> get gasesJson =>
+      $composableBuilder(column: $table.gasesJson, builder: (column) => column);
+
+  GeneratedColumn<String> get segmentsJson => $composableBuilder(
+    column: $table.segmentsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get bailoutJson => $composableBuilder(
+    column: $table.bailoutJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get settingsJson => $composableBuilder(
+    column: $table.settingsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
+}
+
+class $$DivePlansTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DivePlansTable,
+          DivePlan,
+          $$DivePlansTableFilterComposer,
+          $$DivePlansTableOrderingComposer,
+          $$DivePlansTableAnnotationComposer,
+          $$DivePlansTableCreateCompanionBuilder,
+          $$DivePlansTableUpdateCompanionBuilder,
+          (DivePlan, BaseReferences<_$AppDatabase, $DivePlansTable, DivePlan>),
+          DivePlan,
+          PrefetchHooks Function()
+        > {
+  $$DivePlansTableTableManager(_$AppDatabase db, $DivePlansTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DivePlansTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DivePlansTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DivePlansTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String?> name = const Value.absent(),
+                Value<String> mode = const Value.absent(),
+                Value<String> gasesJson = const Value.absent(),
+                Value<String> segmentsJson = const Value.absent(),
+                Value<String> bailoutJson = const Value.absent(),
+                Value<String?> settingsJson = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DivePlansCompanion(
+                id: id,
+                name: name,
+                mode: mode,
+                gasesJson: gasesJson,
+                segmentsJson: segmentsJson,
+                bailoutJson: bailoutJson,
+                settingsJson: settingsJson,
+                notes: notes,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                version: version,
+                syncStatus: syncStatus,
+                ownerId: ownerId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                Value<String?> name = const Value.absent(),
+                required String mode,
+                required String gasesJson,
+                required String segmentsJson,
+                required String bailoutJson,
+                Value<String?> settingsJson = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                required int createdAt,
+                required int updatedAt,
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DivePlansCompanion.insert(
+                id: id,
+                name: name,
+                mode: mode,
+                gasesJson: gasesJson,
+                segmentsJson: segmentsJson,
+                bailoutJson: bailoutJson,
+                settingsJson: settingsJson,
+                notes: notes,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                version: version,
+                syncStatus: syncStatus,
+                ownerId: ownerId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DivePlansTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DivePlansTable,
+      DivePlan,
+      $$DivePlansTableFilterComposer,
+      $$DivePlansTableOrderingComposer,
+      $$DivePlansTableAnnotationComposer,
+      $$DivePlansTableCreateCompanionBuilder,
+      $$DivePlansTableUpdateCompanionBuilder,
+      (DivePlan, BaseReferences<_$AppDatabase, $DivePlansTable, DivePlan>),
+      DivePlan,
+      PrefetchHooks Function()
+    >;
 typedef $$DiveBailoutCarryTableCreateCompanionBuilder =
     DiveBailoutCarryCompanion Function({
       required String id,
@@ -14718,6 +15903,8 @@ class $AppDatabaseManager {
       $$PressureMappingsTableTableManager(_db, _db.pressureMappings);
   $$DiveCylindersTableTableManager get diveCylinders =>
       $$DiveCylindersTableTableManager(_db, _db.diveCylinders);
+  $$DivePlansTableTableManager get divePlans =>
+      $$DivePlansTableTableManager(_db, _db.divePlans);
   $$DiveBailoutCarryTableTableManager get diveBailoutCarry =>
       $$DiveBailoutCarryTableTableManager(_db, _db.diveBailoutCarry);
   $$ImportStatesTableTableManager get importStates =>
