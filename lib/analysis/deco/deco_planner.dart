@@ -136,6 +136,7 @@ List<DecoStep> planDeco({
         gas: gas,
         ambientBar: ambient,
         intervalSeconds: switchHoldSec,
+        setpointBar: setpointBar,
       );
       steps.add(DecoStep(
         depthStartMeters: currentDepth,
@@ -210,6 +211,7 @@ List<DecoStep> planDeco({
         gas: stopGas,
         ambientBar: ambient,
         intervalSeconds: stopStepSec,
+        setpointBar: setpointBar,
       );
       minutesHeld++;
     }
@@ -223,6 +225,7 @@ List<DecoStep> planDeco({
         gas: stopGas,
         ambientBar: ambient,
         intervalSeconds: stopStepSec,
+        setpointBar: setpointBar,
       );
       minutesHeld = 1;
     }
@@ -249,6 +252,7 @@ List<DecoStep> planDeco({
         gas: ascentGas,
         ambientBar: avgAmbient,
         intervalSeconds: secs,
+        setpointBar: setpointBar,
       );
       steps.add(DecoStep(
         depthStartMeters: currentDepth,

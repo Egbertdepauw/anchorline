@@ -187,6 +187,45 @@ void main() {
         reason: 'level segment uses its declared setpoint');
   });
 
+  test('CCR deco hold is short — earlier regression bug saw 53 min at 6 m '
+      'because Phase 2 _advanceOneStep calls forgot to pass setpointBar', () {
+    // 30 m / 30 min Air-CC at SP 1.3 bottom / SP 1.5 deco, GF 50/95.
+    // With the OC fallback bug, the 6 m stop ran ~53 min. With CCR
+    // math (loop is ≈ pure O₂ at 6 m on SP 1.5), the hold should be
+    // under 15 min.
+    final result = runPlan(
+      gases: const [
+        DivePlanGas(oxygenPercent: 21, heliumPercent: 0, isDiluent: true),
+      ],
+      segments: const [
+        DivePlanSegment(
+            depthMeters: 30,
+            durationMinutes: 30,
+            gasMixIndex: 0,
+            setpoint: 1.3),
+      ],
+      bailout: const [],
+      mode: DivePlanMode.cc,
+      gfLow: 50,
+      gfHigh: 95,
+      useVpmb: false,
+      vpmbConservatism: 2,
+      ascentRateMpm: 9,
+      descentRateMpm: 18,
+      bottomSetpoint: 1.3,
+      ascentSetpoint: 0.7,
+      decoSetpoint: 1.5,
+      lastStopDepthMeters: 6,
+      availableTanks: const [kAl40, kAl80],
+    );
+    final holdAt6 = result.diveAscent
+        .where((s) => s.isStop && s.depthStartMeters == 6.0)
+        .map((s) => s.duration.inMinutes)
+        .fold<int>(0, (a, b) => a + b);
+    expect(holdAt6, lessThan(15),
+        reason: '6 m hold on CCR loop must not stretch to 50 min');
+  });
+
   test('OC plan leaves setpointBar null on diveAscent legs', () {
     final result = runPlan(
       gases: const [
