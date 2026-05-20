@@ -75,7 +75,16 @@ void main() {
     ));
     await tester.tap(find.byKey(const ValueKey('save-as')));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, 'Test plan');
+    // Scope to the AlertDialog — the screen also has TextFields in the
+    // segment-row editor, and `find.byType(TextField).first` would match
+    // the depth input by tree order.
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      'Test plan',
+    );
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     // After save the draft is cleared on the notifier side.
