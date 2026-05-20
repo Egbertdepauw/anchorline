@@ -218,6 +218,18 @@ class StopLadderTable extends StatelessWidget {
     return atOneAtm * ambient;
   }
 
+  /// Single-line table cell — never wraps, fades on overflow. Used for
+  /// every header + body cell so the row stays at one line on the
+  /// smaller phones too. Worst-case "Tx12/65" should still fit with
+  /// the flex weights below; this is a safety net for narrow screens.
+  static Widget _cellText(String text, TextStyle style) => Text(
+        text,
+        style: style,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.fade,
+      );
+
   @override
   Widget build(BuildContext context) {
     final rows = _consolidate();
@@ -253,21 +265,25 @@ class StopLadderTable extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Header — DEPTH | T | RT | GAS | PPO2 | END | ρ g/L | VOL (L).
+        // Header — DEPTH | T | RT | GAS | PPO2 | END | ρ | VOL.
         // END sits between PPO2 and density so the narcosis / density
         // sanity check reads left-to-right (oxy → narcotic → physical).
+        // Flex weights tuned so "Tx12/65" (worst-case 7-char gas label)
+        // fits without wrapping on iPhone 16 Pro and similar widths.
+        // T and RT only ever show 1-3 chars so they take the minimum
+        // share; GAS gets double because that's the longest cell.
         Padding(
           padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
           child: Row(
             children: [
-              Expanded(flex: 3, child: Text('DEPTH', style: headerStyle)),
-              Expanded(flex: 2, child: Text('T', style: headerStyle)),
-              Expanded(flex: 2, child: Text('RT', style: headerStyle)),
-              Expanded(flex: 2, child: Text('GAS', style: headerStyle)),
-              Expanded(flex: 2, child: Text('PPO2', style: headerStyle)),
-              Expanded(flex: 2, child: Text('END', style: headerStyle)),
-              Expanded(flex: 2, child: Text('ρ g/L', style: headerStyle)),
-              Expanded(flex: 2, child: Text('VOL (L)', style: headerStyle)),
+              Expanded(flex: 3, child: _cellText('DEPTH', headerStyle)),
+              Expanded(flex: 1, child: _cellText('T', headerStyle)),
+              Expanded(flex: 1, child: _cellText('RT', headerStyle)),
+              Expanded(flex: 4, child: _cellText('GAS', headerStyle)),
+              Expanded(flex: 2, child: _cellText('PPO2', headerStyle)),
+              Expanded(flex: 2, child: _cellText('END', headerStyle)),
+              Expanded(flex: 2, child: _cellText('ρ g/L', headerStyle)),
+              Expanded(flex: 2, child: _cellText('VOL', headerStyle)),
             ],
           ),
         ),
@@ -318,14 +334,14 @@ class StopLadderTable extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
               child: Row(
                 children: [
-                  Expanded(flex: 3, child: Text(depthLabel, style: cellStyle)),
-                  Expanded(flex: 2, child: Text(stopLabel, style: cellStyle)),
-                  Expanded(flex: 2, child: Text(runtimeLabel, style: cellStyle)),
-                  Expanded(flex: 2, child: Text(gasLabel, style: cellStyle)),
-                  Expanded(flex: 2, child: Text(ppo2Label, style: cellStyle)),
-                  Expanded(flex: 2, child: Text(endLabel, style: cellStyle)),
-                  Expanded(flex: 2, child: Text(rhoLabel, style: cellStyle)),
-                  Expanded(flex: 2, child: Text(volLabel, style: cellStyle)),
+                  Expanded(flex: 3, child: _cellText(depthLabel, cellStyle)),
+                  Expanded(flex: 1, child: _cellText(stopLabel, cellStyle)),
+                  Expanded(flex: 1, child: _cellText(runtimeLabel, cellStyle)),
+                  Expanded(flex: 4, child: _cellText(gasLabel, cellStyle)),
+                  Expanded(flex: 2, child: _cellText(ppo2Label, cellStyle)),
+                  Expanded(flex: 2, child: _cellText(endLabel, cellStyle)),
+                  Expanded(flex: 2, child: _cellText(rhoLabel, cellStyle)),
+                  Expanded(flex: 2, child: _cellText(volLabel, cellStyle)),
                 ],
               ),
             );
