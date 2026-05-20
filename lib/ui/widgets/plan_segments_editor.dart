@@ -190,7 +190,7 @@ class _SegmentRowState extends State<_SegmentRow> {
       child: Row(
         children: [
           SizedBox(
-            width: 56,
+            width: 72,
             child: TextField(
               controller: _depthCtrl,
               focusNode: _depthFocus,
@@ -200,7 +200,7 @@ class _SegmentRowState extends State<_SegmentRow> {
                 isDense: true,
                 suffixText: 'm',
                 contentPadding:
-                    EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                    EdgeInsets.symmetric(horizontal: 6, vertical: 6),
               ),
               onChanged: (s) {
                 final v = double.tryParse(s);
@@ -210,7 +210,7 @@ class _SegmentRowState extends State<_SegmentRow> {
           ),
           const SizedBox(width: 8),
           SizedBox(
-            width: 56,
+            width: 88,
             child: TextField(
               controller: _timeCtrl,
               focusNode: _timeFocus,
@@ -219,7 +219,7 @@ class _SegmentRowState extends State<_SegmentRow> {
                 isDense: true,
                 suffixText: 'min',
                 contentPadding:
-                    EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                    EdgeInsets.symmetric(horizontal: 6, vertical: 6),
               ),
               onChanged: (s) {
                 final v = int.tryParse(s);
