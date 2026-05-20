@@ -280,18 +280,25 @@ class StopLadderTable extends StatelessWidget {
         // fits without wrapping on iPhone 16 Pro and similar widths.
         // T and RT only ever show 1-3 chars so they take the minimum
         // share; GAS gets double because that's the longest cell.
+        // Every cell — header and body — is centered. Right-aligning
+        // numeric columns visually smashed adjacent narrow columns
+        // together (T's "45" touching RT's "49" with only a 6 pt gap);
+        // centering puts each value in the middle of its own cell, so
+        // there's natural breathing room on both sides.
+        // Flex: T and RT are bumped back to 2 so the column has room
+        // for 2-digit values + centering padding without crowding.
         Padding(
           padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
           child: Row(
             children: [
-              Expanded(flex: 3, child: _cellText('DEPTH', headerStyle)),
-              Expanded(flex: 1, child: _cellText('T', headerStyle, textAlign: TextAlign.end)),
-              Expanded(flex: 1, child: _cellText('RT', headerStyle, textAlign: TextAlign.end)),
-              Expanded(flex: 4, child: _cellText('GAS', headerStyle)),
-              Expanded(flex: 2, child: _cellText('PPO2', headerStyle, textAlign: TextAlign.end)),
-              Expanded(flex: 2, child: _cellText('END', headerStyle, textAlign: TextAlign.end)),
-              Expanded(flex: 2, child: _cellText('ρ g/L', headerStyle, textAlign: TextAlign.end)),
-              Expanded(flex: 2, child: _cellText('VOL', headerStyle, textAlign: TextAlign.end)),
+              Expanded(flex: 3, child: _cellText('DEPTH', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 2, child: _cellText('T', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 2, child: _cellText('RT', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 4, child: _cellText('GAS', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 2, child: _cellText('PPO2', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 2, child: _cellText('END', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 2, child: _cellText('ρ g/L', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 1, child: _cellText('VOL', headerStyle, textAlign: TextAlign.center)),
             ],
           ),
         ),
@@ -300,12 +307,8 @@ class StopLadderTable extends StatelessWidget {
           Builder(builder: (context) {
             final row = rows[i];
             runtime += row.stopDuration;
-            // Pad non-arrow rows with two leading spaces in the
-            // monospace cell so the digit aligns with the "68" in
-            // "→ 68 m". Without this, the arrow rows shift left and
-            // the eye can't scan the depth column as a vertical line.
             final depthLabel = row.isStop
-                ? '  ${row.depthMeters.toStringAsFixed(0)} m'
+                ? '${row.depthMeters.toStringAsFixed(0)} m'
                 : (row.depthMeters == 0
                     ? '→ surface'
                     : '→ ${row.depthMeters.toStringAsFixed(0)} m');
@@ -360,14 +363,14 @@ class StopLadderTable extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
               child: Row(
                 children: [
-                  Expanded(flex: 3, child: _cellText(depthLabel, cellStyle)),
-                  Expanded(flex: 1, child: _cellText(stopLabel, cellStyle, textAlign: TextAlign.end)),
-                  Expanded(flex: 1, child: _cellText(runtimeLabel, cellStyle, textAlign: TextAlign.end)),
-                  Expanded(flex: 4, child: _cellText(gasLabel, cellStyle)),
-                  Expanded(flex: 2, child: _cellText(ppo2Label, cellStyle, textAlign: TextAlign.end)),
-                  Expanded(flex: 2, child: _cellText(endLabel, cellStyle, textAlign: TextAlign.end)),
-                  Expanded(flex: 2, child: _cellText(rhoLabel, cellStyle, textAlign: TextAlign.end)),
-                  Expanded(flex: 2, child: _cellText(volLabel, cellStyle, textAlign: TextAlign.end)),
+                  Expanded(flex: 3, child: _cellText(depthLabel, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 2, child: _cellText(stopLabel, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 2, child: _cellText(runtimeLabel, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 4, child: _cellText(gasLabel, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 2, child: _cellText(ppo2Label, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 2, child: _cellText(endLabel, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 2, child: _cellText(rhoLabel, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 1, child: _cellText(volLabel, cellStyle, textAlign: TextAlign.center)),
                 ],
               ),
             );
