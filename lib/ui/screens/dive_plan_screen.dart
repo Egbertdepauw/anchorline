@@ -105,21 +105,30 @@ class _DivePlanScreenState extends State<DivePlanScreen> {
             ],
           ),
         ),
-        body: ListenableBuilder(
-          listenable: widget.notifier,
-          builder: (context, _) => TabBarView(
-            children: [
-              _PlanTab(
-                notifier: widget.notifier,
-                settings: widget.settings,
-                scheme: scheme,
-              ),
-              _BailoutTab(
-                notifier: widget.notifier,
-                settings: widget.settings,
-                scheme: scheme,
-              ),
-            ],
+        // Tap anywhere outside an input field to dismiss the keyboard.
+        // iOS's numeric keyboard has no Return key, so without this the
+        // user gets trapped behind the keyboard and can't reach the
+        // tab bar / bottom nav. Per-scroll-view onDrag is set on each
+        // tab's SingleChildScrollView as a secondary escape.
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: ListenableBuilder(
+            listenable: widget.notifier,
+            builder: (context, _) => TabBarView(
+              children: [
+                _PlanTab(
+                  notifier: widget.notifier,
+                  settings: widget.settings,
+                  scheme: scheme,
+                ),
+                _BailoutTab(
+                  notifier: widget.notifier,
+                  settings: widget.settings,
+                  scheme: scheme,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -333,6 +342,7 @@ class _PlanTab extends StatelessWidget {
       if (result != null) ...result.diveAscent,
     ];
     return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(
           Spacing.md, Spacing.md, Spacing.md, Spacing.xl),
       child: Column(
@@ -441,6 +451,7 @@ class _BailoutTab extends StatelessWidget {
       if (result?.bailout != null) ...result!.bailout.stops,
     ];
     return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(
           Spacing.md, Spacing.md, Spacing.md, Spacing.xl),
       child: Column(

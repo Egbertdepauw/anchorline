@@ -35,12 +35,23 @@ class _BlendScreenState extends State<BlendScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Blend')),
-      body: ListenableBuilder(
-        listenable: widget.notifier,
-        builder: (context, _) => SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(
-              Spacing.md, Spacing.md, Spacing.md, Spacing.xl),
-          child: Column(
+      // Tap anywhere outside an input field to dismiss the keyboard.
+      // iOS's numeric keyboard has no Return key, so without this the
+      // user can't get the keyboard out of the way to reach the bottom
+      // nav. `translucent` makes hit-testing still pass through to
+      // children (cards / chips / dropdowns / switch).
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: ListenableBuilder(
+          listenable: widget.notifier,
+          builder: (context, _) => SingleChildScrollView(
+            // Dragging the content also dismisses — second escape hatch
+            // for users who don't think to tap outside.
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(
+                Spacing.md, Spacing.md, Spacing.md, Spacing.xl),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _Card(
@@ -97,6 +108,7 @@ class _BlendScreenState extends State<BlendScreen> {
                 child: _BlendOutput(result: widget.notifier.result),
               ),
             ],
+          ),
           ),
         ),
       ),
