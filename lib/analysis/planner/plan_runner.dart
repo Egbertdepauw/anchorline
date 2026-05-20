@@ -2,6 +2,8 @@
 ///   simulator → trigger tissues → planDeco → planBailout → PlanResult.
 library;
 
+import 'dart:math' as math;
+
 import '../bailout/ascent_simulator.dart' show AscentStop;
 import '../bailout/bailout_planner.dart' show planBailout;
 import '../bailout/tank_recommender.dart' show TankSpec;
@@ -109,15 +111,37 @@ PlanResult runPlan({
     availableTanks: availableTanks,
   );
 
-  // Phase 5: assemble.
+  // Phase 5: assemble — accumulate the ascent + deco phase into the
+  // bottom-phase totals so the summary chips actually reflect the whole
+  // dive (TTS = descent + bottom + deco-ascent, CNS / OTU likewise).
+  Duration ascentDuration = Duration.zero;
+  double ascentCns = 0;
+  double ascentOtu = 0;
+  for (final s in diveAscentStops) {
+    ascentDuration += s.duration;
+    final avgDepth = (s.depthStartMeters + s.depthEndMeters) / 2.0;
+    final ambient = 1.013 + avgDepth / 10.0;
+    final ppO2 = mode == DivePlanMode.cc
+        ? (decoSetpoint > ambient ? ambient : decoSetpoint)
+        : (s.gas.oxygenPercent / 100.0) * ambient;
+    final minutes = s.duration.inSeconds / 60.0;
+    // NOAA CNS table (matches plan_simulator's piecewise table).
+    final cnsLimitMin = _noaaCnsLimitMinutes(ppO2);
+    if (cnsLimitMin > 0) ascentCns += (minutes / cnsLimitMin) * 100.0;
+    // Hamilton OTU formula.
+    if (ppO2 > 0.5) {
+      final base = (ppO2 - 0.5) / 0.5;
+      ascentOtu += math.pow(base, 5.0 / 6.0).toDouble() * minutes;
+    }
+  }
   return PlanResult(
     profile: sim.profile,
     diveAscent: diveAscentStops,
     bailout: bailoutResult,
-    cnsPercent: sim.cnsPercent,
-    otuTotal: sim.otuTotal,
+    cnsPercent: sim.cnsPercent + ascentCns,
+    otuTotal: sim.otuTotal + ascentOtu,
     maxDensityGramsPerLitre: sim.maxDensityGramsPerLitre,
-    totalRuntime: sim.totalRuntime,
+    totalRuntime: sim.totalRuntime + ascentDuration,
   );
 }
 
@@ -126,3 +150,26 @@ DiveGasMix _toDiveGasMix(DivePlanGas g) => DiveGasMix(
       heliumPercent: g.heliumPercent,
       isDiluent: g.isDiluent,
     );
+
+/// NOAA single-exposure CNS limit (minutes) at the given ppO2 (bar).
+/// Same piecewise-linear table as [PlanSimulator] — duplicated here
+/// because the simulator computes CNS during the bottom phase and the
+/// runner has to accumulate the deco phase on top.
+double _noaaCnsLimitMinutes(double ppO2) {
+  if (ppO2 < 0.5) return 0;
+  const points = <(double, double)>[
+    (0.5, 720), (0.6, 720), (0.7, 570), (0.8, 450), (0.9, 360),
+    (1.0, 300), (1.1, 240), (1.2, 210), (1.3, 180), (1.4, 150),
+    (1.5, 120), (1.6, 45),
+  ];
+  if (ppO2 >= points.last.$1) return points.last.$2;
+  for (var i = 0; i < points.length - 1; i++) {
+    final a = points[i];
+    final b = points[i + 1];
+    if (ppO2 >= a.$1 && ppO2 < b.$1) {
+      final f = (ppO2 - a.$1) / (b.$1 - a.$1);
+      return a.$2 + (b.$2 - a.$2) * f;
+    }
+  }
+  return points.first.$2;
+}

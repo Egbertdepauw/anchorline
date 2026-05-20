@@ -267,6 +267,40 @@ void main() {
             '(MultiDeco gives 40 s for an equivalent plan)');
   });
 
+  test('totalRuntime + CNS + OTU include the deco phase, not just bottom',
+      () {
+    // Regression for the "TTS 61 min but surface at 84 min" UI bug:
+    // PlanResult.totalRuntime was just sim.totalRuntime (descent +
+    // bottom). CNS / OTU were also bottom-only. After the fix, all
+    // three accumulate the diveAscent phase too.
+    final r = runPlan(
+      gases: const [
+        DivePlanGas(oxygenPercent: 21, heliumPercent: 0, isDiluent: true),
+      ],
+      segments: const [
+        DivePlanSegment(
+            depthMeters: 30,
+            durationMinutes: 60,
+            gasMixIndex: 0,
+            setpoint: 1.3),
+      ],
+      bailout: const [],
+      mode: DivePlanMode.cc,
+      gfLow: 50, gfHigh: 95, useVpmb: false, vpmbConservatism: 2,
+      ascentRateMpm: 9, descentRateMpm: 18,
+      bottomSetpoint: 1.3, ascentSetpoint: 0.7, decoSetpoint: 1.3,
+      lastStopDepthMeters: 6,
+      availableTanks: const [kAl40, kAl80],
+    );
+    // The dive itself is 60 min bottom + ~1.7 min descent. With a few
+    // minutes of deco, TTS should exceed 65 min — not show 61 min as
+    // it did before the runtime sum was fixed.
+    expect(r.totalRuntime.inMinutes, greaterThan(65));
+    // Sanity check: deco contributes meaningful CNS — should be well
+    // above the bottom-only value of ~32 %.
+    expect(r.cnsPercent, greaterThan(35));
+  });
+
   test('OC plan leaves setpointBar null on diveAscent legs', () {
     final result = runPlan(
       gases: const [

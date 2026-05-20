@@ -172,17 +172,6 @@ List<DecoStep> planDeco({
   const stopStepSec = 60;
   const stopSafetyCap = 600; // 10h per stop — runaway protection.
 
-  // Borderline-NDL convention (matches MultiDeco / Shearwater Petrel):
-  // when Phase 1's only required stop lands at the user's preferred
-  // last stop, the dive is essentially a deep safety stop, not real
-  // tech deco. Anchor GF at gfHigh for that single hold instead of
-  // applying gfLow to a synthetic "deepest stop" the diver isn't using
-  // as a real conservatism anchor. Without this, a 30 m / 30 min CCR-on-
-  // Air dive at GF 50/95 holds ~10 min at 6 m where MultiDeco gives 40 s.
-  // Standard Erik-Baker conservatism still applies whenever the dive
-  // actually has multiple stops (firstStop strictly deeper than lastStop).
-  final isBorderlineSingleStop = firstStopDepth == lastStopDepthMeters;
-
   while (currentDepth > 0) {
     final candidateNext = currentDepth - 3.0;
     // Skip stops that fall *between* the user's chosen last-stop depth
@@ -193,14 +182,13 @@ List<DecoStep> planDeco({
         candidateNext < lastStopDepthMeters && candidateNext > 0
             ? 0.0
             : max(0.0, candidateNext);
-    final gfFractionHere = isBorderlineSingleStop
-        ? gfHigh / 100.0
-        : _gfAt(
-            currentDepth: currentDepth,
-            firstStopDepth: firstStopDepth,
-            gfLow: gfLow,
-            gfHigh: gfHigh,
-          );
+    final gfFractionHere = _gfAt(
+      currentDepth: currentDepth,
+      firstStopDepth: firstStopDepth,
+      lastStopDepth: lastStopDepthMeters,
+      gfLow: gfLow,
+      gfHigh: gfHigh,
+    );
     final stopGas =
         _bestGasAtSwitchDepth(gases: gases, depthMeters: currentDepth);
     // A gas change is happening at this stop boundary when stopGas
@@ -369,16 +357,28 @@ DiveGasMix _bestGasAtSwitchDepth({
   return gases.reduce((a, b) => a.oxygenPercent < b.oxygenPercent ? a : b);
 }
 
-/// Linear GF interpolation between (firstStopDepth, gfLow) and (0m, gfHigh).
+/// Linear GF interpolation between (firstStopDepth, gfLow) and
+/// (lastStopDepth, gfHigh). Above lastStopDepth (toward surface) the
+/// GF stays at gfHigh — the diver has cleared the deco gradient.
+///
+/// Anchoring gfHigh at lastStopDepth rather than 0 m matches MultiDeco
+/// and Shearwater Petrel: the user's chosen last stop IS where they
+/// stop using a tightened GF, so the gradient compresses into the
+/// [firstStop, lastStop] depth range. Pure Erik Baker uses (firstStop,
+/// 0 m) as anchors, which is more conservative on dives where the
+/// diver has elected a deeper-than-3 m last stop.
 double _gfAt({
   required double currentDepth,
   required double firstStopDepth,
+  required double lastStopDepth,
   required int gfLow,
   required int gfHigh,
 }) {
-  if (firstStopDepth <= 0) return gfHigh / 100.0;
+  if (currentDepth <= lastStopDepth) return gfHigh / 100.0;
+  final span = firstStopDepth - lastStopDepth;
+  if (span <= 0) return gfHigh / 100.0;
   final frac =
-      ((firstStopDepth - currentDepth) / firstStopDepth).clamp(0.0, 1.0);
+      ((firstStopDepth - currentDepth) / span).clamp(0.0, 1.0);
   return (gfLow + (gfHigh - gfLow) * frac) / 100.0;
 }
 
