@@ -2,6 +2,7 @@
 ///   simulator → trigger tissues → planDeco → planBailout → PlanResult.
 library;
 
+import '../bailout/ascent_simulator.dart' show AscentStop;
 import '../bailout/bailout_planner.dart' show planBailout;
 import '../bailout/tank_recommender.dart' show TankSpec;
 import '../deco/deco_planner.dart' show planDeco;
@@ -44,7 +45,11 @@ PlanResult runPlan({
     decoSetpoint: decoSetpoint,
   );
 
-  // Phase 3: deco schedule from end-of-bottom tissues.
+  // Phase 3: deco schedule from end-of-bottom tissues. For CCR the deco
+  // is computed at the diver's deco-setpoint loop PPO2 (not the OC PPO2
+  // of the diluent) — `planDeco`'s `setpointBar` plumbs that into the
+  // inert-pp helper. lastStopDepthMeters extends the final hold so the
+  // diver can surface from 6 m / 9 m instead of 3 m if they prefer.
   final diveGasMixes = gases.map(_toDiveGasMix).toList();
   final diveAscent = planDeco(
     initialN2Bar: sim.triggerN2Bar,
@@ -57,7 +62,23 @@ PlanResult runPlan({
     ascentRateSlowMPerMin: ascentRateMpm,
     ppo2LimitBottom: 1.6,
     ppo2LimitDeco: 1.6,
+    setpointBar: mode == DivePlanMode.cc ? decoSetpoint : 0.0,
+    lastStopDepthMeters: lastStopDepthMeters,
   );
+
+  // Convert DecoStep → AscentStop and stamp the setpoint used so the
+  // output table can display it as the row's PPO2 (CC) without each
+  // consumer reaching back into the planner config.
+  final diveAscentStops = diveAscent
+      .map((s) => AscentStop(
+            depthStartMeters: s.depthStartMeters,
+            depthEndMeters: s.depthEndMeters,
+            duration: s.duration,
+            gas: s.gas,
+            volumeLitresConsumed: 0,
+            setpointBar: mode == DivePlanMode.cc ? decoSetpoint : null,
+          ))
+      .toList();
 
   // Phase 4: bailout plan (Scenario A — user-supplied tanks).
   final userBailoutTanks = <DiveGasMix>[];
@@ -91,7 +112,7 @@ PlanResult runPlan({
   // Phase 5: assemble.
   return PlanResult(
     profile: sim.profile,
-    diveAscent: diveAscent,
+    diveAscent: diveAscentStops,
     bailout: bailoutResult,
     cnsPercent: sim.cnsPercent,
     otuTotal: sim.otuTotal,

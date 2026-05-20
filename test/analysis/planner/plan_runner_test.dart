@@ -70,4 +70,69 @@ void main() {
     expect(result.diveAscent, isEmpty,
         reason: 'NDL → planDeco returns []');
   });
+
+  test('CCR plan stamps the deco setpoint on every diveAscent leg', () {
+    final result = runPlan(
+      gases: const [
+        DivePlanGas(oxygenPercent: 21, heliumPercent: 35, isDiluent: true),
+        DivePlanGas(oxygenPercent: 50, heliumPercent: 0, isDiluent: false),
+      ],
+      segments: const [
+        DivePlanSegment(
+            depthMeters: 40,
+            durationMinutes: 25,
+            gasMixIndex: 0,
+            setpoint: 1.3),
+      ],
+      bailout: const [],
+      mode: DivePlanMode.cc,
+      gfLow: 30,
+      gfHigh: 85,
+      useVpmb: false,
+      vpmbConservatism: 2,
+      ascentRateMpm: 9,
+      descentRateMpm: 18,
+      bottomSetpoint: 1.3,
+      ascentSetpoint: 0.7,
+      decoSetpoint: 1.5,
+      lastStopDepthMeters: 6,
+      availableTanks: const [kAl40, kAl80],
+    );
+    expect(result.diveAscent, isNotEmpty);
+    expect(result.diveAscent.every((s) => s.setpointBar == 1.5), isTrue,
+        reason: 'CCR deco legs must carry decoSetpoint=1.5');
+    // Last stop at 6 m → no stop should be emitted at 3 m.
+    final stopDepths = result.diveAscent
+        .where((s) => s.isStop)
+        .map((s) => s.depthStartMeters)
+        .toSet();
+    expect(stopDepths.contains(3.0), isFalse,
+        reason: 'lastStopDepthMeters=6 must skip the 3 m stop');
+  });
+
+  test('OC plan leaves setpointBar null on diveAscent legs', () {
+    final result = runPlan(
+      gases: const [
+        DivePlanGas(oxygenPercent: 21, heliumPercent: 35, isDiluent: false),
+      ],
+      segments: const [
+        DivePlanSegment(
+            depthMeters: 40, durationMinutes: 25, gasMixIndex: 0),
+      ],
+      bailout: const [],
+      mode: DivePlanMode.oc,
+      gfLow: 30,
+      gfHigh: 85,
+      useVpmb: false,
+      vpmbConservatism: 2,
+      ascentRateMpm: 9,
+      descentRateMpm: 18,
+      bottomSetpoint: 1.3,
+      ascentSetpoint: 0.7,
+      decoSetpoint: 1.5,
+      lastStopDepthMeters: 3,
+      availableTanks: const [kAl40, kAl80],
+    );
+    expect(result.diveAscent.every((s) => s.setpointBar == null), isTrue);
+  });
 }

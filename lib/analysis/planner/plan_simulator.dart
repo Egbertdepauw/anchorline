@@ -82,6 +82,7 @@ PlanSimulatorOutput simulatePlan({
     duration: Duration(seconds: descentSeconds),
     gas: _toDiveGasMix(gases[activeGasIdx]),
     volumeLitresConsumed: 0,
+    setpointBar: mode == DivePlanMode.cc ? activeSetpoint : null,
   ));
   totalTime += Duration(seconds: descentSeconds);
 
@@ -117,6 +118,7 @@ PlanSimulatorOutput simulatePlan({
         duration: Duration(seconds: transitSeconds),
         gas: _toDiveGasMix(gases[activeGasIdx]),
         volumeLitresConsumed: 0,
+        setpointBar: mode == DivePlanMode.cc ? activeSetpoint : null,
       ));
       totalTime += Duration(seconds: transitSeconds);
     }
@@ -142,6 +144,7 @@ PlanSimulatorOutput simulatePlan({
       duration: Duration(minutes: seg.durationMinutes),
       gas: _toDiveGasMix(gases[activeGasIdx]),
       volumeLitresConsumed: 0,
+      setpointBar: mode == DivePlanMode.cc ? activeSetpoint : null,
     ));
     totalTime += Duration(minutes: seg.durationMinutes);
     prevDepth = seg.depthMeters;

@@ -54,6 +54,7 @@ class StopLadderTable extends StatelessWidget {
     double ascentVolume = 0.0;
     double ascentTargetDepth = 0;
     DiveGasMix? ascentGas;
+    double? ascentSetpoint;
     var hasAscent = false;
     var seenAnyStop = false;
 
@@ -69,11 +70,13 @@ class StopLadderTable extends StatelessWidget {
             gas: ascentGas!,
             volumeLitres: ascentVolume,
             travelDuration: ascentDuration,
+            setpointBar: ascentSetpoint,
           ));
           ascentDuration = Duration.zero;
           ascentVolume = 0.0;
           hasAscent = false;
           ascentGas = null;
+          ascentSetpoint = null;
         }
         rows.add(ConsolidatedStopRow.stop(
           depthMeters: leg.depthStartMeters,
@@ -82,6 +85,7 @@ class StopLadderTable extends StatelessWidget {
           // Fold pending inter-stop ascent volume into this stop so
           // nothing falls off the totals.
           volumeLitres: leg.volumeLitresConsumed + ascentVolume,
+          setpointBar: leg.setpointBar,
         ));
         // Inter-stop ascent time gets attributed to the stop it preceded.
         // It's already in totalTime via the planner's sum.
@@ -89,6 +93,7 @@ class StopLadderTable extends StatelessWidget {
         ascentVolume = 0.0;
         hasAscent = false;
         ascentGas = null;
+        ascentSetpoint = null;
         seenAnyStop = true;
       } else if (!leg.isStop) {
         // Ascent leg. Track destination + accumulate. If the gas
@@ -101,15 +106,18 @@ class StopLadderTable extends StatelessWidget {
             gas: ascentGas!,
             volumeLitres: ascentVolume,
             travelDuration: ascentDuration,
+            setpointBar: ascentSetpoint,
           ));
           ascentDuration = Duration.zero;
           ascentVolume = 0.0;
           ascentGas = null;
+          ascentSetpoint = null;
         }
         ascentDuration += leg.duration;
         ascentVolume += leg.volumeLitresConsumed;
         ascentTargetDepth = leg.depthEndMeters; // latest destination wins
         ascentGas ??= leg.gas;
+        ascentSetpoint ??= leg.setpointBar;
         hasAscent = true;
       }
       // 0-duration "stops" (degenerate; shouldn't appear post-planner) skipped.
@@ -122,6 +130,7 @@ class StopLadderTable extends StatelessWidget {
         gas: ascentGas!,
         volumeLitres: ascentVolume,
         travelDuration: ascentDuration,
+        setpointBar: ascentSetpoint,
       ));
     }
     return rows;
@@ -139,20 +148,40 @@ class StopLadderTable extends StatelessWidget {
     return 'EAN${g.oxygenPercent}';
   }
 
-  /// PPO2 in bar at [depthMeters] on [gas]. 1.013 bar atmospheric + 0.1
-  /// bar / m water column. Returned to 2 decimals.
-  static double ppo2At(DiveGasMix gas, double depthMeters) {
+  /// PPO2 in bar at [depthMeters] on [gas]. When [setpointBar] is set
+  /// and > 0.1 the diver is on a CCR loop, so the displayed PPO2 IS
+  /// the setpoint (clamped to ambient — at very shallow depths the loop
+  /// can't actually hold a setpoint higher than ambient).
+  static double ppo2At(DiveGasMix gas, double depthMeters,
+      {double? setpointBar}) {
     final ambient = 1.013 + depthMeters / 10.0;
+    if (setpointBar != null && setpointBar > 0.1) {
+      return setpointBar > ambient ? ambient : setpointBar;
+    }
     return (gas.oxygenPercent / 100.0) * ambient;
   }
 
-  /// Gas density (g/L) at [depthMeters] on [gas]: 1-ATA density × ambient.
-  static double densityAt(DiveGasMix gas, double depthMeters) {
+  /// Gas density (g/L) at [depthMeters] on [gas]. On CCR (setpointBar
+  /// set), the loop's O2 fraction is setpoint / ambient and the inert
+  /// fractions are the diluent's inerts scaled to fill what's left.
+  static double densityAt(DiveGasMix gas, double depthMeters,
+      {double? setpointBar}) {
     final ambient = 1.013 + depthMeters / 10.0;
-    final atOneAtm = mixDensityAt1Atm(
-      gas.oxygenPercent / 100.0,
-      gas.heliumPercent / 100.0,
-    );
+    double fO2 = gas.oxygenPercent / 100.0;
+    double fHe = gas.heliumPercent / 100.0;
+    if (setpointBar != null && setpointBar > 0.1) {
+      final loopO2 = (setpointBar / ambient).clamp(0.0, 1.0);
+      final dilHe = gas.heliumPercent / 100.0;
+      final dilO2 = gas.oxygenPercent / 100.0;
+      final dilN2 = 1.0 - dilO2 - dilHe;
+      final dilInert = dilHe + dilN2;
+      if (dilInert > 0 && loopO2 < 1.0) {
+        final inert = 1.0 - loopO2;
+        fO2 = loopO2;
+        fHe = inert * (dilHe / dilInert);
+      }
+    }
+    final atOneAtm = mixDensityAt1Atm(fO2, fHe);
     return atOneAtm * ambient;
   }
 
@@ -224,9 +253,12 @@ class StopLadderTable extends StatelessWidget {
             // Worst-case-on-leg lives on the deeper side; using the row
             // depth slightly under-reads ascent rows but keeps the table
             // single-valued per cell.
-            final ppo2Label = ppo2At(row.gas, row.depthMeters).toStringAsFixed(2);
-            final rhoLabel =
-                densityAt(row.gas, row.depthMeters).toStringAsFixed(1);
+            final ppo2Label = ppo2At(row.gas, row.depthMeters,
+                    setpointBar: row.setpointBar)
+                .toStringAsFixed(2);
+            final rhoLabel = densityAt(row.gas, row.depthMeters,
+                    setpointBar: row.setpointBar)
+                .toStringAsFixed(1);
 
             final severity = rowSeverities[i];
             final tint = switch (severity) {
@@ -272,6 +304,7 @@ class ConsolidatedStopRow {
     required this.stopDuration,
     required this.gas,
     required this.volumeLitres,
+    this.setpointBar,
   }) : isStop = true;
 
   const ConsolidatedStopRow.ascent({
@@ -279,6 +312,7 @@ class ConsolidatedStopRow {
     required this.gas,
     required this.volumeLitres,
     required Duration travelDuration,
+    this.setpointBar,
   })  : isStop = false,
         depthMeters = targetDepthMeters,
         stopDuration = travelDuration;
@@ -292,6 +326,10 @@ class ConsolidatedStopRow {
   final Duration stopDuration;
   final DiveGasMix gas;
   final double volumeLitres;
+
+  /// CCR loop setpoint (bar) for this leg. Null / ≤ 0.1 = open circuit;
+  /// the renderer falls back to fO2 × ambient for the PPO2 column.
+  final double? setpointBar;
 }
 
 // ── Private file-level helpers ───────────────────────────────────────────────

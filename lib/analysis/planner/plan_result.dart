@@ -3,7 +3,6 @@ library;
 
 import '../bailout/ascent_simulator.dart' show AscentStop;
 import '../bailout/bailout_result.dart' show BailoutResult;
-import '../deco/deco_step.dart' show DecoStep;
 
 /// Output of the full plan run (simulator + planDeco + planBailout).
 class PlanResult {
@@ -12,8 +11,9 @@ class PlanResult {
   /// uniformly alongside the deco ascent.
   final List<AscentStop> profile;
 
-  /// Deco schedule from end-of-bottom to surface.
-  final List<DecoStep> diveAscent;
+  /// Deco schedule from end-of-bottom to surface. Each leg carries the
+  /// CCR setpoint the diver was on (null = OC).
+  final List<AscentStop> diveAscent;
 
   /// OC bailout plan computed from end-of-bottom tissue state.
   final BailoutResult bailout;

@@ -37,6 +37,15 @@ List<DecoStep> planDeco({
   required int ascentRateSlowMPerMin,
   required double ppo2LimitBottom,
   required double ppo2LimitDeco,
+  // CCR: when > 0.1, the diver is on the loop. Inert pp values fall to
+  // (ambient - waterVapour - setpoint) × dilInerts/Σ-inerts instead of
+  // gas-fraction-times-inhaled — same lever the replay engine uses.
+  // 0 (default) = open circuit, original bailout behaviour.
+  double setpointBar = 0.0,
+  // Where deco "ends" — the diver surfaces directly from this stop
+  // rather than continuing to 3 m. Time at this stop extends to compensate.
+  // Default 3.0 = original behaviour.
+  double lastStopDepthMeters = 3.0,
 }) {
   assert(initialN2Bar.length == 16);
   assert(initialHeBar.length == 16);
@@ -64,6 +73,7 @@ List<DecoStep> planDeco({
       gas: gas,
       ambientBar: avgAmbient,
       intervalSeconds: secs,
+      setpointBar: setpointBar,
     );
     final ceiling = _ceilingMetersFor(
       pN2: pN2,
@@ -135,6 +145,7 @@ List<DecoStep> planDeco({
       gas: gas,
       ambientBar: avgAmbient,
       intervalSeconds: secs,
+      setpointBar: setpointBar,
     );
     steps.add(DecoStep(
       depthStartMeters: currentDepth,
@@ -152,7 +163,15 @@ List<DecoStep> planDeco({
   const stopStepSec = 60;
   const stopSafetyCap = 600; // 10h per stop — runaway protection.
   while (currentDepth > 0) {
-    final nextStop = max(0.0, currentDepth - 3.0);
+    final candidateNext = currentDepth - 3.0;
+    // Skip stops that fall *between* the user's chosen last-stop depth
+    // and the surface — go straight up from the last allowed stop. The
+    // hold at the previous stop naturally extends because the ceiling
+    // has to clear 0 m instead of the next 3 m increment.
+    final nextStop =
+        candidateNext < lastStopDepthMeters && candidateNext > 0
+            ? 0.0
+            : max(0.0, candidateNext);
     final gfFractionHere = _gfAt(
       currentDepth: currentDepth,
       firstStopDepth: firstStopDepth,
@@ -344,11 +363,12 @@ void _advanceOneStep({
   required DiveGasMix gas,
   required double ambientBar,
   required int intervalSeconds,
+  double setpointBar = 0.0,
 }) {
   final (paN2, paHe) = inertPartialPressures(
     ambientBar: ambientBar,
     mix: gas,
-    setpointBar: 0.0,
+    setpointBar: setpointBar,
   );
   for (var c = 0; c < 16; c++) {
     pN2[c] = loadCompartment(

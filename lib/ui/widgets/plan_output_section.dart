@@ -31,18 +31,10 @@ class PlanOutputSection extends StatelessWidget {
     }
 
     // Combine the simulator's descent + bottom + transit legs with the
-    // deco ascent. The simulator emits AscentStops directly; the deco
-    // schedule is mapped 1:1 (DecoStep ↔ AscentStop have the same shape).
-    // volumeLitresConsumed is unknown at this layer (no SAC applied),
-    // so it is zeroed — the VOL column isn't shown on dive-plan output.
-    final ascentFromDeco = r.diveAscent.map((s) => AscentStop(
-          depthStartMeters: s.depthStartMeters,
-          depthEndMeters: s.depthEndMeters,
-          duration: s.duration,
-          gas: s.gas,
-          volumeLitresConsumed: 0,
-        ));
-    final allSteps = <AscentStop>[...r.profile, ...ascentFromDeco];
+    // deco ascent. Both lists are AscentStops carrying setpointBar
+    // (when CCR), so StopLadderTable renders the loop PPO2 instead of
+    // OC gas-times-ambient.
+    final allSteps = <AscentStop>[...r.profile, ...r.diveAscent];
     final hasDeco = r.diveAscent.isNotEmpty;
 
     return Column(

@@ -22,12 +22,20 @@ class AscentStop {
   final DiveGasMix gas;
   final double volumeLitresConsumed;
 
+  /// CCR loop setpoint (bar) the diver is holding on this leg. Null or
+  /// ≤ 0.1 means open circuit — the renderer falls back to fO2 × ambient
+  /// for displayed PPO2 and to the gas's own inert fractions for density.
+  /// Setting this lets the dive-plan output show CCR setpoints without
+  /// the OC bailout code paths needing to care.
+  final double? setpointBar;
+
   const AscentStop({
     required this.depthStartMeters,
     required this.depthEndMeters,
     required this.duration,
     required this.gas,
     required this.volumeLitresConsumed,
+    this.setpointBar,
   });
 
   /// True when this leg is a flat deco hold.
