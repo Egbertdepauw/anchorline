@@ -222,12 +222,20 @@ class StopLadderTable extends StatelessWidget {
   /// every header + body cell so the row stays at one line on the
   /// smaller phones too. Worst-case "Tx12/65" should still fit with
   /// the flex weights below; this is a safety net for narrow screens.
-  static Widget _cellText(String text, TextStyle style) => Text(
+  /// [textAlign] is propagated so numeric columns can right-align
+  /// (their values vary in width and read better that way).
+  static Widget _cellText(
+    String text,
+    TextStyle style, {
+    TextAlign? textAlign,
+  }) =>
+      Text(
         text,
         style: style,
         maxLines: 1,
         softWrap: false,
         overflow: TextOverflow.fade,
+        textAlign: textAlign,
       );
 
   @override
@@ -277,13 +285,13 @@ class StopLadderTable extends StatelessWidget {
           child: Row(
             children: [
               Expanded(flex: 3, child: _cellText('DEPTH', headerStyle)),
-              Expanded(flex: 1, child: _cellText('T', headerStyle)),
-              Expanded(flex: 1, child: _cellText('RT', headerStyle)),
+              Expanded(flex: 1, child: _cellText('T', headerStyle, textAlign: TextAlign.end)),
+              Expanded(flex: 1, child: _cellText('RT', headerStyle, textAlign: TextAlign.end)),
               Expanded(flex: 4, child: _cellText('GAS', headerStyle)),
-              Expanded(flex: 2, child: _cellText('PPO2', headerStyle)),
-              Expanded(flex: 2, child: _cellText('END', headerStyle)),
-              Expanded(flex: 2, child: _cellText('ρ g/L', headerStyle)),
-              Expanded(flex: 2, child: _cellText('VOL', headerStyle)),
+              Expanded(flex: 2, child: _cellText('PPO2', headerStyle, textAlign: TextAlign.end)),
+              Expanded(flex: 2, child: _cellText('END', headerStyle, textAlign: TextAlign.end)),
+              Expanded(flex: 2, child: _cellText('ρ g/L', headerStyle, textAlign: TextAlign.end)),
+              Expanded(flex: 2, child: _cellText('VOL', headerStyle, textAlign: TextAlign.end)),
             ],
           ),
         ),
@@ -292,8 +300,12 @@ class StopLadderTable extends StatelessWidget {
           Builder(builder: (context) {
             final row = rows[i];
             runtime += row.stopDuration;
+            // Pad non-arrow rows with two leading spaces in the
+            // monospace cell so the digit aligns with the "68" in
+            // "→ 68 m". Without this, the arrow rows shift left and
+            // the eye can't scan the depth column as a vertical line.
             final depthLabel = row.isStop
-                ? '${row.depthMeters.toStringAsFixed(0)} m'
+                ? '  ${row.depthMeters.toStringAsFixed(0)} m'
                 : (row.depthMeters == 0
                     ? '→ surface'
                     : '→ ${row.depthMeters.toStringAsFixed(0)} m');
@@ -303,19 +315,33 @@ class StopLadderTable extends StatelessWidget {
                 row.isStop ? _fmtMinutes(row.stopDuration) : '—';
             final runtimeLabel = _fmtMinutes(runtime);
             final volLabel = row.volumeLitres.round().toString();
-            final gasLabel = mixLabel(row.gas);
             // PPO2 + END + density evaluated at the row's effective depth —
             // for stops that's the stop depth, for ascent rows the destination.
             // Worst-case-on-leg lives on the deeper side; using the row
             // depth slightly under-reads ascent rows but keeps the table
             // single-valued per cell.
-            final ppo2Label = ppo2At(row.gas, row.depthMeters,
-                    setpointBar: row.setpointBar)
-                .toStringAsFixed(2);
-            final endLabel = '${endAt(row.gas, row.depthMeters, setpointBar: row.setpointBar).round()} m';
+            final ppo2Value =
+                ppo2At(row.gas, row.depthMeters, setpointBar: row.setpointBar);
+            final endLabel =
+                '${endAt(row.gas, row.depthMeters, setpointBar: row.setpointBar).round()} m';
             final rhoLabel = densityAt(row.gas, row.depthMeters,
                     setpointBar: row.setpointBar)
                 .toStringAsFixed(1);
+            // Dedupe GAS + PPO2 across consecutive rows so the diver
+            // sees "what changes" rather than scanning a column of
+            // identical Tx12/65 / 1.30 rows. The first row always
+            // shows real values; "—" elsewhere when unchanged.
+            final prev = i > 0 ? rows[i - 1] : null;
+            final gasChanged = prev == null || row.gas != prev.gas;
+            final gasLabel = gasChanged ? mixLabel(row.gas) : '—';
+            final prevPpo2 = prev == null
+                ? null
+                : ppo2At(prev.gas, prev.depthMeters,
+                    setpointBar: prev.setpointBar);
+            final ppo2Changed =
+                prevPpo2 == null || (ppo2Value - prevPpo2).abs() > 0.005;
+            final ppo2Label =
+                ppo2Changed ? ppo2Value.toStringAsFixed(2) : '—';
 
             final severity = rowSeverities[i];
             final isBenignSwitch = rowIsBenignSwitch[i];
@@ -335,13 +361,13 @@ class StopLadderTable extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(flex: 3, child: _cellText(depthLabel, cellStyle)),
-                  Expanded(flex: 1, child: _cellText(stopLabel, cellStyle)),
-                  Expanded(flex: 1, child: _cellText(runtimeLabel, cellStyle)),
+                  Expanded(flex: 1, child: _cellText(stopLabel, cellStyle, textAlign: TextAlign.end)),
+                  Expanded(flex: 1, child: _cellText(runtimeLabel, cellStyle, textAlign: TextAlign.end)),
                   Expanded(flex: 4, child: _cellText(gasLabel, cellStyle)),
-                  Expanded(flex: 2, child: _cellText(ppo2Label, cellStyle)),
-                  Expanded(flex: 2, child: _cellText(endLabel, cellStyle)),
-                  Expanded(flex: 2, child: _cellText(rhoLabel, cellStyle)),
-                  Expanded(flex: 2, child: _cellText(volLabel, cellStyle)),
+                  Expanded(flex: 2, child: _cellText(ppo2Label, cellStyle, textAlign: TextAlign.end)),
+                  Expanded(flex: 2, child: _cellText(endLabel, cellStyle, textAlign: TextAlign.end)),
+                  Expanded(flex: 2, child: _cellText(rhoLabel, cellStyle, textAlign: TextAlign.end)),
+                  Expanded(flex: 2, child: _cellText(volLabel, cellStyle, textAlign: TextAlign.end)),
                 ],
               ),
             );
