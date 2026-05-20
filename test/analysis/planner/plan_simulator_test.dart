@@ -133,4 +133,67 @@ void main() {
     expect(out.otuTotal, greaterThan(0));
     expect(out.maxDensityGramsPerLitre, greaterThan(2.5));
   });
+
+  test('profile emits descent + level legs in order', () {
+    final out = simulatePlan(
+      gases: const [
+        DivePlanGas(oxygenPercent: 21, heliumPercent: 0, isDiluent: true),
+      ],
+      segments: const [
+        DivePlanSegment(
+            depthMeters: 30,
+            durationMinutes: 20,
+            gasMixIndex: 0,
+            setpoint: 1.0),
+      ],
+      mode: DivePlanMode.cc,
+      descentRateMpm: 18,
+      ascentRateMpm: 9,
+      bottomSetpoint: 1.0,
+      ascentSetpoint: 0.7,
+      decoSetpoint: 1.4,
+    );
+    expect(out.profile.length, 2,
+        reason: 'one descent leg + one level leg');
+    expect(out.profile[0].depthStartMeters, 0);
+    expect(out.profile[0].depthEndMeters, 30);
+    expect(out.profile[0].isStop, isFalse);
+    expect(out.profile[1].depthStartMeters, 30);
+    expect(out.profile[1].depthEndMeters, 30);
+    expect(out.profile[1].isStop, isTrue);
+    expect(out.profile[1].duration, const Duration(minutes: 20));
+  });
+
+  test('multi-level dive emits descent + level + transit + level', () {
+    final out = simulatePlan(
+      gases: const [
+        DivePlanGas(oxygenPercent: 21, heliumPercent: 0, isDiluent: true),
+      ],
+      segments: const [
+        DivePlanSegment(
+            depthMeters: 30,
+            durationMinutes: 10,
+            gasMixIndex: 0,
+            setpoint: 1.0),
+        DivePlanSegment(
+            depthMeters: 20,
+            durationMinutes: 15,
+            gasMixIndex: 0,
+            setpoint: 1.0),
+      ],
+      mode: DivePlanMode.cc,
+      descentRateMpm: 18,
+      ascentRateMpm: 9,
+      bottomSetpoint: 1.0,
+      ascentSetpoint: 0.7,
+      decoSetpoint: 1.4,
+    );
+    expect(out.profile.length, 4,
+        reason:
+            'descent (0→30) + level (30 m, 10 min) + transit (30→20) + level (20 m, 15 min)');
+    expect(out.profile[2].depthStartMeters, 30);
+    expect(out.profile[2].depthEndMeters, 20);
+    expect(out.profile[2].isStop, isFalse);
+    expect(out.profile[3].duration, const Duration(minutes: 15));
+  });
 }

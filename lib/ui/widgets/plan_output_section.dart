@@ -30,32 +30,40 @@ class PlanOutputSection extends StatelessWidget {
       );
     }
 
-    // Convert DecoStep list → AscentStop list for StopLadderTable.
-    // volumeLitresConsumed is unknown at this layer (no SAC applied yet),
-    // so it is zeroed; the table only uses it for the VOL column which is
-    // not meaningful for a pure deco schedule display.
-    final ascentStops = r.diveAscent
-        .map((s) => AscentStop(
-              depthStartMeters: s.depthStartMeters,
-              depthEndMeters: s.depthEndMeters,
-              duration: s.duration,
-              gas: s.gas,
-              volumeLitresConsumed: 0,
-            ))
-        .toList();
+    // Combine the simulator's descent + bottom + transit legs with the
+    // deco ascent. The simulator emits AscentStops directly; the deco
+    // schedule is mapped 1:1 (DecoStep ↔ AscentStop have the same shape).
+    // volumeLitresConsumed is unknown at this layer (no SAC applied),
+    // so it is zeroed — the VOL column isn't shown on dive-plan output.
+    final ascentFromDeco = r.diveAscent.map((s) => AscentStop(
+          depthStartMeters: s.depthStartMeters,
+          depthEndMeters: s.depthEndMeters,
+          duration: s.duration,
+          gas: s.gas,
+          volumeLitresConsumed: 0,
+        ));
+    final allSteps = <AscentStop>[...r.profile, ...ascentFromDeco];
+    final hasDeco = r.diveAscent.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text('OUTPUT — DIVE PLAN', style: AppTypography.label),
-        if (ascentStops.isEmpty)
+        if (allSteps.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: Spacing.sm),
-            child: Text('NDL — no decompression required.',
+            child: Text('Add gases and segments to see the dive plan.',
                 style: AppTypography.caption),
           )
-        else
-          StopLadderTable(stops: ascentStops, scheme: scheme),
+        else ...[
+          StopLadderTable(stops: allSteps, scheme: scheme),
+          if (!hasDeco)
+            const Padding(
+              padding: EdgeInsets.only(top: Spacing.xs),
+              child: Text('NDL — no decompression required.',
+                  style: AppTypography.caption),
+            ),
+        ],
         const SizedBox(height: Spacing.sm),
         Wrap(
           spacing: 16,

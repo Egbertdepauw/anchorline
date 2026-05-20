@@ -11,6 +11,7 @@ void main() {
     const air = DiveGasMix(
         oxygenPercent: 21, heliumPercent: 0, isDiluent: true);
     final result = PlanResult(
+      profile: const [],
       diveAscent: const [],
       bailout: BailoutResult(
         scenario: BailoutScenario.tanksDefined,

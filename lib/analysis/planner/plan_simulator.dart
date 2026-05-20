@@ -7,6 +7,7 @@ import 'dart:math' as math;
 
 import '../../data/models/dive.dart' show DiveGasMix;
 import '../../data/models/dive_plan.dart';
+import '../bailout/ascent_simulator.dart' show AscentStop;
 import '../deco/schreiner.dart' show loadCompartment;
 import '../deco/tissue_model.dart' show zhl16cTissues;
 import '../loop_gas.dart' show loopGasAt;
@@ -37,6 +38,7 @@ PlanSimulatorOutput simulatePlan({
       cnsPercent: 0,
       otuTotal: 0,
       maxDensityGramsPerLitre: 0,
+      profile: const [],
     );
   }
 
@@ -52,6 +54,7 @@ PlanSimulatorOutput simulatePlan({
   double cnsAccum = 0;
   double otuAccum = 0;
   double maxDensity = 0;
+  final profile = <AscentStop>[];
 
   // Active state — updated by time-0 segments.
   int activeGasIdx = segments.first.gasMixIndex;
@@ -73,6 +76,13 @@ PlanSimulatorOutput simulatePlan({
     otuOut: (delta) => otuAccum += delta,
     maxDensityOut: (d) => maxDensity = d > maxDensity ? d : maxDensity,
   );
+  profile.add(AscentStop(
+    depthStartMeters: 0,
+    depthEndMeters: firstSeg.depthMeters,
+    duration: Duration(seconds: descentSeconds),
+    gas: _toDiveGasMix(gases[activeGasIdx]),
+    volumeLitresConsumed: 0,
+  ));
   totalTime += Duration(seconds: descentSeconds);
 
   double prevDepth = firstSeg.depthMeters;
@@ -101,6 +111,13 @@ PlanSimulatorOutput simulatePlan({
         otuOut: (d) => otuAccum += d,
         maxDensityOut: (d) => maxDensity = d > maxDensity ? d : maxDensity,
       );
+      profile.add(AscentStop(
+        depthStartMeters: prevDepth,
+        depthEndMeters: seg.depthMeters,
+        duration: Duration(seconds: transitSeconds),
+        gas: _toDiveGasMix(gases[activeGasIdx]),
+        volumeLitresConsumed: 0,
+      ));
       totalTime += Duration(seconds: transitSeconds);
     }
     // Apply gas / setpoint of the new segment from this point on.
@@ -119,6 +136,13 @@ PlanSimulatorOutput simulatePlan({
       otuOut: (d) => otuAccum += d,
       maxDensityOut: (d) => maxDensity = d > maxDensity ? d : maxDensity,
     );
+    profile.add(AscentStop(
+      depthStartMeters: seg.depthMeters,
+      depthEndMeters: seg.depthMeters,
+      duration: Duration(minutes: seg.durationMinutes),
+      gas: _toDiveGasMix(gases[activeGasIdx]),
+      volumeLitresConsumed: 0,
+    ));
     totalTime += Duration(minutes: seg.durationMinutes);
     prevDepth = seg.depthMeters;
   }
@@ -131,6 +155,7 @@ PlanSimulatorOutput simulatePlan({
     cnsPercent: cnsAccum,
     otuTotal: otuAccum,
     maxDensityGramsPerLitre: maxDensity,
+    profile: profile,
   );
 }
 

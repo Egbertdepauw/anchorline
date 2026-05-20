@@ -90,6 +90,7 @@ PlanResult runPlan({
 
   // Phase 5: assemble.
   return PlanResult(
+    profile: sim.profile,
     diveAscent: diveAscent,
     bailout: bailoutResult,
     cnsPercent: sim.cnsPercent,
