@@ -84,9 +84,17 @@ List<DecoStep> planDeco({
     depth = nextDepth;
   }
 
-  final firstStopDepth =
+  // Round up to a 3 m stop. Then clamp: if the user wants their last
+  // stop at e.g. 6 m, a borderline dive whose deepest stop would have
+  // been 3 m must surface from 6 m instead (the extra time gets
+  // absorbed at the deeper hold). Phase 1 still returns 0 for true
+  // NDL — no stop emitted at all in that case.
+  var firstStopDepth =
       depth <= 0 ? 0.0 : ((depth / 3).ceil() * 3).toDouble();
   if (firstStopDepth == 0) return const []; // NDL — no deco required.
+  if (firstStopDepth < lastStopDepthMeters) {
+    firstStopDepth = lastStopDepthMeters;
+  }
 
   // ── Phase 2: walk from the trigger depth with clean tissues ───────────
   // Phase 1 mutated pN2/pHe just to find the breach; re-initialise so the

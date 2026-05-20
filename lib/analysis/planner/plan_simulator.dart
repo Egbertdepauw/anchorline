@@ -61,7 +61,15 @@ PlanSimulatorOutput simulatePlan({
   double activeSetpoint = segments.first.setpoint ?? bottomSetpoint;
 
   // ── Descent transit (surface → first segment depth) ──
+  // Descent uses the ascent / transit setpoint (low, typically 0.7).
+  // Petrel + MultiDeco convention: the high "bottom" setpoint only
+  // applies once the diver is at the working depth — a high SP during
+  // a fast descent burns O2 and isn't physically possible at shallow
+  // depths anyway.
   final firstSeg = segments.first;
+  // Transit SP applies regardless of any segment override — the override
+  // is the level-phase SP at the destination, not the SP en route.
+  final descentSp = ascentSetpoint;
   final descentSeconds =
       (firstSeg.depthMeters / descentRateMpm * 60).round();
   _advanceAndAccumulate(
@@ -71,7 +79,7 @@ PlanSimulatorOutput simulatePlan({
     avgDepthMeters: firstSeg.depthMeters / 2.0,
     mode: mode,
     gas: gases[activeGasIdx],
-    setpoint: activeSetpoint,
+    setpoint: descentSp,
     cnsOut: (delta) => cnsAccum += delta,
     otuOut: (delta) => otuAccum += delta,
     maxDensityOut: (d) => maxDensity = d > maxDensity ? d : maxDensity,
@@ -82,7 +90,7 @@ PlanSimulatorOutput simulatePlan({
     duration: Duration(seconds: descentSeconds),
     gas: _toDiveGasMix(gases[activeGasIdx]),
     volumeLitresConsumed: 0,
-    setpointBar: mode == DivePlanMode.cc ? activeSetpoint : null,
+    setpointBar: mode == DivePlanMode.cc ? descentSp : null,
   ));
   totalTime += Duration(seconds: descentSeconds);
 
@@ -95,11 +103,13 @@ PlanSimulatorOutput simulatePlan({
       continue;
     }
     // Transit between depths (if needed) — uses descending or ascending
-    // rate depending on direction.
+    // rate depending on direction, and the low transit setpoint (same
+    // reasoning as the initial descent above).
     if (seg.depthMeters != prevDepth) {
       final delta = seg.depthMeters - prevDepth;
       final rate = delta > 0 ? descentRateMpm : ascentRateMpm;
       final transitSeconds = (delta.abs() / rate * 60).round();
+      final transitSp = ascentSetpoint;
       _advanceAndAccumulate(
         pN2: pN2,
         pHe: pHe,
@@ -107,7 +117,7 @@ PlanSimulatorOutput simulatePlan({
         avgDepthMeters: (seg.depthMeters + prevDepth) / 2.0,
         mode: mode,
         gas: gases[activeGasIdx],
-        setpoint: activeSetpoint,
+        setpoint: transitSp,
         cnsOut: (d) => cnsAccum += d,
         otuOut: (d) => otuAccum += d,
         maxDensityOut: (d) => maxDensity = d > maxDensity ? d : maxDensity,
@@ -118,13 +128,13 @@ PlanSimulatorOutput simulatePlan({
         duration: Duration(seconds: transitSeconds),
         gas: _toDiveGasMix(gases[activeGasIdx]),
         volumeLitresConsumed: 0,
-        setpointBar: mode == DivePlanMode.cc ? activeSetpoint : null,
+        setpointBar: mode == DivePlanMode.cc ? transitSp : null,
       ));
       totalTime += Duration(seconds: transitSeconds);
     }
     // Apply gas / setpoint of the new segment from this point on.
     activeGasIdx = seg.gasMixIndex;
-    activeSetpoint = seg.setpoint ?? activeSetpoint;
+    activeSetpoint = seg.setpoint ?? bottomSetpoint;
     // Level phase.
     _advanceAndAccumulate(
       pN2: pN2,
