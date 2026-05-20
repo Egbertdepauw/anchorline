@@ -375,6 +375,120 @@ void main() {
     });
   });
 
+  group('planner defaults', () {
+    test('planner defaults exposed with sensible initial values', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.plannerGfLow, 30);
+      expect(n.plannerGfHigh, 85);
+      expect(n.plannerUseVpmb, false);
+      expect(n.plannerVpmbConservatism, 2);
+      expect(n.plannerBottomSetpoint, closeTo(1.3, 0.001));
+      expect(n.plannerAscentSetpoint, closeTo(0.7, 0.001));
+      expect(n.plannerDecoSetpoint, closeTo(1.4, 0.001));
+      expect(n.plannerLastStopDepthMeters, closeTo(6.0, 0.001));
+    });
+
+    test('plannerGfLow setter clamps + persists', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      await n.setPlannerGfLow(120); // out of range, clamp to 100
+      expect(n.plannerGfLow, 100);
+      await n.setPlannerGfLow(0); // clamp to 1
+      expect(n.plannerGfLow, 1);
+      // Persisted across reload.
+      final n2 = SettingsNotifier();
+      await n2.load();
+      expect(n2.plannerGfLow, 1);
+    });
+
+    test('plannerGfHigh setter clamps + persists', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      await n.setPlannerGfHigh(0);
+      expect(n.plannerGfHigh, 1);
+      await n.setPlannerGfHigh(200);
+      expect(n.plannerGfHigh, 100);
+      final n2 = SettingsNotifier();
+      await n2.load();
+      expect(n2.plannerGfHigh, 100);
+    });
+
+    test('plannerUseVpmb toggles + persists', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      await n.setPlannerUseVpmb(true);
+      expect(n.plannerUseVpmb, isTrue);
+      final n2 = SettingsNotifier();
+      await n2.load();
+      expect(n2.plannerUseVpmb, isTrue);
+    });
+
+    test('plannerVpmbConservatism clamps 0..4 + persists', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      await n.setPlannerVpmbConservatism(-1);
+      expect(n.plannerVpmbConservatism, 0);
+      await n.setPlannerVpmbConservatism(9);
+      expect(n.plannerVpmbConservatism, 4);
+      final n2 = SettingsNotifier();
+      await n2.load();
+      expect(n2.plannerVpmbConservatism, 4);
+    });
+
+    test('setpoint setters clamp + persist', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      await n.setPlannerBottomSetpoint(2.0); // clamp to 1.5
+      expect(n.plannerBottomSetpoint, closeTo(1.5, 0.001));
+      await n.setPlannerAscentSetpoint(0.1); // clamp to 0.4
+      expect(n.plannerAscentSetpoint, closeTo(0.4, 0.001));
+      await n.setPlannerDecoSetpoint(1.6);
+      expect(n.plannerDecoSetpoint, closeTo(1.6, 0.001));
+      final n2 = SettingsNotifier();
+      await n2.load();
+      expect(n2.plannerBottomSetpoint, closeTo(1.5, 0.001));
+      expect(n2.plannerAscentSetpoint, closeTo(0.4, 0.001));
+      expect(n2.plannerDecoSetpoint, closeTo(1.6, 0.001));
+    });
+
+    test('plannerLastStopDepthMeters clamps 3..9 + persists', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      await n.setPlannerLastStopDepthMeters(1.0); // clamp to 3
+      expect(n.plannerLastStopDepthMeters, closeTo(3.0, 0.001));
+      await n.setPlannerLastStopDepthMeters(12.0); // clamp to 9
+      expect(n.plannerLastStopDepthMeters, closeTo(9.0, 0.001));
+      final n2 = SettingsNotifier();
+      await n2.load();
+      expect(n2.plannerLastStopDepthMeters, closeTo(9.0, 0.001));
+    });
+
+    test('planner setters no-op on identical value', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      var notifyCount = 0;
+      n.addListener(() => notifyCount++);
+      await n.setPlannerGfLow(30);
+      await n.setPlannerGfHigh(85);
+      await n.setPlannerUseVpmb(false);
+      await n.setPlannerVpmbConservatism(2);
+      await n.setPlannerBottomSetpoint(1.3);
+      await n.setPlannerAscentSetpoint(0.7);
+      await n.setPlannerDecoSetpoint(1.4);
+      await n.setPlannerLastStopDepthMeters(6.0);
+      expect(notifyCount, 0);
+    });
+  });
+
   group('vpmbConservatism', () {
     test('defaults to 2 when prefs empty', () async {
       SharedPreferences.setMockInitialValues({});
