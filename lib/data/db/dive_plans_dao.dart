@@ -15,6 +15,7 @@ import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 
 import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
 import '../models/dive_plan.dart';
+import 'dive_plans_dao_api.dart';
 
 // Re-export so callers of the DAO don't have to import dive_plan.dart
 // just for the types that appear in the public DAO surface.
@@ -67,7 +68,7 @@ class SavedDivePlan {
   });
 }
 
-class DivePlansDao {
+class DivePlansDao implements DivePlansDaoLike {
   final PowerSyncDatabase _ps;
   final SessionSource _session;
 
@@ -75,6 +76,7 @@ class DivePlansDao {
 
   String? get _ownerId => _session.currentSession?.user.id;
 
+  @override
   Stream<void> watchChanges() =>
       _ps.watch('SELECT 1 FROM dive_plans LIMIT 1').map((_) {});
 
@@ -99,6 +101,7 @@ class DivePlansDao {
 
   // ── Draft ──────────────────────────────────────────────────────────
 
+  @override
   Future<DivePlanDraft?> loadDraft() async {
     final row = await _ps.getOptional(
       'SELECT mode, gases_json, segments_json, bailout_json, settings_json, '
@@ -110,6 +113,7 @@ class DivePlansDao {
     return row == null ? null : _toDraft(row);
   }
 
+  @override
   Future<void> upsertDraft(DivePlanDraft draft) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await _ps.writeTransaction((tx) async {
@@ -161,6 +165,7 @@ class DivePlansDao {
 
   /// Promotes the current draft to a saved plan with [name] and clears
   /// the draft. Returns the new saved plan.
+  @override
   Future<SavedDivePlan> saveAs({required String name}) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     final newId = _newId();
@@ -213,6 +218,7 @@ class DivePlansDao {
 
   // ── Saved plans ────────────────────────────────────────────────────
 
+  @override
   Future<List<SavedDivePlan>> listSaved() async {
     final rows = await _ps.getAll(
       'SELECT id, name, mode, updated_at FROM dive_plans '
@@ -235,6 +241,7 @@ class DivePlansDao {
 
   /// Loads a saved plan into a draft-shaped object. The caller can then
   /// pass it to [upsertDraft] to replace the active draft.
+  @override
   Future<DivePlanDraft?> loadSaved(String id) async {
     final row = await _ps.getOptional(
       'SELECT mode, gases_json, segments_json, bailout_json, settings_json, '
@@ -244,6 +251,7 @@ class DivePlansDao {
     return row == null ? null : _toDraft(row);
   }
 
+  @override
   Future<void> softDelete(String id) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await _ps.execute(
@@ -252,6 +260,7 @@ class DivePlansDao {
     );
   }
 
+  @override
   Future<void> renameSaved(String id, String name) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await _ps.execute(
@@ -261,6 +270,7 @@ class DivePlansDao {
   }
 
   /// Clears the current draft (without saving). Used by "New plan".
+  @override
   Future<void> clearDraft() async {
     await _ps.execute(
       'DELETE FROM dive_plans '
