@@ -13,6 +13,7 @@ import '../data/db/database.dart';
 import '../data/db/dive_annotations_dao.dart';
 import '../data/db/dive_attachments_dao.dart';
 import '../data/db/dive_dao.dart';
+import '../data/db/dive_plans_dao.dart';
 import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
 import '../sync/attachments/attachment_cache.dart';
@@ -36,9 +37,11 @@ import '../sync/subsurface_git/credentials.dart';
 import '../sync/subsurface_git/dao_subsurface_sync_data_source.dart';
 import '../sync/subsurface_git/sync_orchestrator.dart';
 import 'notifiers/dive_list_notifier.dart';
+import 'notifiers/dive_plan_notifier.dart';
 import 'notifiers/import_notifier.dart';
 import 'notifiers/settings_notifier.dart';
 import 'screens/dive_list_screen.dart';
+import 'screens/dive_plan_screen.dart';
 import 'screens/equipment/equipment_landing_screen.dart';
 import 'screens/import_screen.dart';
 import 'screens/settings_screen.dart';
@@ -79,6 +82,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final DiveAnnotationsDao _diveAnnotationsDao;
   late final DiveAttachmentsDao _diveAttachmentsDao;
   late final DiveListNotifier _diveListNotifier;
+  late final DivePlansDao _divePlansDao;
+  late final DivePlanNotifier _divePlanNotifier;
   late final ImportNotifier _importNotifier;
   late final SyncStatusSource _syncStatusSource;
   late final SyncHealthService _syncHealthService;
@@ -139,6 +144,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       SupabaseAuthSessionSource(Supabase.instance.client),
     );
     _diveListNotifier = DiveListNotifier(_diveDao, _diveAnnotationsDao);
+    _divePlansDao = DivePlansDao(
+      widget.powerSyncDb,
+      SupabaseAuthSessionSource(Supabase.instance.client),
+    );
+    _divePlanNotifier = DivePlanNotifier(
+      dao: _divePlansDao,
+      settings: widget.settingsNotifier,
+    );
+    _divePlanNotifier.load();
     _importNotifier = ImportNotifier(
       dao: _diveDao,
       importStateDao: _importStateDao,
@@ -236,6 +250,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _authSignInSub?.cancel();
     _syncHealthService.dispose();
     _diveListNotifier.dispose();
+    _divePlanNotifier.dispose();
     _importNotifier.dispose();
     super.dispose();
   }
@@ -376,6 +391,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                         attachmentDownloader: _attachmentDownloader,
                         settingsNotifier: widget.settingsNotifier,
                       ),
+                      DivePlanScreen(
+                        notifier: _divePlanNotifier,
+                        settings: widget.settingsNotifier,
+                      ),
                       ImportScreen(
                         notifier: _importNotifier,
                         onViewDives: _onViewDives,
@@ -416,6 +435,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           BottomNavigationBarItem(
             icon: Icon(Icons.scuba_diving),
             label: 'Dives',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.event_note_outlined),
+            label: 'Plan',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: 'Import'),
           BottomNavigationBarItem(
