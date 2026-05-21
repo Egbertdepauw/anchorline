@@ -93,6 +93,24 @@ void main() async {
         // tracesSampleRate: 0 keeps overhead minimal and stays inside
         // the free-tier quota for a small beta cohort.
         options.tracesSampleRate = 0;
+        // Drop benign network noise the Supabase SDK reports while it's
+        // retrying internally. AuthRetryableFetchException is the SDK's
+        // own "this attempt failed, I'll retry" signal — the diver's
+        // device just blipped offline (cell tower handoff, sleep
+        // wake-up, etc.). The SDK retries and recovers without our
+        // help; sending these to Sentry pollutes the dashboard with
+        // events we can't action.
+        options.beforeSend = (event, hint) {
+          final thrown = event.throwable?.toString() ??
+              event.exceptions?.firstOrNull?.type ??
+              '';
+          if (thrown.contains('AuthRetryableFetchException') ||
+              thrown.contains('Failed host lookup') ||
+              thrown.contains('SocketException')) {
+            return null; // swallow
+          }
+          return event;
+        };
       },
       appRunner: () => runApp(app),
     );
