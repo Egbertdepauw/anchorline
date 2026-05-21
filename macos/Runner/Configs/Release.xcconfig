@@ -1,2 +1,8 @@
 #include "../../Flutter/Flutter-Release.xcconfig"
 #include "Warnings.xcconfig"
+
+// Required by Apple notarisation for Developer ID distribution and
+// strongly recommended for Mac App Store distribution. App Sandbox
+// (declared in Release.entitlements) provides the additional MAS
+// requirement; the two are complementary.
+ENABLE_HARDENED_RUNTIME = YES

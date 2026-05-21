@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  Export options for the Mac App Store distribution build.
+  Used by: xcodebuild -exportArchive -exportOptionsPlist macos/export_options_mas.plist
+
+  The output is a signed .pkg (productbuild-wrapped) ready to upload
+  to App Store Connect via Transporter or `xcrun altool`. Apple
+  Distribution cert + Mac App Distribution provisioning profile are
+  selected automatically by signingStyle=automatic.
+-->
+<dict>
+    <key>method</key>
+    <string>app-store-connect</string>
+    <key>destination</key>
+    <string>export</string>
+    <key>teamID</key>
+    <string>U8945M3R9X</string>
+    <key>signingStyle</key>
+    <string>automatic</string>
+    <key>uploadSymbols</key>
+    <true/>
+</dict>
+</plist>

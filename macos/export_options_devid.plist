@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  Export options for Developer ID direct distribution.
+  Used by: xcodebuild -exportArchive -exportOptionsPlist macos/export_options_devid.plist
+
+  Output is an .app signed with Developer ID Application cert,
+  ready for notarization via `xcrun notarytool submit` and then
+  packaging into a .dmg for direct download distribution.
+
+  No App Sandbox conflict — sandbox stays ON (matches Release
+  entitlements) so the same build can be used for either path
+  without rebuilding. Apple's notarisation flow accepts sandboxed
+  Developer ID apps.
+-->
+<dict>
+    <key>method</key>
+    <string>developer-id</string>
+    <key>destination</key>
+    <string>export</string>
+    <key>teamID</key>
+    <string>U8945M3R9X</string>
+    <key>signingStyle</key>
+    <string>automatic</string>
+</dict>
+</plist>

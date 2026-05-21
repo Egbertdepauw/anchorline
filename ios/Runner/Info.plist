@@ -48,15 +48,17 @@
 		</dict>
 	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>CCRLog needs Bluetooth to connect to your Shearwater dive computer and import dive logs.</string>
+	<string>Anchorline needs Bluetooth to connect to your Shearwater dive computer and import dive logs.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>CCRLog needs Bluetooth to connect to your Shearwater dive computer and import dive logs.</string>
+	<string>Anchorline needs Bluetooth to connect to your Shearwater dive computer and import dive logs.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app uses your location to record where each dive happened.</string>
+	<string>Anchorline uses your location to record where each dive happened.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Anchorline uses your location to record where each dive happened. Background access is only used while a dive import is in progress so the import can complete with the screen off.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>CCRLog uses the camera to attach photos to your dives — for example, snapshots of buddy logbook pages.</string>
+	<string>Anchorline uses the camera to attach photos to your dives — for example, snapshots of buddy logbook pages.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>CCRLog reads photos from your library when you attach images to a dive.</string>
+	<string>Anchorline reads photos from your library when you attach images to a dive.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

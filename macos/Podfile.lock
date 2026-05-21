@@ -97,7 +97,7 @@ SPEC CHECKSUMS:
   flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   geolocator_apple: ab36aa0e8b7d7a2d7639b3b4e48308394e8cef5e
-  git2dart_binaries: 10f29aaa3f42bc0b5b15c56a20568e55abc60e93
+  git2dart_binaries: 1ba2b3b8c7b0558692ac1738c4185ad190f25809
   package_info_plus: f0052d280d17aa382b932f399edf32507174e870
   pdfx: 1e79f57f7a6ce2f4a4c30f21fa54d3dc82441b51
   Sentry: de29b881e83bd91cf99a927f82f1fd86bfb39db2

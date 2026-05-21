@@ -30,6 +30,14 @@
 	<string>This app uses your location to record where each dive happened.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app uses your location to record where each dive happened.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Anchorline uses the camera to attach photos to your dives — for example, snapshots of buddy logbook pages.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Anchorline reads photos from your library when you attach images to a dive.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.sports</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
