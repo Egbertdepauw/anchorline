@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'anchorline_colors.dart';
+
 /// Single source of truth for every visual decision in CCRLog.
 ///
 /// Widgets should read theme values via `Theme.of(context)` once we've
@@ -74,7 +76,11 @@ class AppColors {
     textSecondary: Color(0xFFA0AEB6),
     textMuted: Color(0xFF6B7D88),
     textInverse: Color(0xFF0A1518),
-    accentPrimary: Color(0xFFFFCC66),
+    // Anchorline brand accent — sourced from the brand palette so any
+    // future rebrand updates a single colour file. Cascades to every
+    // primary button, focus ring, and selected nav item via the
+    // ThemeData wiring in app_theme.dart.
+    accentPrimary: AnchorlineColors.reelOrange,
     accentMuted: Color(0xFF806633),
     statusSuccess: Color(0xFF4ADE80),
     statusWarning: Color(0xFFF39C12),
