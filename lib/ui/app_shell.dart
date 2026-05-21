@@ -48,6 +48,7 @@ import 'screens/equipment/equipment_landing_screen.dart';
 import 'screens/import_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/sites_map_screen.dart';
+import 'widgets/anchorline_logo.dart';
 import 'widgets/background_watermark.dart';
 import 'widgets/sync_health_banner.dart';
 
@@ -316,7 +317,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('CCRLog'),
+        // Wordmark SVG (anchor + "Anchorline" lockup) instead of a plain
+        // text title. The SVG's dark background blends with the AppBar's
+        // wreck-palette surface so only the mark + text show.
+        title: const AnchorlineLogo(
+          mark: AnchorlineMark.wordmarkDark,
+          size: 32,
+        ),
         actions: [
           if (_currentIndex == 0 &&
               (_subsurfaceOrchestrator?.isPlatformSupported ?? false))

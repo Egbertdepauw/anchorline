@@ -52,6 +52,12 @@ class AppTheme {
         backgroundColor: palette.surfaceBg,
         foregroundColor: palette.textPrimary,
         elevation: 0,
+        // Force left-aligned titles everywhere. Flutter's per-platform
+        // default centres on iOS / macOS, leads on Android — without
+        // this the Dives tab (which uses the AppShell's AppBar) reads
+        // left-aligned while the Plan / Blend / Settings tabs each
+        // have their own AppBars that pick up the platform default.
+        centerTitle: false,
         titleTextStyle:
             AppTypography.headline.copyWith(color: palette.textPrimary),
       ),
