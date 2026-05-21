@@ -188,7 +188,10 @@ class _SegmentRowState extends State<_SegmentRow> {
   Widget build(BuildContext context) {
     // Per-segment safety readout: evaluate the chosen gas at THIS row's
     // depth. The dropdown below filters by [isGasSelectableAt] (PPO₂
-    // hard-cap 1.61) so the diver can't pick a worse one — but the
+    // hard-cap 1.61 — a hair above 1.6 so a gas that just kisses the
+    // operational limit, e.g. air at 66 m, is still pickable for
+    // deliberate accelerated deco; everything beyond stays blocked
+    // because we will not let the diver compose a fatal segment). The
     // currently-stored selection may already be unsafe (e.g. depth was
     // edited after the gas was picked), so we keep it pickable in the
     // dropdown items and let the warning line flag it.

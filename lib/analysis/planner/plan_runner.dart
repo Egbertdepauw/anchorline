@@ -93,10 +93,13 @@ PlanResult runPlan({
   } else {
     decoGases = diveGasMixes;
   }
-  // On CCR, switch from ascent SP → deco SP when ascending through
-  // [decoSwitchDepthMeters]. A deep dive with bottom SP 1.3 typically
-  // wants the high "deco" SP (e.g. 1.5) to kick in only at ~36 m or
-  // shallower, not for the deep first-stop leg.
+  // On CCR, the diver runs the bottom SP from leaving the bottom up to
+  // the deco-switch depth, then switches to the higher deco SP for the
+  // hyperoxic deco stops. A deep dive with bottom SP 1.3 and deco SP
+  // 1.5 should keep 1.3 on the deep ascent leg (e.g. 74 m → 36 m) and
+  // only show 1.5 at and below the switch depth. The "Ascent SP" is
+  // the lower transit SP used during descent / inter-segment moves,
+  // not the bottom→first-stop ascent.
   final diveAscent = planDeco(
     initialN2Bar: sim.triggerN2Bar,
     initialHeBar: sim.triggerHeBar,
@@ -111,7 +114,7 @@ PlanResult runPlan({
     setpointBar: mode == DivePlanMode.cc ? decoSetpoint : 0.0,
     ascentSetpointBar:
         mode == DivePlanMode.cc && decoSwitchDepthMeters > 0
-            ? ascentSetpoint
+            ? bottomSetpoint
             : null,
     decoSwitchDepthMeters: decoSwitchDepthMeters,
     lastStopDepthMeters: lastStopDepthMeters,
@@ -121,14 +124,14 @@ PlanResult runPlan({
   // output table can display it as the row's PPO2 (CC) without each
   // consumer reaching back into the planner config. The per-row
   // setpoint follows the same depth-switch rule the planner used —
-  // a deep first-stop leg gets the ascent SP, a shallow stop the deco
-  // SP. Volume = SAC × avg-ambient × minutes (OC) or metabolic O2
-  // burn (CC).
+  // a leg above the deco-switch depth runs on the bottom SP, a stop at
+  // or below the switch depth runs on the deco SP. Volume = SAC ×
+  // avg-ambient × minutes (OC) or metabolic O2 burn (CC).
   double rowSp(double avgDepthM) {
     if (mode != DivePlanMode.cc) return 0;
-    final useAscent =
+    final useBottom =
         decoSwitchDepthMeters > 0 && avgDepthM > decoSwitchDepthMeters;
-    return useAscent ? ascentSetpoint : decoSetpoint;
+    return useBottom ? bottomSetpoint : decoSetpoint;
   }
 
   double legVolumeLitres(double avgDepthM, Duration d) {

@@ -44,11 +44,17 @@ void main() async {
   final session = SupabaseAuthSessionSource(Supabase.instance.client);
   await DivesPowerSyncMigrator(db, powerSyncDb, session).migrate();
 
-  await seedFixtures(
-    db,
-    psDb: powerSyncDb,
-    session: session,
-  );
+  // Skip seeding in release builds — beta and store users land on a
+  // genuinely empty dive list and import their own dives via BLE or
+  // Subsurface bootstrap. Debug / profile keeps the fixtures so the
+  // dev loop stays fast.
+  if (!kReleaseMode) {
+    await seedFixtures(
+      db,
+      psDb: powerSyncDb,
+      session: session,
+    );
+  }
 
   final settings = SettingsNotifier();
   await settings.load();

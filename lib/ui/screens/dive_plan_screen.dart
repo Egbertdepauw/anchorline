@@ -110,25 +110,37 @@ class _DivePlanScreenState extends State<DivePlanScreen> {
         // user gets trapped behind the keyboard and can't reach the
         // tab bar / bottom nav. Per-scroll-view onDrag is set on each
         // tab's SingleChildScrollView as a secondary escape.
+        //
+        // ListenableBuilder is pushed *inside* each tab rather than
+        // wrapping the TabBarView. Wrapping the whole TabBarView meant
+        // every planner notification recreated the TabBarView widget,
+        // which on macOS interrupted tab-bar hit-tests and produced an
+        // intermittent "tap does nothing" feel when a recompute landed
+        // on the same frame as the click. With per-tab builders the
+        // TabBarView identity stays stable and only the tab content
+        // rebuilds.
         body: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: () => FocusScope.of(context).unfocus(),
-          child: ListenableBuilder(
-            listenable: widget.notifier,
-            builder: (context, _) => TabBarView(
-              children: [
-                _PlanTab(
+          child: TabBarView(
+            children: [
+              ListenableBuilder(
+                listenable: widget.notifier,
+                builder: (context, _) => _PlanTab(
                   notifier: widget.notifier,
                   settings: widget.settings,
                   scheme: scheme,
                 ),
-                _BailoutTab(
+              ),
+              ListenableBuilder(
+                listenable: widget.notifier,
+                builder: (context, _) => _BailoutTab(
                   notifier: widget.notifier,
                   settings: widget.settings,
                   scheme: scheme,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -489,6 +501,10 @@ class _BailoutTab extends StatelessWidget {
                     sacBottom: settings.bailoutSacBottom,
                     sacDeco: settings.bailoutSacDeco,
                     isGueConfig: settings.gueDiluentConfig,
+                    bottomTimeBeforeTrigger: result.profile.fold(
+                      Duration.zero,
+                      (sum, leg) => sum + leg.duration,
+                    ),
                   )
                 else
                   const Padding(
