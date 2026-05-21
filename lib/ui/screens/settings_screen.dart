@@ -88,12 +88,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final auth = widget.authService;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: ListenableBuilder(
+      // Tap-outside-to-dismiss + drag-to-dismiss for the numeric
+      // keyboard. Several settings rows (blender prices, OC SAC,
+      // temps, etc.) open the number pad which has no Return key on
+      // iOS — without this the diver gets trapped behind the keyboard.
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: ListenableBuilder(
         listenable: widget.notifier,
         builder: (context, _) {
           return BackgroundWatermark(
             opacity: widget.notifier.watermarkOpacity,
             child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               children: [
           if (auth != null)
             ListenableBuilder(
@@ -507,6 +515,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           );
         },
+      ),
       ),
     );
   }
