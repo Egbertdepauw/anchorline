@@ -506,7 +506,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     builder: (_) => const WidgetbookScreen()),
               ),
               child: Text(
-                'CCRLog',
+                'Anchorline',
                 style: Theme.of(context).textTheme.labelSmall,
               ),
             ),

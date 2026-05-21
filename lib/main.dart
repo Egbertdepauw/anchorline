@@ -142,7 +142,7 @@ class CCRLogApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'CCRLog',
+      title: 'Anchorline',
       theme: AppTheme.dark(),
       home: AppShell(
         db: db,

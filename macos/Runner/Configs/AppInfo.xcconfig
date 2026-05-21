@@ -5,10 +5,13 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = ccrlogger
+// Drives the .app bundle filename (Anchorline.app), the in-app menu bar title,
+// and the CFBundleName via $(PRODUCT_NAME) substitution in Info.plist.
+PRODUCT_NAME = Anchorline
 
-// The application's bundle identifier
+// The application's bundle identifier — kept as the legacy id so existing
+// signing certificates, App Store Connect records, and synced state remain valid.
 PRODUCT_BUNDLE_IDENTIFIER = nl.despaankamer.ccrlogger
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 Anchorline. All rights reserved.
