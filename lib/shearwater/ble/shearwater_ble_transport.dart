@@ -226,8 +226,22 @@ class ShearwaterBleTransport {
     }
 
     try {
+      var firstDive = true;
       for (final entry in manifest) {
         if (!entry.isValid) continue;
+
+        // Give the Petrel a beat between dives so its UDS state machine
+        // can fully retire the previous session before we send a new
+        // Init (0x35). Without this gap, on multi-dive imports the
+        // second dive's Init occasionally lands while the Petrel is
+        // still flushing latent NAK-side state, and the Petrel rejects
+        // it with "ISO 14229: Trans Req. Seq." then drops the link.
+        // 300 ms is empirically generous — Shearwater's own app pauses
+        // about that long between dives in HCI snoops.
+        if (!firstDive) {
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+        }
+        firstDive = false;
 
         final address = info.baseAddress + entry.address;
         // The manifest records each dive's exact compressed size as the

@@ -4,6 +4,16 @@
 *.pyc
 *.swp
 .DS_Store
+
+# Android release signing — keystore + secrets stay local. The keystore
+# file lives at android/upload-keystore.jks; passwords + aliases live
+# in android/key.properties (see android/key.properties.example for
+# the shape). Losing the keystore means losing the ability to ship
+# updates to existing installs — back it up to 1Password.
+android/key.properties
+android/upload-keystore.jks
+**/*.jks
+**/*.keystore
 .atom/
 .build/
 .buildlog/

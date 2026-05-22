@@ -1,0 +1,20 @@
+# Template for android/key.properties — copy to key.properties (which
+# is gitignored), fill in real values, then `flutter build appbundle`
+# or `flutter build apk --release` will pick up the release signing
+# config from android/app/build.gradle.kts.
+#
+# To generate the keystore (one-time):
+#
+#   cd android
+#   keytool -genkey -v -keystore upload-keystore.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 \
+#     -alias upload
+#
+# Use a strong password and back the .jks file + this file up to
+# 1Password. Losing them means losing the ability to push updates to
+# existing installs.
+
+storeFile=upload-keystore.jks
+storePassword=CHANGE_ME
+keyAlias=upload
+keyPassword=CHANGE_ME

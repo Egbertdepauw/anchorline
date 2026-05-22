@@ -18,12 +18,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// avoid FK-violation surprises if Postgres ever gains explicit FKs
 /// between these (currently only `auth.users` is referenced).
 const cloudSyncTables = <String>[
-  // Children that reference dives by id (no enforced FK today, but the
-  // ordering reflects intent and saves a future foot-gun).
+  // Children that reference dives by id. Some have enforced FKs
+  // (dive_bailout_carry → dives), some don't, but the ordering reflects
+  // intent and saves us from future foot-guns when more FKs land.
+  // When you add a new table that references `dives.id`, append it
+  // HERE — above the dives delete — or the cloud wipe will fail with
+  // a Postgrest 23503 foreign-key-violation.
   'dive_attachments',
   'dive_annotations',
   'pressure_mappings',
   'dive_cylinders',
+  'dive_bailout_carry',
   // Sample data + dive rows. dive_samples FK-cascades from dives via
   // its `id` column, but we delete it explicitly first so we don't
   // depend on RLS-allowed cascades — keeps the Supabase log readable.

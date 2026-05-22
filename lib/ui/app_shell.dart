@@ -315,8 +315,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    // Immersive landscape: hide the global AppBar (wordmark + actions)
+    // and the bottom nav, so any pushed route — most importantly the
+    // dive detail's profile chart — gets the full screen. Users
+    // rotating into landscape are signalling "show me the graph"; the
+    // tab nav and per-tab actions are only useful in portrait.
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     return Scaffold(
-      appBar: AppBar(
+      appBar: isLandscape ? null : AppBar(
         // Wordmark SVG (anchor + "Anchorline" lockup) instead of a plain
         // text title. The SVG's dark background blends with the AppBar's
         // wreck-palette surface so only the mark + text show.
@@ -393,15 +400,31 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                   child: IndexedStack(
                     index: _currentIndex,
                     children: [
-                      DiveListScreen(
-                        notifier: _diveListNotifier,
-                        diveDao: _diveDao,
-                        annotationsDao: _diveAnnotationsDao,
-                        equipmentDao: _equipmentDao,
-                        attachmentsDao: _diveAttachmentsDao,
-                        attachmentUploader: _attachmentUploader,
-                        attachmentDownloader: _attachmentDownloader,
-                        settingsNotifier: widget.settingsNotifier,
+                      // Nested Navigator for the Dives tab so pushed
+                      // routes (dive detail) stack INSIDE this tab
+                      // instead of replacing the whole AppShell. Keeps
+                      // the bottom nav bar visible on detail screens
+                      // and — by virtue of Scaffold's bottomNavigationBar
+                      // slot insetting for the system bars — also fixes
+                      // the Android edge-to-edge clipping that
+                      // otherwise put content behind the gesture-nav
+                      // buttons. Only the Dives tab needs this; the
+                      // other tabs don't push routes deeper than their
+                      // root.
+                      Navigator(
+                        onGenerateRoute: (settings) => MaterialPageRoute(
+                          settings: settings,
+                          builder: (_) => DiveListScreen(
+                            notifier: _diveListNotifier,
+                            diveDao: _diveDao,
+                            annotationsDao: _diveAnnotationsDao,
+                            equipmentDao: _equipmentDao,
+                            attachmentsDao: _diveAttachmentsDao,
+                            attachmentUploader: _attachmentUploader,
+                            attachmentDownloader: _attachmentDownloader,
+                            settingsNotifier: widget.settingsNotifier,
+                          ),
+                        ),
                       ),
                       DivePlanScreen(
                         notifier: _divePlanNotifier,
@@ -443,7 +466,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar: isLandscape ? null : BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
         type: BottomNavigationBarType.fixed,

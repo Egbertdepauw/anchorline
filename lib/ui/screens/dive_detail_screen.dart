@@ -466,10 +466,22 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                             widget.settingsNotifier.visibleTraces;
                         final useSpeedColored =
                             widget.settingsNotifier.useSpeedColoredGraph;
+                        // In landscape the user is here to study the
+                        // graph — let the chart fill most of the viewport
+                        // height instead of being clipped to 250 dp.
+                        // 250 dp portrait keeps room for the cards below;
+                        // landscape grows up to ~440 dp on most phones,
+                        // i.e. nearly the entire visible height.
+                        final mq = MediaQuery.of(context);
+                        final isLandscape =
+                            mq.orientation == Orientation.landscape;
+                        final chartHeight = isLandscape
+                            ? (mq.size.height - 160).clamp(240.0, 600.0)
+                            : 250.0;
                         return Column(
                           children: [
                             SizedBox(
-                              height: 250,
+                              height: chartHeight,
                               child: LayoutBuilder(
                                   builder: (context, constraints) {
                                 final samples = _notifier.samples!;

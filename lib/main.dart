@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:git2dart/git2dart.dart' show PlatformSpecific;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart';
@@ -25,6 +26,15 @@ import 'ui/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Android: libgit2 (used by the Subsurface Cloud sync feature) ships
+  // without a CA bundle and Android's system trust store is at a path
+  // libgit2 can't read. git2dart includes a helper that extracts a
+  // bundled cacert.pem into the app's cache dir and points libgit2 at
+  // it. Without this call, every clone over HTTPS fails with
+  // "GIT_ERROR_SSL: the SSL certificate is invalid". No-op on
+  // non-Android platforms.
+  await PlatformSpecific.androidInitialize();
 
   await Supabase.initialize(
     url: CloudConfig.supabaseUrl,
@@ -83,14 +93,21 @@ void main() async {
     usageTracker: usageTracker,
   );
 
-  // Sentry crash + unhandled-exception reporting is gated on TWO things:
-  // (1) we're in release mode — keeps dev iterations out of the beta
-  //     error stream and avoids eating into the free 5 k quota;
-  // (2) a SENTRY_DSN was injected at build time via
-  //     `flutter build ... --dart-define=SENTRY_DSN=https://...@sentry.io/...`.
-  //     Without the define the string is empty and we skip init entirely.
-  // Debug, profile, and DSN-less release builds just call runApp directly.
-  const sentryDsn = String.fromEnvironment('SENTRY_DSN');
+  // Sentry crash + unhandled-exception reporting is gated on release
+  // mode only — keeps dev iterations out of the beta error stream and
+  // avoids eating into the free 5 k quota. The DSN below is the
+  // production Anchorline project on Sentry; it's safe to commit
+  // because Sentry DSNs are designed to be public (they're embedded
+  // in every shipped client and required at runtime to ingest events).
+  // To point a custom build at a different project, override via
+  // `flutter build ... --dart-define=SENTRY_DSN=https://...@sentry.io/...`.
+  // To disable reporting entirely for a build, override with an empty
+  // string: `--dart-define=SENTRY_DSN=`.
+  const sentryDsn = String.fromEnvironment(
+    'SENTRY_DSN',
+    defaultValue:
+        'https://8c89ac86495e4bacb457c091591a16bd@o4508376376147968.ingest.de.sentry.io/4511415503487056',
+  );
   if (kReleaseMode && sentryDsn.isNotEmpty) {
     await SentryFlutter.init(
       (options) {

@@ -1,4 +1,4 @@
-package com.example.ccrlogger
+package nl.despaankamer.ccrlogger
 
 import io.flutter.embedding.android.FlutterActivity
 

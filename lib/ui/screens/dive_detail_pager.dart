@@ -251,16 +251,35 @@ class _DiveDetailPagerState extends State<DiveDetailPager> {
       },
       child: DefaultTabController(
         length: 4,
-        child: Scaffold(
-          appBar: _buildAppBar(context, currentDive, currentAnnotations),
+        child: Builder(builder: (context) {
+          // Mirror AppShell's landscape immersion — hide the per-dive
+          // AppBar (title + prev/next/save) and the tab bar so the
+          // profile chart owns the entire landscape viewport. Users
+          // rotate back to portrait to switch tabs or edit annotations.
+          final isLandscape =
+              MediaQuery.of(context).orientation == Orientation.landscape;
+          return Scaffold(
+          appBar: isLandscape
+              ? null
+              : _buildAppBar(context, currentDive, currentAnnotations),
           body: ListenableBuilder(
             listenable: widget.settingsNotifier,
             builder: (context, _) {
-              return BackgroundWatermark(
+              // SafeArea is a no-op in portrait (the AppBar already
+              // handles the status-bar inset) — in landscape it pushes
+              // the chart out from under the iPhone notch / Dynamic
+              // Island on the leading edge and the home-indicator on
+              // the bottom edge.
+              return SafeArea(
+                top: isLandscape,
+                bottom: isLandscape,
+                left: isLandscape,
+                right: isLandscape,
+                child: BackgroundWatermark(
                 opacity: widget.settingsNotifier.watermarkOpacity,
                 child: Column(
                   children: [
-                    _buildTabBar(context),
+                    if (!isLandscape) _buildTabBar(context),
                     Expanded(
                       child: PageView.builder(
                   controller: _controller,
@@ -292,10 +311,12 @@ class _DiveDetailPagerState extends State<DiveDetailPager> {
                     ),
                   ],
                 ),
+              ),
               );
             },
           ),
-        ),
+        );
+        }),
       ),
     );
   }

@@ -26,6 +26,17 @@ abstract class BleIo {
   /// For single-frame responses, returns a list with one element.
   /// For multi-frame responses, returns all frames in order.
   Future<List<Uint8List>> readFrames();
+
+  /// Discard any frames that have arrived but not yet been consumed.
+  ///
+  /// Used between downloads when the Petrel ended the previous session
+  /// via NAK 0x24 — the firmware can still emit latent responses to
+  /// pipelined-but-unanswered block requests after sending the NAK.
+  /// Without this drain those frames sit in the rx queue and get
+  /// returned as the next download's Init response, throwing the
+  /// protocol out of sync and prompting the Petrel to disconnect with
+  /// "ISO 14229: Trans Req. Seq.".
+  void drainPendingFrames();
 }
 
 /// Shearwater protocol operations.
@@ -161,6 +172,13 @@ class ShearwaterProtocol {
     required bool compressed,
     int pipelineWindow = 1,
   }) async {
+    // Flush any latent rx frames from the previous download. After a
+    // sessionEndedByPeer (NAK 0x24) the Petrel can still emit responses
+    // to in-flight 0x36 requests we'd already sent; if we don't drain,
+    // the first one becomes our Init response and the protocol falls
+    // out of sync.
+    _ble.drainPendingFrames();
+
     // ── Init ──
     final initRequest = Uint8List.fromList([
       0x35,
@@ -346,12 +364,19 @@ class ShearwaterProtocol {
     }
 
     // ── Quit ──
-    // When the Petrel terminated the session via NAK NRC=0x24, it has
-    // already cleaned up internally and will NOT respond to 0x37 — so
-    // sending Quit would just block on the read timeout. Skip it in that
-    // case; the next download() call's Init (0x35) starts a fresh
-    // session regardless.
-    if (!sessionEndedByPeer) {
+    // Always send Quit (0x37). Two cases:
+    //   1. Normal end-of-dive: the Petrel responds 0x77 0x00. We wait
+    //      and validate it.
+    //   2. sessionEndedByPeer (Petrel sent NAK 0x24): the Petrel does
+    //      not respond to Quit, but on multi-dive imports it STILL
+    //      needs to receive Quit to retire its UDS session state.
+    //      Without this fire-and-forget Quit, the Petrel rejects the
+    //      next dive's Init (0x35) with "ISO 14229: Trans Req. Seq."
+    //      and disconnects. Send Quit write-only and skip the response
+    //      wait.
+    if (sessionEndedByPeer) {
+      await _sendRequest(Uint8List.fromList([0x37]));
+    } else {
       final quitResponse = await _transfer(Uint8List.fromList([0x37]));
       if (!quitResponse.isValid) {
         throw ProtocolException('Invalid download quit response');

@@ -40,6 +40,13 @@ class TraceMockBle implements BleIo {
     return frames;
   }
 
+  @override
+  void drainPendingFrames() {
+    // No-op: the trace mock has no concurrent producer, so there are
+    // never "stale" frames to drop — each readFrames() consumes its
+    // exact lockstep R entries.
+  }
+
   static List<_TraceEntry> _parseTrace(String path) {
     final entries = <_TraceEntry>[];
     for (final line in File(path).readAsLinesSync()) {

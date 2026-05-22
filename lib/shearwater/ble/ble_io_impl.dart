@@ -196,6 +196,18 @@ class FlutterBluePlusBleIo implements BleIo {
   }
 
   @override
+  void drainPendingFrames() {
+    final dropped = _frames.length;
+    if (dropped > 0) {
+      debugPrint('BLE drainPendingFrames: dropped $dropped stale frame(s)');
+      _frames.clear();
+    }
+    // Don't touch _frameSignal — if a reader is currently blocked on it,
+    // that's its own contract; the drain happens between downloads, not
+    // during one.
+  }
+
+  @override
   Future<List<Uint8List>> readFrames() async {
     if (_notifyChar == null) {
       throw StateError('Not connected');
