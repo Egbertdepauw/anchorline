@@ -13,6 +13,27 @@ import 'parsed_dive.dart';
 
 export 'parsed_dive.dart';
 
+/// Result of parsing one dive from a buffer that may contain more.
+///
+/// Used by [ShearwaterDiveParser.parseOne] to support iterating through
+/// a single-session multi-dive blob (the format a Shearwater Petrel
+/// emits when you ask it to download the entire on-flash log in one
+/// request — all dives end-to-end, terminated by the LRE end-marker
+/// at the very end of the log, with each dive's on-flash 128-byte
+/// alignment padding preserved between them).
+class ParseResult {
+  /// The dive that was parsed.
+  final ParsedDive dive;
+
+  /// Number of input bytes the parser consumed for this dive.
+  ///
+  /// In a concatenated multi-dive buffer, the next dive starts at
+  /// `offset + bytesConsumed`.
+  final int bytesConsumed;
+
+  const ParseResult(this.dive, this.bytesConsumed);
+}
+
 /// Parser for Shearwater dive log binary blobs.
 ///
 /// A blob is a decompressed dive record as stored in the dive computer's
@@ -24,20 +45,102 @@ class ShearwaterDiveParser {
   ShearwaterDiveParser({required this.model});
 
   /// Parse a decompressed dive blob into a [ParsedDive].
-  ParsedDive parse(Uint8List data) {
-    final cache = _CacheResult.build(data, model);
-    final samples = _parseSamples(data, cache);
-    final events = _parseEvents(data, cache);
+  ///
+  /// Assumes [data] contains exactly one dive. For multi-dive buffers,
+  /// use [parseOne] which returns the end offset.
+  ParsedDive parse(Uint8List data) => parseOne(data).dive;
 
-    return ParsedDive(
-      header: cache.header,
-      footer: cache.footer,
-      gasMixes: cache.gasMixes,
-      tanks: cache.tanks,
-      samples: samples,
-      events: events,
-      finalRecord: cache.finalRecord,
+  /// Parse one dive starting at [offset] in [data].
+  ///
+  /// Returns the parsed dive plus the number of input bytes consumed,
+  /// so callers can iterate through a concatenated multi-dive buffer:
+  ///
+  /// ```dart
+  /// var off = 0;
+  /// while (off < blob.length) {
+  ///   final r = parser.parseOne(blob, offset: off);
+  ///   handle(r.dive);
+  ///   off += r.bytesConsumed;
+  /// }
+  /// ```
+  ParseResult parseOne(Uint8List data, {int offset = 0}) {
+    if (offset < 0 || offset >= data.length) {
+      throw FormatException(
+          'parseOne: offset $offset out of range (data.length=${data.length})');
+    }
+    final endOffset = _findDiveEnd(data, offset, model);
+    final slice = (offset == 0 && endOffset == data.length)
+        ? data
+        : Uint8List.sublistView(data, offset, endOffset);
+    final cache = _CacheResult.build(slice, model);
+    final samples = _parseSamples(slice, cache);
+    final events = _parseEvents(slice, cache);
+
+    return ParseResult(
+      ParsedDive(
+        header: cache.header,
+        footer: cache.footer,
+        gasMixes: cache.gasMixes,
+        tanks: cache.tanks,
+        samples: samples,
+        events: events,
+        finalRecord: cache.finalRecord,
+      ),
+      endOffset - offset,
     );
+  }
+}
+
+/// Locate the end offset of one dive starting at [startOffset] in [data].
+///
+/// A Shearwater dive blob on flash ends with:
+///   - (PNF) a [logRecordFinal] 32-byte record followed by zero bytes
+///     padding up to the next 128-byte flash alignment boundary;
+///   - (legacy/Predator) a 128-byte footer block, optionally followed by
+///     a 128-byte final block.
+///
+/// When the Petrel streams the entire on-flash log in one download
+/// session, these per-dive ends sit back-to-back in the decompressed
+/// stream. This function finds where one dive's bytes stop and the
+/// next dive's bytes begin.
+///
+/// Falls back to `data.length` when no boundary marker is found (i.e.
+/// the buffer holds exactly one dive without trailing pad — the case
+/// when callers feed a per-dive blob from `parse()`).
+int _findDiveEnd(Uint8List data, int startOffset, ShearwaterModel model) {
+  if (model.isPetrel) {
+    // PNF: scan 32-byte records for the [logRecordFinal] (0xFF) marker.
+    // Once seen, round up past the final record and any trailing zero
+    // records to the next 128-byte boundary — that's where the next
+    // dive (or end-of-log) starts.
+    final sampleSize = model.sampleSize; // 32 for PNF
+    var off = startOffset;
+    while (off + sampleSize <= data.length) {
+      final type = data[off];
+      if (type == logRecordFinal) {
+        // End of this dive's structured records. Consume the final
+        // record and any zero-block padding up to the next 128-byte
+        // alignment boundary.
+        var end = off + sampleSize;
+        // Distance into the 128-byte block, relative to startOffset.
+        final relEnd = end - startOffset;
+        final padded = ((relEnd + szBlock - 1) ~/ szBlock) * szBlock;
+        end = startOffset + padded;
+        if (end > data.length) end = data.length;
+        return end;
+      }
+      off += sampleSize;
+    }
+    // No final marker found — assume the slice IS one dive.
+    return data.length;
+  } else {
+    // Legacy (Predator): flat 128-byte header + samples + 128-byte
+    // footer, optionally followed by a 128-byte final block. There's
+    // no per-dive end-marker we can scan for, so callers feeding a
+    // legacy multi-dive buffer would need an explicit length. For
+    // the single-dive case (the only one supported on legacy today)
+    // the slice IS the dive.
+    return data.length;
   }
 }
 

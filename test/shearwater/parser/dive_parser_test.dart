@@ -182,4 +182,79 @@ void main() {
       }
     });
   });
+
+  group('parseOne (multi-dive demux)', () {
+    test('returns bytesConsumed == data.length for a single-dive buffer', () {
+      final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
+      final data = loadFixture('dive_715.bin');
+      final r = parser.parseOne(data);
+      expect(r.bytesConsumed, equals(data.length));
+      expect(r.dive.samples, isNotEmpty);
+    });
+
+    test('parseOne advances offset correctly for a multi-dive blob', () {
+      // Concatenate two fixture dives end-to-end. Each fixture already
+      // ends with a 0xFF final record followed by zero padding to the
+      // next 128-byte boundary — exactly what the Petrel emits between
+      // dives in a single-session download of the entire on-flash log.
+      final dive1 = loadFixture('dive_715.bin');
+      final dive2 = loadFixture('dive_716.bin');
+
+      final blob = Uint8List(dive1.length + dive2.length)
+        ..setRange(0, dive1.length, dive1)
+        ..setRange(dive1.length, dive1.length + dive2.length, dive2);
+
+      final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
+
+      final r1 = parser.parseOne(blob, offset: 0);
+      expect(r1.bytesConsumed, equals(dive1.length),
+          reason: 'First dive should consume exactly dive1.length bytes');
+
+      final r2 = parser.parseOne(blob, offset: r1.bytesConsumed);
+      expect(r2.bytesConsumed, equals(dive2.length),
+          reason: 'Second dive should consume exactly dive2.length bytes');
+
+      // Each demuxed dive should parse to the same header values as
+      // the standalone single-dive parse.
+      final solo1 = parser.parse(dive1);
+      final solo2 = parser.parse(dive2);
+      expect(r1.dive.header.startTimestamp,
+          equals(solo1.header.startTimestamp));
+      expect(r2.dive.header.startTimestamp,
+          equals(solo2.header.startTimestamp));
+      expect(r1.dive.samples.length, equals(solo1.samples.length));
+      expect(r2.dive.samples.length, equals(solo2.samples.length));
+    });
+
+    test('iterating parseOne demuxes all 8 fixture dives concatenated', () {
+      final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
+      final fixtures = [
+        for (final n in [711, 712, 713, 714, 715, 716, 717, 718])
+          loadFixture('dive_$n.bin')
+      ];
+      final totalLen =
+          fixtures.fold<int>(0, (sum, b) => sum + b.length);
+      final blob = Uint8List(totalLen);
+      var pos = 0;
+      for (final f in fixtures) {
+        blob.setRange(pos, pos + f.length, f);
+        pos += f.length;
+      }
+
+      final results = <ParseResult>[];
+      var off = 0;
+      while (off < blob.length) {
+        final r = parser.parseOne(blob, offset: off);
+        results.add(r);
+        off += r.bytesConsumed;
+      }
+
+      expect(results.length, equals(8));
+      expect(off, equals(blob.length));
+      for (var i = 0; i < 8; i++) {
+        expect(results[i].bytesConsumed, equals(fixtures[i].length),
+            reason: 'Dive ${i + 1} of 8 should consume its fixture length');
+      }
+    });
+  });
 }
