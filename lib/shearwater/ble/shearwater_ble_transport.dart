@@ -8,10 +8,13 @@ library;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+
+import 'ble_debug_logger.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../parser/byte_reader.dart';
 import '../parser/constants.dart';
+import '../parser/dive_parser.dart';
 import '../parser/hardware.dart';
 import '../parser/manifest_parser.dart';
 import 'ble_io_impl.dart';
@@ -193,11 +196,30 @@ class ShearwaterBleTransport {
 
   /// Download dives from the manifest, yielding each as it completes.
   ///
-  /// Each dive is downloaded compressed from the device, decompressed,
-  /// and yielded as a [DownloadedDive] with the raw blob ready for parsing.
+  /// Issues a SINGLE [ShearwaterProtocol.download] call covering every
+  /// dive in [manifest], then demuxes the resulting decompressed blob
+  /// into per-dive [DownloadedDive] records.
+  ///
+  /// Why one big download instead of N small ones: the Petrel keeps UDS
+  /// session state INDEPENDENTLY of the GATT link. After each per-dive
+  /// download ends in a self-NAK 0x24 (the manifest's `endAddress` is a
+  /// flash *allocation* boundary, not the data end, so the Petrel always
+  /// runs off the actual dive bytes and rejects the next 0x36), the
+  /// firmware's UDS state machine is wedged. On iOS this happened to
+  /// recover by accident; on Android it didn't, and no combination of
+  /// Quit / settle delay / RDBI ping / full GATT reconnect could
+  /// unstick it. This matches libdivecomputer's Shearwater driver,
+  /// which has always done one big download terminated cleanly by the
+  /// LRE 0 end-marker at the very end of the on-flash log.
   Stream<DownloadedDive> downloadDives(List<ManifestEntry> manifest) async* {
     final p = _protocol!;
     final info = _deviceInfo!;
+
+    // Filter + sort valid entries by flash address ascending. The Petrel
+    // streams them out in address order in one continuous LRE stream.
+    final entries = manifest.where((e) => e.isValid).toList()
+      ..sort((a, b) => a.address.compareTo(b.address));
+    if (entries.isEmpty) return;
 
     // Re-nudge the link to high priority before the bulk transfer starts.
     // Android often silently drops the request made at connect() time but
@@ -207,8 +229,9 @@ class ShearwaterBleTransport {
     // Android's `requestConnectionPriority(HIGH)` is NOT sticky — empirically
     // the Petrel link reverts to balanced (~177 ms inter-notification gap,
     // matching ~537 ms/block) about 5–10 s after the last priority request,
-    // unless we keep asserting it. Per-dive nudging isn't enough — a single
-    // dive blob takes 30–60 s on a slow link, much longer than the timeout.
+    // unless we keep asserting it. A multi-dive single-session download
+    // can run for many minutes; without the refresher the link reverts
+    // to balanced mid-transfer.
     //
     // Interval was 4 s; bumped to 6 s after the app was observed losing
     // connection mid-import. 6 s sits well under the ~8-10 s expiry but
@@ -226,55 +249,81 @@ class ShearwaterBleTransport {
     }
 
     try {
-      var firstDive = true;
-      for (final entry in manifest) {
-        if (!entry.isValid) continue;
+      // Build the single-session request covering every dive's range.
+      // The manifest is on-flash so addresses are contiguous (or nearly
+      // so — small flash-allocation gaps between dives are fine, the
+      // Petrel just streams zero/junk for those bytes and the LRE
+      // decoder skips them).
+      final firstAddr = info.baseAddress + entries.first.address;
+      final lastEndAddr = info.baseAddress + entries.last.endAddress;
+      var totalSize = lastEndAddr - firstAddr;
+      // The download Init opcode encodes size in 24 bits. Clamp and
+      // rely on the LRE end-marker (which fires at the very end of the
+      // on-flash log) to terminate the transfer.
+      if (totalSize <= 0 || totalSize >= 0xFFFFFF) {
+        totalSize = 0xFFFFFF;
+      }
 
-        // Give the Petrel a beat between dives so its UDS state machine
-        // can fully retire the previous session before we send a new
-        // Init (0x35). Without this gap, on multi-dive imports the
-        // second dive's Init occasionally lands while the Petrel is
-        // still flushing latent NAK-side state, and the Petrel rejects
-        // it with "ISO 14229: Trans Req. Seq." then drops the link.
-        // 300 ms is empirically generous — Shearwater's own app pauses
-        // about that long between dives in HCI snoops.
-        if (!firstDive) {
-          await Future<void>.delayed(const Duration(milliseconds: 300));
+      BleDebugLogger.instance.log(
+          'single-session download: ${entries.length} dive(s), '
+          'addr=0x${firstAddr.toRadixString(16)} '
+          'size=$totalSize bytes');
+
+      final Uint8List blob;
+      try {
+        blob = await p.download(
+          address: firstAddr,
+          size: totalSize,
+          compressed: true,
+          pipelineWindow: divePipelineWindow,
+        );
+      } catch (e, st) {
+        // Surface the failure visibly. Without this the exception
+        // unwinds through the stream consumer and the only sign of
+        // trouble is the eventual BLE disconnect timeout — useless
+        // for diagnosing what blew up.
+        debugPrint('downloadDives: single-session download FAILED: $e\n$st');
+        rethrow;
+      }
+
+      BleDebugLogger.instance.log(
+          'single-session download: decompressed to ${blob.length} bytes; '
+          'demuxing into ${entries.length} dive(s)');
+
+      // Demux the blob into individual dives. parseOne returns
+      // bytesConsumed so we can advance the cursor; the parser walks
+      // 32-byte records to the dive's [logRecordFinal] (0xFF) marker
+      // and on past the on-flash 128-byte alignment pad — i.e. the
+      // exact byte count one dive occupies on flash. Entries were
+      // address-sorted above; parse order matches address order.
+      final parser = ShearwaterDiveParser(model: info.model);
+      var offset = 0;
+      for (final entry in entries) {
+        if (offset >= blob.length) {
+          BleDebugLogger.instance.log(
+              'demux: ran out of bytes at dive #${entry.diveNumber} '
+              '(offset=$offset, blob=${blob.length}) — '
+              '${entries.length - entries.indexOf(entry)} dive(s) skipped');
+          break;
         }
-        firstDive = false;
-
-        final address = info.baseAddress + entry.address;
-        // The manifest records each dive's exact compressed size as the
-        // gap between its start and end address. Pass that as the request
-        // size — without it the Petrel happily streams the next-younger
-        // dive's data right after this one because LRE end-markers only
-        // fire at the very end of the on-flash log, not per dive.
-        final size = entry.compressedSize > 0 && entry.compressedSize < 0xFFFFFF
-            ? entry.compressedSize
-            : 0xFFFFFF;
-        debugPrint('download dive #${entry.diveNumber}: '
-            'addr=0x${entry.address.toRadixString(16)} '
-            'endAddr=0x${entry.endAddress.toRadixString(16)} '
-            'compressedSize=${entry.compressedSize} '
-            'requestSize=$size');
         try {
-          final data = await p.download(
-            address: address,
-            size: size,
-            compressed: true,
-            pipelineWindow: divePipelineWindow,
-          );
-          yield DownloadedDive(manifest: entry, data: data);
+          final result = parser.parseOne(blob, offset: offset);
+          final endOffset = offset + result.bytesConsumed;
+          final diveBytes = Uint8List.sublistView(blob, offset, endOffset);
+          BleDebugLogger.instance.log(
+              'demux: yielded dive #${entry.diveNumber} '
+              'at offset=$offset, bytes=${result.bytesConsumed}');
+          yield DownloadedDive(manifest: entry, data: diveBytes);
+          offset = endOffset;
         } catch (e, st) {
-          // Surface the failure visibly. Without this the exception
-          // unwinds through the stream consumer and the only sign of
-          // trouble is the eventual BLE disconnect timeout — useless
-          // for diagnosing which dive / which block / why.
-          debugPrint('downloadDives: dive #${entry.diveNumber} '
-              '(addr=0x${entry.address.toRadixString(16)}) FAILED: $e\n$st');
+          debugPrint('downloadDives: demux of dive #${entry.diveNumber} '
+              '(offset=$offset) FAILED: $e\n$st');
           rethrow;
         }
       }
+      BleDebugLogger.instance.log(
+          'single-session download: done. final offset=$offset, '
+          'blob.length=${blob.length}');
     } finally {
       refresher?.cancel();
     }
