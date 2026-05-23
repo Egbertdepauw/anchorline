@@ -1,4 +1,5 @@
 import 'package:ccrlogger/shearwater/ble/mock_ble_transport.dart';
+import 'package:ccrlogger/shearwater/ble/shearwater_ble_transport.dart';
 import 'package:ccrlogger/shearwater/parser/hardware.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -28,10 +29,15 @@ void main() {
     await mock.connectMock();
     await mock.readDeviceInfo();
     final manifest = await mock.readManifest();
-    final dives = await mock.downloadDives(manifest).toList();
+    final events = await mock.downloadDives(manifest).toList();
+    final dives = events.whereType<DownloadedDive>().toList();
     expect(dives.length, equals(8));
     for (final dive in dives) {
       expect(dive.data.length, greaterThan(0));
     }
+    // Every dive event is preceded by a saturated progress event.
+    final progress = events.whereType<DownloadProgressEvent>().toList();
+    expect(progress.length, equals(8));
+    expect(progress.first.totalDives, equals(8));
   });
 }

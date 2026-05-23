@@ -54,8 +54,55 @@ class ImportProgress {
 
 enum ImportPhase { connecting, readingManifest, downloadingDives, done }
 
+/// Events emitted by [ShearwaterBleTransport.downloadDives] during an
+/// import. A single bulk BLE transfer covers every dive in the manifest;
+/// progress events stream live as bytes accumulate, dive events fire
+/// once per demuxed dive after the transfer completes.
+sealed class DownloadEvent {
+  const DownloadEvent();
+}
+
+/// Periodic progress update during the bulk download.
+///
+/// The single-session download covers a flash range spanning [totalDives]
+/// dives. As bytes accumulate, we attribute them to whichever manifest
+/// entry the running compressed-byte count falls inside, expressed as
+/// [diveIndex] (0-based) with [diveBytes] / [diveTotalBytes] for the
+/// current dive's contribution.
+class DownloadProgressEvent extends DownloadEvent {
+  /// 0-based index into the manifest passed to `downloadDives`.
+  final int diveIndex;
+
+  /// Total number of dives in this import.
+  final int totalDives;
+
+  /// Compressed bytes attributed to the current dive so far. Capped to
+  /// [diveTotalBytes] when the running cursor would otherwise exceed
+  /// the manifest entry's flash range.
+  final int diveBytes;
+
+  /// Compressed allocation for the current dive — the dive's flash
+  /// range size from the manifest (`endAddress - address`). This is an
+  /// upper bound on what we'll receive for the dive, not the exact
+  /// data length (the Petrel terminates each dive's actual data with
+  /// an LRE end marker somewhere before the end of the allocation).
+  final int diveTotalBytes;
+
+  /// The manifest entry for the dive currently being downloaded — UI
+  /// can surface dive number and start timestamp from this.
+  final ManifestEntry currentEntry;
+
+  const DownloadProgressEvent({
+    required this.diveIndex,
+    required this.totalDives,
+    required this.diveBytes,
+    required this.diveTotalBytes,
+    required this.currentEntry,
+  });
+}
+
 /// A downloaded dive blob with its manifest metadata.
-class DownloadedDive {
+class DownloadedDive extends DownloadEvent {
   final ManifestEntry manifest;
   final Uint8List data; // Decompressed dive blob, ready for parsing.
 
@@ -71,8 +118,11 @@ class DownloadedDive {
 /// await transport.connect(device);
 /// final info = await transport.readDeviceInfo();
 /// final manifest = await transport.readManifest();
-/// await for (final dive in transport.downloadDives(manifest)) {
-///   // Process each dive
+/// await for (final event in transport.downloadDives(manifest)) {
+///   switch (event) {
+///     case DownloadProgressEvent(): /* update UI */
+///     case DownloadedDive(): /* parse + persist */
+///   }
 /// }
 /// await transport.disconnect();
 /// ```
@@ -194,11 +244,19 @@ class ShearwaterBleTransport {
     return allEntries;
   }
 
-  /// Download dives from the manifest, yielding each as it completes.
+  /// Download dives from the manifest, yielding events as they happen.
   ///
   /// Issues a SINGLE [ShearwaterProtocol.download] call covering every
   /// dive in [manifest], then demuxes the resulting decompressed blob
-  /// into per-dive [DownloadedDive] records.
+  /// into per-dive records. Emits two kinds of [DownloadEvent]:
+  ///
+  /// * [DownloadProgressEvent] during the bulk transfer, throttled to
+  ///   at most one update per 200 ms with an unthrottled extra event
+  ///   each time the running byte count crosses into a new dive's flash
+  ///   range — the boundary event is the most useful UX signal.
+  /// * [DownloadedDive] once per dive after demux, in flash-address
+  ///   order. Each is preceded by a final 100%-progress event for that
+  ///   dive so the UI can briefly show a saturated bar.
   ///
   /// Why one big download instead of N small ones: the Petrel keeps UDS
   /// session state INDEPENDENTLY of the GATT link. After each per-dive
@@ -211,7 +269,23 @@ class ShearwaterBleTransport {
   /// unstick it. This matches libdivecomputer's Shearwater driver,
   /// which has always done one big download terminated cleanly by the
   /// LRE 0 end-marker at the very end of the on-flash log.
-  Stream<DownloadedDive> downloadDives(List<ManifestEntry> manifest) async* {
+  Stream<DownloadEvent> downloadDives(List<ManifestEntry> manifest) {
+    late final StreamController<DownloadEvent> controller;
+    controller = StreamController<DownloadEvent>(
+      onListen: () {
+        // Fire-and-forget — the controller takes care of bridging errors
+        // and the close path. We can't `await` here because onListen
+        // returns synchronously; the async body lives in _runDownload.
+        unawaited(_runDownload(controller, manifest));
+      },
+    );
+    return controller.stream;
+  }
+
+  Future<void> _runDownload(
+    StreamController<DownloadEvent> controller,
+    List<ManifestEntry> manifest,
+  ) async {
     final p = _protocol!;
     final info = _deviceInfo!;
 
@@ -219,7 +293,10 @@ class ShearwaterBleTransport {
     // streams them out in address order in one continuous LRE stream.
     final entries = manifest.where((e) => e.isValid).toList()
       ..sort((a, b) => a.address.compareTo(b.address));
-    if (entries.isEmpty) return;
+    if (entries.isEmpty) {
+      await controller.close();
+      return;
+    }
 
     // Re-nudge the link to high priority before the bulk transfer starts.
     // Android often silently drops the request made at connect() time but
@@ -269,6 +346,73 @@ class ShearwaterBleTransport {
           'addr=0x${firstAddr.toRadixString(16)} '
           'size=$totalSize bytes');
 
+      // Per-dive compressed allocation, computed from the manifest's
+      // flash ranges. Used to attribute the running compressed-byte
+      // count to a specific dive during the bulk transfer.
+      //
+      // We deliberately key on `compressedSize` (endAddress - address)
+      // rather than walking absolute flash addresses, because the
+      // entries' `address` fields are relative to baseAddress and the
+      // first dive's flash offset within the download is 0.
+      final diveAllocations = [
+        for (final e in entries) e.compressedSize,
+      ];
+      final totalAllocation =
+          diveAllocations.fold<int>(0, (sum, n) => sum + n);
+      // Cumulative byte offset where each dive's allocation ends. Used
+      // to bucket the running compressed-byte count into a diveIndex.
+      final cumulativeEnds = <int>[];
+      var running = 0;
+      for (final alloc in diveAllocations) {
+        running += alloc;
+        cumulativeEnds.add(running);
+      }
+
+      // Progress throttle: cap UI updates to ~5 Hz; always emit an
+      // extra event when the running cursor crosses into a new dive.
+      var lastEmitMs = 0;
+      var lastDiveIndex = -1;
+      final swatch = Stopwatch()..start();
+
+      void emitProgress(int bytesRead, int reportedTotal) {
+        if (controller.isClosed) return;
+        // Find which dive the running cursor falls into. We compare
+        // against the per-dive flash allocation, NOT the reportedTotal
+        // (which is the clamped 0xFFFFFF or actual size requested at
+        // Init). If bytesRead overflows the planned allocation total
+        // — possible when totalSize was clamped to 0xFFFFFF and the
+        // Petrel streamed past the last dive's endAddress — we cap to
+        // the last dive at 100%.
+        var diveIndex = lastDiveIndex < 0 ? 0 : lastDiveIndex;
+        while (diveIndex < cumulativeEnds.length - 1 &&
+            bytesRead >= cumulativeEnds[diveIndex]) {
+          diveIndex++;
+        }
+        if (diveIndex >= entries.length) diveIndex = entries.length - 1;
+
+        final crossedBoundary = diveIndex != lastDiveIndex;
+        final nowMs = swatch.elapsedMilliseconds;
+        if (!crossedBoundary && nowMs - lastEmitMs < 200) return;
+        lastDiveIndex = diveIndex;
+        lastEmitMs = nowMs;
+
+        final entry = entries[diveIndex];
+        final diveTotal = diveAllocations[diveIndex];
+        final diveStart =
+            diveIndex == 0 ? 0 : cumulativeEnds[diveIndex - 1];
+        var diveBytes = bytesRead - diveStart;
+        if (diveBytes < 0) diveBytes = 0;
+        if (diveBytes > diveTotal) diveBytes = diveTotal;
+
+        controller.add(DownloadProgressEvent(
+          diveIndex: diveIndex,
+          totalDives: entries.length,
+          diveBytes: diveBytes,
+          diveTotalBytes: diveTotal,
+          currentEntry: entry,
+        ));
+      }
+
       final Uint8List blob;
       try {
         blob = await p.download(
@@ -276,6 +420,13 @@ class ShearwaterBleTransport {
           size: totalSize,
           compressed: true,
           pipelineWindow: divePipelineWindow,
+          onProgress: (bytesRead, total) {
+            // `total` is the size requested at Init (often clamped
+            // to 0xFFFFFF). We map progress against the manifest's
+            // per-dive flash allocations instead, falling back to
+            // `totalAllocation` for the overall denominator.
+            emitProgress(bytesRead, totalAllocation);
+          },
         );
       } catch (e, st) {
         // Surface the failure visibly. Without this the exception
@@ -298,12 +449,13 @@ class ShearwaterBleTransport {
       // address-sorted above; parse order matches address order.
       final parser = ShearwaterDiveParser(model: info.model);
       var offset = 0;
-      for (final entry in entries) {
+      for (var i = 0; i < entries.length; i++) {
+        final entry = entries[i];
         if (offset >= blob.length) {
           BleDebugLogger.instance.log(
               'demux: ran out of bytes at dive #${entry.diveNumber} '
               '(offset=$offset, blob=${blob.length}) — '
-              '${entries.length - entries.indexOf(entry)} dive(s) skipped');
+              '${entries.length - i} dive(s) skipped');
           break;
         }
         try {
@@ -313,7 +465,19 @@ class ShearwaterBleTransport {
           BleDebugLogger.instance.log(
               'demux: yielded dive #${entry.diveNumber} '
               'at offset=$offset, bytes=${result.bytesConsumed}');
-          yield DownloadedDive(manifest: entry, data: diveBytes);
+          // Emit a saturated progress event for this dive so the UI
+          // briefly shows 100% before flipping to "Saving…" for the
+          // next index. Cheap; the UI throttles its own redraw.
+          if (!controller.isClosed) {
+            controller.add(DownloadProgressEvent(
+              diveIndex: i,
+              totalDives: entries.length,
+              diveBytes: diveAllocations[i],
+              diveTotalBytes: diveAllocations[i],
+              currentEntry: entry,
+            ));
+            controller.add(DownloadedDive(manifest: entry, data: diveBytes));
+          }
           offset = endOffset;
         } catch (e, st) {
           debugPrint('downloadDives: demux of dive #${entry.diveNumber} '
@@ -324,8 +488,11 @@ class ShearwaterBleTransport {
       BleDebugLogger.instance.log(
           'single-session download: done. final offset=$offset, '
           'blob.length=${blob.length}');
+    } catch (e, st) {
+      if (!controller.isClosed) controller.addError(e, st);
     } finally {
       refresher?.cancel();
+      if (!controller.isClosed) await controller.close();
     }
   }
 

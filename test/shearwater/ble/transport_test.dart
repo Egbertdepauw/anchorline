@@ -50,8 +50,10 @@ void main() {
     final firstEntry = manifest.first; // Dive #718
     expect(firstEntry.diveNumber, equals(718));
 
-    // Download via stream (take first).
-    final dives = await transport.downloadDives([firstEntry]).toList();
+    // Download via stream (take first). The stream now interleaves
+    // DownloadProgressEvent with DownloadedDive; filter to dives.
+    final events = await transport.downloadDives([firstEntry]).toList();
+    final dives = events.whereType<DownloadedDive>().toList();
     expect(dives, hasLength(1));
 
     final downloaded = dives.first;

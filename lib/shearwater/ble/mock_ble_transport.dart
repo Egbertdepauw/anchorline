@@ -60,14 +60,27 @@ class MockBleTransport {
         )).toList().reversed.toList();
   }
 
-  /// Yield a [DownloadedDive] for each entry by loading the corresponding
-  /// fixture asset. Entries without a matching asset file are silently skipped.
-  Stream<DownloadedDive> downloadDives(List<ManifestEntry> manifest) async* {
-    for (final entry in manifest) {
+  /// Yield events for each entry by loading the corresponding fixture
+  /// asset. Each entry produces one [DownloadProgressEvent] (saturated
+  /// at 100% — the mock has nothing to throttle and tests don't care
+  /// about mid-transfer progress) followed by one [DownloadedDive].
+  /// Entries without a matching asset file are silently skipped.
+  Stream<DownloadEvent> downloadDives(List<ManifestEntry> manifest) async* {
+    final valid = manifest.where((e) => e.isValid).toList();
+    for (var i = 0; i < valid.length; i++) {
+      final entry = valid[i];
       await Future<void>.delayed(perDiveDelay);
       try {
         final byteData = await rootBundle
             .load('test/fixtures/dives/dive_${entry.diveNumber}.bin');
+        final total = entry.compressedSize;
+        yield DownloadProgressEvent(
+          diveIndex: i,
+          totalDives: valid.length,
+          diveBytes: total,
+          diveTotalBytes: total,
+          currentEntry: entry,
+        );
         yield DownloadedDive(
           manifest: entry,
           data: byteData.buffer.asUint8List(),
