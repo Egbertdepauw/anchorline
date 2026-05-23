@@ -9,8 +9,17 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 
 import '../parser/decompressor.dart';
+import 'ble_debug_logger.dart';
 import 'packet.dart';
 import 'slip_codec.dart';
+
+/// Diagnostic sink for the BLE multi-dive transition. Mirrors to both
+/// the file logger (always reachable from a Play Internal / TestFlight
+/// build) and `debugPrint` (visible in `flutter run` when that pipe
+/// is open). The file is exported via Settings → "Share BLE debug log".
+void _bleLog(String message) {
+  BleDebugLogger.instance.log(message);
+}
 
 /// Abstract BLE I/O interface.
 ///
@@ -89,6 +98,13 @@ class ShearwaterProtocol {
     return Packet.parseResponse(decoded);
   }
 
+  /// Format a byte iterable as space-separated hex for debug logs.
+  /// Truncated to first 8 bytes by the caller via `.take(8)` — full
+  /// payloads in logcat are noise.
+  static String _hex(Iterable<int> bytes) => bytes
+      .map((b) => b.toRadixString(16).padLeft(2, '0'))
+      .join(' ');
+
   /// Last `_transfer` timing — exposed so `download()` can print
   /// per-block round-trip breakdown without re-wrapping every protocol
   /// op. Diagnostic only; cleared on each new transfer.
@@ -166,11 +182,20 @@ class ShearwaterProtocol {
   /// appears to do, based on Shearwater's own app being much faster).
   /// If a pipelined response comes back with an unexpected block
   /// number, the operation throws — callers can fall back to window=1.
+  ///
+  /// [onProgress], if supplied, is invoked after each block of data has
+  /// been accumulated. `bytesRead` is the cumulative count of compressed
+  /// bytes received so far from the device for this download; `totalSize`
+  /// is the [size] requested at Init. The callback is invoked at most
+  /// once per BLE block (~140 bytes), so callers should throttle if they
+  /// drive a UI from it. Errors thrown by the callback propagate and
+  /// will abort the download — keep it cheap and exception-safe.
   Future<Uint8List> download({
     required int address,
     required int size,
     required bool compressed,
     int pipelineWindow = 1,
+    void Function(int bytesRead, int totalSize)? onProgress,
   }) async {
     // Flush any latent rx frames from the previous download. After a
     // sessionEndedByPeer (NAK 0x24) the Petrel can still emit responses
@@ -192,8 +217,12 @@ class ShearwaterProtocol {
       (size >> 8) & 0xFF,
       size & 0xFF,
     ]);
+    _bleLog('→ Init (0x35) addr=0x${address.toRadixString(16)} '
+        'size=$size compressed=$compressed');
 
     final initResponse = await _transfer(initRequest);
+    _bleLog('← Init response valid=${initResponse.isValid} '
+        'payload=${_hex(initResponse.payload.take(8))}');
     if (!initResponse.isValid) {
       throw ProtocolException('Invalid download init response');
     }
@@ -301,6 +330,10 @@ class ShearwaterProtocol {
         // and then NAKs the next request. Treat it as clean EOS so the
         // remaining in-flight responses can drain and we proceed to Quit.
         if (nrc == 0x24 && nbytes > 0) {
+          _bleLog('← Petrel NAK 0x24 (end-of-data) after '
+              '$blocksRead blocks, $nbytes bytes — '
+              'inFlight=[${inFlight.join(",")}] '
+              'session retired by Petrel; skipping Quit');
           done = true;
           sessionEndedByPeer = true;
           // Petrel has already closed the download session on its side.
@@ -353,6 +386,13 @@ class ShearwaterProtocol {
         } else {
           buffer.add(blockData);
         }
+        // Surface progress in terms of compressed bytes received so far.
+        // Callers wire this into a UI; throttling/debouncing happens on
+        // the consumer side because here we have no notion of "the UI
+        // already saw a recent update".
+        if (onProgress != null) {
+          onProgress(nbytes, size);
+        }
       }
 
       // Top up the pipeline. After 'done', let it drain — the in-flight
@@ -364,18 +404,21 @@ class ShearwaterProtocol {
     }
 
     // ── Quit ──
-    // Always send Quit (0x37). Two cases:
-    //   1. Normal end-of-dive: the Petrel responds 0x77 0x00. We wait
-    //      and validate it.
-    //   2. sessionEndedByPeer (Petrel sent NAK 0x24): the Petrel does
-    //      not respond to Quit, but on multi-dive imports it STILL
-    //      needs to receive Quit to retire its UDS session state.
-    //      Without this fire-and-forget Quit, the Petrel rejects the
-    //      next dive's Init (0x35) with "ISO 14229: Trans Req. Seq."
-    //      and disconnects. Send Quit write-only and skip the response
-    //      wait.
+    // When the Petrel ended the session via its own NAK 0x24, it has
+    // ALREADY retired the session internally. Sending Quit (0x37) at
+    // that point is itself an out-of-sequence opcode: the Petrel
+    // raises "ISO 14229: Trans Req. Seq." and disconnects.
+    //
+    // (We tried fire-and-forget Quit too; same outcome on Petrel 3.
+    // Both 1500 ms and 5 s settle delays between dives didn't help
+    // because the failure is opcode-sequence, not timing.)
+    //
+    // So: skip Quit when sessionEndedByPeer. The frame drain at the
+    // top of the next download() flushes any latent block responses
+    // before the new Init lands.
     if (sessionEndedByPeer) {
-      await _sendRequest(Uint8List.fromList([0x37]));
+      _bleLog('skip Quit — sessionEndedByPeer=true '
+          '(Petrel retired session via its own NAK 0x24)');
     } else {
       final quitResponse = await _transfer(Uint8List.fromList([0x37]));
       if (!quitResponse.isValid) {
