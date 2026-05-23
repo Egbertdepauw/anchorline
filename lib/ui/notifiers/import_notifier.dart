@@ -59,6 +59,22 @@ class ImportNotifier extends ChangeNotifier {
   int _failedCount = 0;
   bool _forceFullReimport = false;
 
+  // Per-dive download progress, surfaced live during the bulk BLE
+  // transfer so the import screen can show "Downloading dive N of M
+  // (X%)" instead of a single global indeterminate spinner.
+  int? _currentDiveIndex; // 0-based, into the manifest passed to downloadAll.
+  int? _totalDives;
+  int? _diveBytes;
+  int? _diveTotalBytes;
+  ManifestEntry? _currentEntry;
+
+  // Throttle for notifyListeners during the high-frequency progress
+  // stream. Coalesces multiple updates into a single rebuild at ~10 Hz
+  // so a multi-minute download doesn't pin the UI thread.
+  static const Duration _notifyMinGap = Duration(milliseconds: 100);
+  int _lastNotifyMs = 0;
+  Timer? _pendingNotify;
+
   // Mock
   MockBleTransport? _mockTransport;
   bool _mockDeviceAvailable = false;
@@ -89,6 +105,30 @@ class ImportNotifier extends ChangeNotifier {
   int? get currentDiveNumber => _currentDiveNumber;
   String? get errorMessage => _errorMessage;
   int get failedCount => _failedCount;
+
+  /// 0-based index into the download subset of the dive currently
+  /// streaming bytes from the device. Null until the first progress
+  /// event has arrived, or after the download finishes.
+  int? get currentDiveIndex => _currentDiveIndex;
+
+  /// Total dives in the current download subset, mirrored from the
+  /// transport's progress events. Mostly redundant with
+  /// [totalToDownload] but kept distinct so the UI can fall back when
+  /// the progress stream hasn't started yet.
+  int? get totalDives => _totalDives;
+
+  /// Fraction (0.0 – 1.0) of the current dive's compressed allocation
+  /// that has streamed in so far. Null when no progress is known yet
+  /// (use indeterminate UI in that case).
+  double? get currentDiveProgress {
+    final tot = _diveTotalBytes;
+    if (tot == null || tot == 0) return null;
+    return (_diveBytes ?? 0) / tot;
+  }
+
+  /// Manifest entry for the dive currently being downloaded, surfaced
+  /// so the UI can show dive number + date alongside the progress bar.
+  ManifestEntry? get currentEntry => _currentEntry;
 
   /// Whether the mock device advertisement is ready to be selected.
   bool get mockDeviceAvailable => _mockDeviceAvailable;
@@ -323,6 +363,11 @@ class ImportNotifier extends ChangeNotifier {
     _state = ImportFlowState.downloading;
     _downloadedCount = 0;
     _failedCount = 0;
+    _currentDiveIndex = null;
+    _totalDives = toDownload.length;
+    _diveBytes = null;
+    _diveTotalBytes = null;
+    _currentEntry = null;
     notifyListeners();
 
     final parser = ShearwaterDiveParser(model: _deviceInfo!.model);
@@ -338,45 +383,60 @@ class ImportNotifier extends ChangeNotifier {
     // of headroom — and a mid-batch BLE drop now keeps every dive that
     // already made it to disk.
     try {
-      final diveStream = _isRealBle
+      final Stream<DownloadEvent> eventStream = _isRealBle
           ? _realTransport!.downloadDives(toDownload)
           : _mockTransport!.downloadDives(toDownload);
 
-      await for (final d in diveStream) {
-        _currentDiveNumber = d.manifest.diveNumber;
-        notifyListeners();
-        try {
-          final parsed = parser.parse(d.data);
-          final converted = DiveConverter.convert(
-            parsed: parsed,
-            dcSerial: serial,
-            dcDiveNumber: d.manifest.diveNumber,
-            dcModel: _deviceInfo!.model,
-          );
-          final imported = await _dao.importDive(
-            converted: converted,
-            rawBlob: d.data,
-            parserVersion: 1,
-          );
-          if (imported) {
-            _downloadedCount++;
-            lastSuccessfulEntry = d.manifest;
-          }
-        } catch (e) {
-          debugPrint('Failed to import dive ${d.manifest.diveNumber}: $e');
-          _failedCount++;
+      await for (final event in eventStream) {
+        switch (event) {
+          case DownloadProgressEvent():
+            _currentDiveIndex = event.diveIndex;
+            _totalDives = event.totalDives;
+            _diveBytes = event.diveBytes;
+            _diveTotalBytes = event.diveTotalBytes;
+            _currentEntry = event.currentEntry;
+            _currentDiveNumber = event.currentEntry.diveNumber;
+            _notifyThrottled();
+
+          case DownloadedDive():
+            final d = event;
+            _currentDiveNumber = d.manifest.diveNumber;
+            try {
+              final parsed = parser.parse(d.data);
+              final converted = DiveConverter.convert(
+                parsed: parsed,
+                dcSerial: serial,
+                dcDiveNumber: d.manifest.diveNumber,
+                dcModel: _deviceInfo!.model,
+              );
+              final imported = await _dao.importDive(
+                converted: converted,
+                rawBlob: d.data,
+                parserVersion: 1,
+              );
+              if (imported) {
+                _downloadedCount++;
+                lastSuccessfulEntry = d.manifest;
+              }
+            } catch (e) {
+              debugPrint('Failed to import dive ${d.manifest.diveNumber}: $e');
+              _failedCount++;
+            }
+            // Forward-compatible: parser does not currently surface
+            // scrubberResetAt. Failures here are local and non-fatal.
+            try {
+              await _equipmentDao.applyScrubberEvents(
+                scrubberResetAt: null,
+                dcSerial: serial,
+              );
+            } catch (e) {
+              debugPrint('Failed to apply scrubber events: $e');
+            }
+            // After a dive lands, force a non-throttled rebuild so
+            // the "N of M imported" counter updates immediately —
+            // each save is the most informative UX moment.
+            _flushNotify();
         }
-        // Forward-compatible: parser does not currently surface
-        // scrubberResetAt. Failures here are local and non-fatal.
-        try {
-          await _equipmentDao.applyScrubberEvents(
-            scrubberResetAt: null,
-            dcSerial: serial,
-          );
-        } catch (e) {
-          debugPrint('Failed to apply scrubber events: $e');
-        }
-        notifyListeners();
       }
     } catch (e) {
       _errorMessage =
@@ -439,7 +499,11 @@ class ImportNotifier extends ChangeNotifier {
     await _disableWakelock();
 
     _currentDiveNumber = null;
-    notifyListeners();
+    _currentDiveIndex = null;
+    _diveBytes = null;
+    _diveTotalBytes = null;
+    _currentEntry = null;
+    _flushNotify();
   }
 
   // ── Error / retry ──────────────────────────────────────────────────────────
@@ -466,6 +530,8 @@ class ImportNotifier extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _pendingNotify?.cancel();
+    _pendingNotify = null;
     _stopScan();
     _realTransport?.disconnect();
     // Best-effort: don't await, the framework expects dispose to be sync.
@@ -516,7 +582,51 @@ class ImportNotifier extends ChangeNotifier {
     _realTransport = null;
     _discoveredDevices.clear();
     _forceFullReimport = false;
+    _currentDiveIndex = null;
+    _totalDives = null;
+    _diveBytes = null;
+    _diveTotalBytes = null;
+    _currentEntry = null;
+    _pendingNotify?.cancel();
+    _pendingNotify = null;
     _stopScan();
+  }
+
+  /// Coalesce high-frequency progress updates. Fires `notifyListeners`
+  /// immediately if at least [_notifyMinGap] has passed since the last
+  /// emit, otherwise schedules a deferred fire so the latest state is
+  /// still flushed within that window. ~10 Hz cap.
+  void _notifyThrottled() {
+    if (_disposed) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (nowMs - _lastNotifyMs >= _notifyMinGap.inMilliseconds) {
+      _lastNotifyMs = nowMs;
+      _pendingNotify?.cancel();
+      _pendingNotify = null;
+      notifyListeners();
+      return;
+    }
+    if (_pendingNotify != null) return;
+    final delay = Duration(
+      milliseconds: _notifyMinGap.inMilliseconds - (nowMs - _lastNotifyMs),
+    );
+    _pendingNotify = Timer(delay, () {
+      _pendingNotify = null;
+      if (_disposed) return;
+      _lastNotifyMs = DateTime.now().millisecondsSinceEpoch;
+      notifyListeners();
+    });
+  }
+
+  /// Cancel any pending throttled notify and fire immediately. Used at
+  /// boundaries (per-dive save, end of download) where the user would
+  /// otherwise notice the lag between actual state change and rebuild.
+  void _flushNotify() {
+    if (_disposed) return;
+    _pendingNotify?.cancel();
+    _pendingNotify = null;
+    _lastNotifyMs = DateTime.now().millisecondsSinceEpoch;
+    notifyListeners();
   }
 
   int? _parseFirmwareVersion(String firmware) {

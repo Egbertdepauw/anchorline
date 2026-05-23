@@ -270,27 +270,65 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   Widget _buildDownloading(ImportNotifier n, ThemeData theme) {
-    final progress = n.totalToDownload > 0 ? n.downloadedCount / n.totalToDownload : 0.0;
+    // Two progress signals: overall (dives saved / total — drives the
+    // big circular ring) and per-dive (compressed bytes received for
+    // the dive currently streaming — drives the linear bar). Per-dive
+    // is the one that moves during the long BLE transfer; overall
+    // only ticks at the end of each demuxed dive.
+    final overall = n.totalToDownload > 0
+        ? n.downloadedCount / n.totalToDownload
+        : 0.0;
+    final diveProgress = n.currentDiveProgress;
+    final total = n.totalDives ?? n.totalToDownload;
+    final index = n.currentDiveIndex;
+    final fade = theme.colorScheme.onSurface.withValues(alpha: 0.5);
+
+    String? header;
+    if (index != null && total > 0) {
+      header = 'Downloading dive ${index + 1} of $total';
+    } else if (n.currentDiveNumber != null) {
+      header = 'Downloading dive #${n.currentDiveNumber}...';
+    }
+
+    String? subtitle;
+    final entry = n.currentEntry;
+    if (entry != null) {
+      final dt = DateTime.fromMillisecondsSinceEpoch(
+              entry.startTimestamp * 1000,
+              isUtc: true)
+          .toLocal();
+      subtitle = '#${entry.diveNumber}  ·  '
+          '${DateFormat('yyyy-MM-dd HH:mm').format(dt)}';
+    }
+
     return Center(child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         SizedBox(width: 80, height: 80, child: Stack(
           alignment: Alignment.center,
           children: [
-            CircularProgressIndicator(value: progress, strokeWidth: 6),
+            CircularProgressIndicator(value: overall, strokeWidth: 6),
             Text('${n.downloadedCount}/${n.totalToDownload}',
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           ],
         )),
         const SizedBox(height: 24),
-        if (n.currentDiveNumber != null)
-          Text('Downloading dive #${n.currentDiveNumber}...', style: const TextStyle(fontSize: 16)),
-        const SizedBox(height: 8),
-        Text('${n.downloadedCount} of ${n.totalToDownload} imported',
-            style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+        if (header != null)
+          Text(header, style: const TextStyle(fontSize: 16)),
+        if (subtitle != null) ...[
+          const SizedBox(height: 4),
+          Text(subtitle, style: TextStyle(fontSize: 12, color: fade)),
+        ],
         const SizedBox(height: 16),
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: LinearProgressIndicator(value: progress)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          // Per-dive bar; falls back to indeterminate before the first
+          // progress event lands (manifest reads, demux phase, etc.).
+          child: LinearProgressIndicator(value: diveProgress),
+        ),
+        const SizedBox(height: 8),
+        Text('${n.downloadedCount} of ${n.totalToDownload} dives saved',
+            style: TextStyle(color: fade)),
       ],
     ));
   }
