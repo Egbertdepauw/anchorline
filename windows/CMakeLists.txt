@@ -32,6 +32,15 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# sentry-native ships three backends on Windows: crashpad (default),
+# breakpad, and inproc. Crashpad pulls in ARM assembly via marmasm
+# (`marmasm.targets`) that the x64 toolchain refuses on Windows-on-ARM
+# hosts. inproc has no native asm, works on every host arch, and gives
+# us what we actually need (catch uncaught Dart/C++ exceptions and ship
+# them to Sentry). We lose out-of-process crash capture, which isn't
+# load-bearing for a beta.
+set(SENTRY_BACKEND "inproc" CACHE STRING "Sentry crash backend" FORCE)
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
