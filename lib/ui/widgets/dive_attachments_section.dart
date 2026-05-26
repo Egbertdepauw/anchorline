@@ -192,6 +192,9 @@ class _DiveAttachmentsSectionState extends State<DiveAttachmentsSection> {
               physics: const NeverScrollableScrollPhysics(),
               buildDefaultDragHandles: false,
               itemCount: attachments.length,
+              // TODO(#7): migrate to onReorderItem and drop the
+              // newIndex-shift math in DiveAttachmentsNotifier.reorder.
+              // ignore: deprecated_member_use
               onReorder: _n.reorder,
               itemBuilder: (context, index) {
                 final a = attachments[index];

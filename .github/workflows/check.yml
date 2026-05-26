@@ -1,0 +1,52 @@
+name: CI
+
+# Runs on every PR + every push to main so we always have a green-or-red
+# signal on the canonical branch. ubuntu-latest only — macOS / iOS /
+# Windows builds are kept manual to avoid burning the macOS-runner
+# allowance and to keep signing material out of CI for now.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Read-only token. We don't push commits, comments, or releases from this
+# workflow; least privilege.
+permissions:
+  contents: read
+
+# Cancel an in-flight run when a newer commit is pushed to the same PR /
+# branch. Saves Action minutes and avoids confusing "stale CI" signals.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: analyze + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        # Pinned to the dev-machine version so CI failures aren't "works
+        # on Flutter X, breaks on Y" mysteries. Bump in lockstep with the
+        # local SDK when we upgrade.
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.0
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: flutter analyze
+        run: flutter analyze
+
+      - name: flutter test
+        run: flutter test --reporter expanded
