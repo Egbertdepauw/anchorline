@@ -13,6 +13,7 @@ library;
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:powersync/powersync.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -82,41 +83,60 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
         _uploader = uploader,
         _endpoint = endpoint;
 
+  /// Window before token expiry within which we try to refresh
+  /// proactively. PowerSync caches the credential we return and reuses
+  /// it past our return value; a tight (30-second) window means a
+  /// session that PowerSync polls 35s before expiry still gets used past
+  /// the cliff, the server replies with PSYNC_S2103 (JWT expired), and
+  /// every upload + download in the queue stalls. Five minutes gives
+  /// the refresh attempt a real budget on a slow / backgrounded link.
+  static const _refreshLeadTime = Duration(minutes: 5);
+
   @override
   Future<PowerSyncCredentials?> fetchCredentials() async {
     final initial = _sessions.currentSession;
     if (initial == null) return null;
-    // Force a refresh when the cached token is past expiry. Supabase's
-    // background auto-refresh isn't always reliable on desktop after long
-    // gaps; without this, the connector would hand PowerSync an already-
-    // expired JWT and every sync request would fail with 401.
     final now = DateTime.now().toUtc();
     final initialExpiry = initial.expiresAt == null
         ? null
         : DateTime.fromMillisecondsSinceEpoch(
             initial.expiresAt! * 1000, isUtc: true);
     Session session = initial;
-    if (initialExpiry != null &&
-        initialExpiry.isBefore(now.add(const Duration(seconds: 30)))) {
+    final needsRefresh = initialExpiry != null &&
+        initialExpiry.isBefore(now.add(_refreshLeadTime));
+    if (needsRefresh) {
       try {
         await _sessions.refreshSession();
         final refreshed = _sessions.currentSession;
         if (refreshed != null) session = refreshed;
-      } catch (_) {
-        // Refresh failed (network down, refresh token revoked). Return
-        // whatever we have — PowerSync will retry, and if the user
-        // re-signs-in via the UI we'll pick that up next round.
+      } catch (e, st) {
+        // Log instead of swallowing. Refresh failures are the root
+        // cause of PSYNC_S2103 stalls and we want them visible in
+        // Sentry / debug logs rather than silently retried forever.
+        debugPrint('fetchCredentials: refreshSession failed: $e\n$st');
       }
     }
-    final expiresAtSec = session.expiresAt;
+    // If, after the refresh attempt, the token is already past expiry,
+    // we have nothing valid to hand PowerSync. Returning the expired
+    // token would just cause the server to reject every request and
+    // PowerSync would hammer fetchCredentials in a tight loop, never
+    // recovering. Returning null tells PowerSync we're temporarily
+    // disconnected — it backs off, and if the next call yields a
+    // fresh token (re-sign-in, network recovery), sync resumes.
+    final finalExpiry = session.expiresAt == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(
+            session.expiresAt! * 1000, isUtc: true);
+    if (finalExpiry != null && finalExpiry.isBefore(now)) {
+      debugPrint('fetchCredentials: returning null — token expired at '
+          '$finalExpiry and refresh did not produce a fresh one');
+      return null;
+    }
     return PowerSyncCredentials(
       endpoint: _endpoint,
       token: session.accessToken,
       userId: session.user.id,
-      expiresAt: expiresAtSec == null
-          ? null
-          : DateTime.fromMillisecondsSinceEpoch(expiresAtSec * 1000,
-              isUtc: true),
+      expiresAt: finalExpiry,
     );
   }
 
