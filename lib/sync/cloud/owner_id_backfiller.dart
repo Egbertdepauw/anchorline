@@ -9,6 +9,8 @@
 /// in twice, or they re-installed and the second sign-in is a no-op
 /// because PowerSync already pulled their cloud rows).
 library;
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:powersync/powersync.dart';
 
@@ -39,10 +41,64 @@ class OwnerIdBackfiller {
     total += await _copyCylinders(userId);
     total += await _copyPressureMappings(userId);
     total += await _copyDiveCylinders(userId);
-    total += await _stampOwnerIdInPlace('dives', userId);
-    total += await _stampOwnerIdInPlace('dive_samples', userId);
+    // In-place stamp covers every PowerSync-resident table whose rows
+    // may have been written before sign-in (owner_id NULL) or under a
+    // different account on the same device (owner_id != userId).
+    // Without this, RLS rejects every upload of those rows in a tight
+    // retry loop that leaves uploading=false and lastSyncedAt=null.
+    for (final t in _syncedTables) {
+      total += await _stampOwnerIdInPlace(t, userId);
+    }
+    // Then patch any already-queued CRUD ops whose data payload still
+    // carries the old (null/wrong) owner_id. PowerSync sends `data.data`
+    // verbatim to Supabase, so fixing the live row is not enough —
+    // the queued PUT serialized at write time keeps failing RLS.
+    total += await _patchPsCrudOwnerId(userId);
     debugPrint('OwnerIdBackfiller: copied $total rows for user $userId');
     return total;
+  }
+
+  static const List<String> _syncedTables = [
+    'dives',
+    'dive_samples',
+    'dive_computers',
+    'oxygen_cells',
+    'scrubber_sessions',
+    'dive_annotations',
+    'cylinders',
+    'dive_cylinders',
+    'pressure_mappings',
+    'dive_attachments',
+  ];
+
+  /// Rewrites ps_crud PUT payloads to inject the current [userId] into
+  /// `data.owner_id`. Touches only PUT ops (PATCH/DELETE don't carry the
+  /// full row), and skips ops where `owner_id` already matches. Returns
+  /// the number of rows patched.
+  Future<int> _patchPsCrudOwnerId(String userId) async {
+    final rows = await _ps.getAll('SELECT id, data FROM ps_crud');
+    var patched = 0;
+    for (final r in rows) {
+      final crudId = r['id'];
+      final raw = r['data'] as String?;
+      if (raw == null) continue;
+      try {
+        final parsed = jsonDecode(raw) as Map<String, dynamic>;
+        if (parsed['op'] != 'PUT') continue;
+        final inner = parsed['data'];
+        if (inner is! Map<String, dynamic>) continue;
+        if (inner['owner_id'] == userId) continue;
+        inner['owner_id'] = userId;
+        await _ps.execute(
+          'UPDATE ps_crud SET data = ? WHERE id = ?',
+          [jsonEncode(parsed), crudId],
+        );
+        patched++;
+      } catch (e) {
+        debugPrint('OwnerIdBackfiller: ps_crud #$crudId patch failed ($e)');
+      }
+    }
+    return patched;
   }
 
   /// In-place owner_id stamp for tables that already live in PowerSync.

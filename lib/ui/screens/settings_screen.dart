@@ -1,12 +1,19 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:powersync/powersync.dart' hide SyncStatus, Column;
+import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import '../../data/db/database.dart';
 import '../../data/db/dive_dao.dart';
 import '../../dev/fixture_seeder.dart';
 import '../../sync/attachments/attachment_object_wiper.dart';
 import '../../sync/cloud/auth_service.dart';
+import '../../shearwater/ble/ble_debug_logger.dart';
 import '../../sync/cloud/cloud_data_wiper.dart';
 import '../../sync/cloud/sync_status_source.dart';
 import '../../sync/subsurface_git/bootstrap_importer.dart';
@@ -499,6 +506,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
           const Divider(height: 32),
           Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Text(
+              'Diagnostics',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.bug_report_outlined),
+            title: const Text('Share BLE debug log'),
+            subtitle: const Text(
+                'Exports the Bluetooth import trace so the developer can diagnose import failures. The file contains no dive content — only protocol events and timings.'),
+            onTap: _shareBleDebugLog,
+          ),
+          ListTile(
+            leading: const Icon(Icons.cloud_sync_outlined),
+            title: const Text('Force-stamp owner_id on local dives'),
+            subtitle: const Text(
+                'Rewrites owner_id on every local dive + sample to the current signed-in user, then PowerSync uploads them. Use when dives imported under a different (or no) account need to be reassigned to this account.'),
+            onTap: _forceStampOwnerId,
+          ),
+          ListTile(
+            leading: const Icon(Icons.cloud_upload_outlined),
+            title: const Text('Drain upload queue manually'),
+            subtitle: const Text(
+                'Bypasses PowerSync\'s upload pump and pushes each queued CRUD op directly to Supabase. Use when the queue is stuck (ps_crud is non-empty, sync status shows uploading=false, lastSyncedAt=never). Slow — one HTTP request per op.'),
+            onTap: _drainQueueManually,
+          ),
+          const Divider(height: 32),
+          Padding(
             padding: const EdgeInsets.all(Spacing.lg),
             child: GestureDetector(
               onLongPress: () => Navigator.of(context).push(
@@ -518,6 +554,482 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       ),
     );
+  }
+
+  Future<void> _forceStampOwnerId() async {
+    final psDb = widget.powerSyncDb;
+    final userId = widget.authService?.currentUser?.id;
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (psDb == null) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('PowerSync is not available on this build.'),
+      ));
+      return;
+    }
+    if (userId == null) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Sign in first — there is no current user to stamp.'),
+      ));
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Force-stamp owner_id?'),
+        content: Text(
+          'Rewrites owner_id on every local dive + sample to the '
+          'currently signed-in account ($userId).\n\n'
+          'Rows with the wrong owner_id (or none) will then upload to '
+          'the cloud on the next sync. This is a one-shot recovery for '
+          'dives that were imported under a different (or no) account.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Stamp'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final report = StringBuffer();
+    try {
+      Future<int> countTotal(String table) async {
+        final r = await psDb.getOptional('SELECT COUNT(*) AS n FROM $table');
+        return (r?['n'] as int?) ?? 0;
+      }
+
+      Future<int> countMismatched(String table) async {
+        final r = await psDb.getOptional(
+          'SELECT COUNT(*) AS n FROM $table '
+          'WHERE owner_id IS NULL OR owner_id != ?',
+          [userId],
+        );
+        return (r?['n'] as int?) ?? 0;
+      }
+
+      report.writeln('User: $userId');
+      report.writeln('');
+
+      final divesTotal = await countTotal('dives');
+      final samplesTotal = await countTotal('dive_samples');
+      final divesToStamp = await countMismatched('dives');
+      final samplesToStamp = await countMismatched('dive_samples');
+      report.writeln('Local PowerSync rows:');
+      report.writeln('  dives: $divesTotal (mismatched owner: $divesToStamp)');
+      report.writeln(
+          '  dive_samples: $samplesTotal (mismatched owner: $samplesToStamp)');
+      report.writeln('');
+
+      // ps_crud holds operations waiting to be uploaded. If this is > 0
+      // and not draining, RLS is probably rejecting the upsert.
+      final crudTotal = await countTotal('ps_crud');
+      report.writeln('Upload queue (ps_crud): $crudTotal');
+      if (crudTotal > 0) {
+        final byTable = await psDb.getAll(
+          "SELECT json_extract(data, '\$.type') AS t, COUNT(*) AS n "
+          'FROM ps_crud GROUP BY t ORDER BY n DESC',
+        );
+        for (final r in byTable) {
+          report.writeln('  ${r['t']}: ${r['n']}');
+        }
+        // Peek at the oldest pending op so we can see what it's trying.
+        final firstRow = await psDb.getOptional(
+          'SELECT data FROM ps_crud ORDER BY id LIMIT 1',
+        );
+        if (firstRow != null) {
+          final data = firstRow['data'] as String?;
+          if (data != null) {
+            final preview = data.length > 240 ? '${data.substring(0, 240)}…' : data;
+            report.writeln('  oldest op preview: $preview');
+          }
+        }
+      }
+      report.writeln('');
+
+      // PowerSync sync status.
+      final s = widget.syncStatusSource?.currentStatus;
+      if (s != null) {
+        report.writeln('Sync status:');
+        report.writeln('  connected: ${s.connected}');
+        report.writeln('  uploading: ${s.uploading}');
+        report.writeln('  downloading: ${s.downloading}');
+        report.writeln('  lastSyncedAt: ${s.lastSyncedAt ?? "(never)"}');
+        report.writeln('');
+      }
+
+      // Stamp owner_id on every synced table that has the column.
+      const syncTables = [
+        'dives',
+        'dive_samples',
+        'dive_computers',
+        'oxygen_cells',
+        'scrubber_sessions',
+        'dive_annotations',
+        'cylinders',
+        'dive_cylinders',
+        'pressure_mappings',
+        'dive_attachments',
+      ];
+      report.writeln('Stamped owner_id on live rows:');
+      for (final t in syncTables) {
+        try {
+          final before = await psDb.getOptional(
+            'SELECT COUNT(*) AS n FROM $t '
+            'WHERE owner_id IS NULL OR owner_id != ?',
+            [userId],
+          );
+          final n = (before?['n'] as int?) ?? 0;
+          if (n == 0) continue;
+          await psDb.execute(
+            'UPDATE $t SET owner_id = ? '
+            'WHERE owner_id IS NULL OR owner_id != ?',
+            [userId, userId],
+          );
+          report.writeln('  $t: stamped $n');
+        } catch (e) {
+          report.writeln('  $t: skipped ($e)');
+        }
+      }
+      report.writeln('');
+
+      // Patch ps_crud entries whose PUT data is missing/wrong owner_id.
+      // PowerSync sends `data.data` to Supabase as the row body; if RLS
+      // rejects one row the whole batch retries forever and uploading
+      // stays false. Rewriting the JSON in-place is invasive but safe —
+      // we change only the owner_id field, nothing else.
+      final crudRows = await psDb.getAll(
+        'SELECT id, data FROM ps_crud ORDER BY id',
+      );
+      var patched = 0;
+      var skippedNonPut = 0;
+      for (final r in crudRows) {
+        final crudId = r['id'];
+        final raw = r['data'] as String?;
+        if (raw == null) continue;
+        try {
+          final parsed = jsonDecode(raw) as Map<String, dynamic>;
+          if (parsed['op'] != 'PUT') {
+            skippedNonPut++;
+            continue;
+          }
+          final inner = parsed['data'];
+          if (inner is! Map<String, dynamic>) continue;
+          final current = inner['owner_id'];
+          if (current == userId) continue;
+          inner['owner_id'] = userId;
+          await psDb.execute(
+            'UPDATE ps_crud SET data = ? WHERE id = ?',
+            [jsonEncode(parsed), crudId],
+          );
+          patched++;
+        } catch (e) {
+          report.writeln('  ps_crud #$crudId: parse/patch failed ($e)');
+        }
+      }
+      report.writeln(
+          'Patched $patched queued PUT op(s) ($skippedNonPut non-PUT skipped).');
+
+      // Replay the actual oldest pending op from ps_crud against Supabase.
+      // This is exactly what PowerSync's uploader does — if it fails, the
+      // error tells us why the queue isn't draining.
+      final firstCrud = await psDb.getOptional(
+        'SELECT id, data FROM ps_crud ORDER BY id LIMIT 1',
+      );
+      if (firstCrud != null) {
+        final data = firstCrud['data'] as String?;
+        report.writeln('');
+        report.writeln('Replay oldest ps_crud op (#${firstCrud['id']}):');
+        if (data == null) {
+          report.writeln('  (no data column)');
+        } else {
+          try {
+            final parsed = jsonDecode(data) as Map<String, dynamic>;
+            final opType = parsed['op'] as String?;
+            final table = parsed['type'] as String?;
+            final rowId = parsed['id'] as String?;
+            final rowData = parsed['data'] as Map<String, dynamic>?;
+            report.writeln('  op=$opType table=$table id=$rowId');
+            if (rowData != null) {
+              report.writeln('  cols: ${rowData.keys.toList()..sort()}');
+            }
+            if (table == null || rowId == null) {
+              report.writeln('  → cannot replay (missing table/id)');
+            } else {
+              try {
+                final client = Supabase.instance.client;
+                switch (opType) {
+                  case 'PUT':
+                    await client.from(table).upsert({
+                      ...?rowData,
+                      'id': rowId,
+                    });
+                    report.writeln('  → OK');
+                  case 'PATCH':
+                    if (rowData != null) {
+                      await client.from(table).update(rowData).eq('id', rowId);
+                      report.writeln('  → OK');
+                    } else {
+                      report.writeln('  → skipped (no PATCH data)');
+                    }
+                  case 'DELETE':
+                    await client.from(table).delete().eq('id', rowId);
+                    report.writeln('  → OK');
+                  default:
+                    report.writeln('  → unknown op type');
+                }
+              } catch (e) {
+                report.writeln('  → ERROR: $e');
+              }
+            }
+          } catch (e) {
+            report.writeln('  → parse failed: $e');
+            final preview = data.length > 240 ? '${data.substring(0, 240)}…' : data;
+            report.writeln('  raw: $preview');
+          }
+        }
+      }
+    } catch (e, st) {
+      debugPrint('Force-stamp diag failed: $e\n$st');
+      report.writeln('');
+      report.writeln('FAILED: $e');
+    }
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Force-stamp diagnostic'),
+        content: SingleChildScrollView(
+          child: SelectableText(
+            report.toString(),
+            style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: report.toString()));
+            },
+            child: const Text('Copy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _drainQueueManually() async {
+    final psDb = widget.powerSyncDb;
+    final userId = widget.authService?.currentUser?.id;
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (psDb == null) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('PowerSync is not available on this build.'),
+      ));
+      return;
+    }
+    if (userId == null) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Sign in first — no Supabase session to push with.'),
+      ));
+      return;
+    }
+
+    final totalBefore = await psDb.getOptional(
+      'SELECT COUNT(*) AS n FROM ps_crud',
+    );
+    final qSize = (totalBefore?['n'] as int?) ?? 0;
+    if (qSize == 0) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Queue is empty — nothing to drain.'),
+      ));
+      return;
+    }
+    if (!mounted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Drain upload queue manually?'),
+        content: Text(
+          'Pushes $qSize queued CRUD operation(s) straight to Supabase, '
+          'bypassing PowerSync\'s built-in upload pump. Successful ops are '
+          'removed from ps_crud. Failed ops are left in place so you can '
+          'inspect them afterwards.\n\n'
+          'This is slow — one HTTP request per op. Keep the app open '
+          'until it finishes; closing the app mid-drain leaves the rest '
+          'in the queue and you can re-run this to continue.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('Drain $qSize'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    messenger.showSnackBar(SnackBar(
+      content: Text('Draining $qSize op(s) — this may take a while.'),
+      duration: const Duration(seconds: 6),
+    ));
+
+    final supa = Supabase.instance.client;
+    var processed = 0;
+    var failed = 0;
+    final errors = <String, int>{}; // error message → count
+    var lastId = 0;
+
+    // Walk ps_crud in id order, batching 50 at a time. Advancing `lastId`
+    // past every op we touch (success or fail) prevents an infinite loop
+    // on a poison-pill row.
+    while (mounted) {
+      final batch = await psDb.getAll(
+        'SELECT id, data FROM ps_crud WHERE id > ? ORDER BY id LIMIT 50',
+        [lastId],
+      );
+      if (batch.isEmpty) break;
+      for (final row in batch) {
+        final crudId = (row['id'] as int?) ?? 0;
+        lastId = crudId;
+        final raw = row['data'] as String?;
+        if (raw == null) {
+          await psDb.execute('DELETE FROM ps_crud WHERE id = ?', [crudId]);
+          continue;
+        }
+        try {
+          final parsed = jsonDecode(raw) as Map<String, dynamic>;
+          final op = parsed['op'] as String?;
+          final table = parsed['type'] as String?;
+          final id = parsed['id'] as String?;
+          final data = parsed['data'];
+          if (table == null || id == null) {
+            // Malformed entry; remove to keep the queue moving.
+            await psDb.execute('DELETE FROM ps_crud WHERE id = ?', [crudId]);
+            continue;
+          }
+          switch (op) {
+            case 'PUT':
+              await supa.from(table).upsert({
+                ...?(data as Map<String, dynamic>?),
+                'id': id,
+              });
+            case 'PATCH':
+              if (data is Map<String, dynamic>) {
+                await supa.from(table).update(data).eq('id', id);
+              }
+            case 'DELETE':
+              await supa.from(table).delete().eq('id', id);
+            default:
+              // Unknown op — drop it so the drain continues.
+              await psDb.execute('DELETE FROM ps_crud WHERE id = ?', [crudId]);
+              continue;
+          }
+          await psDb.execute('DELETE FROM ps_crud WHERE id = ?', [crudId]);
+          processed++;
+        } catch (e) {
+          failed++;
+          final key = e.toString().split('\n').first;
+          errors[key] = (errors[key] ?? 0) + 1;
+          debugPrint('Drain: ps_crud #$crudId failed: $e');
+          // Don't delete — leave failed ops in place for inspection.
+        }
+      }
+    }
+
+    if (!mounted) return;
+    final remaining = await psDb.getOptional(
+      'SELECT COUNT(*) AS n FROM ps_crud',
+    );
+    final remainingCount = (remaining?['n'] as int?) ?? 0;
+
+    final report = StringBuffer()
+      ..writeln('Drain complete.')
+      ..writeln('')
+      ..writeln('Pushed:      $processed')
+      ..writeln('Failed:      $failed')
+      ..writeln('ps_crud now: $remainingCount');
+    if (errors.isNotEmpty) {
+      report.writeln('');
+      report.writeln('Failure reasons:');
+      final sorted = errors.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      for (final entry in sorted.take(5)) {
+        final preview = entry.key.length > 200
+            ? '${entry.key.substring(0, 200)}…'
+            : entry.key;
+        report.writeln('  ${entry.value}× $preview');
+      }
+    }
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Drain queue result'),
+        content: SingleChildScrollView(
+          child: SelectableText(
+            report.toString(),
+            style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: report.toString()));
+            },
+            child: const Text('Copy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _shareBleDebugLog() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      // Force-flush any buffered writes before exporting.
+      await BleDebugLogger.instance.flush();
+      final path = await BleDebugLogger.instance.filePath();
+      final file = File(path);
+      if (!file.existsSync() || (await file.length()) == 0) {
+        messenger.showSnackBar(const SnackBar(
+          content: Text(
+              'No BLE log yet — trigger an import to populate it, then try again.'),
+        ));
+        return;
+      }
+      await Share.shareXFiles(
+        [XFile(path, name: 'anchorline-ble-debug.log')],
+        subject: 'Anchorline BLE debug log',
+        text:
+            'Bluetooth import trace from Anchorline. No dive content — only '
+            'protocol events and timings.',
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Share failed: $e')));
+    }
   }
 
   Future<void> _confirmAndResetLocalData() async {
