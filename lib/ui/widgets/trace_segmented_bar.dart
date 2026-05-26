@@ -7,7 +7,19 @@ import '../components/status_dot.dart';
 import '../theme/tokens.dart';
 
 /// The set of data traces that can be toggled on/off in the profile chart.
-enum TraceType { ppo2, setpoint, deco, cells, tanks, gasChanges, density, end, gf99, ceiling }
+enum TraceType {
+  ppo2,
+  setpoint,
+  deco,
+  cells,
+  tanks,
+  gasChanges,
+  density,
+  end,
+  gf99,
+  ceiling,
+  waterTemp,
+}
 
 const _segmentData = <TraceType, ({String label, Color color})>{
   TraceType.ppo2: (label: 'PPO2', color: Color(0xFFFFCC66)),
@@ -20,6 +32,10 @@ const _segmentData = <TraceType, ({String label, Color color})>{
   TraceType.end: (label: 'END', color: Color(0xFFE3E6EB)),
   TraceType.gf99: (label: 'GF99', color: Color(0xFF9333EA)),
   TraceType.ceiling: (label: 'Ceiling', color: Color(0xFFEAB308)),
+  // Water temperature trace — cyan, evocative of cold water and
+  // visually distinct from the existing depth (blue) and tank
+  // (light-blue) traces.
+  TraceType.waterTemp: (label: 'Temp', color: Color(0xFF4DD0E1)),
 };
 
 /// Connected segmented control of [TraceType] toggles. Ten segments share

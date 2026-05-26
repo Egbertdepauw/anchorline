@@ -43,6 +43,10 @@ const Color _crosshairColor = Color(0x80FFFFFF);
 final Color _gridColor = AppColors.wreck.chartGrid;
 final Color _gasChangeColor = AppColors.wreck.statusInfo;
 final Color _bailoutColor = AppColors.wreck.statusDanger;
+// Water temperature trace — must match the swatch in
+// `trace_segmented_bar.dart` so the dot in the legend agrees with the
+// trace on the chart.
+const Color _waterTempColor = Color(0xFF4DD0E1);
 
 // Tank-trace palette per tank slot. Picked to be distinct from the
 // existing depth/cell/setpoint colours.
@@ -586,6 +590,49 @@ class ProfileChartPainter extends CustomPainter {
         _setpointColor,
         1.0,
       );
+    }
+
+    // ── Water temperature trace ────────────────────────────────────
+    // Auto-scaled to the dive's own temperature range — temperature
+    // shares no y-axis with any other trace, so it's mapped directly
+    // to the chart bounds with a small padding so the line doesn't
+    // hug the top/bottom edge. The crosshair tooltip surfaces exact
+    // values; the trace itself shows the shape (thermoclines, surface
+    // warm-up, etc).
+    if (visibleTraces.contains(TraceType.waterTemp) &&
+        samples.temperatureCelsius.isNotEmpty) {
+      double tMin = double.infinity;
+      double tMax = double.negativeInfinity;
+      for (var i = 0; i < n; i++) {
+        final t = samples.temperatureCelsius[i];
+        if (t < tMin) tMin = t;
+        if (t > tMax) tMax = t;
+      }
+      if (tMin.isFinite && tMax.isFinite) {
+        // Flat / no-signal dives get a 1 °C window centred on the value
+        // so we still render something rather than dividing by zero.
+        if (tMax - tMin < 0.5) {
+          final mid = (tMin + tMax) / 2.0;
+          tMin = mid - 0.5;
+          tMax = mid + 0.5;
+        } else {
+          final pad = (tMax - tMin) * 0.1;
+          tMin -= pad;
+          tMax += pad;
+        }
+        final tRange = tMax - tMin;
+        double yTemp(double c) =>
+            chartBottom - ((c - tMin) / tRange) * chartHeight;
+        _drawSolidTrace(
+          canvas,
+          samples.temperatureCelsius,
+          n,
+          xOf,
+          yTemp,
+          _waterTempColor,
+          1.5,
+        );
+      }
     }
 
     // ── Tank pressure traces ───────────────────────────────────────

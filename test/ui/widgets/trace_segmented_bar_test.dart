@@ -3,10 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  Widget wrap(Widget child) =>
-      MaterialApp(home: Scaffold(body: child));
+  // `NoSplash.splashFactory` skips the ink-ripple animation, which
+  // otherwise tries to load `shaders/ink_sparkle.frag` and trips a
+  // Flutter 3.44 shader-version mismatch in the test harness. None of
+  // these tests verify the ripple itself.
+  Widget wrap(Widget child) => MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: Scaffold(body: child),
+      );
 
-  testWidgets('TraceSegmentedBar renders ten segments with their labels',
+  testWidgets('TraceSegmentedBar renders all segments with their labels',
       (tester) async {
     await tester.pumpWidget(wrap(TraceSegmentedBar(
       visibleTraces: const {TraceType.ppo2, TraceType.deco},
@@ -22,6 +28,21 @@ void main() {
     expect(find.text('END'), findsOneWidget);
     expect(find.text('GF99'), findsOneWidget);
     expect(find.text('Ceiling'), findsOneWidget);
+    // Issue #11: water-temperature trace.
+    expect(find.text('Temp'), findsOneWidget);
+  });
+
+  testWidgets('tapping the Temp segment calls onToggle(waterTemp)',
+      (tester) async {
+    TraceType? toggled;
+    await tester.pumpWidget(wrap(TraceSegmentedBar(
+      visibleTraces: const {},
+      onToggle: (t) => toggled = t,
+    )));
+    // Temp is the last segment and sits off the default 800 px viewport.
+    await tester.scrollUntilVisible(find.text('Temp'), 50);
+    await tester.tap(find.text('Temp'));
+    expect(toggled, TraceType.waterTemp);
   });
 
   testWidgets('tapping an unselected segment calls onToggle with its TraceType',
