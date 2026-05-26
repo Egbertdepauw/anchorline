@@ -7,8 +7,8 @@ void main() {
     test('surface.bg matches spec', () {
       expect(AppColors.wreck.surfaceBg, const Color(0xFF0A1518));
     });
-    test('accent.primary matches sodium-vapor', () {
-      expect(AppColors.wreck.accentPrimary, const Color(0xFFFFCC66));
+    test('accent.primary is Anchorline reel-orange', () {
+      expect(AppColors.wreck.accentPrimary, const Color(0xFFC97B3A));
     });
     test('cell colours are locked', () {
       expect(AppColors.wreck.cell1, const Color(0xFF4ADE80));
