@@ -43,6 +43,10 @@ const Color _crosshairColor = Color(0x80FFFFFF);
 final Color _gridColor = AppColors.wreck.chartGrid;
 final Color _gasChangeColor = AppColors.wreck.statusInfo;
 final Color _bailoutColor = AppColors.wreck.statusDanger;
+// Water temperature trace — must match the swatch in
+// `trace_segmented_bar.dart` so the dot in the legend agrees with the
+// trace on the chart.
+const Color _waterTempColor = Color(0xFF4DD0E1);
 
 // Tank-trace palette per tank slot. Picked to be distinct from the
 // existing depth/cell/setpoint colours.
@@ -588,6 +592,86 @@ class ProfileChartPainter extends CustomPainter {
       );
     }
 
+    // ── Water temperature trace ────────────────────────────────────
+    // Fixed 0–35 °C scale (extended only if the dive itself exceeds
+    // those bounds). Auto-scaling to the per-dive range made a 2 °C
+    // swing fill the entire chart height and dominate the visual
+    // hierarchy; a fixed scale puts the trace in a calmer band that
+    // reflects the actual temperature variation. Min + max are
+    // annotated inline so the diver can read values without summoning
+    // the crosshair scrubber.
+    if (visibleTraces.contains(TraceType.waterTemp) &&
+        samples.temperatureCelsius.isNotEmpty) {
+      double tMin = double.infinity;
+      double tMax = double.negativeInfinity;
+      int iMin = 0;
+      int iMax = 0;
+      for (var i = 0; i < n; i++) {
+        final t = samples.temperatureCelsius[i];
+        if (t < tMin) {
+          tMin = t;
+          iMin = i;
+        }
+        if (t > tMax) {
+          tMax = t;
+          iMax = i;
+        }
+      }
+      if (tMin.isFinite && tMax.isFinite) {
+        final yLo = math.min(0.0, tMin - 1.0);
+        final yHi = math.max(35.0, tMax + 1.0);
+        final tRange = yHi - yLo;
+        double yTemp(double c) =>
+            chartBottom - ((c - yLo) / tRange) * chartHeight;
+        _drawSolidTrace(
+          canvas,
+          samples.temperatureCelsius,
+          n,
+          xOf,
+          yTemp,
+          _waterTempColor,
+          1.5,
+        );
+        // Annotate min + max temps so the chart is readable without
+        // the crosshair. Skip when the dive has effectively no
+        // temperature variation (< 0.5 °C — typically a sensor that
+        // didn't equilibrate); the two labels would just overprint
+        // each other.
+        if ((tMax - tMin) >= 0.5) {
+          final labelStyle = TextStyle(
+            color: _waterTempColor,
+            fontSize: 9,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          );
+          // Max label sits ABOVE the warmest point; min label sits
+          // BELOW the coldest. Clamp to chart bounds so labels that
+          // fall near the top/bottom edges don't get clipped.
+          _drawTempLabel(
+            canvas,
+            '${tMax.toStringAsFixed(0)}°C',
+            xOf(iMax),
+            yTemp(tMax) - 12,
+            labelStyle,
+            chartLeft,
+            chartRight,
+            chartTop,
+            chartBottom,
+          );
+          _drawTempLabel(
+            canvas,
+            '${tMin.toStringAsFixed(0)}°C',
+            xOf(iMin),
+            yTemp(tMin) + 4,
+            labelStyle,
+            chartLeft,
+            chartRight,
+            chartTop,
+            chartBottom,
+          );
+        }
+      }
+    }
+
     // ── Tank pressure traces ───────────────────────────────────────
     if (visibleTraces.contains(TraceType.tanks) &&
         samples.tankPressuresBar.isNotEmpty) {
@@ -976,6 +1060,32 @@ class ProfileChartPainter extends CustomPainter {
       tp.paint(canvas, Offset(chartLeft - tp.width - 3, y - tp.height / 2));
       d += depthStep;
     }
+  }
+
+  /// Paint a single `NN°C` annotation centred horizontally on
+  /// (`x`, `y`), clamped so it never overflows the chart edges. Used
+  /// to mark the min + max temperatures on the watertemp trace.
+  void _drawTempLabel(
+    Canvas canvas,
+    String text,
+    double x,
+    double y,
+    TextStyle style,
+    double chartLeft,
+    double chartRight,
+    double chartTop,
+    double chartBottom,
+  ) {
+    final span = TextSpan(text: text, style: style);
+    final tp = TextPainter(text: span, textDirection: TextDirection.ltr)
+      ..layout();
+    var left = x - tp.width / 2;
+    if (left < chartLeft) left = chartLeft;
+    if (left + tp.width > chartRight) left = chartRight - tp.width;
+    var top = y;
+    if (top < chartTop) top = chartTop;
+    if (top + tp.height > chartBottom) top = chartBottom - tp.height;
+    tp.paint(canvas, Offset(left, top));
   }
 
   void _drawPpo2Labels(

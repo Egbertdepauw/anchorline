@@ -85,6 +85,27 @@ void main() {
     expect(find.byType(ProfileChart), findsOneWidget);
   });
 
+  testWidgets('ProfileChart renders with waterTemp trace visible',
+      (tester) async {
+    // Issue #11: the dive's recorded temperature trace should render
+    // when TraceType.waterTemp is in visibleTraces. Smoke test — we
+    // can't read pixel data from a CustomPainter in widget tests, so
+    // we assert the widget tree builds without throwing and finds the
+    // chart. Auto-scaling math is exercised by drawing a real dive.
+    final samples = _loadSamples();
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 360,
+                height: 250,
+                child: ProfileChart(
+                    samples: samples,
+                    visibleTraces: const {TraceType.waterTemp},
+                    crosshairIndex: null)))));
+    expect(find.byType(ProfileChart), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('ProfileChart renders with speed-coloured graph on',
       (tester) async {
     final samples = _loadSamples();
