@@ -1,0 +1,72 @@
+name: Bug report
+description: Something in Anchorline behaves wrong, crashes, or produces incorrect data
+title: "fix: <short description>"
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: A clear, concrete description of the bug. Include the dive in question if relevant (date, dc serial, mode).
+      placeholder: |
+        e.g. "On dive 712 (Wed 13 May 2026, CCR), SurfGF shows 77% but Subsurface shows 51% for the same dive."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What you expected to happen instead. If comparing against another tool (Subsurface, Shearwater Cloud), say so.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the app
+        2. ...
+        3. Observe X instead of Y
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - iOS (TestFlight)
+        - Android (Play Internal / sideload)
+        - macOS (Mac App Store / TestFlight)
+        - macOS (signed Developer ID DMG)
+        - Windows (Inno Setup .exe)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Settings → bottom of the screen — both the version (e.g. 1.0.0) and the build number (+28).
+      placeholder: 1.0.0+28
+    validations:
+      required: true
+
+  - type: input
+    id: dc-model
+    attributes:
+      label: Dive computer (if relevant)
+      description: Petrel 1 / 2 / 3, Perdix / Perdix AI / Perdix 2, Peregrine / Peregrine TX, NERD 2, or N/A.
+      placeholder: Petrel 3
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Sentry ID / diagnostic output
+      description: |
+        - For BLE/import bugs — share the BLE debug log (Settings → Diagnostics → Share BLE debug log).
+        - For sync bugs — paste the "Force-stamp owner_id" diagnostic dialog output, or a Sentry issue link/ID.
+        - Screenshots welcome.
+      render: text
