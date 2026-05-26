@@ -38,7 +38,12 @@ class SampleStub implements SampleStream {
   }) : setpointBar = setpointBar ?? Float32List(depthMeters.length);
 }
 
-const double _surfaceAtmBar = 1.013;
+/// Sea-level fallback used when callers don't supply the dive's recorded
+/// atmospheric pressure. Real replays should pass [Dive.atmosphericPressureMbar]
+/// through [Zhl16cReplay.run] — even on a sunny sea-level day the actual
+/// number is rarely exactly 1013, and at altitude the difference is large
+/// enough to swing SurfGF noticeably.
+const double _defaultSurfaceAtmBar = 1.013;
 
 class Zhl16cReplay {
   /// [triggerSampleIdx] — if non-null, additionally capture the tissue
@@ -46,12 +51,18 @@ class Zhl16cReplay {
   /// "what if we'd had to bail out here?" worst-case tissue load.
   /// Multi-level dives have peak tissue loading near the END of the
   /// bottom phase, not at the deepest moment.
+  ///
+  /// [surfacePressureBar] — the surface atmospheric pressure recorded by
+  /// the dive computer. Used both to convert sample depth → ambient and
+  /// to evaluate the M-value at the surface for SurfGF. Defaults to
+  /// 1.013 so existing callers + tests don't need to thread it through.
   DecoReplayResult run({
     required SampleStream samples,
     required List<DiveGasMix> gasMixes,
     required int gfLow,
     required int gfHigh,
     int? triggerSampleIdx,
+    double surfacePressureBar = _defaultSurfaceAtmBar,
   }) {
     final n = samples.depthMeters.length;
     final gf99 = Float32List(n);
@@ -62,7 +73,8 @@ class Zhl16cReplay {
       growable: false,
     );
 
-    final pN2 = List<double>.generate(16, (_) => surfaceEquilibriumN2Bar);
+    final initialPn2 = surfaceEquilibriumN2BarAt(surfacePressureBar);
+    final pN2 = List<double>.generate(16, (_) => initialPn2);
     final pHe = List<double>.filled(16, 0.0);
 
     // Use integer truncation matching how the Schreiner call works —
@@ -79,7 +91,7 @@ class Zhl16cReplay {
 
     for (var i = 0; i < n; i++) {
       final depth = samples.depthMeters[i];
-      final ambientBar = _surfaceAtmBar + depth / 10.0;
+      final ambientBar = surfacePressureBar + depth / 10.0;
 
       final mix =
           gasMixes[samples.gasMixIndex[i].clamp(0, gasMixes.length - 1)];
@@ -117,9 +129,9 @@ class Zhl16cReplay {
         // GF99 (Subsurface definition): what GF would you hit if you surfaced
         // right now? Evaluated against the surface M-value, not depth M-value.
         // This is always meaningful — it rises as tissues load up.
-        final mSurface = a + _surfaceAtmBar / b;
-        final allowedSurface = mSurface - _surfaceAtmBar;
-        final supersatSurface = totalLoad - _surfaceAtmBar;
+        final mSurface = a + surfacePressureBar / b;
+        final allowedSurface = mSurface - surfacePressureBar;
+        final supersatSurface = totalLoad - surfacePressureBar;
         final gf =
             allowedSurface > 0 ? (supersatSurface / allowedSurface) * 100.0 : 0.0;
         if (gf > worstGf) worstGf = gf;
@@ -128,7 +140,7 @@ class Zhl16cReplay {
         tissueLoads[c][i] = (totalLoad / mValueAtDepth * 100.0);
         // Ceiling: depth at which tissue load hits the M-value line.
         final pCeilingBar = (totalLoad - a) * b;
-        final ceilingForC = (pCeilingBar - _surfaceAtmBar) * 10.0;
+        final ceilingForC = (pCeilingBar - surfacePressureBar) * 10.0;
         if (ceilingForC > worstCeiling) worstCeiling = ceilingForC;
       }
       gf99[i] = worstGf;
@@ -156,9 +168,9 @@ class Zhl16cReplay {
           zhl16cTissues[c].aHe * tissueHeFrac;
       final b = zhl16cTissues[c].bN2 * tissueN2Frac +
           zhl16cTissues[c].bHe * tissueHeFrac;
-      final mSurface = a + _surfaceAtmBar / b;
-      final allowed = mSurface - _surfaceAtmBar;
-      final supersat = totalLoad - _surfaceAtmBar;
+      final mSurface = a + surfacePressureBar / b;
+      final allowed = mSurface - surfacePressureBar;
+      final supersat = totalLoad - surfacePressureBar;
       final gf = allowed > 0 ? (supersat / allowed) * 100.0 : 0.0;
       if (gf > surfaceGf) surfaceGf = gf;
     }

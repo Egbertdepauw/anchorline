@@ -14,9 +14,20 @@ import '../../data/models/dive.dart' show DiveGasMix;
 
 const double waterVapourPressureBar = 0.0627;
 
-/// N2 partial pressure in the lungs at surface equilibrium on air.
-/// Used as the starting tissue load before a replay walks the samples.
+/// N2 partial pressure in the lungs at surface equilibrium on air, at the
+/// canonical 1.013-bar sea-level surface pressure. Kept as a default for
+/// engines + tests that don't carry the dive's actual atmospheric pressure;
+/// production replays should call [surfaceEquilibriumN2BarAt] with the
+/// value the dive computer recorded.
 const double surfaceEquilibriumN2Bar = (1.013 - waterVapourPressureBar) * 0.79;
+
+/// Pre-dive tissue N2 saturation at an arbitrary surface pressure.
+/// Use this when replaying a dive logged at altitude or on a day whose
+/// barometric pressure deviates from 1.013 — the Petrel records this on
+/// every dive and using it instead of the constant tightens the resulting
+/// SurfGF / GF99 values against what Subsurface computes.
+double surfaceEquilibriumN2BarAt(double surfacePressureBar) =>
+    (surfacePressureBar - waterVapourPressureBar) * 0.79;
 
 /// Returns (paN2, paHe) — the inert-gas partial pressures the diver is
 /// actually inhaling at this sample.

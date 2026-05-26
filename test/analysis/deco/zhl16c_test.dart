@@ -138,6 +138,49 @@ void main() {
       expect(result.finalN2Bar.first, greaterThan(surfaceEquilibriumN2Bar));
     });
 
+    test(
+        'surfacePressureBar parameter shifts SurfGF — feeding the dive '
+        "computer's recorded barometric pressure (instead of the 1.013 "
+        'default) is what closes the gap with Subsurface', () {
+      // Identical samples; only the surface-pressure parameter changes.
+      // The same tissue load is being evaluated against a different
+      // M-value at surface, so SurfGF and the per-sample GF99 must differ.
+      final samples = _flat(30, 30 * 60, 10000);
+      const gas = [
+        DiveGasMix(oxygenPercent: 21, heliumPercent: 0, isDiluent: true)
+      ];
+
+      final defaultRun = Zhl16cReplay().run(
+        samples: samples,
+        gasMixes: gas,
+        gfLow: 30,
+        gfHigh: 85,
+      );
+      final highPressureRun = Zhl16cReplay().run(
+        samples: samples,
+        gasMixes: gas,
+        gfLow: 30,
+        gfHigh: 85,
+        surfacePressureBar: 1.030,
+      );
+
+      // Higher surface pressure ⇒ less supersaturation at surface for the
+      // same tissue load ⇒ lower SurfGF. The direction matters: the bug
+      // we're fixing has us over-reporting SurfGF because we assume a
+      // lower surface pressure than the diver actually surfaced into.
+      expect(
+        highPressureRun.surfaceGfFinal,
+        lessThan(defaultRun.surfaceGfFinal),
+        reason: 'a higher recorded surface pressure must produce a '
+            'lower SurfGF for the same dive profile',
+      );
+      // Same direction on the running GF99 trace (last sample).
+      expect(
+        highPressureRun.gf99Series.last,
+        lessThan(defaultRun.gf99Series.last),
+      );
+    });
+
     test('algorithm field on result is zhl16c', () {
       final samples = _flat(20, 60, 1000);
       final result = Zhl16cReplay().run(

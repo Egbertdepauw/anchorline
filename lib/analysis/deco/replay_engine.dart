@@ -24,9 +24,10 @@ class DecoReplayEngine {
     int? gfLow,
     int? gfHigh,
     int? triggerSampleIdx,
+    double surfacePressureBar = 1.013,
   }) {
     final key = _CacheKey(diveId, algorithm, vpmbConservatism, gfLow, gfHigh,
-        triggerSampleIdx);
+        triggerSampleIdx, surfacePressureBar);
     final cached = _cache.remove(key);
     if (cached != null) {
       _cache[key] = cached; // re-insert at end (LRU)
@@ -39,12 +40,14 @@ class DecoReplayEngine {
           gfLow: gfLow ?? 30,
           gfHigh: gfHigh ?? 85,
           triggerSampleIdx: triggerSampleIdx,
+          surfacePressureBar: surfacePressureBar,
         ),
       DecoAlgorithm.vpmb => VpmbReplay().run(
           samples: samples,
           gasMixes: gasMixes,
           conservatism: vpmbConservatism ?? 2,
           triggerSampleIdx: triggerSampleIdx,
+          surfacePressureBar: surfacePressureBar,
         ),
     };
     if (_cache.length >= _maxCacheEntries) {
@@ -65,6 +68,7 @@ class _CacheKey {
   final int? gfLow;
   final int? gfHigh;
   final int? triggerSampleIdx;
+  final double surfacePressureBar;
 
   const _CacheKey(
     this.diveId,
@@ -73,6 +77,7 @@ class _CacheKey {
     this.gfLow,
     this.gfHigh,
     this.triggerSampleIdx,
+    this.surfacePressureBar,
   );
 
   @override
@@ -83,9 +88,10 @@ class _CacheKey {
       other.vpmbConservatism == vpmbConservatism &&
       other.gfLow == gfLow &&
       other.gfHigh == gfHigh &&
-      other.triggerSampleIdx == triggerSampleIdx;
+      other.triggerSampleIdx == triggerSampleIdx &&
+      other.surfacePressureBar == surfacePressureBar;
 
   @override
-  int get hashCode => Object.hash(
-      diveId, algorithm, vpmbConservatism, gfLow, gfHigh, triggerSampleIdx);
+  int get hashCode => Object.hash(diveId, algorithm, vpmbConservatism, gfLow,
+      gfHigh, triggerSampleIdx, surfacePressureBar);
 }

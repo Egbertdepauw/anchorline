@@ -21,16 +21,25 @@ import 'tissue_model.dart';
 import 'vpmb_constants.dart';
 import 'zhl16c.dart' show SampleStream;
 
-const double _surfaceAtmBar = 1.013;
+/// Sea-level fallback. Production replays should pass the dive's recorded
+/// atmospheric pressure via [VpmbReplay.run]'s `surfacePressureBar` so the
+/// SurfGF / GF99 numbers track Subsurface's at altitude / on weather days
+/// where the actual pressure deviates from 1.013.
+const double _defaultSurfaceAtmBar = 1.013;
 
 class VpmbReplay {
   /// [triggerSampleIdx] — same semantics as [Zhl16cReplay.run]: when
   /// non-null, capture tissue state at that sample for bailout planning.
+  ///
+  /// [surfacePressureBar] — defaults to 1.013 so existing tests + callers
+  /// stay deterministic; production callers should pass the dive's
+  /// `atmosphericPressureMbar / 1000.0`.
   DecoReplayResult run({
     required SampleStream samples,
     required List<DiveGasMix> gasMixes,
     required int conservatism,
     int? triggerSampleIdx,
+    double surfacePressureBar = _defaultSurfaceAtmBar,
   }) {
     final n = samples.depthMeters.length;
     final gf99 = Float32List(n);
@@ -41,7 +50,8 @@ class VpmbReplay {
       growable: false,
     );
 
-    final pN2 = List<double>.generate(16, (_) => surfaceEquilibriumN2Bar);
+    final initialPn2 = surfaceEquilibriumN2BarAt(surfacePressureBar);
+    final pN2 = List<double>.generate(16, (_) => initialPn2);
     final pHe = List<double>.filled(16, 0.0);
 
     final intervalSec = samples.sampleIntervalMs ~/ 1000;
@@ -56,7 +66,7 @@ class VpmbReplay {
 
     for (var i = 0; i < n; i++) {
       final depth = samples.depthMeters[i];
-      final ambientBar = _surfaceAtmBar + depth / 10.0;
+      final ambientBar = surfacePressureBar + depth / 10.0;
       final mix =
           gasMixes[samples.gasMixIndex[i].clamp(0, gasMixes.length - 1)];
       final (paN2, paHe) = inertPartialPressures(
@@ -94,9 +104,9 @@ class VpmbReplay {
         // VPM-B-style allowed gradient: scale the Bühlmann surface
         // gradient by allowedFactor. At level 0 this equals the full
         // Bühlmann limit; at level 4 it is halved (more conservative).
-        final mSurface = a + _surfaceAtmBar / b;
-        final allowedSurface = (mSurface - _surfaceAtmBar) * allowedFactor;
-        final supersatSurface = totalLoad - _surfaceAtmBar;
+        final mSurface = a + surfacePressureBar / b;
+        final allowedSurface = (mSurface - surfacePressureBar) * allowedFactor;
+        final supersatSurface = totalLoad - surfacePressureBar;
         final gf = allowedSurface > 0
             ? (supersatSurface / allowedSurface) * 100.0
             : 0.0;
@@ -113,7 +123,7 @@ class VpmbReplay {
         final pCeilingBar = allowedFactor > 0
             ? (totalLoad - a) * b / allowedFactor
             : ambientBar;
-        final ceilingForC = (pCeilingBar - _surfaceAtmBar) * 10.0;
+        final ceilingForC = (pCeilingBar - surfacePressureBar) * 10.0;
         if (ceilingForC > worstCeiling) worstCeiling = ceilingForC;
       }
       gf99[i] = worstGfSurface;

@@ -128,6 +128,19 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   late final bool _ownsAnnotations;
   final _decoEngine = DecoReplayEngine();
 
+  /// The surface atmospheric pressure (in bar) the dive computer recorded
+  /// for this dive. Feeds every replay-engine call so SurfGF / GF99 match
+  /// what Subsurface computes for the same data — without this the engine
+  /// falls back to a hard-coded 1.013 bar and the resulting GF inflates
+  /// by a few points on weather days, more at altitude. If the column is
+  /// missing or implausibly low (legacy data, parser miss) we revert to
+  /// the 1013-mbar default rather than swing the result wildly.
+  double get _surfacePressureBar {
+    final mbar = widget.dive.atmosphericPressureMbar;
+    if (mbar < 500) return 1.013;
+    return mbar / 1000.0;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -506,6 +519,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         .settingsNotifier.vpmbConservatism,
                                     gfLow: widget.dive.gfLow,
                                     gfHigh: widget.dive.gfHigh,
+                                    surfacePressureBar: _surfacePressureBar,
                                   );
                                 }
                                 return CrosshairOverlay(
@@ -847,6 +861,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                         widget.settingsNotifier.vpmbConservatism,
                     gfLow: widget.dive.gfLow,
                     gfHigh: widget.dive.gfHigh,
+                    surfacePressureBar: _surfacePressureBar,
                   ),
                   totalDuration:
                       Duration(seconds: widget.dive.durationSeconds),
@@ -955,6 +970,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
           gfLow: widget.dive.gfLow,
           gfHigh: widget.dive.gfHigh,
           triggerSampleIdx: triggerIdx,
+          surfacePressureBar: _surfacePressureBar,
         );
         // Trigger-sample tissue state if the engine captured it; fall back
         // to peak-depth state for safety.
@@ -1175,6 +1191,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       vpmbConservatism: widget.settingsNotifier.vpmbConservatism,
       gfLow: widget.dive.gfLow,
       gfHigh: widget.dive.gfHigh,
+      surfacePressureBar: _surfacePressureBar,
     );
     final surfaceGf = decoReplay.surfaceGfFinal;
     final maxGf = decoReplay.maxGf99;
