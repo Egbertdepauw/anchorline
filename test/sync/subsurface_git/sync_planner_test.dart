@@ -514,6 +514,146 @@ void main() {
       );
     });
 
+    test(
+        'remote has parseable dives → walk forward instead of trusting '
+        'a wildly out-of-range dcDiveNumber (regression: Petrel reset '
+        'made Dive-1146 sit next to Dive-713)', () {
+      final planner = SyncPlanner();
+      // Subsurface already has dives 700..712 logged.
+      final existing = <({int serial, int startTime}), ExistingRemoteDive>{};
+      for (var n = 700; n <= 712; n++) {
+        existing[(serial: 0xCAFE0000 + n, startTime: 1700000000 + n)] =
+            ExistingRemoteDive(
+          folderSegments: ['2026', '04', '$n-Mon-00=00=00'],
+          diveNumber: n,
+          serial: 0xCAFE0000 + n,
+          startTime: 1700000000 + n,
+          diveLines: parseSubsurfaceFile(
+            'duration 30:00 min\n',
+            kind: SubsurfaceFileKind.dive,
+          ).lines,
+        );
+      }
+      // The new dive's Petrel reports dcDiveNumber=1146 (far ahead of
+      // anything in Subsurface — perhaps the unit was reset, used by a
+      // previous owner, or counts power-on sessions).
+      final bundle = _bundle(diveId: _diveIdA);
+      final bumped = Dive(
+        id: bundle.dive.id,
+        dcSerial: bundle.dive.dcSerial,
+        dcDiveNumber: 1146,
+        startTime: bundle.dive.startTime,
+        endTime: bundle.dive.endTime,
+        utcOffsetMinutes: bundle.dive.utcOffsetMinutes,
+        durationSeconds: bundle.dive.durationSeconds,
+        maxDepthMm: bundle.dive.maxDepthMm,
+        diveMode: bundle.dive.diveMode,
+        decoModel: bundle.dive.decoModel,
+        gfLow: bundle.dive.gfLow,
+        gfHigh: bundle.dive.gfHigh,
+        atmosphericPressureMbar: bundle.dive.atmosphericPressureMbar,
+        waterDensity: bundle.dive.waterDensity,
+        logVersion: bundle.dive.logVersion,
+        dcModel: bundle.dive.dcModel,
+        dcFirmware: bundle.dive.dcFirmware,
+        sampleIntervalMs: bundle.dive.sampleIntervalMs,
+        gasMixesJson: bundle.dive.gasMixesJson,
+        tanksJson: bundle.dive.tanksJson,
+        configuredStackSeconds: bundle.dive.configuredStackSeconds,
+        stackRemainingAtStartSeconds: bundle.dive.stackRemainingAtStartSeconds,
+        stackRemainingAtEndSeconds: bundle.dive.stackRemainingAtEndSeconds,
+        rawBlob: bundle.dive.rawBlob,
+        parserVersion: bundle.dive.parserVersion,
+        importedAt: bundle.dive.importedAt,
+      );
+      final patched = CcrlogDiveBundle(
+        dive: bumped,
+        samples: bundle.samples,
+        annotation: bundle.annotation,
+        gasMixes: bundle.gasMixes,
+        tanks: bundle.tanks,
+        cylindersByMixIndex: bundle.cylindersByMixIndex,
+        userDiveComputers: bundle.userDiveComputers,
+      );
+
+      final plan = planner.plan(
+        ccrlogDives: [patched],
+        existingDivesBySerialAndStart: existing,
+        existingMaxDiveNumber: 712,
+        existingTopLevel: const [],
+        existingSites: const {},
+      );
+
+      expect(
+        plan.filesToWrite.keys.any((k) => k.endsWith('/Dive-713')),
+        isTrue,
+        reason: 'expected Dive-713 (next after the real max), '
+            'got ${plan.filesToWrite.keys.toList()}',
+      );
+      expect(
+        plan.filesToWrite.keys.any((k) => k.endsWith('/Dive-1146')),
+        isFalse,
+        reason: 'must not honour dcDiveNumber=1146 when Subsurface '
+            "already has 13 dives — that creates the user's reported gap",
+      );
+    });
+
+    test(
+        'bundles are assigned numbers in chronological order regardless of '
+        "input order (regression: caller's DESC-by-start_time list "
+        'produced inverted Dive-1146 May-25 vs Dive-1147 May-24)', () {
+      final planner = SyncPlanner();
+      // Subsurface has one existing dive so we hit the walk-forward path.
+      final existing = <({int serial, int startTime}), ExistingRemoteDive>{
+        (serial: 0xCAFE0001, startTime: 1700000001):
+            ExistingRemoteDive(
+          folderSegments: ['2026', '04', '01-Mon-00=00=00'],
+          diveNumber: 712,
+          serial: 0xCAFE0001,
+          startTime: 1700000001,
+          diveLines: parseSubsurfaceFile(
+            'duration 30:00 min\n',
+            kind: SubsurfaceFileKind.dive,
+          ).lines,
+        ),
+      };
+      // Two new dives, 24 hours apart. The OLDER one is passed second,
+      // mirroring DiveDao.getAllDives()'s ORDER BY start_time DESC.
+      const earlierStart = 1700000100;
+      const laterStart = earlierStart + 86400;
+      final newer = _bundle(diveId: _diveIdA, startTime: laterStart);
+      final older = _bundle(diveId: _diveIdB, startTime: earlierStart);
+
+      final plan = planner.plan(
+        ccrlogDives: [newer, older], // intentionally newest-first
+        existingDivesBySerialAndStart: existing,
+        existingMaxDiveNumber: 712,
+        existingTopLevel: const [],
+        existingSites: const {},
+      );
+
+      // Pull out the two new Dive-NNN files. The path prefix is the
+      // UTC-derived folder, which sorts chronologically, so sorting
+      // paths puts the earlier dive first.
+      final divePaths = plan.filesToWrite.keys
+          .where((k) =>
+              k.contains('/Dive-') && !k.endsWith('Divecomputer'))
+          .toList()
+        ..sort();
+      expect(divePaths, hasLength(2));
+      int diveNumberOf(String path) =>
+          int.parse(path.split('/').last.split('-').last);
+      final olderNumber = diveNumberOf(divePaths.first);
+      final newerNumber = diveNumberOf(divePaths.last);
+      expect(olderNumber, 713,
+          reason: 'older dive should get the next-after-max number');
+      expect(newerNumber, 714,
+          reason: 'newer dive should get the one after the older dive');
+      expect(olderNumber, lessThan(newerNumber),
+          reason: 'chronological ordering must be preserved regardless '
+              'of bundle input order');
+    });
+
     test('SyncPlan exposes empty abortedDives by default', () {
       final planner = SyncPlanner();
       final plan = planner.plan(

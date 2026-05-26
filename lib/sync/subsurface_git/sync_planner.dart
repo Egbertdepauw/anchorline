@@ -260,16 +260,22 @@ class SyncPlanner {
     final abortedDives = <AbortedDive>[];
     var skipped = 0;
 
-    // Set of dive numbers already present in the remote — used so we can
-    // prefer the dive computer's own `dcDiveNumber` for new dives (= the
-    // user's "real" dive count), only falling back to max+1 when that
-    // number is already in use. Without this preference, an outlier or
-    // orphaned Dive-NNN file in the remote (e.g. Dive-1153 from a
-    // previous corrupted sync) would force every subsequent new dive to
-    // start from 1154 instead of the dc number the user expects.
+    // Set of dive numbers already present in the remote. Used both to
+    // detect collisions and to compute the next available slot for new
+    // dives.
     final remoteDiveNumbers = <int>{
       for (final entry in existingDivesBySerialAndStart.values) entry.diveNumber,
     };
+
+    // Whether the remote had any parseable Dive-NNN at the start of this
+    // plan. Drives the dc-counter preference below: we only honour the
+    // dive computer's own dive number when seeding a fresh Subsurface
+    // repo. Once any live dive exists in Subsurface, we switch to
+    // sequential numbering — the dive computer's counter may be far
+    // ahead of the user's Subsurface logbook (Petrel reset, second-hand
+    // DC, dives logged in another tool first) and continuing in lockstep
+    // produces giant gaps like Dive-1146 sitting next to Dive-713.
+    final remoteHadDives = remoteDiveNumbers.isNotEmpty;
 
     // Walk forward from the highest *parseable* Dive-NNN, not from
     // `existingMaxDiveNumber` (which counts ALL Dive-NNN filenames,
@@ -284,6 +290,14 @@ class SyncPlanner {
     for (final n in remoteDiveNumbers) {
       if (n > nextDiveNumber) nextDiveNumber = n;
     }
+
+    // Process bundles oldest-first so sequential allocations land in
+    // chronological order in Subsurface. Without this, callers passing
+    // newest-first lists (DiveDao.getAllDives is DESC by start_time)
+    // would assign higher dive numbers to earlier dates — the user-
+    // visible inversion that prompted this sort.
+    final sortedDives = [...ccrlogDives]
+      ..sort((a, b) => a.dive.startTime.compareTo(b.dive.startTime));
 
     // Build coords → existing hexId map from Subsurface's Site files.
     // Subsurface's UUIDs are random-at-creation; CCRLog's _siteIdFor is
@@ -303,7 +317,7 @@ class SyncPlanner {
     // assume that — gather seen ones and dedup by serial.
     final dcsBySerial = <int, DiveComputer>{};
 
-    for (final bundle in ccrlogDives) {
+    for (final bundle in sortedDives) {
       final dive = bundle.dive;
       final key = (serial: dive.dcSerial, startTime: dive.startTime);
       final existing = existingDivesBySerialAndStart[key];
@@ -392,12 +406,18 @@ class SyncPlanner {
         }
       } else {
         // ── New dive: full Dive-NNN + Divecomputer write
-        // Prefer the dive computer's own number when it's not already
-        // taken in the remote. That keeps Subsurface's numbering in
-        // lockstep with the user's "real" dive count even when an
-        // orphan / outlier Dive-NNN bumped existingMaxDiveNumber way
-        // beyond the live dive count.
-        if (dive.dcDiveNumber > 0 &&
+        //
+        // When the remote starts empty (first sync into a fresh
+        // Subsurface repo), prefer the dive computer's own number —
+        // that lets the user's lifetime Petrel count survive the
+        // initial seed. Once any parseable dive exists in the remote,
+        // switch to walk-forward: continuing to honour dcDiveNumber
+        // creates unbounded gaps when the DC counter is far ahead of
+        // the Subsurface logbook (Petrel reset, second-hand unit,
+        // dives previously logged in another tool). That's what
+        // produced the Dive-1146/1147 vs Dive-713 inversion bug.
+        if (!remoteHadDives &&
+            dive.dcDiveNumber > 0 &&
             !remoteDiveNumbers.contains(dive.dcDiveNumber)) {
           diveNumber = dive.dcDiveNumber;
           remoteDiveNumbers.add(diveNumber);
