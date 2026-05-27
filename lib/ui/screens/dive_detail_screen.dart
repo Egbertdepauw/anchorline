@@ -196,6 +196,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   /// parent Scrollable does — otherwise the page scrolls instead of the
   /// chart zooming.
   void _onPointerSignal(PointerSignalEvent e) {
+    debugPrint('POINTER_SIGNAL type=${e.runtimeType}');
     if (e is! PointerScrollEvent) return;
     final dy = e.scrollDelta.dy;
     final dx = e.scrollDelta.dx;
