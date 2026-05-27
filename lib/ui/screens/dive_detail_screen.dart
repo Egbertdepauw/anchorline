@@ -141,6 +141,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   double _viewEndAtScaleBegin = 1.0;
   Offset _focalAtScaleBegin = Offset.zero;
   int _scalePointers = 0;
+  DateTime? _lastPointerDownTime;
 
   void _onScaleStart(ScaleStartDetails d) {
     _scalePointers = d.pointerCount;
@@ -155,13 +156,11 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       final initialSpan = _viewEndAtScaleBegin - _viewStartAtScaleBegin;
       final newSpan = (initialSpan / d.scale).clamp(0.02, 1.0);
       final box = context.size;
-      final chartWidth = (box?.width ?? 300) - 84; // _leftPad + _rightPad
+      final chartWidth = (box?.width ?? 300) - 84;
 
-      // The dive fraction under the initial focal point…
       final initialFocusFrac = _viewStartAtScaleBegin +
           ((_focalAtScaleBegin.dx - 40) / chartWidth).clamp(0.0, 1.0) *
               initialSpan;
-      // …should stay under the current focal point after zoom + pan.
       final currentFocusInView =
           ((d.localFocalPoint.dx - 40) / chartWidth).clamp(0.0, 1.0);
 
@@ -172,11 +171,23 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     });
   }
 
-  void _onDoubleTap() {
-    setState(() {
-      _viewStart = 0.0;
-      _viewEnd = 1.0;
-    });
+  /// Double-tap detection via raw pointer-down timestamps. Can't use
+  /// GestureDetector.onDoubleTap alongside onScaleStart — the
+  /// ScaleGestureRecognizer claims the pointer before the
+  /// DoubleTapGestureRecognizer can detect two taps.
+  void _onPointerDown(PointerDownEvent e) {
+    final now = DateTime.now();
+    if (_lastPointerDownTime != null &&
+        now.difference(_lastPointerDownTime!) <
+            const Duration(milliseconds: 300)) {
+      setState(() {
+        _viewStart = 0.0;
+        _viewEnd = 1.0;
+      });
+      _lastPointerDownTime = null;
+    } else {
+      _lastPointerDownTime = now;
+    }
   }
 
   /// macOS trackpad / mouse-wheel zoom + pan. Two-finger gestures on
@@ -186,28 +197,39 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   /// chart zooming.
   void _onPointerSignal(PointerSignalEvent e) {
     if (e is! PointerScrollEvent) return;
+    final isVertical =
+        e.scrollDelta.dy.abs() > e.scrollDelta.dx.abs();
+    final isZoomed = (_viewEnd - _viewStart) < 0.99;
+
+    // Only claim the event when we'll actually act on it:
+    // - Vertical scroll → always (zoom in/out)
+    // - Horizontal scroll → only when zoomed (pan). Otherwise let the
+    //   parent TabBarView handle it for tab switching.
+    if (!isVertical && !isZoomed) return;
+
     GestureBinding.instance.pointerSignalResolver.register(e, (event) {
       final scroll = event as PointerScrollEvent;
       final box = context.size;
       final chartWidth = (box?.width ?? 300) - 84;
-      final cursorFrac = _viewStart +
-          ((scroll.localPosition.dx - 40) / chartWidth).clamp(0.0, 1.0) *
-              (_viewEnd - _viewStart);
 
       setState(() {
-        if (scroll.scrollDelta.dy.abs() > scroll.scrollDelta.dx.abs()) {
+        if (isVertical) {
+          final cursorFrac = _viewStart +
+              ((scroll.localPosition.dx - 40) / chartWidth)
+                      .clamp(0.0, 1.0) *
+                  (_viewEnd - _viewStart);
           final zoomFactor = scroll.scrollDelta.dy > 0 ? 1.1 : 0.9;
-          final span = (_viewEnd - _viewStart);
+          final span = _viewEnd - _viewStart;
           final newSpan = (span * zoomFactor).clamp(0.02, 1.0);
           final cursorInView =
-              ((scroll.localPosition.dx - 40) / chartWidth).clamp(0.0, 1.0);
+              ((scroll.localPosition.dx - 40) / chartWidth)
+                  .clamp(0.0, 1.0);
           var start = cursorFrac - cursorInView * newSpan;
           start = start.clamp(0.0, 1.0 - newSpan);
           _viewStart = start;
           _viewEnd = start + newSpan;
         } else {
           final span = _viewEnd - _viewStart;
-          if (span >= 1.0) return;
           final panFrac = (scroll.scrollDelta.dx / chartWidth) * span;
           var start = _viewStart + panFrac;
           start = start.clamp(0.0, 1.0 - span);
@@ -614,10 +636,10 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                 }
                                 return Listener(
                                   onPointerSignal: _onPointerSignal,
+                                  onPointerDown: _onPointerDown,
                                   child: GestureDetector(
                                   onScaleStart: _onScaleStart,
                                   onScaleUpdate: _onScaleUpdate,
-                                  onDoubleTap: _onDoubleTap,
                                   child: CrosshairOverlay(
                                   sampleCount: samples.sampleCount,
                                   chartLeftPad: 40,
