@@ -137,11 +137,44 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   // pass through to the crosshair's long-press handler.
   double _viewStart = 0.0;
   double _viewEnd = 1.0;
+  double _viewStartAtScaleBegin = 0.0;
+  double _viewEndAtScaleBegin = 1.0;
+  Offset _focalAtScaleBegin = Offset.zero;
+  int _scalePointers = 0;
   DateTime? _lastSingleTapTime;
   final _activePointers = <int>{};
 
-  /// Track active pointers so we can distinguish single-finger taps
-  /// (double-tap → reset) from multi-finger gestures (pinch → zoom).
+  void _onScaleStart(ScaleStartDetails d) {
+    _scalePointers = d.pointerCount;
+    _viewStartAtScaleBegin = _viewStart;
+    _viewEndAtScaleBegin = _viewEnd;
+    _focalAtScaleBegin = d.localFocalPoint;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails d) {
+    if (_scalePointers < 2) return;
+    setState(() {
+      final initialSpan = _viewEndAtScaleBegin - _viewStartAtScaleBegin;
+      final newSpan = (initialSpan / d.scale).clamp(0.02, 1.0);
+      final box = context.size;
+      final chartWidth = (box?.width ?? 300) - 84;
+
+      final initialFocusFrac = _viewStartAtScaleBegin +
+          ((_focalAtScaleBegin.dx - 40) / chartWidth).clamp(0.0, 1.0) *
+              initialSpan;
+      final currentFocusInView =
+          ((d.localFocalPoint.dx - 40) / chartWidth).clamp(0.0, 1.0);
+
+      var start = initialFocusFrac - currentFocusInView * newSpan;
+      start = start.clamp(0.0, 1.0 - newSpan);
+      _viewStart = start;
+      _viewEnd = start + newSpan;
+    });
+  }
+
+  /// Single-finger double-tap resets zoom. Multi-finger contacts
+  /// (pinch, two-finger pan) clear the timer so they don't false-
+  /// trigger a reset.
   void _onPointerDown(PointerDownEvent e) {
     _activePointers.add(e.pointer);
     if (_activePointers.length == 1) {
@@ -162,13 +195,11 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     }
   }
 
-  void _onPointerUp(PointerUpEvent e) {
-    _activePointers.remove(e.pointer);
-  }
+  void _onPointerUp(PointerUpEvent e) =>
+      _activePointers.remove(e.pointer);
 
-  void _onPointerCancel(PointerCancelEvent e) {
-    _activePointers.remove(e.pointer);
-  }
+  void _onPointerCancel(PointerCancelEvent e) =>
+      _activePointers.remove(e.pointer);
 
   /// macOS trackpad / mouse-wheel zoom + pan. Two-finger gestures on
   /// macOS produce PointerScrollEvent, not scale gestures. We register
@@ -623,6 +654,9 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                   onPointerDown: _onPointerDown,
                                   onPointerUp: _onPointerUp,
                                   onPointerCancel: _onPointerCancel,
+                                  child: GestureDetector(
+                                  onScaleStart: _onScaleStart,
+                                  onScaleUpdate: _onScaleUpdate,
                                   child: CrosshairOverlay(
                                   sampleCount: samples.sampleCount,
                                   chartLeftPad: 40,
@@ -714,6 +748,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         gasMixes: _decodeGasMixes(),
                                       ),
                                   ]),
+                                ),
                                 ),
                                 );
                               }),
