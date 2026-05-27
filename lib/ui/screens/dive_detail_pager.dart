@@ -16,6 +16,7 @@
 ///     page's unsaved annotation changes when the user tries to leave.
 library;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
 import '../../data/db/database.dart';
@@ -257,7 +258,9 @@ class _DiveDetailPagerState extends State<DiveDetailPager> {
           // wider-than-tall window which would otherwise hide the
           // chrome permanently. Guard on shortest-side < 600 dp.
           final mq = MediaQuery.of(context);
-          final isPhone = mq.size.shortestSide < 600;
+          final isMobile = defaultTargetPlatform == TargetPlatform.iOS ||
+              defaultTargetPlatform == TargetPlatform.android;
+          final isPhone = isMobile && mq.size.shortestSide < 600;
           final isLandscape =
               isPhone && mq.orientation == Orientation.landscape;
           return Scaffold(

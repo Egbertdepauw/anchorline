@@ -324,7 +324,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // hides the nav permanently. Guard on shortest-side < 600 dp,
     // which is the conventional phone-vs-tablet/desktop boundary.
     final mq = MediaQuery.of(context);
-    final isPhone = mq.size.shortestSide < 600;
+    final isMobile = defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android;
+    final isPhone = isMobile && mq.size.shortestSide < 600;
     final isLandscape =
         isPhone && mq.orientation == Orientation.landscape;
     return Scaffold(

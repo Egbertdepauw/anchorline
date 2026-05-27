@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
+import 'package:flutter/gestures.dart'
+    show GestureBinding, PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -127,6 +129,131 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   late final DiveAnnotationsNotifier _annotationsNotifier;
   late final bool _ownsAnnotations;
   final _decoEngine = DecoReplayEngine();
+
+  // ── Zoom viewport state ──────────────────────────────────────
+  // Viewport as fractions of the total sample count: (0.0, 1.0) = full
+  // dive; (0.3, 0.6) = middle 30%. Two-finger pinch zooms in/out;
+  // two-finger drag pans; double-tap resets. Single-finger gestures
+  // pass through to the crosshair's long-press handler.
+  double _viewStart = 0.0;
+  double _viewEnd = 1.0;
+  double _viewStartAtScaleBegin = 0.0;
+  double _viewEndAtScaleBegin = 1.0;
+  Offset _focalAtScaleBegin = Offset.zero;
+  int _scalePointers = 0;
+  DateTime? _lastSingleTapTime;
+  final _activePointers = <int>{};
+
+  void _onScaleStart(ScaleStartDetails d) {
+    _scalePointers = d.pointerCount;
+    _viewStartAtScaleBegin = _viewStart;
+    _viewEndAtScaleBegin = _viewEnd;
+    _focalAtScaleBegin = d.localFocalPoint;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails d) {
+    if (_scalePointers < 2) return;
+    setState(() {
+      final initialSpan = _viewEndAtScaleBegin - _viewStartAtScaleBegin;
+      final newSpan = (initialSpan / d.scale).clamp(0.02, 1.0);
+      final box = context.size;
+      final chartWidth = (box?.width ?? 300) - 84;
+
+      final initialFocusFrac = _viewStartAtScaleBegin +
+          ((_focalAtScaleBegin.dx - 40) / chartWidth).clamp(0.0, 1.0) *
+              initialSpan;
+      final currentFocusInView =
+          ((d.localFocalPoint.dx - 40) / chartWidth).clamp(0.0, 1.0);
+
+      var start = initialFocusFrac - currentFocusInView * newSpan;
+      start = start.clamp(0.0, 1.0 - newSpan);
+      _viewStart = start;
+      _viewEnd = start + newSpan;
+    });
+  }
+
+  /// Single-finger double-tap resets zoom. Multi-finger contacts
+  /// (pinch, two-finger pan) clear the timer so they don't false-
+  /// trigger a reset.
+  void _onPointerDown(PointerDownEvent e) {
+    _activePointers.add(e.pointer);
+    if (_activePointers.length == 1) {
+      final now = DateTime.now();
+      if (_lastSingleTapTime != null &&
+          now.difference(_lastSingleTapTime!) <
+              const Duration(milliseconds: 300)) {
+        setState(() {
+          _viewStart = 0.0;
+          _viewEnd = 1.0;
+        });
+        _lastSingleTapTime = null;
+      } else {
+        _lastSingleTapTime = now;
+      }
+    } else {
+      _lastSingleTapTime = null;
+    }
+  }
+
+  void _onPointerUp(PointerUpEvent e) =>
+      _activePointers.remove(e.pointer);
+
+  void _onPointerCancel(PointerCancelEvent e) =>
+      _activePointers.remove(e.pointer);
+
+  /// macOS trackpad / mouse-wheel zoom + pan. Two-finger gestures on
+  /// macOS produce PointerScrollEvent, not scale gestures. We register
+  /// with [PointerSignalResolver] so we claim the event BEFORE the
+  /// parent Scrollable does — otherwise the page scrolls instead of the
+  /// chart zooming.
+  void _onPointerSignal(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent) return;
+    final dy = e.scrollDelta.dy;
+    final dx = e.scrollDelta.dx;
+    final isZoomed = (_viewEnd - _viewStart) < 0.99;
+
+    final wantZoom = dy.abs() > 0.5;
+    final wantPan = dx.abs() > 0.5 && isZoomed;
+    if (!wantZoom && !wantPan) return;
+
+    GestureBinding.instance.pointerSignalResolver.register(e, (event) {
+      final scroll = event as PointerScrollEvent;
+      final box = context.size;
+      final chartWidth = (box?.width ?? 300) - 84;
+
+      setState(() {
+        // Zoom from vertical component.
+        if (dy.abs() > 1) {
+          final cursorFrac = _viewStart +
+              ((scroll.localPosition.dx - 40) / chartWidth)
+                      .clamp(0.0, 1.0) *
+                  (_viewEnd - _viewStart);
+          final zoomFactor = dy > 0 ? 1.1 : 0.9;
+          final span = _viewEnd - _viewStart;
+          final newSpan = (span * zoomFactor).clamp(0.02, 1.0);
+          final cursorInView =
+              ((scroll.localPosition.dx - 40) / chartWidth)
+                  .clamp(0.0, 1.0);
+          var start = cursorFrac - cursorInView * newSpan;
+          start = start.clamp(0.0, 1.0 - newSpan);
+          _viewStart = start;
+          _viewEnd = start + newSpan;
+        }
+        // Pan from horizontal component (only when zoomed).
+        // 3× multiplier so the chart tracks the fingers more
+        // responsively — raw dx is in logical pixels which is very
+        // fine-grained on a Retina trackpad.
+        if (dx.abs() > 0.5 && (_viewEnd - _viewStart) < 0.99) {
+          final span = _viewEnd - _viewStart;
+          final panFrac = (dx / chartWidth) * span * 3.0;
+          var start = _viewStart + panFrac;
+          start = start.clamp(0.0, 1.0 - span);
+          _viewStart = start;
+          _viewEnd = start + span;
+        }
+      });
+    });
+  }
 
   /// The surface atmospheric pressure (in bar) the dive computer recorded
   /// for this dive. Feeds every replay-engine call so SurfGF / GF99 match
@@ -522,10 +649,20 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                     surfacePressureBar: _surfacePressureBar,
                                   );
                                 }
-                                return CrosshairOverlay(
+                                return Listener(
+                                  onPointerSignal: _onPointerSignal,
+                                  onPointerDown: _onPointerDown,
+                                  onPointerUp: _onPointerUp,
+                                  onPointerCancel: _onPointerCancel,
+                                  child: GestureDetector(
+                                  onScaleStart: _onScaleStart,
+                                  onScaleUpdate: _onScaleUpdate,
+                                  child: CrosshairOverlay(
                                   sampleCount: samples.sampleCount,
                                   chartLeftPad: 40,
                                   chartRightPad: 44,
+                                  viewStart: _viewStart,
+                                  viewEnd: _viewEnd,
                                   onIndexChanged: _notifier.setCrosshairIndex,
                                   onRelease: _notifier.clearCrosshair,
                                   child: Stack(children: [
@@ -542,22 +679,66 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         useSpeedColoredGraph: useSpeedColored,
                                         endCountsOxygen: widget
                                             .settingsNotifier.endCountsOxygen,
-                                        // Same int-set test as the
-                                        // density/END max-stat path
-                                        // below — see comment there.
                                         isCcr: const {0, 4, 5}
                                             .contains(widget.dive.diveMode),
+                                        viewStart: _viewStart,
+                                        viewEnd: _viewEnd,
                                         decoReplay: decoReplay),
+                                    if ((_viewEnd - _viewStart) < 0.99)
+                                      Positioned(
+                                        top: 4,
+                                        left: 44,
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                            onTap: () => setState(() {
+                                              _viewStart = 0.0;
+                                              _viewEnd = 1.0;
+                                            }),
+                                            child: Container(
+                                              padding: const EdgeInsets
+                                                  .symmetric(
+                                                  horizontal: 8,
+                                                  vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black54,
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                        12),
+                                              ),
+                                              child: const Row(
+                                                mainAxisSize:
+                                                    MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.zoom_out_map,
+                                                      size: 14,
+                                                      color: Colors.white70),
+                                                  SizedBox(width: 4),
+                                                  Text('Reset',
+                                                      style: TextStyle(
+                                                          fontSize: 11,
+                                                          color: Colors
+                                                              .white70)),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     if (_notifier.crosshairIndex != null)
                                       CrosshairTooltip(
                                         samples: _notifier.samples!,
                                         sampleIndex: _notifier.crosshairIndex!,
                                         visibleTraces: visibleTraces,
                                         chartX: 40 +
-                                            (_notifier.crosshairIndex! /
-                                                    (_notifier.samples!
-                                                            .sampleCount -
-                                                        1)) *
+                                            ((_notifier.crosshairIndex! /
+                                                        (_notifier.samples!
+                                                                .sampleCount -
+                                                            1) -
+                                                    _viewStart) /
+                                                (_viewEnd - _viewStart)) *
                                                 (constraints.maxWidth - 84),
                                         chartWidth: constraints.maxWidth,
                                         cellsBySlot: _notifier.activeCells,
@@ -567,6 +748,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         gasMixes: _decodeGasMixes(),
                                       ),
                                   ]),
+                                ),
+                                ),
                                 );
                               }),
                             ),
