@@ -137,6 +137,12 @@ class ProfileChart extends StatelessWidget {
   final Set<TraceType> visibleTraces;
   final int? crosshairIndex;
 
+  /// Viewport range as fractions of the total sample count (0.0–1.0).
+  /// (0.0, 1.0) = full dive; (0.3, 0.6) = middle 30%. Driven by the
+  /// zoom gesture handler in the parent (dive_detail_screen).
+  final double viewStart;
+  final double viewEnd;
+
   /// Per-cell calibration factors (length 3 expected). Used to convert
   /// raw mV to PPO2 (bar) for the cell traces. Falls back to a Petrel
   /// default when null/empty or any factor is non-positive.
@@ -207,6 +213,8 @@ class ProfileChart extends StatelessWidget {
     this.endCountsOxygen = true,
     this.isCcr = false,
     this.decoReplay,
+    this.viewStart = 0.0,
+    this.viewEnd = 1.0,
   });
 
   @override
@@ -263,6 +271,8 @@ class ProfileChart extends StatelessWidget {
           densitySeries: densitySeries,
           endSeries: endSeries,
           decoReplay: decoReplay,
+          viewStart: viewStart,
+          viewEnd: viewEnd,
         ),
         child: const SizedBox.expand(),
       ),
@@ -404,6 +414,10 @@ class ProfileChartPainter extends CustomPainter {
   /// painted on the chart.
   final DecoReplayResult? decoReplay;
 
+  /// Viewport range as fractions of the total sample count (0.0–1.0).
+  final double viewStart;
+  final double viewEnd;
+
   const ProfileChartPainter({
     required this.samples,
     required this.visibleTraces,
@@ -414,6 +428,8 @@ class ProfileChartPainter extends CustomPainter {
     this.densitySeries,
     this.endSeries,
     this.decoReplay,
+    this.viewStart = 0.0,
+    this.viewEnd = 1.0,
   });
 
   // ── shouldRepaint ──────────────────────────────────────────────
@@ -427,7 +443,9 @@ class ProfileChartPainter extends CustomPainter {
         !identical(old.gasMixes, gasMixes) ||
         !identical(old.densitySeries, densitySeries) ||
         !identical(old.endSeries, endSeries) ||
-        !identical(old.decoReplay, decoReplay);
+        !identical(old.decoReplay, decoReplay) ||
+        old.viewStart != viewStart ||
+        old.viewEnd != viewEnd;
   }
 
   static bool _setEquals(Set<TraceType> a, Set<TraceType> b) {
@@ -467,7 +485,14 @@ class ProfileChartPainter extends CustomPainter {
     final depthMax = math.max(10.0, (maxDepth / 5.0).ceil() * 5.0);
 
     // Helpers: convert data coordinates to canvas coordinates.
-    double xOf(int i) => chartLeft + (i / (n - 1)) * chartWidth;
+    // When zoomed (viewStart/viewEnd != 0.0/1.0), only the visible
+    // fraction of the dive maps to chartWidth. Samples outside the
+    // view produce off-screen x values; Canvas.clipRect handles that.
+    final viewSpan = viewEnd - viewStart;
+    double xOf(int i) {
+      final frac = n > 1 ? i / (n - 1) : 0.0;
+      return chartLeft + ((frac - viewStart) / viewSpan) * chartWidth;
+    }
     double yDepth(double d) => chartTop + (d / depthMax) * chartHeight;
     double yPpo2(double p) => chartBottom - (p / _ppo2Max) * chartHeight;
 

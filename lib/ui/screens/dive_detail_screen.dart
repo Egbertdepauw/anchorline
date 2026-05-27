@@ -128,6 +128,43 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   late final bool _ownsAnnotations;
   final _decoEngine = DecoReplayEngine();
 
+  // ── Zoom viewport state ──────────────────────────────────────
+  double _viewStart = 0.0;
+  double _viewEnd = 1.0;
+  double _viewStartAtScaleBegin = 0.0;
+  double _viewEndAtScaleBegin = 1.0;
+  int _scalePointers = 0;
+
+  void _onScaleStart(ScaleStartDetails d) {
+    _scalePointers = d.pointerCount;
+    _viewStartAtScaleBegin = _viewStart;
+    _viewEndAtScaleBegin = _viewEnd;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails d) {
+    if (_scalePointers < 2) return;
+    setState(() {
+      final currentSpan = _viewEndAtScaleBegin - _viewStartAtScaleBegin;
+      final newSpan = (currentSpan / d.scale).clamp(0.02, 1.0);
+      final box = context.size;
+      final focusRatio = box != null && box.width > 0
+          ? (d.localFocalPoint.dx / box.width).clamp(0.0, 1.0)
+          : 0.5;
+      final viewFocus =
+          _viewStartAtScaleBegin + focusRatio * currentSpan;
+      _viewStart =
+          (viewFocus - newSpan * focusRatio).clamp(0.0, 1.0 - newSpan);
+      _viewEnd = _viewStart + newSpan;
+    });
+  }
+
+  void _onDoubleTap() {
+    setState(() {
+      _viewStart = 0.0;
+      _viewEnd = 1.0;
+    });
+  }
+
   /// The surface atmospheric pressure (in bar) the dive computer recorded
   /// for this dive. Feeds every replay-engine call so SurfGF / GF99 match
   /// what Subsurface computes for the same data — without this the engine
@@ -522,10 +559,16 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                     surfacePressureBar: _surfacePressureBar,
                                   );
                                 }
-                                return CrosshairOverlay(
+                                return GestureDetector(
+                                  onScaleStart: _onScaleStart,
+                                  onScaleUpdate: _onScaleUpdate,
+                                  onDoubleTap: _onDoubleTap,
+                                  child: CrosshairOverlay(
                                   sampleCount: samples.sampleCount,
                                   chartLeftPad: 40,
                                   chartRightPad: 44,
+                                  viewStart: _viewStart,
+                                  viewEnd: _viewEnd,
                                   onIndexChanged: _notifier.setCrosshairIndex,
                                   onRelease: _notifier.clearCrosshair,
                                   child: Stack(children: [
@@ -542,11 +585,10 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         useSpeedColoredGraph: useSpeedColored,
                                         endCountsOxygen: widget
                                             .settingsNotifier.endCountsOxygen,
-                                        // Same int-set test as the
-                                        // density/END max-stat path
-                                        // below — see comment there.
                                         isCcr: const {0, 4, 5}
                                             .contains(widget.dive.diveMode),
+                                        viewStart: _viewStart,
+                                        viewEnd: _viewEnd,
                                         decoReplay: decoReplay),
                                     if (_notifier.crosshairIndex != null)
                                       CrosshairTooltip(
@@ -554,10 +596,12 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         sampleIndex: _notifier.crosshairIndex!,
                                         visibleTraces: visibleTraces,
                                         chartX: 40 +
-                                            (_notifier.crosshairIndex! /
-                                                    (_notifier.samples!
-                                                            .sampleCount -
-                                                        1)) *
+                                            ((_notifier.crosshairIndex! /
+                                                        (_notifier.samples!
+                                                                .sampleCount -
+                                                            1) -
+                                                    _viewStart) /
+                                                (_viewEnd - _viewStart)) *
                                                 (constraints.maxWidth - 84),
                                         chartWidth: constraints.maxWidth,
                                         cellsBySlot: _notifier.activeCells,
@@ -567,6 +611,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         gasMixes: _decodeGasMixes(),
                                       ),
                                   ]),
+                                ),
                                 );
                               }),
                             ),
