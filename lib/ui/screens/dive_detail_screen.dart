@@ -129,32 +129,44 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   final _decoEngine = DecoReplayEngine();
 
   // ── Zoom viewport state ──────────────────────────────────────
+  // Viewport as fractions of the total sample count: (0.0, 1.0) = full
+  // dive; (0.3, 0.6) = middle 30%. Two-finger pinch zooms in/out;
+  // two-finger drag pans; double-tap resets. Single-finger gestures
+  // pass through to the crosshair's long-press handler.
   double _viewStart = 0.0;
   double _viewEnd = 1.0;
   double _viewStartAtScaleBegin = 0.0;
   double _viewEndAtScaleBegin = 1.0;
+  Offset _focalAtScaleBegin = Offset.zero;
   int _scalePointers = 0;
 
   void _onScaleStart(ScaleStartDetails d) {
     _scalePointers = d.pointerCount;
     _viewStartAtScaleBegin = _viewStart;
     _viewEndAtScaleBegin = _viewEnd;
+    _focalAtScaleBegin = d.localFocalPoint;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
     if (_scalePointers < 2) return;
     setState(() {
-      final currentSpan = _viewEndAtScaleBegin - _viewStartAtScaleBegin;
-      final newSpan = (currentSpan / d.scale).clamp(0.02, 1.0);
+      final initialSpan = _viewEndAtScaleBegin - _viewStartAtScaleBegin;
+      final newSpan = (initialSpan / d.scale).clamp(0.02, 1.0);
       final box = context.size;
-      final focusRatio = box != null && box.width > 0
-          ? (d.localFocalPoint.dx / box.width).clamp(0.0, 1.0)
-          : 0.5;
-      final viewFocus =
-          _viewStartAtScaleBegin + focusRatio * currentSpan;
-      _viewStart =
-          (viewFocus - newSpan * focusRatio).clamp(0.0, 1.0 - newSpan);
-      _viewEnd = _viewStart + newSpan;
+      final chartWidth = (box?.width ?? 300) - 84; // _leftPad + _rightPad
+
+      // The dive fraction under the initial focal point…
+      final initialFocusFrac = _viewStartAtScaleBegin +
+          ((_focalAtScaleBegin.dx - 40) / chartWidth).clamp(0.0, 1.0) *
+              initialSpan;
+      // …should stay under the current focal point after zoom + pan.
+      final currentFocusInView =
+          ((d.localFocalPoint.dx - 40) / chartWidth).clamp(0.0, 1.0);
+
+      var start = initialFocusFrac - currentFocusInView * newSpan;
+      start = start.clamp(0.0, 1.0 - newSpan);
+      _viewStart = start;
+      _viewEnd = start + newSpan;
     });
   }
 
