@@ -196,21 +196,13 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   /// parent Scrollable does — otherwise the page scrolls instead of the
   /// chart zooming.
   void _onPointerSignal(PointerSignalEvent e) {
-    debugPrint('POINTER_SIGNAL type=${e.runtimeType}');
     if (e is! PointerScrollEvent) return;
     final dy = e.scrollDelta.dy;
     final dx = e.scrollDelta.dx;
     final isZoomed = (_viewEnd - _viewStart) < 0.99;
 
-    // Only claim when we'll act: any vertical component → zoom;
-    // any horizontal component → pan (only when zoomed, otherwise let
-    // the TabBarView handle tab switching). Trackpad scrolls are often
-    // diagonal, so apply BOTH zoom from dy AND pan from dx in the same
-    // event rather than picking one axis.
     final wantZoom = dy.abs() > 0.5;
     final wantPan = dx.abs() > 0.5 && isZoomed;
-    debugPrint('SCROLL dx=$dx dy=$dy zoom=$wantZoom pan=$wantPan '
-        'zoomed=$isZoomed span=${_viewEnd - _viewStart}');
     if (!wantZoom && !wantPan) return;
 
     GestureBinding.instance.pointerSignalResolver.register(e, (event) {
