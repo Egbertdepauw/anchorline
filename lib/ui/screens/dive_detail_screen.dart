@@ -197,15 +197,18 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   /// chart zooming.
   void _onPointerSignal(PointerSignalEvent e) {
     if (e is! PointerScrollEvent) return;
-    final isVertical =
-        e.scrollDelta.dy.abs() > e.scrollDelta.dx.abs();
+    final dy = e.scrollDelta.dy;
+    final dx = e.scrollDelta.dx;
     final isZoomed = (_viewEnd - _viewStart) < 0.99;
 
-    // Only claim the event when we'll actually act on it:
-    // - Vertical scroll → always (zoom in/out)
-    // - Horizontal scroll → only when zoomed (pan). Otherwise let the
-    //   parent TabBarView handle it for tab switching.
-    if (!isVertical && !isZoomed) return;
+    // Only claim when we'll act: any vertical component → zoom;
+    // any horizontal component → pan (only when zoomed, otherwise let
+    // the TabBarView handle tab switching). Trackpad scrolls are often
+    // diagonal, so apply BOTH zoom from dy AND pan from dx in the same
+    // event rather than picking one axis.
+    final wantZoom = dy.abs() > 1;
+    final wantPan = dx.abs() > 1 && isZoomed;
+    if (!wantZoom && !wantPan) return;
 
     GestureBinding.instance.pointerSignalResolver.register(e, (event) {
       final scroll = event as PointerScrollEvent;
@@ -213,12 +216,13 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       final chartWidth = (box?.width ?? 300) - 84;
 
       setState(() {
-        if (isVertical) {
+        // Zoom from vertical component.
+        if (dy.abs() > 1) {
           final cursorFrac = _viewStart +
               ((scroll.localPosition.dx - 40) / chartWidth)
                       .clamp(0.0, 1.0) *
                   (_viewEnd - _viewStart);
-          final zoomFactor = scroll.scrollDelta.dy > 0 ? 1.1 : 0.9;
+          final zoomFactor = dy > 0 ? 1.1 : 0.9;
           final span = _viewEnd - _viewStart;
           final newSpan = (span * zoomFactor).clamp(0.02, 1.0);
           final cursorInView =
@@ -228,9 +232,11 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
           start = start.clamp(0.0, 1.0 - newSpan);
           _viewStart = start;
           _viewEnd = start + newSpan;
-        } else {
+        }
+        // Pan from horizontal component (only when zoomed).
+        if (dx.abs() > 1 && (_viewEnd - _viewStart) < 0.99) {
           final span = _viewEnd - _viewStart;
-          final panFrac = (scroll.scrollDelta.dx / chartWidth) * span;
+          final panFrac = (dx / chartWidth) * span;
           var start = _viewStart + panFrac;
           start = start.clamp(0.0, 1.0 - span);
           _viewStart = start;
@@ -667,6 +673,49 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         viewStart: _viewStart,
                                         viewEnd: _viewEnd,
                                         decoReplay: decoReplay),
+                                    if ((_viewEnd - _viewStart) < 0.99)
+                                      Positioned(
+                                        top: 4,
+                                        left: 44,
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                            onTap: () => setState(() {
+                                              _viewStart = 0.0;
+                                              _viewEnd = 1.0;
+                                            }),
+                                            child: Container(
+                                              padding: const EdgeInsets
+                                                  .symmetric(
+                                                  horizontal: 8,
+                                                  vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black54,
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                        12),
+                                              ),
+                                              child: const Row(
+                                                mainAxisSize:
+                                                    MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.zoom_out_map,
+                                                      size: 14,
+                                                      color: Colors.white70),
+                                                  SizedBox(width: 4),
+                                                  Text('Reset',
+                                                      style: TextStyle(
+                                                          fontSize: 11,
+                                                          color: Colors
+                                                              .white70)),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     if (_notifier.crosshairIndex != null)
                                       CrosshairTooltip(
                                         samples: _notifier.samples!,
