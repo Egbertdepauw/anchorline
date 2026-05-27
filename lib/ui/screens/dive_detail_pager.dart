@@ -28,7 +28,6 @@ import '../../sync/attachments/attachment_uploader.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import '../notifiers/dive_attachments_notifier.dart';
 import '../notifiers/settings_notifier.dart';
-import '../widgets/background_watermark.dart';
 import '../theme/tokens.dart';
 import '../util/format.dart';
 import 'dive_detail_screen.dart';
@@ -252,12 +251,15 @@ class _DiveDetailPagerState extends State<DiveDetailPager> {
       child: DefaultTabController(
         length: 4,
         child: Builder(builder: (context) {
-          // Mirror AppShell's landscape immersion — hide the per-dive
-          // AppBar (title + prev/next/save) and the tab bar so the
-          // profile chart owns the entire landscape viewport. Users
-          // rotate back to portrait to switch tabs or edit annotations.
+          // Mirror AppShell's landscape immersion — phones only. On
+          // tablets / desktop the chrome doesn't crowd the chart, and
+          // desktop windows report Orientation.landscape for any
+          // wider-than-tall window which would otherwise hide the
+          // chrome permanently. Guard on shortest-side < 600 dp.
+          final mq = MediaQuery.of(context);
+          final isPhone = mq.size.shortestSide < 600;
           final isLandscape =
-              MediaQuery.of(context).orientation == Orientation.landscape;
+              isPhone && mq.orientation == Orientation.landscape;
           return Scaffold(
           appBar: isLandscape
               ? null
@@ -275,43 +277,36 @@ class _DiveDetailPagerState extends State<DiveDetailPager> {
                 bottom: isLandscape,
                 left: isLandscape,
                 right: isLandscape,
-                child: BackgroundWatermark(
-                opacity: widget.settingsNotifier.watermarkOpacity,
                 child: Column(
                   children: [
                     if (!isLandscape) _buildTabBar(context),
                     Expanded(
                       child: PageView.builder(
-                  controller: _controller,
-                  itemCount: widget.dives.length,
-                  onPageChanged: _onPageChanged,
-                  itemBuilder: (context, i) {
-                    final dive = widget.dives[i];
-                    return DiveDetailScreen(
-                      // Keying by dive id forces a clean state for each
-                      // page so we don't accidentally bleed sample/detail
-                      // state between dives if PageView ever reuses an
-                      // element.
-                      key: ValueKey(dive.id),
-                      dive: dive,
-                      sequenceNumber: widget.sequenceByDiveId[dive.id],
-                      dao: widget.diveDao,
-                      annotationsDao: widget.annotationsDao,
-                      equipmentDao: widget.equipmentDao,
-                      settingsNotifier: widget.settingsNotifier,
-                      annotationsNotifier: _annotationsFor(dive),
-                      attachmentsNotifier: _attachmentsFor(dive),
-                      attachmentDownloader: widget.attachmentDownloader,
-                      onPrev: i > 0 ? _goPrev : null,
-                      onNext: i < widget.dives.length - 1 ? _goNext : null,
-                      wrappedInPager: true,
-                    );
-                  },
-                ),
+                        controller: _controller,
+                        itemCount: widget.dives.length,
+                        onPageChanged: _onPageChanged,
+                        itemBuilder: (context, i) {
+                          final dive = widget.dives[i];
+                          return DiveDetailScreen(
+                            key: ValueKey(dive.id),
+                            dive: dive,
+                            sequenceNumber: widget.sequenceByDiveId[dive.id],
+                            dao: widget.diveDao,
+                            annotationsDao: widget.annotationsDao,
+                            equipmentDao: widget.equipmentDao,
+                            settingsNotifier: widget.settingsNotifier,
+                            annotationsNotifier: _annotationsFor(dive),
+                            attachmentsNotifier: _attachmentsFor(dive),
+                            attachmentDownloader: widget.attachmentDownloader,
+                            onPrev: i > 0 ? _goPrev : null,
+                            onNext: i < widget.dives.length - 1 ? _goNext : null,
+                            wrappedInPager: true,
+                          );
+                        },
+                      ),
                     ),
                   ],
                 ),
-              ),
               );
             },
           ),
