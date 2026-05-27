@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
+import 'package:flutter/gestures.dart' show PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -174,6 +175,42 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     setState(() {
       _viewStart = 0.0;
       _viewEnd = 1.0;
+    });
+  }
+
+  /// macOS trackpad / mouse-wheel zoom + pan. Two-finger gestures on
+  /// macOS produce PointerScrollEvent, not scale gestures. Vertical
+  /// scroll → zoom centred on the cursor; horizontal scroll → pan.
+  void _onPointerSignal(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent) return;
+    final box = context.size;
+    final chartWidth = (box?.width ?? 300) - 84;
+    final cursorFrac = _viewStart +
+        ((e.localPosition.dx - 40) / chartWidth).clamp(0.0, 1.0) *
+            (_viewEnd - _viewStart);
+
+    setState(() {
+      if (e.scrollDelta.dy.abs() > e.scrollDelta.dx.abs()) {
+        // Vertical scroll → zoom. Scroll-up (negative dy) zooms in.
+        final zoomFactor = e.scrollDelta.dy > 0 ? 1.1 : 0.9;
+        final span = (_viewEnd - _viewStart);
+        final newSpan = (span * zoomFactor).clamp(0.02, 1.0);
+        final cursorInView =
+            ((e.localPosition.dx - 40) / chartWidth).clamp(0.0, 1.0);
+        var start = cursorFrac - cursorInView * newSpan;
+        start = start.clamp(0.0, 1.0 - newSpan);
+        _viewStart = start;
+        _viewEnd = start + newSpan;
+      } else {
+        // Horizontal scroll → pan when zoomed.
+        final span = _viewEnd - _viewStart;
+        if (span >= 1.0) return;
+        final panFrac = (e.scrollDelta.dx / chartWidth) * span;
+        var start = _viewStart + panFrac;
+        start = start.clamp(0.0, 1.0 - span);
+        _viewStart = start;
+        _viewEnd = start + span;
+      }
     });
   }
 
@@ -571,7 +608,9 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                     surfacePressureBar: _surfacePressureBar,
                                   );
                                 }
-                                return GestureDetector(
+                                return Listener(
+                                  onPointerSignal: _onPointerSignal,
+                                  child: GestureDetector(
                                   onScaleStart: _onScaleStart,
                                   onScaleUpdate: _onScaleUpdate,
                                   onDoubleTap: _onDoubleTap,
@@ -623,6 +662,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         gasMixes: _decodeGasMixes(),
                                       ),
                                   ]),
+                                ),
                                 ),
                                 );
                               }),
