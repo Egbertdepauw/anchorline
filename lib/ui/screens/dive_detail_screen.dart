@@ -137,57 +137,37 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   // pass through to the crosshair's long-press handler.
   double _viewStart = 0.0;
   double _viewEnd = 1.0;
-  double _viewStartAtScaleBegin = 0.0;
-  double _viewEndAtScaleBegin = 1.0;
-  Offset _focalAtScaleBegin = Offset.zero;
-  int _scalePointers = 0;
-  DateTime? _lastPointerDownTime;
+  DateTime? _lastSingleTapTime;
+  final _activePointers = <int>{};
 
-  void _onScaleStart(ScaleStartDetails d) {
-    _scalePointers = d.pointerCount;
-    _viewStartAtScaleBegin = _viewStart;
-    _viewEndAtScaleBegin = _viewEnd;
-    _focalAtScaleBegin = d.localFocalPoint;
-  }
-
-  void _onScaleUpdate(ScaleUpdateDetails d) {
-    if (_scalePointers < 2) return;
-    setState(() {
-      final initialSpan = _viewEndAtScaleBegin - _viewStartAtScaleBegin;
-      final newSpan = (initialSpan / d.scale).clamp(0.02, 1.0);
-      final box = context.size;
-      final chartWidth = (box?.width ?? 300) - 84;
-
-      final initialFocusFrac = _viewStartAtScaleBegin +
-          ((_focalAtScaleBegin.dx - 40) / chartWidth).clamp(0.0, 1.0) *
-              initialSpan;
-      final currentFocusInView =
-          ((d.localFocalPoint.dx - 40) / chartWidth).clamp(0.0, 1.0);
-
-      var start = initialFocusFrac - currentFocusInView * newSpan;
-      start = start.clamp(0.0, 1.0 - newSpan);
-      _viewStart = start;
-      _viewEnd = start + newSpan;
-    });
-  }
-
-  /// Double-tap detection via raw pointer-down timestamps. Can't use
-  /// GestureDetector.onDoubleTap alongside onScaleStart — the
-  /// ScaleGestureRecognizer claims the pointer before the
-  /// DoubleTapGestureRecognizer can detect two taps.
+  /// Track active pointers so we can distinguish single-finger taps
+  /// (double-tap → reset) from multi-finger gestures (pinch → zoom).
   void _onPointerDown(PointerDownEvent e) {
-    final now = DateTime.now();
-    if (_lastPointerDownTime != null &&
-        now.difference(_lastPointerDownTime!) <
-            const Duration(milliseconds: 300)) {
-      setState(() {
-        _viewStart = 0.0;
-        _viewEnd = 1.0;
-      });
-      _lastPointerDownTime = null;
+    _activePointers.add(e.pointer);
+    if (_activePointers.length == 1) {
+      final now = DateTime.now();
+      if (_lastSingleTapTime != null &&
+          now.difference(_lastSingleTapTime!) <
+              const Duration(milliseconds: 300)) {
+        setState(() {
+          _viewStart = 0.0;
+          _viewEnd = 1.0;
+        });
+        _lastSingleTapTime = null;
+      } else {
+        _lastSingleTapTime = now;
+      }
     } else {
-      _lastPointerDownTime = now;
+      _lastSingleTapTime = null;
     }
+  }
+
+  void _onPointerUp(PointerUpEvent e) {
+    _activePointers.remove(e.pointer);
+  }
+
+  void _onPointerCancel(PointerCancelEvent e) {
+    _activePointers.remove(e.pointer);
   }
 
   /// macOS trackpad / mouse-wheel zoom + pan. Two-finger gestures on
@@ -641,9 +621,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                 return Listener(
                                   onPointerSignal: _onPointerSignal,
                                   onPointerDown: _onPointerDown,
-                                  child: GestureDetector(
-                                  onScaleStart: _onScaleStart,
-                                  onScaleUpdate: _onScaleUpdate,
+                                  onPointerUp: _onPointerUp,
+                                  onPointerCancel: _onPointerCancel,
                                   child: CrosshairOverlay(
                                   sampleCount: samples.sampleCount,
                                   chartLeftPad: 40,
@@ -735,7 +714,6 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         gasMixes: _decodeGasMixes(),
                                       ),
                                   ]),
-                                ),
                                 ),
                                 );
                               }),
