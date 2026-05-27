@@ -103,6 +103,8 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SectionHeader('Conditions'),
+          _ratingRow('Dive rating', _n.rating, (v) => _n.setRating(v),
+              subtitleLeft: '', subtitleRight: ''),
           _ratingRow('Visibility', _n.visibility, _n.setVisibility,
               subtitleLeft: 'Bad', subtitleRight: 'Good'),
           _ratingRow('Surface waves', _n.wavesize, _n.setWavesize,

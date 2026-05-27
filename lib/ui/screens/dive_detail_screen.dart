@@ -462,8 +462,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                           fontSize: 11)),
                                   StarRating(
                                     value: _annotationsNotifier.rating,
-                                    onChanged: (v) => _annotationsNotifier.setRating(v),
-                                    size: 14,
+                                    readOnly: true,
+                                    size: 12,
                                   ),
                                 ]),
                           ]),

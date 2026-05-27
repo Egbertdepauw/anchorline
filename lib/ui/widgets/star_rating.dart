@@ -2,18 +2,37 @@ import 'package:flutter/material.dart';
 
 class StarRating extends StatelessWidget {
   final int? value; // 1-5 or null
-  final void Function(int? value) onChanged;
+  final void Function(int? value)? onChanged;
   final double size;
+  final bool readOnly;
 
   const StarRating({
     super.key,
     required this.value,
-    required this.onChanged,
+    this.onChanged,
     this.size = 24,
+    this.readOnly = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primary;
+    if (readOnly) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 1; i <= 5; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 0.5),
+              child: Icon(
+                i <= (value ?? 0) ? Icons.star : Icons.star_outline,
+                size: size,
+                color: color.withValues(alpha: i <= (value ?? 0) ? 1.0 : 0.3),
+              ),
+            ),
+        ],
+      );
+    }
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -28,13 +47,13 @@ class StarRating extends StatelessWidget {
             ),
             icon: Icon(
               i <= (value ?? 0) ? Icons.star : Icons.star_outline,
-              color: Theme.of(context).colorScheme.primary,
+              color: color,
             ),
             onPressed: () {
               if (value == i) {
-                onChanged(null);
+                onChanged?.call(null);
               } else {
-                onChanged(i);
+                onChanged?.call(i);
               }
             },
           ),
