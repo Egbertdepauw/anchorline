@@ -315,13 +315,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    // Immersive landscape: hide the global AppBar (wordmark + actions)
-    // and the bottom nav, so any pushed route — most importantly the
-    // dive detail's profile chart — gets the full screen. Users
-    // rotating into landscape are signalling "show me the graph"; the
-    // tab nav and per-tab actions are only useful in portrait.
+    // Immersive landscape — phones only. Hide the global AppBar +
+    // bottom nav so the pushed route's chart takes the full screen.
+    // Tablets and desktop windows are wide enough that the chrome
+    // never crowded the chart in the first place, AND on desktops the
+    // OS reports `Orientation.landscape` for any window where width >
+    // height (which is most of them), so a pure-orientation check
+    // hides the nav permanently. Guard on shortest-side < 600 dp,
+    // which is the conventional phone-vs-tablet/desktop boundary.
+    final mq = MediaQuery.of(context);
+    final isPhone = mq.size.shortestSide < 600;
     final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+        isPhone && mq.orientation == Orientation.landscape;
     return Scaffold(
       appBar: isLandscape ? null : AppBar(
         // Wordmark SVG (anchor + "Anchorline" lockup) instead of a plain
@@ -357,30 +362,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                       currentLat: null,
                       currentLon: null,
                       settingsNotifier: widget.settingsNotifier,
-                    ),
-                  ),
-                );
-              },
-            ),
-          if (_currentIndex == 0)
-            IconButton(
-              tooltip: 'Settings',
-              icon: const Icon(Icons.settings_outlined),
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => SettingsScreen(
-                      notifier: widget.settingsNotifier,
-                      authService: widget.authService,
-                      syncStatusSource: _syncStatusSource,
-                      db: widget.db,
-                      powerSyncDb: widget.powerSyncDb,
-                      cloudDataWiper: widget.cloudDataWiper,
-                      attachmentObjectWiper: _attachmentObjectWiper,
-                      subsurfaceOrchestrator: _subsurfaceOrchestrator,
-                      subsurfaceCredentials: _subsurfaceCredentials,
-                      diveDao: _diveDao,
-                      subsurfaceBootstrapImporter: _subsurfaceBootstrapImporter,
                     ),
                   ),
                 );
