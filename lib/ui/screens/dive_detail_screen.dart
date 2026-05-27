@@ -208,6 +208,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     // event rather than picking one axis.
     final wantZoom = dy.abs() > 0.5;
     final wantPan = dx.abs() > 0.5 && isZoomed;
+    debugPrint('SCROLL dx=$dx dy=$dy zoom=$wantZoom pan=$wantPan '
+        'zoomed=$isZoomed span=${_viewEnd - _viewStart}');
     if (!wantZoom && !wantPan) return;
 
     GestureBinding.instance.pointerSignalResolver.register(e, (event) {
