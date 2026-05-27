@@ -206,8 +206,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     // the TabBarView handle tab switching). Trackpad scrolls are often
     // diagonal, so apply BOTH zoom from dy AND pan from dx in the same
     // event rather than picking one axis.
-    final wantZoom = dy.abs() > 1;
-    final wantPan = dx.abs() > 1 && isZoomed;
+    final wantZoom = dy.abs() > 0.5;
+    final wantPan = dx.abs() > 0.5 && isZoomed;
     if (!wantZoom && !wantPan) return;
 
     GestureBinding.instance.pointerSignalResolver.register(e, (event) {
@@ -234,9 +234,12 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
           _viewEnd = start + newSpan;
         }
         // Pan from horizontal component (only when zoomed).
-        if (dx.abs() > 1 && (_viewEnd - _viewStart) < 0.99) {
+        // 3× multiplier so the chart tracks the fingers more
+        // responsively — raw dx is in logical pixels which is very
+        // fine-grained on a Retina trackpad.
+        if (dx.abs() > 0.5 && (_viewEnd - _viewStart) < 0.99) {
           final span = _viewEnd - _viewStart;
-          final panFrac = (dx / chartWidth) * span;
+          final panFrac = (dx / chartWidth) * span * 3.0;
           var start = _viewStart + panFrac;
           start = start.clamp(0.0, 1.0 - span);
           _viewStart = start;
