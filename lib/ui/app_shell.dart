@@ -42,6 +42,7 @@ import 'notifiers/dive_plan_notifier.dart';
 import 'notifiers/import_notifier.dart';
 import 'notifiers/settings_notifier.dart';
 import 'screens/blend_screen.dart';
+import 'screens/buddies_list_screen.dart';
 import 'screens/dive_list_screen.dart';
 import 'screens/dive_plan_screen.dart';
 import 'screens/equipment/equipment_landing_screen.dart';
@@ -374,6 +375,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     )
                   : const Icon(Icons.cloud_upload_outlined),
               onPressed: _syncing ? null : _syncSubsurface,
+            ),
+          if (_currentIndex == 0)
+            IconButton(
+              tooltip: 'Buddies',
+              icon: const Icon(Icons.people_outline),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => BuddiesListScreen(dao: _diveAnnotationsDao),
+                  ),
+                );
+              },
             ),
           if (_currentIndex == 0)
             IconButton(

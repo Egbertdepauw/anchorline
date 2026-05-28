@@ -22,6 +22,16 @@ import 'package:powersync/powersync.dart' hide SyncStatus;
 import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
 import '../models/annotation.dart';
 
+/// Aggregated stats for one buddy across every dive that names them.
+/// `firstDiveTime`/`lastDiveTime` are Unix-seconds `dives.start_time`
+/// (min/max over the non-deleted dives the buddy appears on).
+typedef BuddyStat = ({
+  String name,
+  int firstDiveTime,
+  int lastDiveTime,
+  int diveCount,
+});
+
 class DiveAnnotationsDao {
   final PowerSyncDatabase _db;
   final SessionSource _session;
@@ -271,6 +281,134 @@ class DiveAnnotationsDao {
       all.addAll(_decodeStringList(r['buddies_json'] as String?));
     }
     return all.toList();
+  }
+
+  // ── Buddies (the "Buddies list" feature) ────────────────────────────────
+  //
+  // Buddies are not a table — they're a JSON array of names per annotation
+  // (`buddies_json`). "The list of buddies" is the distinct set of names
+  // across all live annotations; editing a buddy is a bulk operation across
+  // every dive that names them. Stats join those names against
+  // `dives.start_time` so the UI can show first/last dive + a dive count.
+
+  /// One [BuddyStat] per distinct buddy name, sorted by `diveCount`
+  /// descending then `name` ascending. Only counts non-deleted dives and
+  /// non-deleted annotations; a buddy whose only dive is soft-deleted (or
+  /// who has no matching live dive at all) does not appear. Names are
+  /// trimmed and empty strings ignored. Decode happens in Dart to mirror
+  /// [distinctBuddies].
+  Future<List<BuddyStat>> buddyStats() async {
+    final annRows = await _db.getAll(
+      'SELECT dive_id, buddies_json FROM dive_annotations '
+      'WHERE deleted_at IS NULL AND buddies_json IS NOT NULL',
+    );
+    final diveRows = await _db.getAll(
+      'SELECT id, start_time FROM dives WHERE deleted_at IS NULL',
+    );
+    final startByDive = <String, int>{
+      for (final r in diveRows) r['id'] as String: r['start_time'] as int,
+    };
+
+    // Accumulate per buddy across all dives they appear on (live dives only).
+    final agg = <String, ({int first, int last, int count})>{};
+    for (final r in annRows) {
+      final diveId = r['dive_id'] as String;
+      final start = startByDive[diveId];
+      if (start == null) continue; // dive missing or soft-deleted → skip
+      // Dedupe names within a single dive so a doubled name doesn't
+      // inflate the count.
+      final names = _decodeStringList(r['buddies_json'] as String?)
+          .map((n) => n.trim())
+          .where((n) => n.isNotEmpty)
+          .toSet();
+      for (final name in names) {
+        final prev = agg[name];
+        if (prev == null) {
+          agg[name] = (first: start, last: start, count: 1);
+        } else {
+          agg[name] = (
+            first: start < prev.first ? start : prev.first,
+            last: start > prev.last ? start : prev.last,
+            count: prev.count + 1,
+          );
+        }
+      }
+    }
+
+    final out = agg.entries
+        .map((e) => (
+              name: e.key,
+              firstDiveTime: e.value.first,
+              lastDiveTime: e.value.last,
+              diveCount: e.value.count,
+            ))
+        .toList();
+    out.sort((a, b) {
+      final byCount = b.diveCount.compareTo(a.diveCount);
+      if (byCount != 0) return byCount;
+      return a.name.compareTo(b.name);
+    });
+    return out;
+  }
+
+  /// Renames buddy [from] → [to] across every live annotation that names
+  /// them (case-sensitive exact match after trim). If [to] is already
+  /// present in a dive the result is deduped (preserving order, dropping
+  /// the duplicate) — this is how a diver merges "Jon"/"John". Persists
+  /// via [upsert] so version / updated_at / owner_id / sync_status stay
+  /// correct. Returns the number of annotations changed. No-op when
+  /// [from] == [to] (after trim) or [to] is empty.
+  Future<int> renameBuddy(String from, String to) async {
+    final fromName = from.trim();
+    final toName = to.trim();
+    if (fromName.isEmpty || toName.isEmpty || fromName == toName) return 0;
+
+    final rows = await _db.getAll(
+      'SELECT dive_id FROM dive_annotations '
+      'WHERE deleted_at IS NULL AND buddies_json IS NOT NULL',
+    );
+    var changed = 0;
+    for (final r in rows) {
+      final diveId = r['dive_id'] as String;
+      final existing = await get(diveId);
+      if (existing == null) continue;
+      if (!existing.buddies.contains(fromName)) continue;
+
+      final next = <String>[];
+      for (final b in existing.buddies) {
+        final name = b == fromName ? toName : b;
+        if (next.contains(name)) continue; // dedupe (preserve first wins)
+        next.add(name);
+      }
+      await upsert(existing.copyWith(buddies: next));
+      changed++;
+    }
+    return changed;
+  }
+
+  /// Removes buddy [name] from every live annotation that names them
+  /// (case-sensitive exact match after trim). Persists via [upsert].
+  /// Returns the number of annotations changed.
+  Future<int> deleteBuddy(String name) async {
+    final target = name.trim();
+    if (target.isEmpty) return 0;
+
+    final rows = await _db.getAll(
+      'SELECT dive_id FROM dive_annotations '
+      'WHERE deleted_at IS NULL AND buddies_json IS NOT NULL',
+    );
+    var changed = 0;
+    for (final r in rows) {
+      final diveId = r['dive_id'] as String;
+      final existing = await get(diveId);
+      if (existing == null) continue;
+      if (!existing.buddies.contains(target)) continue;
+
+      final next = existing.buddies.where((b) => b != target).toList();
+      await upsert(existing.copyWith(buddies: next));
+      changed++;
+    }
+    return changed;
   }
 
   Future<List<String>> distinctTags() async {
