@@ -277,8 +277,12 @@ void main() {
       final ml = fm.children.whereType<MarkerLayer>().single;
       expect(ml.markers, hasLength(2));
 
+      // Marker children are now tappable: each Icon is wrapped in a
+      // GestureDetector (opens the stats card on tap), so unwrap one level.
       final accentIcons = ml.markers
           .map((m) => m.child)
+          .whereType<GestureDetector>()
+          .map((g) => g.child)
           .whereType<Icon>()
           .where((i) => i.color == AppColors.wreck.accentPrimary)
           .toList();
@@ -327,6 +331,9 @@ void main() {
 
       await tester.runAsync(() async {
         await tester.pumpWidget(MaterialApp(
+          // NoSplash avoids the macOS `ink_sparkle.frag` shader flake when the
+          // MapLayerToggle's InkWell ripple runs during the tap below.
+          theme: ThemeData(splashFactory: NoSplash.splashFactory),
           home: SitesMapScreen(dao: dao, currentLat: 51.5, currentLon: 4.0, settingsNotifier: SettingsNotifier()),
         ));
         await Future<void>.delayed(const Duration(milliseconds: 200));
