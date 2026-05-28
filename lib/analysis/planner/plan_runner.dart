@@ -49,12 +49,38 @@ PlanResult runPlan({
   // ZHL-16C until the existing vpmb.dart is verified to work outside
   // the replay engine.
 
+  // Defence-in-depth against stale gas indices. The notifier now remaps
+  // segment/bailout indices when a gas is deleted, but a draft saved
+  // BEFORE that fix may still carry an out-of-range gasMixIndex. Clamp
+  // every reference into the current gas list so a corrupt index
+  // degrades to "wrong gas" instead of throwing RangeError and crashing
+  // the whole plan screen. `gases` is guaranteed non-empty here (the
+  // caller skips recompute when it's empty).
+  final maxGasIdx = gases.length - 1;
+  final segmentsSafe = segments
+      .map((s) => s.gasMixIndex <= maxGasIdx && s.gasMixIndex >= 0
+          ? s
+          : DivePlanSegment(
+              depthMeters: s.depthMeters,
+              durationMinutes: s.durationMinutes,
+              gasMixIndex: s.gasMixIndex.clamp(0, maxGasIdx),
+              setpoint: s.setpoint))
+      .toList();
+  final bailoutSafe = bailout
+      .map((b) => b.gasMixIndex <= maxGasIdx && b.gasMixIndex >= 0
+          ? b
+          : DivePlanBailoutBottle(
+              gasMixIndex: b.gasMixIndex.clamp(0, maxGasIdx),
+              waterCapacityL: b.waterCapacityL,
+              fillPressureBar: b.fillPressureBar))
+      .toList();
+
   // Phase 1+2: walk the segments, get trigger tissues + summary stats.
   // Inter-segment ascents (multi-level: deeper → shallower) use the
   // FAST / "Opgang" rate — the diver is transiting, not decompressing.
   final sim = simulatePlan(
     gases: gases,
-    segments: segments,
+    segments: segmentsSafe,
     mode: mode,
     descentRateMpm: descentRateMpm,
     ascentRateMpm: fastMpm,
@@ -173,7 +199,7 @@ PlanResult runPlan({
   // Phase 4: bailout plan (Scenario A — user-supplied tanks).
   final userBailoutTanks = <DiveGasMix>[];
   final userTankVolumesL = <DiveGasMix, double>{};
-  for (final bottle in bailout) {
+  for (final bottle in bailoutSafe) {
     final mix = _toDiveGasMix(gases[bottle.gasMixIndex]);
     userBailoutTanks.add(mix);
     userTankVolumesL[mix] =

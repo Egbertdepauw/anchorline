@@ -175,4 +175,76 @@ void main() {
     expect(dao.saveAsCalls, equals(2));
     expect(dao.updateSavedCalls, equals(0));
   });
+
+  group('removeGas remaps segment + bailout gas indices', () {
+    Future<DivePlanNotifier> seededPlan() async {
+      final settings = SettingsNotifier();
+      await settings.load();
+      final n = DivePlanNotifier(dao: _FakeDao(), settings: settings);
+      await n.load();
+      // 4 gases (indices 0..3).
+      n.addGas(const DivePlanGas(
+          oxygenPercent: 18, heliumPercent: 45, isDiluent: true)); // 0 dil
+      n.addGas(const DivePlanGas(
+          oxygenPercent: 21, heliumPercent: 0, isDiluent: false)); // 1
+      n.addGas(const DivePlanGas(
+          oxygenPercent: 50, heliumPercent: 0, isDiluent: false)); // 2
+      n.addGas(const DivePlanGas(
+          oxygenPercent: 100, heliumPercent: 0, isDiluent: false)); // 3
+      return n;
+    }
+
+    test(
+        'reference above the removed gas shifts down (regression: '
+        'RangeError on recompute after delete)', () async {
+      final n = await seededPlan();
+      // Segment uses gas 3 (the 100% O2). Deleting gas 1 should shift
+      // that reference to 2 — NOT leave it at 3 (which would crash the
+      // recompute with RangeError: Not in inclusive range 0..2: 3).
+      n.addSegment(const DivePlanSegment(
+          depthMeters: 6, durationMinutes: 10, gasMixIndex: 3));
+
+      n.removeGas(1);
+
+      expect(n.gases, hasLength(3));
+      expect(n.segments.single.gasMixIndex, 2,
+          reason: 'gas index above the removed one shifts down by one');
+      // The whole point: a recompute must not throw.
+      await Future.delayed(const Duration(milliseconds: 350));
+    });
+
+    test('reference to the removed gas falls back to gas 0', () async {
+      final n = await seededPlan();
+      n.addSegment(const DivePlanSegment(
+          depthMeters: 21, durationMinutes: 5, gasMixIndex: 2));
+
+      n.removeGas(2); // delete the exact gas the segment used
+
+      expect(n.gases, hasLength(3));
+      expect(n.segments.single.gasMixIndex, 0,
+          reason: 'orphaned reference falls back to the first gas');
+    });
+
+    test('reference below the removed gas is unchanged', () async {
+      final n = await seededPlan();
+      n.addSegment(const DivePlanSegment(
+          depthMeters: 40, durationMinutes: 20, gasMixIndex: 0));
+
+      n.removeGas(2);
+
+      expect(n.segments.single.gasMixIndex, 0,
+          reason: 'index below the removed one is untouched');
+    });
+
+    test('bailout bottle indices are remapped the same way', () async {
+      final n = await seededPlan();
+      n.addBailoutBottle(const DivePlanBailoutBottle(
+          gasMixIndex: 3, waterCapacityL: 11.1, fillPressureBar: 232));
+
+      n.removeGas(1);
+
+      expect(n.bailout.single.gasMixIndex, 2,
+          reason: 'bailout index above the removed gas shifts down');
+    });
+  });
 }
