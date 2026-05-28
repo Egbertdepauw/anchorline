@@ -17,6 +17,7 @@ library;
 
 import 'dart:convert';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:powersync/powersync.dart' hide SyncStatus;
 
 import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
@@ -27,6 +28,19 @@ import '../models/annotation.dart';
 /// (min/max over the non-deleted dives the buddy appears on).
 typedef BuddyStat = ({
   String name,
+  int firstDiveTime,
+  int lastDiveTime,
+  int diveCount,
+});
+
+/// Aggregated stats for one dive site across every dive that names it.
+/// `firstDiveTime`/`lastDiveTime` are Unix-seconds `dives.start_time`
+/// (min/max over the non-deleted dives the site appears on). `lat`/`lon`
+/// are the most-recent non-null coords recorded for the name, or null.
+typedef SiteStat = ({
+  String name,
+  double? lat,
+  double? lon,
   int firstDiveTime,
   int lastDiveTime,
   int diveCount,
@@ -406,6 +420,162 @@ class DiveAnnotationsDao {
 
       final next = existing.buddies.where((b) => b != target).toList();
       await upsert(existing.copyWith(buddies: next));
+      changed++;
+    }
+    return changed;
+  }
+
+  // ── Sites (the "Dive sites list" feature) ───────────────────────────────
+  //
+  // Dive sites, like buddies, are not a table — they live on each annotation
+  // as `site_name` (+ `site_latitude_e5`/`site_longitude_e5`). "The list of
+  // sites" is the distinct set of trimmed non-empty names across all live
+  // annotations; editing a site is a bulk operation across every dive that
+  // names it. Stats join those names against `dives.start_time` so the UI can
+  // show first/last dive + a dive count, plus the latest coords recorded for
+  // that name so the list can show a marker / the map can look it up.
+
+  /// One [SiteStat] per distinct trimmed non-empty `site_name`, sorted by
+  /// `diveCount` descending then `name` ascending. `firstDiveTime`/
+  /// `lastDiveTime` = min/max `dives.start_time` over the live dives carrying
+  /// that name. `lat`/`lon` = the most-recent non-null coords recorded for
+  /// that name (by `updated_at` desc), null if none. Only counts non-deleted
+  /// dives and non-deleted annotations; a site whose only dive is soft-deleted
+  /// does not appear. Decode happens in Dart to mirror [buddyStats].
+  Future<List<SiteStat>> siteStats() async {
+    final annRows = await _db.getAll(
+      'SELECT dive_id, site_name, site_latitude_e5, site_longitude_e5, '
+      'updated_at FROM dive_annotations '
+      'WHERE deleted_at IS NULL AND site_name IS NOT NULL',
+    );
+    final diveRows = await _db.getAll(
+      'SELECT id, start_time FROM dives WHERE deleted_at IS NULL',
+    );
+    final startByDive = <String, int>{
+      for (final r in diveRows) r['id'] as String: r['start_time'] as int,
+    };
+
+    // Accumulate per trimmed name across all live dives carrying it. Track
+    // the most-recently-updated annotation that has coords so the list/map
+    // can show a marker for the name.
+    final agg = <String,
+        ({
+          int first,
+          int last,
+          int count,
+          int? coordUpdatedAt,
+          double? lat,
+          double? lon,
+        })>{};
+    for (final r in annRows) {
+      final diveId = r['dive_id'] as String;
+      final start = startByDive[diveId];
+      if (start == null) continue; // dive missing or soft-deleted → skip
+      final name = (r['site_name'] as String).trim();
+      if (name.isEmpty) continue;
+
+      final latE5 = r['site_latitude_e5'] as int?;
+      final lonE5 = r['site_longitude_e5'] as int?;
+      final hasCoords = latE5 != null || lonE5 != null;
+      final updatedAt = r['updated_at'] as int? ?? 0;
+
+      final prev = agg[name];
+      if (prev == null) {
+        agg[name] = (
+          first: start,
+          last: start,
+          count: 1,
+          coordUpdatedAt: hasCoords ? updatedAt : null,
+          lat: latE5 == null ? null : latE5 / 1e5,
+          lon: lonE5 == null ? null : lonE5 / 1e5,
+        );
+      } else {
+        // Keep the coords from the most-recently-updated annotation that has
+        // them (mirrors getLatestSiteCoords' "ORDER BY updated_at DESC").
+        final takeCoords = hasCoords &&
+            (prev.coordUpdatedAt == null || updatedAt >= prev.coordUpdatedAt!);
+        agg[name] = (
+          first: start < prev.first ? start : prev.first,
+          last: start > prev.last ? start : prev.last,
+          count: prev.count + 1,
+          coordUpdatedAt: takeCoords ? updatedAt : prev.coordUpdatedAt,
+          lat: takeCoords ? (latE5 == null ? null : latE5 / 1e5) : prev.lat,
+          lon: takeCoords ? (lonE5 == null ? null : lonE5 / 1e5) : prev.lon,
+        );
+      }
+    }
+
+    final out = agg.entries
+        .map((e) => (
+              name: e.key,
+              lat: e.value.lat,
+              lon: e.value.lon,
+              firstDiveTime: e.value.first,
+              lastDiveTime: e.value.last,
+              diveCount: e.value.count,
+            ))
+        .toList();
+    out.sort((a, b) {
+      final byCount = b.diveCount.compareTo(a.diveCount);
+      if (byCount != 0) return byCount;
+      return a.name.compareTo(b.name);
+    });
+    return out;
+  }
+
+  /// Renames site [from] → [to] across every live annotation whose
+  /// `site_name` matches [from] (case-sensitive exact match after trim).
+  /// Merging is automatic — two dives that now share a name simply both
+  /// carry it (there's no per-dive list to dedupe, unlike buddies).
+  /// Persists via [upsert] so version / updated_at / owner_id / sync_status
+  /// stay correct. Returns the number of annotations changed. No-op when
+  /// [from] == [to] (after trim) or [to] is empty.
+  Future<int> renameSite(String from, String to) async {
+    final fromName = from.trim();
+    final toName = to.trim();
+    if (fromName.isEmpty || toName.isEmpty || fromName == toName) return 0;
+
+    final rows = await _db.getAll(
+      'SELECT dive_id FROM dive_annotations '
+      'WHERE deleted_at IS NULL AND site_name IS NOT NULL',
+    );
+    var changed = 0;
+    for (final r in rows) {
+      final diveId = r['dive_id'] as String;
+      final existing = await get(diveId);
+      if (existing == null) continue;
+      if (existing.siteName?.trim() != fromName) continue;
+
+      await upsert(existing.copyWith(siteName: Value(toName)));
+      changed++;
+    }
+    return changed;
+  }
+
+  /// Clears site [name] from every live annotation whose `site_name` matches
+  /// it (case-sensitive exact match after trim) — unsetting the name *and*
+  /// the coords so the map marker disappears, without deleting the dives.
+  /// Persists via [upsert]. Returns the number of annotations changed.
+  Future<int> deleteSite(String name) async {
+    final target = name.trim();
+    if (target.isEmpty) return 0;
+
+    final rows = await _db.getAll(
+      'SELECT dive_id FROM dive_annotations '
+      'WHERE deleted_at IS NULL AND site_name IS NOT NULL',
+    );
+    var changed = 0;
+    for (final r in rows) {
+      final diveId = r['dive_id'] as String;
+      final existing = await get(diveId);
+      if (existing == null) continue;
+      if (existing.siteName?.trim() != target) continue;
+
+      await upsert(existing.copyWith(
+        siteName: const Value(null),
+        siteLatitude: const Value(null),
+        siteLongitude: const Value(null),
+      ));
       changed++;
     }
     return changed;
