@@ -1,8 +1,9 @@
 import 'dart:typed_data';
 
-import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
+import 'package:ccrlogger/data/models/annotation.dart' show DiveAnnotation;
 import 'package:ccrlogger/ui/notifiers/dive_annotations_notifier.dart';
 import 'package:ccrlogger/ui/widgets/dive_information_section.dart';
 import 'package:drift/native.dart';
@@ -144,7 +145,120 @@ void main() {
     expect(find.text('SCRUBBER'), findsOneWidget);
     expect(find.text('7:00'), findsOneWidget); // configured
   });
+
+  // Explicitly-recorded temps must render once the annotation loads,
+  // regardless of whether the load resolves before or after first build.
+
+  Future<({DiveAnnotationsNotifier notifier})> setupWithTemps(
+    WidgetTester tester, {
+    required bool loadBeforePump,
+    required DiveInformationSectionPump pump,
+  }) async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    late final DiveAnnotationsNotifier notifier;
+    await tester.runAsync(() async {
+      final psDb = await openPowerSyncForTest();
+      final annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
+      final equipmentDao = EquipmentDao(db, psDb, FakeSessionSource());
+      final now = DateTime.now();
+      await annotationsDao.upsert(DiveAnnotation(
+        diveId: 'dive_x',
+        airTempC: 21.0,
+        waterTempC: 14.0,
+        createdAt: now,
+        updatedAt: now,
+      ));
+      notifier = DiveAnnotationsNotifier(annotationsDao, equipmentDao);
+      if (loadBeforePump) await notifier.load('dive_x');
+    });
+    addTearDown(notifier.dispose);
+    await pump(notifier);
+    return (notifier: notifier);
+  }
+
+  testWidgets('temps hydrate when notifier is loaded BEFORE first build',
+      (tester) async {
+    await setupWithTemps(
+      tester,
+      loadBeforePump: true,
+      pump: (notifier) async {
+        await tester.runAsync(() async {
+          await tester.pumpWidget(MaterialApp(
+            home: Scaffold(
+              body: DiveInformationSection(
+                  notifier: notifier, dive: _testDive()),
+            ),
+          ));
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        });
+        await tester.pumpAndSettle();
+      },
+    );
+
+    expect(find.text('21'), findsOneWidget); // air temp
+    expect(find.text('14'), findsOneWidget); // water temp
+  });
+
+  testWidgets('temps hydrate when load completes AFTER first build '
+      '(no interaction)', (tester) async {
+    await setupWithTemps(
+      tester,
+      loadBeforePump: false,
+      pump: (notifier) async {
+        await tester.runAsync(() async {
+          // Pump with an UNLOADED notifier first (spinner state)...
+          await tester.pumpWidget(MaterialApp(
+            home: Scaffold(
+              body: DiveInformationSection(
+                  notifier: notifier, dive: _testDive()),
+            ),
+          ));
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          // ...then the async load resolves and notifies.
+          await notifier.load('dive_x');
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        });
+        await tester.pumpAndSettle();
+      },
+    );
+
+    expect(find.text('21'), findsOneWidget); // air temp
+    expect(find.text('14'), findsOneWidget); // water temp
+  });
+
+  // #32: with no explicitly-recorded water temp, the sample-derived
+  // average is shown as the field's hint. Material hides the hint behind
+  // the label when the field is empty + unfocused, which made the average
+  // look blank until tapped. The fix floats the label always, so assert
+  // the field is configured to surface the hint without an interaction.
+  testWidgets('avg water temp hint is visible without focusing the field',
+      (tester) async {
+    final harness = await setup(tester);
+    await tester.runAsync(() async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: DiveInformationSection(
+            notifier: harness.notifier,
+            dive: _testDive(),
+            defaultWaterTempC: 28.0,
+          ),
+        ),
+      ));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pumpAndSettle();
+
+    final waterField = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .firstWhere((tf) => tf.decoration?.hintText == '28 (avg)');
+    expect(waterField.decoration?.floatingLabelBehavior,
+        FloatingLabelBehavior.always);
+  });
 }
+
+typedef DiveInformationSectionPump = Future<void> Function(
+    DiveAnnotationsNotifier notifier);
 
 Dive _testDive({
   int waterDensity = 1025,
