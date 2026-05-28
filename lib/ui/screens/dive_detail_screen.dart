@@ -33,6 +33,7 @@ import '../widgets/dive_cylinders_section.dart';
 import '../widgets/dive_information_section.dart';
 import '../widgets/dive_media_tab.dart';
 import '../widgets/dive_equipment_section.dart';
+import '../widgets/cell_data_chart.dart';
 import '../widgets/profile_chart.dart';
 import 'fullscreen_chart_screen.dart';
 import '../widgets/site_mini_map.dart';
@@ -674,6 +675,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                       },
                     ),
                     _buildStatsRow(theme),
+                    _buildCellDataGraphSection(),
                     _buildTissueHeatmapSection(),
                     _buildAnnotationsSection(),
                     _buildBailoutSection(),
@@ -860,6 +862,58 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         SnackBar(content: Text('Could not open: $e')),
       );
     }
+  }
+
+  Widget _buildCellDataGraphSection() {
+    final samples = _notifier.samples;
+    return ListenableBuilder(
+      listenable: widget.settingsNotifier,
+      builder: (context, _) {
+        final expanded = widget.settingsNotifier.cellDataGraphExpanded;
+        return Column(
+          children: [
+            InkWell(
+              onTap: () => widget.settingsNotifier
+                  .setCellDataGraphExpanded(!expanded),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
+                child: Row(
+                  children: [
+                    Text(
+                      'Cell data',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      expanded ? Icons.expand_less : Icons.expand_more,
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (expanded && samples != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: CellDataChart(
+                  samples: samples,
+                  cellLabels: {
+                    for (final e in _notifier.activeCells.entries)
+                      if (e.value.label != null &&
+                          e.value.label!.isNotEmpty)
+                        e.key: e.value.label!,
+                  },
+                  height: 220,
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildTissueHeatmapSection() {
