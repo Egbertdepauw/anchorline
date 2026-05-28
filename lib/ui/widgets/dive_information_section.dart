@@ -386,6 +386,12 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hintText,
+        // Keep the label floated so the hint (e.g. the sample-derived
+        // "N (avg)" water temp) is visible without focusing the field.
+        // With the default auto behaviour Material parks the label inside
+        // an empty, unfocused field and suppresses the hint, which made
+        // the average temp look blank until tapped (#32).
+        floatingLabelBehavior: FloatingLabelBehavior.always,
         isDense: true,
         border: const OutlineInputBorder(),
       ),
