@@ -135,8 +135,48 @@ class DivePlanNotifier extends ChangeNotifier {
   }
 
   void removeGas(int idx) {
+    if (idx < 0 || idx >= _gases.length) return;
     _gases = [..._gases]..removeAt(idx);
+    // Segments + bailout bottles reference gases by INDEX, so removing a
+    // gas invalidates those references: every index above `idx` shifts
+    // down by one, and any reference to the removed gas itself is now
+    // orphaned. Remap to keep the invariant — otherwise the next
+    // recompute does gases[staleIndex] and throws RangeError, which
+    // crashes the whole plan screen.
+    _segments = [for (final s in _segments) _remapSegmentGas(s, idx)];
+    _bailout = [for (final b in _bailout) _remapBailoutGas(b, idx)];
     _markDirty();
+  }
+
+  /// Maps a gas index across a removal at [removedIdx]: indices above it
+  /// shift down by one; a reference to the removed gas falls back to the
+  /// first remaining gas (clamped to 0). Indices below are unchanged.
+  int _shiftGasIndex(int gasIdx, int removedIdx) {
+    if (gasIdx > removedIdx) return gasIdx - 1;
+    if (gasIdx == removedIdx) return 0;
+    return gasIdx;
+  }
+
+  DivePlanSegment _remapSegmentGas(DivePlanSegment s, int removedIdx) {
+    final gi = _shiftGasIndex(s.gasMixIndex, removedIdx);
+    if (gi == s.gasMixIndex) return s;
+    return DivePlanSegment(
+      depthMeters: s.depthMeters,
+      durationMinutes: s.durationMinutes,
+      gasMixIndex: gi,
+      setpoint: s.setpoint,
+    );
+  }
+
+  DivePlanBailoutBottle _remapBailoutGas(
+      DivePlanBailoutBottle b, int removedIdx) {
+    final gi = _shiftGasIndex(b.gasMixIndex, removedIdx);
+    if (gi == b.gasMixIndex) return b;
+    return DivePlanBailoutBottle(
+      gasMixIndex: gi,
+      waterCapacityL: b.waterCapacityL,
+      fillPressureBar: b.fillPressureBar,
+    );
   }
 
   void replaceGas(int idx, DivePlanGas g) {
