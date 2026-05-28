@@ -379,7 +379,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               listenable: widget.settingsNotifier,
               builder: (context, _) {
                 return BackgroundWatermark(
-                  opacity: widget.settingsNotifier.watermarkOpacity,
+                  // Suppress the branding watermark on the Settings tab
+                  // (index 5). Settings is a dense, utilitarian list —
+                  // the diver mark reads as visual clutter / a doubled
+                  // mark behind the controls there, where it adds nothing.
+                  opacity: _currentIndex == 5
+                      ? 0.0
+                      : widget.settingsNotifier.watermarkOpacity,
                   child: IndexedStack(
                     index: _currentIndex,
                     children: [
