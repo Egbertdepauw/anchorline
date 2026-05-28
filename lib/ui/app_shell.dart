@@ -79,6 +79,10 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   bool _syncing = false;
   int _currentIndex = 0;
+
+  /// Key for the Dives tab's nested Navigator, so tapping the Anchorline
+  /// logo can pop any pushed route (dive detail) back to the dive list.
+  final _divesNavigatorKey = GlobalKey<NavigatorState>();
   late final DiveDao _diveDao;
   late final ImportStateDao _importStateDao;
   late final EquipmentDao _equipmentDao;
@@ -276,6 +280,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _diveListNotifier.loadDives();
   }
 
+  /// Anchorline logo tap → return to the dive list. Pops any route
+  /// pushed inside the Dives tab (e.g. a dive detail) back to root, then
+  /// switches to the Dives tab.
+  void _goHome() {
+    _divesNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+    if (_currentIndex != 0) {
+      setState(() => _currentIndex = 0);
+    }
+  }
+
   Future<void> _syncSubsurface() async {
     final orchestrator = _subsurfaceOrchestrator;
     if (orchestrator == null || _syncing) return;
@@ -334,9 +348,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         // Wordmark SVG (anchor + "Anchorline" lockup) instead of a plain
         // text title. The SVG's dark background blends with the AppBar's
         // wreck-palette surface so only the mark + text show.
-        title: const AnchorlineLogo(
-          mark: AnchorlineMark.wordmarkDark,
-          size: 32,
+        // Tapping the wordmark returns to the dive list: switch to the
+        // Dives tab and pop any pushed route (dive detail) back to root.
+        title: InkWell(
+          onTap: _goHome,
+          borderRadius: BorderRadius.circular(6),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: AnchorlineLogo(
+              mark: AnchorlineMark.wordmarkDark,
+              size: 32,
+            ),
+          ),
         ),
         actions: [
           if (_currentIndex == 0 &&
@@ -401,6 +424,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                       // other tabs don't push routes deeper than their
                       // root.
                       Navigator(
+                        key: _divesNavigatorKey,
                         onGenerateRoute: (settings) => MaterialPageRoute(
                           settings: settings,
                           builder: (_) => DiveListScreen(
