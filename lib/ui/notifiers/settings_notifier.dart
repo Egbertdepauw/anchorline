@@ -12,6 +12,7 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kEndCountsOxygen = 'end_counts_oxygen';
   static const _kVpmbConservatism = 'vpmb_conservatism';
   static const _kTissueHeatmapExpanded = 'tissue_heatmap_expanded';
+  static const _kCellDataGraphExpanded = 'cell_data_graph_expanded';
   static const _kBailoutSacBottom = 'bailout_sac_bottom';
   static const _kBailoutSacDeco = 'bailout_sac_deco';
   static const _kBailoutAscentRateFast = 'bailout_ascent_fast';
@@ -53,6 +54,7 @@ class SettingsNotifier extends ChangeNotifier {
   bool _endCountsOxygen = true;
   int _vpmbConservatism = 2;
   bool _tissueHeatmapExpanded = false;
+  bool _cellDataGraphExpanded = false;
   int _bailoutSacBottom = 30;
   int _bailoutSacDeco = 20;
   int _bailoutAscentRateFast = 18;
@@ -103,6 +105,7 @@ class SettingsNotifier extends ChangeNotifier {
   bool get endCountsOxygen => _endCountsOxygen;
   int get vpmbConservatism => _vpmbConservatism;
   bool get tissueHeatmapExpanded => _tissueHeatmapExpanded;
+  bool get cellDataGraphExpanded => _cellDataGraphExpanded;
   int get bailoutSacBottom => _bailoutSacBottom;
   int get bailoutSacDeco => _bailoutSacDeco;
   int get bailoutAscentRateFast => _bailoutAscentRateFast;
@@ -159,6 +162,8 @@ class SettingsNotifier extends ChangeNotifier {
     _endCountsOxygen = prefs.getBool(_kEndCountsOxygen) ?? true;
     _tissueHeatmapExpanded =
         prefs.getBool(_kTissueHeatmapExpanded) ?? false;
+    _cellDataGraphExpanded =
+        prefs.getBool(_kCellDataGraphExpanded) ?? false;
 
     final vpmb = prefs.getInt(_kVpmbConservatism);
     if (vpmb != null) {
@@ -300,6 +305,14 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kTissueHeatmapExpanded, v);
+  }
+
+  Future<void> setCellDataGraphExpanded(bool v) async {
+    if (_cellDataGraphExpanded == v) return;
+    _cellDataGraphExpanded = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kCellDataGraphExpanded, v);
   }
 
   Future<void> setBailoutSacBottom(int v) async {
