@@ -292,5 +292,58 @@ void main() {
       await connector.replayCrud(entries);
       expect(uploader.calls, isEmpty);
     });
+
+    test('a rejected op is rethrown as a CrudUploadException naming it', () async {
+      // The "poison op" of issue #2: one op the backend rejects. The error
+      // must identify table/id/op so a stalled queue is diagnosable.
+      final throwing = _ThrowingUploader(failTable: 'dive_samples');
+      final c = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions(),
+        uploader: throwing,
+      );
+      final entries = [
+        CrudEntry(10, UpdateType.put, 'dives', 'dive-1', null, {'x': 1}),
+        CrudEntry(11, UpdateType.put, 'dive_samples', 'dive-1', null, {'b': 1}),
+      ];
+
+      Object? caught;
+      try {
+        await c.replayCrud(entries);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught, isA<CrudUploadException>());
+      final ex = caught as CrudUploadException;
+      expect(ex.op.table, 'dive_samples');
+      expect(ex.op.id, 'dive-1');
+      expect(ex.cause, isA<StateError>());
+      // The string form names the op (what lands in status.uploadError).
+      expect(ex.toString(), contains('dive_samples'));
+      expect(ex.toString(), contains('id=dive-1'));
+      // The first (valid) op uploaded before the poison op threw.
+      expect(throwing.upserted, ['dives']);
+    });
   });
+}
+
+class _ThrowingUploader implements SupabaseRestUploader {
+  final String failTable;
+  final List<String> upserted = [];
+  _ThrowingUploader({required this.failTable});
+
+  @override
+  Future<void> upsert(String table, Map<String, dynamic> data) async {
+    if (table == failTable) throw StateError('backend rejected $table');
+    upserted.add(table);
+  }
+
+  @override
+  Future<void> update(String table, String id, Map<String, dynamic> data) async {
+    if (table == failTable) throw StateError('backend rejected $table');
+  }
+
+  @override
+  Future<void> delete(String table, String id) async {
+    if (table == failTable) throw StateError('backend rejected $table');
+  }
 }

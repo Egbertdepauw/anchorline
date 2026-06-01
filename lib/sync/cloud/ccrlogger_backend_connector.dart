@@ -144,28 +144,63 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   Future<void> uploadData(PowerSyncDatabase database) async {
     final batch = await database.getCrudBatch();
     if (batch == null) return;
-    await replayCrud(batch.crud);
+    try {
+      await replayCrud(batch.crud);
+    } catch (e, st) {
+      // The batch is NOT completed — PowerSync keeps it queued and retries.
+      // A single rejected op therefore blocks the whole queue (issue #2);
+      // log which op so the failure is diagnosable rather than silent. The
+      // wrapped [CrudUploadException] also names it in `status.uploadError`.
+      debugPrint('uploadData: $e\n$st');
+      rethrow;
+    }
     await batch.complete();
   }
 
   /// Replays a list of [CrudEntry]s onto the Supabase REST surface.
   /// Public for tests; production code reaches it via [uploadData].
+  ///
+  /// A per-op failure is rethrown as a [CrudUploadException] that names the
+  /// offending table/id/op, so the error PowerSync stores (and our diagnostic
+  /// report shows) identifies the "poison" op instead of a bare
+  /// `PostgrestException`.
   Future<void> replayCrud(List<CrudEntry> entries) async {
     for (final op in entries) {
-      switch (op.op) {
-        case UpdateType.put:
-          final data = {..._decodeJsonColumns(op.table, op.opData), 'id': op.id};
-          await _uploader.upsert(op.table, data);
-        case UpdateType.patch:
-          if (op.opData != null) {
-            await _uploader.update(
-                op.table, op.id, _decodeJsonColumns(op.table, op.opData));
-          }
-        case UpdateType.delete:
-          await _uploader.delete(op.table, op.id);
+      try {
+        switch (op.op) {
+          case UpdateType.put:
+            final data = {
+              ..._decodeJsonColumns(op.table, op.opData),
+              'id': op.id
+            };
+            await _uploader.upsert(op.table, data);
+          case UpdateType.patch:
+            if (op.opData != null) {
+              await _uploader.update(
+                  op.table, op.id, _decodeJsonColumns(op.table, op.opData));
+            }
+          case UpdateType.delete:
+            await _uploader.delete(op.table, op.id);
+        }
+      } catch (e) {
+        if (e is CrudUploadException) rethrow;
+        throw CrudUploadException(op, e);
       }
     }
   }
+}
+
+/// Wraps the underlying error from a single failed CRUD upload op, tagging it
+/// with the op's table/id/type so a stalled upload queue (issue #2) is
+/// diagnosable from `SyncStatus.uploadError` instead of a bare backend error.
+class CrudUploadException implements Exception {
+  final CrudEntry op;
+  final Object cause;
+  CrudUploadException(this.op, this.cause);
+
+  @override
+  String toString() =>
+      'CRUD upload failed on ${op.op.name} ${op.table} id=${op.id}: $cause';
 }
 
 /// Per-table set of columns that hold JSON-encoded text in PowerSync's

@@ -16,11 +16,21 @@ class SyncStatusSnapshot {
   final bool downloading;
   final DateTime? lastSyncedAt;
 
+  /// Last upload / download error PowerSync recorded, as a string (the
+  /// underlying field is `Object?`). Surfaced so a stalled upload queue is
+  /// diagnosable: when the upload pump is wedged on a rejected ("poison")
+  /// CRUD op, PowerSync stores the failure here even though `uploading`
+  /// reads false between retries. See issue #2.
+  final String? uploadError;
+  final String? downloadError;
+
   const SyncStatusSnapshot({
     this.connected = false,
     this.uploading = false,
     this.downloading = false,
     this.lastSyncedAt,
+    this.uploadError,
+    this.downloadError,
   });
 
   factory SyncStatusSnapshot.fromPowerSync(SyncStatus s) => SyncStatusSnapshot(
@@ -28,6 +38,8 @@ class SyncStatusSnapshot {
         uploading: s.uploading,
         downloading: s.downloading,
         lastSyncedAt: s.lastSyncedAt,
+        uploadError: s.uploadError?.toString(),
+        downloadError: s.downloadError?.toString(),
       );
 }
 

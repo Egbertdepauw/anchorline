@@ -658,6 +658,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         report.writeln('  uploading: ${s.uploading}');
         report.writeln('  downloading: ${s.downloading}');
         report.writeln('  lastSyncedAt: ${s.lastSyncedAt ?? "(never)"}');
+        // Surface the swallowed upload/download failure — when the queue is
+        // wedged on a rejected CRUD op this names the offending table/row +
+        // Postgres error (see issue #2).
+        report.writeln('  uploadError: ${s.uploadError ?? "(none)"}');
+        report.writeln('  downloadError: ${s.downloadError ?? "(none)"}');
         report.writeln('');
       }
 
