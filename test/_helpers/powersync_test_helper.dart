@@ -8,6 +8,7 @@ import 'dart:io';
 
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
+import 'package:ccrlogger/data/db/dive_merge_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/sync/cloud/ccrlogger_backend_connector.dart'
     show SessionSource;
@@ -95,6 +96,24 @@ class DiveDaoTestRig {
   final PowerSyncDatabase ps;
   final FakeSessionSource session;
   DiveDaoTestRig({
+    required this.dao,
+    required this.ps,
+    required this.session,
+  });
+}
+
+Future<DiveMergeDaoTestRig> openDiveMergeDaoForTest(AppDatabase drift) async {
+  final ps = await openPowerSyncForTest();
+  final session = FakeSessionSource()..setUserId('test-user');
+  final dao = DiveMergeDao(drift, ps, session);
+  return DiveMergeDaoTestRig(dao: dao, ps: ps, session: session);
+}
+
+class DiveMergeDaoTestRig {
+  final DiveMergeDao dao;
+  final PowerSyncDatabase ps;
+  final FakeSessionSource session;
+  DiveMergeDaoTestRig({
     required this.dao,
     required this.ps,
     required this.session,
