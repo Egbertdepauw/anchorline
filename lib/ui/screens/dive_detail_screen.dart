@@ -527,16 +527,23 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                             widget.settingsNotifier.visibleTraces;
                         final useSpeedColored =
                             widget.settingsNotifier.useSpeedColoredGraph;
-                        // In landscape the user is here to study the
+                        // In PHONE landscape the user is here to study the
                         // graph — let the chart fill most of the viewport
                         // height instead of being clipped to 250 dp.
-                        // 250 dp portrait keeps room for the cards below;
-                        // landscape grows up to ~440 dp on most phones,
-                        // i.e. nearly the entire visible height.
+                        // 250 dp keeps room for the cards below. Guard on
+                        // phone: desktop/tablet windows also report
+                        // Orientation.landscape (width > height), and there the
+                        // fill-height branch made the chart absurdly tall and
+                        // pushed the trace toggles + cards off-screen.
                         final mq = MediaQuery.of(context);
-                        final isLandscape =
+                        final isMobile =
+                            defaultTargetPlatform == TargetPlatform.iOS ||
+                                defaultTargetPlatform == TargetPlatform.android;
+                        final isPhone =
+                            isMobile && mq.size.shortestSide < 600;
+                        final isPhoneLandscape = isPhone &&
                             mq.orientation == Orientation.landscape;
-                        final chartHeight = isLandscape
+                        final chartHeight = isPhoneLandscape
                             ? (mq.size.height - 160).clamp(240.0, 600.0)
                             : 250.0;
                         return Column(
