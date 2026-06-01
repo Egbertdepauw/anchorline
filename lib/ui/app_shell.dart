@@ -351,8 +351,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final isPhone = isMobile && mq.size.shortestSide < 600;
     final isLandscape =
         isPhone && mq.orientation == Orientation.landscape;
-    return Scaffold(
-      appBar: isLandscape ? null : AppBar(
+    return ListenableBuilder(
+      listenable: _diveListNotifier,
+      builder: (context, _) => Scaffold(
+      appBar: isLandscape
+          ? null
+          : (_currentIndex == 0 && _diveListNotifier.selectionMode
+              ? _buildSelectionAppBar(context)
+              : AppBar(
         // Wordmark SVG (anchor + "Anchorline" lockup) instead of a plain
         // text title. The SVG's dark background blends with the AppBar's
         // wreck-palette surface so only the mark + text show.
@@ -413,7 +419,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               },
             ),
         ],
-      ),
+      )),
       body: material.Column(
         children: [
           SyncHealthBanner(service: _syncHealthService),
@@ -527,6 +533,36 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           ),
         ],
       ),
+    ));
+  }
+
+  /// Contextual app bar shown while multi-selecting dives on the Dives tab.
+  /// The Merge action is enabled only when the current selection passes the
+  /// guardrails; otherwise tapping it explains why via a SnackBar.
+  AppBar _buildSelectionAppBar(BuildContext context) {
+    final n = _diveListNotifier;
+    final eligibility = n.mergeEligibility;
+    return AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.close),
+        tooltip: 'Cancel selection',
+        onPressed: n.exitSelectionMode,
+      ),
+      title: Text('${n.selectedDiveIds.length} selected'),
+      actions: [
+        IconButton(
+          tooltip: eligibility.canMerge
+              ? 'Merge selected dives'
+              : (eligibility.reason ?? 'Cannot merge'),
+          icon: const Icon(Icons.merge_type),
+          onPressed: eligibility.canMerge
+              ? () => n.mergeSelected()
+              : () => ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text(eligibility.reason ?? 'Cannot merge')),
+                  ),
+        ),
+      ],
     );
   }
 }
