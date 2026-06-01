@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
+import 'package:ccrlogger/data/db/dive_merge_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/data/models/annotation.dart' as dom;
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
@@ -33,6 +34,7 @@ Future<_Seed> _seed(WidgetTester tester) async {
     final psDb = await openPowerSyncForTest();
     final dao = DiveDao(db, psDb, FakeSessionSource());
     final annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
+    final mergeDao = DiveMergeDao(db, psDb, FakeSessionSource());
     for (final num in [711, 712, 718]) {
       final data = File('test/fixtures/dives/dive_$num.bin').readAsBytesSync();
       final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
@@ -46,7 +48,7 @@ Future<_Seed> _seed(WidgetTester tester) async {
       await dao.importDive(
           converted: converted, rawBlob: data, parserVersion: 1);
     }
-    final notifier = DiveListNotifier(dao, annotationsDao);
+    final notifier = DiveListNotifier(dao, annotationsDao, mergeDao);
     await notifier.loadDives();
     seed = (
       db: db,

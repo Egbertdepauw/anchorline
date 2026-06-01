@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
+import 'package:ccrlogger/data/db/dive_merge_dao.dart';
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
 import 'package:ccrlogger/shearwater/parser/hardware.dart';
@@ -19,6 +20,7 @@ void main() {
   late PowerSyncDatabase psDb;
   late DiveDao dao;
   late DiveAnnotationsDao annotationsDao;
+  late DiveMergeDao mergeDao;
   late DiveListNotifier notifier;
 
   setUp(() async {
@@ -26,7 +28,8 @@ void main() {
     psDb = await openPowerSyncForTest();
     dao = DiveDao(db, psDb, FakeSessionSource());
     annotationsDao = DiveAnnotationsDao(psDb, FakeSessionSource());
-    notifier = DiveListNotifier(dao, annotationsDao);
+    mergeDao = DiveMergeDao(db, psDb, FakeSessionSource());
+    notifier = DiveListNotifier(dao, annotationsDao, mergeDao);
 
     for (final num in [711, 712, 718]) {
       final data = File('test/fixtures/dives/dive_$num.bin').readAsBytesSync();

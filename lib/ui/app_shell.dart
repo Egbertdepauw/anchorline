@@ -13,6 +13,7 @@ import '../data/db/database.dart';
 import '../data/db/dive_annotations_dao.dart';
 import '../data/db/dive_attachments_dao.dart';
 import '../data/db/dive_dao.dart';
+import '../data/db/dive_merge_dao.dart';
 import '../data/db/dive_plans_dao.dart';
 import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
@@ -89,6 +90,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final EquipmentDao _equipmentDao;
   late final DiveAnnotationsDao _diveAnnotationsDao;
   late final DiveAttachmentsDao _diveAttachmentsDao;
+  late final DiveMergeDao _diveMergeDao;
   late final DiveListNotifier _diveListNotifier;
   late final DivePlansDao _divePlansDao;
   late final DivePlanNotifier _divePlanNotifier;
@@ -152,7 +154,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       widget.powerSyncDb,
       SupabaseAuthSessionSource(Supabase.instance.client),
     );
-    _diveListNotifier = DiveListNotifier(_diveDao, _diveAnnotationsDao);
+    _diveMergeDao = DiveMergeDao(
+      widget.db,
+      widget.powerSyncDb,
+      SupabaseAuthSessionSource(Supabase.instance.client),
+    );
+    _diveListNotifier = DiveListNotifier(_diveDao, _diveAnnotationsDao, _diveMergeDao);
     _divePlansDao = DivePlansDao(
       widget.powerSyncDb,
       SupabaseAuthSessionSource(Supabase.instance.client),
