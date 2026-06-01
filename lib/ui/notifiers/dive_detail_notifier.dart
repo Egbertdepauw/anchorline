@@ -42,18 +42,22 @@ class DiveDetailNotifier extends ChangeNotifier {
   /// `true` while [loadSamples] is in flight.
   bool get loading => _loading;
 
+  final SampleSet? _preloadedSamples;
+
   DiveDetailNotifier({
     required this.dive,
     required DiveDao dao,
     EquipmentDao? equipmentDao,
+    SampleSet? preloadedSamples,
   })  : _dao = dao,
-        _equipmentDao = equipmentDao;
+        _equipmentDao = equipmentDao,
+        _preloadedSamples = preloadedSamples;
 
   /// Load samples from the database and notify listeners.
   Future<void> loadSamples() async {
     _loading = true;
     notifyListeners();
-    _samples = await _dao.getSamples(dive.id);
+    _samples = _preloadedSamples ?? await _dao.getSamples(dive.id);
     if (_equipmentDao != null) {
       _activeCells = await _equipmentDao.activeCellsAt(
         DateTime.fromMillisecondsSinceEpoch(dive.startTime * 1000),

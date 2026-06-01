@@ -105,6 +105,12 @@ class DiveDetailScreen extends StatefulWidget {
   /// callers (cell_detail_screen, tests) get a full self-contained screen.
   final bool wrappedInPager;
 
+  /// Pre-built (synthetic) sample set to use instead of loading from the
+  /// database. When non-null, [DiveDetailNotifier] will use this directly
+  /// and skip the DAO lookup. Used by merged-dive presentations where the
+  /// combined [SampleSet] is built in memory and has no database row.
+  final SampleSet? preloadedSamples;
+
   const DiveDetailScreen({
     super.key,
     required this.dive,
@@ -119,6 +125,7 @@ class DiveDetailScreen extends StatefulWidget {
     this.attachmentDownloader,
     this.sequenceNumber,
     this.wrappedInPager = false,
+    this.preloadedSamples,
   });
   @override
   State<DiveDetailScreen> createState() => _DiveDetailScreenState();
@@ -179,6 +186,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       dive: widget.dive,
       dao: widget.dao,
       equipmentDao: widget.equipmentDao,
+      preloadedSamples: widget.preloadedSamples,
     );
     _notifier.addListener(_onChanged);
     _notifier.loadSamples();
