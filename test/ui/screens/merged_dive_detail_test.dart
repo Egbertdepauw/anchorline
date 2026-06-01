@@ -1,8 +1,9 @@
 import 'dart:io';
 
 import 'package:ccrlogger/analysis/merge/merged_sample_builder.dart';
-import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
+import 'package:ccrlogger/data/models/annotation.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
@@ -58,6 +59,16 @@ void main() {
 
       final annDao = DiveAnnotationsDao(ps, session);
       final equipDao = EquipmentDao(db, ps, session);
+      // Pre-merge annotation on the earliest member: it must surface on the
+      // merged view (the user's "annotations disregarded after merge" report).
+      final earliestId = all.first.id;
+      final now = DateTime.now();
+      await annDao.upsert(DiveAnnotation(
+        diveId: earliestId,
+        siteName: 'Test Reef',
+        createdAt: now,
+        updatedAt: now,
+      ));
       await tester.pumpWidget(MaterialApp(
         home: DiveDetailScreen(
           dive: merged.dive,
@@ -66,7 +77,7 @@ void main() {
           annotationsDao: annDao,
           equipmentDao: equipDao,
           settingsNotifier: SettingsNotifier(),
-          annotationsEditable: false,
+          annotationsDiveId: earliestId,
           sequenceNumber: 716,
         ),
       ));
@@ -84,5 +95,7 @@ void main() {
     // The stats row built (it previously crashed before any tile rendered).
     // StatTile renders its label uppercased.
     expect(find.textContaining('CNS'), findsWidgets);
+    // The earliest member's annotation surfaces on the merged view.
+    expect(find.textContaining('Test Reef'), findsWidgets);
   });
 }

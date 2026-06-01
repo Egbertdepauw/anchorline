@@ -601,11 +601,11 @@ class _MergedGroupTile extends StatelessWidget {
     }
     final merged = buildMergedDive(mergedId: group.groupId, members: members);
     rootNavigator.pop(); // dismiss loader
-    // The synthetic dive's id is the merge-group id, not a real dive, so
-    // annotation editing is suppressed (saving would orphan a row). Sections
-    // keyed on the dive (bailout carry, mapped cylinders, active cells) read
-    // as-if the first member — empty/first-dive values — acceptable for the
-    // merged profile view in v1.
+    // The synthetic dive's id is the merge-group id, not a real dive. Anchor
+    // annotations (site, notes, buddies, rating, …) to the earliest member's
+    // real dive id so edits persist and any pre-merge annotation on that dive
+    // shows through. Sections keyed on the dive (bailout carry, mapped
+    // cylinders, active cells) read as-if the first member.
     await navigator.push(MaterialPageRoute(
       builder: (_) => DiveDetailScreen(
         dive: merged.dive,
@@ -614,7 +614,7 @@ class _MergedGroupTile extends StatelessWidget {
         annotationsDao: annotationsDao,
         equipmentDao: equipmentDao,
         settingsNotifier: settingsNotifier,
-        annotationsEditable: false,
+        annotationsDiveId: group.earliest.id,
         // Show the CCRLog sequence number of the earliest member (e.g. #716),
         // not the synthetic dive's raw dcDiveNumber.
         sequenceNumber: notifier.sequenceByDiveId[group.earliest.id],

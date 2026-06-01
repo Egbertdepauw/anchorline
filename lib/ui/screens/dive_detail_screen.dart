@@ -111,12 +111,11 @@ class DiveDetailScreen extends StatefulWidget {
   /// combined [SampleSet] is built in memory and has no database row.
   final SampleSet? preloadedSamples;
 
-  /// Whether annotation editing is offered. Synthetic merged-dive views set
-  /// this false: their [dive].id is a merge-group id, not a real dive, so
-  /// saving annotations against it would write an orphan `dive_annotations`
-  /// row that no other screen reads. When false the Save action and the
-  /// unsaved-changes guard are suppressed.
-  final bool annotationsEditable;
+  /// Real dive id to load/save annotations against. For a merged dive, [dive]
+  /// is synthetic (its id is a group id), so this points at the earliest
+  /// member's real dive id — edits persist there and a pre-merge annotation on
+  /// that dive shows through. Null for solo dives → falls back to [dive].id.
+  final String? annotationsDiveId;
 
   const DiveDetailScreen({
     super.key,
@@ -133,7 +132,7 @@ class DiveDetailScreen extends StatefulWidget {
     this.sequenceNumber,
     this.wrappedInPager = false,
     this.preloadedSamples,
-    this.annotationsEditable = true,
+    this.annotationsDiveId,
   });
   @override
   State<DiveDetailScreen> createState() => _DiveDetailScreenState();
@@ -205,7 +204,11 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         widget.annotationsDao,
         widget.equipmentDao,
       );
-      _annotationsNotifier.load(widget.dive.id);
+      // For a merged dive, [dive].id is a synthetic group id (no annotation
+      // row of its own). Anchor annotations to the earliest member's real
+      // dive id so edits persist and a pre-merge annotation on that dive
+      // shows through. Solo dives leave annotationsDiveId null → dive.id.
+      _annotationsNotifier.load(widget.annotationsDiveId ?? widget.dive.id);
     } else {
       _annotationsNotifier = widget.annotationsNotifier!;
     }
@@ -240,7 +243,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     // In pager mode the parent owns the unsaved-changes guard — it sees
     // every cached page's dirty state, not just the visible one. Solo
     // callers still get the per-screen PopScope.
-    final guardPop = _ownsAnnotations && widget.annotationsEditable;
+    final guardPop = _ownsAnnotations;
     return PopScope(
       canPop: !guardPop || !_annotationsNotifier.dirty,
       onPopInvokedWithResult: (didPop, result) async {
@@ -305,27 +308,26 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
             icon: const Icon(Icons.chevron_right),
             onPressed: widget.onNext,
           ),
-          if (widget.annotationsEditable)
-            AnimatedBuilder(
-              animation: _annotationsNotifier,
-              builder: (context, _) {
-                final dirty = _annotationsNotifier.dirty;
-                return IconButton(
-                  tooltip: dirty ? 'Save (unsaved changes)' : 'Save',
-                  icon: Icon(
-                    dirty ? Icons.save : Icons.save_outlined,
-                    color: dirty
-                        ? Theme.of(context).colorScheme.primary
-                        : null,
-                  ),
-                  onPressed: dirty
-                      ? () async {
-                          await _annotationsNotifier.save();
-                        }
+          AnimatedBuilder(
+            animation: _annotationsNotifier,
+            builder: (context, _) {
+              final dirty = _annotationsNotifier.dirty;
+              return IconButton(
+                tooltip: dirty ? 'Save (unsaved changes)' : 'Save',
+                icon: Icon(
+                  dirty ? Icons.save : Icons.save_outlined,
+                  color: dirty
+                      ? Theme.of(context).colorScheme.primary
                       : null,
-                );
-              },
-            ),
+                ),
+                onPressed: dirty
+                    ? () async {
+                        await _annotationsNotifier.save();
+                      }
+                    : null,
+              );
+            },
+          ),
         ],
       ),
       body: _notifier.loading && _notifier.samples == null
