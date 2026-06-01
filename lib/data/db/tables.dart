@@ -357,3 +357,21 @@ class ImportStates extends Table {
   @override
   Set<Column> get primaryKey => {dcSerial};
 }
+
+/// Links a dive into a merge group. A dive belongs to at most one group,
+/// so `diveId` is the primary key. A group "exists" while >=2 non-deleted
+/// links share a `groupId`. Unmerge = soft-delete the links.
+class DiveMergeLinks extends Table {
+  TextColumn get diveId => text().references(Dives, #id)();
+  TextColumn get groupId => text()();
+
+  IntColumn get createdAt => integer()();
+  IntColumn get updatedAt => integer()();
+  IntColumn get deletedAt => integer().nullable()();
+  IntColumn get version => integer().withDefault(const Constant(1))();
+  IntColumn get syncStatus => integer().withDefault(const Constant(0))();
+  TextColumn get ownerId => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {diveId};
+}

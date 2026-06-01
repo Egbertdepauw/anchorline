@@ -10089,6 +10089,524 @@ class ImportStatesCompanion extends UpdateCompanion<ImportState> {
   }
 }
 
+class $DiveMergeLinksTable extends DiveMergeLinks
+    with TableInfo<$DiveMergeLinksTable, DiveMergeLink> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DiveMergeLinksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _diveIdMeta = const VerificationMeta('diveId');
+  @override
+  late final GeneratedColumn<String> diveId = GeneratedColumn<String>(
+    'dive_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES dives (id)',
+    ),
+  );
+  static const VerificationMeta _groupIdMeta = const VerificationMeta(
+    'groupId',
+  );
+  @override
+  late final GeneratedColumn<String> groupId = GeneratedColumn<String>(
+    'group_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _syncStatusMeta = const VerificationMeta(
+    'syncStatus',
+  );
+  @override
+  late final GeneratedColumn<int> syncStatus = GeneratedColumn<int>(
+    'sync_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _ownerIdMeta = const VerificationMeta(
+    'ownerId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerId = GeneratedColumn<String>(
+    'owner_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    diveId,
+    groupId,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    version,
+    syncStatus,
+    ownerId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'dive_merge_links';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DiveMergeLink> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('dive_id')) {
+      context.handle(
+        _diveIdMeta,
+        diveId.isAcceptableOrUnknown(data['dive_id']!, _diveIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_diveIdMeta);
+    }
+    if (data.containsKey('group_id')) {
+      context.handle(
+        _groupIdMeta,
+        groupId.isAcceptableOrUnknown(data['group_id']!, _groupIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_groupIdMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    }
+    if (data.containsKey('sync_status')) {
+      context.handle(
+        _syncStatusMeta,
+        syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
+      );
+    }
+    if (data.containsKey('owner_id')) {
+      context.handle(
+        _ownerIdMeta,
+        ownerId.isAcceptableOrUnknown(data['owner_id']!, _ownerIdMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {diveId};
+  @override
+  DiveMergeLink map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DiveMergeLink(
+      diveId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dive_id'],
+      )!,
+      groupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_id'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+      syncStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sync_status'],
+      )!,
+      ownerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_id'],
+      ),
+    );
+  }
+
+  @override
+  $DiveMergeLinksTable createAlias(String alias) {
+    return $DiveMergeLinksTable(attachedDatabase, alias);
+  }
+}
+
+class DiveMergeLink extends DataClass implements Insertable<DiveMergeLink> {
+  final String diveId;
+  final String groupId;
+  final int createdAt;
+  final int updatedAt;
+  final int? deletedAt;
+  final int version;
+  final int syncStatus;
+  final String? ownerId;
+  const DiveMergeLink({
+    required this.diveId,
+    required this.groupId,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+    required this.version,
+    required this.syncStatus,
+    this.ownerId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['dive_id'] = Variable<String>(diveId);
+    map['group_id'] = Variable<String>(groupId);
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<int>(deletedAt);
+    }
+    map['version'] = Variable<int>(version);
+    map['sync_status'] = Variable<int>(syncStatus);
+    if (!nullToAbsent || ownerId != null) {
+      map['owner_id'] = Variable<String>(ownerId);
+    }
+    return map;
+  }
+
+  DiveMergeLinksCompanion toCompanion(bool nullToAbsent) {
+    return DiveMergeLinksCompanion(
+      diveId: Value(diveId),
+      groupId: Value(groupId),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      version: Value(version),
+      syncStatus: Value(syncStatus),
+      ownerId: ownerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownerId),
+    );
+  }
+
+  factory DiveMergeLink.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DiveMergeLink(
+      diveId: serializer.fromJson<String>(json['diveId']),
+      groupId: serializer.fromJson<String>(json['groupId']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
+      version: serializer.fromJson<int>(json['version']),
+      syncStatus: serializer.fromJson<int>(json['syncStatus']),
+      ownerId: serializer.fromJson<String?>(json['ownerId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'diveId': serializer.toJson<String>(diveId),
+      'groupId': serializer.toJson<String>(groupId),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'deletedAt': serializer.toJson<int?>(deletedAt),
+      'version': serializer.toJson<int>(version),
+      'syncStatus': serializer.toJson<int>(syncStatus),
+      'ownerId': serializer.toJson<String?>(ownerId),
+    };
+  }
+
+  DiveMergeLink copyWith({
+    String? diveId,
+    String? groupId,
+    int? createdAt,
+    int? updatedAt,
+    Value<int?> deletedAt = const Value.absent(),
+    int? version,
+    int? syncStatus,
+    Value<String?> ownerId = const Value.absent(),
+  }) => DiveMergeLink(
+    diveId: diveId ?? this.diveId,
+    groupId: groupId ?? this.groupId,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    version: version ?? this.version,
+    syncStatus: syncStatus ?? this.syncStatus,
+    ownerId: ownerId.present ? ownerId.value : this.ownerId,
+  );
+  DiveMergeLink copyWithCompanion(DiveMergeLinksCompanion data) {
+    return DiveMergeLink(
+      diveId: data.diveId.present ? data.diveId.value : this.diveId,
+      groupId: data.groupId.present ? data.groupId.value : this.groupId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      version: data.version.present ? data.version.value : this.version,
+      syncStatus: data.syncStatus.present
+          ? data.syncStatus.value
+          : this.syncStatus,
+      ownerId: data.ownerId.present ? data.ownerId.value : this.ownerId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiveMergeLink(')
+          ..write('diveId: $diveId, ')
+          ..write('groupId: $groupId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('version: $version, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    diveId,
+    groupId,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    version,
+    syncStatus,
+    ownerId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DiveMergeLink &&
+          other.diveId == this.diveId &&
+          other.groupId == this.groupId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.version == this.version &&
+          other.syncStatus == this.syncStatus &&
+          other.ownerId == this.ownerId);
+}
+
+class DiveMergeLinksCompanion extends UpdateCompanion<DiveMergeLink> {
+  final Value<String> diveId;
+  final Value<String> groupId;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int?> deletedAt;
+  final Value<int> version;
+  final Value<int> syncStatus;
+  final Value<String?> ownerId;
+  final Value<int> rowid;
+  const DiveMergeLinksCompanion({
+    this.diveId = const Value.absent(),
+    this.groupId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.version = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DiveMergeLinksCompanion.insert({
+    required String diveId,
+    required String groupId,
+    required int createdAt,
+    required int updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.version = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.ownerId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : diveId = Value(diveId),
+       groupId = Value(groupId),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<DiveMergeLink> custom({
+    Expression<String>? diveId,
+    Expression<String>? groupId,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? deletedAt,
+    Expression<int>? version,
+    Expression<int>? syncStatus,
+    Expression<String>? ownerId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (diveId != null) 'dive_id': diveId,
+      if (groupId != null) 'group_id': groupId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (version != null) 'version': version,
+      if (syncStatus != null) 'sync_status': syncStatus,
+      if (ownerId != null) 'owner_id': ownerId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DiveMergeLinksCompanion copyWith({
+    Value<String>? diveId,
+    Value<String>? groupId,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int?>? deletedAt,
+    Value<int>? version,
+    Value<int>? syncStatus,
+    Value<String?>? ownerId,
+    Value<int>? rowid,
+  }) {
+    return DiveMergeLinksCompanion(
+      diveId: diveId ?? this.diveId,
+      groupId: groupId ?? this.groupId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      version: version ?? this.version,
+      syncStatus: syncStatus ?? this.syncStatus,
+      ownerId: ownerId ?? this.ownerId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (diveId.present) {
+      map['dive_id'] = Variable<String>(diveId.value);
+    }
+    if (groupId.present) {
+      map['group_id'] = Variable<String>(groupId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<int>(deletedAt.value);
+    }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    if (syncStatus.present) {
+      map['sync_status'] = Variable<int>(syncStatus.value);
+    }
+    if (ownerId.present) {
+      map['owner_id'] = Variable<String>(ownerId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiveMergeLinksCompanion(')
+          ..write('diveId: $diveId, ')
+          ..write('groupId: $groupId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('version: $version, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('ownerId: $ownerId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -10113,6 +10631,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $ImportStatesTable importStates = $ImportStatesTable(this);
+  late final $DiveMergeLinksTable diveMergeLinks = $DiveMergeLinksTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10131,6 +10650,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     divePlans,
     diveBailoutCarry,
     importStates,
+    diveMergeLinks,
   ];
 }
 
@@ -10276,6 +10796,24 @@ final class $$DivesTableReferences
     final cache = $_typedResult.readTableOrNull(
       _diveBailoutCarryRefsTable($_db),
     );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$DiveMergeLinksTable, List<DiveMergeLink>>
+  _diveMergeLinksRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.diveMergeLinks,
+    aliasName: $_aliasNameGenerator(db.dives.id, db.diveMergeLinks.diveId),
+  );
+
+  $$DiveMergeLinksTableProcessedTableManager get diveMergeLinksRefs {
+    final manager = $$DiveMergeLinksTableTableManager(
+      $_db,
+      $_db.diveMergeLinks,
+    ).filter((f) => f.diveId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_diveMergeLinksRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -10526,6 +11064,31 @@ class $$DivesTableFilterComposer extends Composer<_$AppDatabase, $DivesTable> {
           }) => $$DiveBailoutCarryTableFilterComposer(
             $db: $db,
             $table: $db.diveBailoutCarry,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> diveMergeLinksRefs(
+    Expression<bool> Function($$DiveMergeLinksTableFilterComposer f) f,
+  ) {
+    final $$DiveMergeLinksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.diveMergeLinks,
+      getReferencedColumn: (t) => t.diveId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DiveMergeLinksTableFilterComposer(
+            $db: $db,
+            $table: $db.diveMergeLinks,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -10920,6 +11483,31 @@ class $$DivesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> diveMergeLinksRefs<T extends Object>(
+    Expression<T> Function($$DiveMergeLinksTableAnnotationComposer a) f,
+  ) {
+    final $$DiveMergeLinksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.diveMergeLinks,
+      getReferencedColumn: (t) => t.diveId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DiveMergeLinksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.diveMergeLinks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$DivesTableTableManager
@@ -10940,6 +11528,7 @@ class $$DivesTableTableManager
             bool diveAnnotationsRefs,
             bool diveCylindersRefs,
             bool diveBailoutCarryRefs,
+            bool diveMergeLinksRefs,
           })
         > {
   $$DivesTableTableManager(_$AppDatabase db, $DivesTable table)
@@ -11093,6 +11682,7 @@ class $$DivesTableTableManager
                 diveAnnotationsRefs = false,
                 diveCylindersRefs = false,
                 diveBailoutCarryRefs = false,
+                diveMergeLinksRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -11101,6 +11691,7 @@ class $$DivesTableTableManager
                     if (diveAnnotationsRefs) db.diveAnnotations,
                     if (diveCylindersRefs) db.diveCylinders,
                     if (diveBailoutCarryRefs) db.diveBailoutCarry,
+                    if (diveMergeLinksRefs) db.diveMergeLinks,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -11189,6 +11780,27 @@ class $$DivesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (diveMergeLinksRefs)
+                        await $_getPrefetchedData<
+                          Dive,
+                          $DivesTable,
+                          DiveMergeLink
+                        >(
+                          currentTable: table,
+                          referencedTable: $$DivesTableReferences
+                              ._diveMergeLinksRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$DivesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).diveMergeLinksRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.diveId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -11214,6 +11826,7 @@ typedef $$DivesTableProcessedTableManager =
         bool diveAnnotationsRefs,
         bool diveCylindersRefs,
         bool diveBailoutCarryRefs,
+        bool diveMergeLinksRefs,
       })
     >;
 typedef $$DiveSamplesTableCreateCompanionBuilder =
@@ -15879,6 +16492,390 @@ typedef $$ImportStatesTableProcessedTableManager =
       ImportState,
       PrefetchHooks Function()
     >;
+typedef $$DiveMergeLinksTableCreateCompanionBuilder =
+    DiveMergeLinksCompanion Function({
+      required String diveId,
+      required String groupId,
+      required int createdAt,
+      required int updatedAt,
+      Value<int?> deletedAt,
+      Value<int> version,
+      Value<int> syncStatus,
+      Value<String?> ownerId,
+      Value<int> rowid,
+    });
+typedef $$DiveMergeLinksTableUpdateCompanionBuilder =
+    DiveMergeLinksCompanion Function({
+      Value<String> diveId,
+      Value<String> groupId,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int?> deletedAt,
+      Value<int> version,
+      Value<int> syncStatus,
+      Value<String?> ownerId,
+      Value<int> rowid,
+    });
+
+final class $$DiveMergeLinksTableReferences
+    extends BaseReferences<_$AppDatabase, $DiveMergeLinksTable, DiveMergeLink> {
+  $$DiveMergeLinksTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $DivesTable _diveIdTable(_$AppDatabase db) => db.dives.createAlias(
+    $_aliasNameGenerator(db.diveMergeLinks.diveId, db.dives.id),
+  );
+
+  $$DivesTableProcessedTableManager get diveId {
+    final $_column = $_itemColumn<String>('dive_id')!;
+
+    final manager = $$DivesTableTableManager(
+      $_db,
+      $_db.dives,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_diveIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DiveMergeLinksTableFilterComposer
+    extends Composer<_$AppDatabase, $DiveMergeLinksTable> {
+  $$DiveMergeLinksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$DivesTableFilterComposer get diveId {
+    final $$DivesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.diveId,
+      referencedTable: $db.dives,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DivesTableFilterComposer(
+            $db: $db,
+            $table: $db.dives,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DiveMergeLinksTableOrderingComposer
+    extends Composer<_$AppDatabase, $DiveMergeLinksTable> {
+  $$DiveMergeLinksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ownerId => $composableBuilder(
+    column: $table.ownerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$DivesTableOrderingComposer get diveId {
+    final $$DivesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.diveId,
+      referencedTable: $db.dives,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DivesTableOrderingComposer(
+            $db: $db,
+            $table: $db.dives,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DiveMergeLinksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DiveMergeLinksTable> {
+  $$DiveMergeLinksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get groupId =>
+      $composableBuilder(column: $table.groupId, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<int> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get ownerId =>
+      $composableBuilder(column: $table.ownerId, builder: (column) => column);
+
+  $$DivesTableAnnotationComposer get diveId {
+    final $$DivesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.diveId,
+      referencedTable: $db.dives,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DivesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.dives,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DiveMergeLinksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DiveMergeLinksTable,
+          DiveMergeLink,
+          $$DiveMergeLinksTableFilterComposer,
+          $$DiveMergeLinksTableOrderingComposer,
+          $$DiveMergeLinksTableAnnotationComposer,
+          $$DiveMergeLinksTableCreateCompanionBuilder,
+          $$DiveMergeLinksTableUpdateCompanionBuilder,
+          (DiveMergeLink, $$DiveMergeLinksTableReferences),
+          DiveMergeLink,
+          PrefetchHooks Function({bool diveId})
+        > {
+  $$DiveMergeLinksTableTableManager(
+    _$AppDatabase db,
+    $DiveMergeLinksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DiveMergeLinksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DiveMergeLinksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DiveMergeLinksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> diveId = const Value.absent(),
+                Value<String> groupId = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DiveMergeLinksCompanion(
+                diveId: diveId,
+                groupId: groupId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                version: version,
+                syncStatus: syncStatus,
+                ownerId: ownerId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String diveId,
+                required String groupId,
+                required int createdAt,
+                required int updatedAt,
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<int> syncStatus = const Value.absent(),
+                Value<String?> ownerId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DiveMergeLinksCompanion.insert(
+                diveId: diveId,
+                groupId: groupId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                version: version,
+                syncStatus: syncStatus,
+                ownerId: ownerId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$DiveMergeLinksTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({diveId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (diveId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.diveId,
+                                referencedTable: $$DiveMergeLinksTableReferences
+                                    ._diveIdTable(db),
+                                referencedColumn:
+                                    $$DiveMergeLinksTableReferences
+                                        ._diveIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DiveMergeLinksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DiveMergeLinksTable,
+      DiveMergeLink,
+      $$DiveMergeLinksTableFilterComposer,
+      $$DiveMergeLinksTableOrderingComposer,
+      $$DiveMergeLinksTableAnnotationComposer,
+      $$DiveMergeLinksTableCreateCompanionBuilder,
+      $$DiveMergeLinksTableUpdateCompanionBuilder,
+      (DiveMergeLink, $$DiveMergeLinksTableReferences),
+      DiveMergeLink,
+      PrefetchHooks Function({bool diveId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -15909,4 +16906,6 @@ class $AppDatabaseManager {
       $$DiveBailoutCarryTableTableManager(_db, _db.diveBailoutCarry);
   $$ImportStatesTableTableManager get importStates =>
       $$ImportStatesTableTableManager(_db, _db.importStates);
+  $$DiveMergeLinksTableTableManager get diveMergeLinks =>
+      $$DiveMergeLinksTableTableManager(_db, _db.diveMergeLinks);
 }
