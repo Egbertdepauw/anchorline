@@ -91,6 +91,20 @@ const appSchema = Schema([
     Column.integer('version'),
     Column.integer('sync_status'),
   ]),
+  // PK = dive_id (the member dive); dives sharing a `group_id` form one
+  // merge group. `group_id` is a deterministic hash of the sorted member
+  // dive ids (see generateMergeGroupId), not a pointer to a dive. No
+  // `dive_id` column here — PowerSync's implicit `id` IS the dive_id (same
+  // trick as dive_samples).
+  Table('dive_merge_links', [
+    Column.text('owner_id'),
+    Column.text('group_id'),
+    Column.integer('created_at'),
+    Column.integer('updated_at'),
+    Column.integer('deleted_at'),
+    Column.integer('version'),
+    Column.integer('sync_status'),
+  ]),
   Table('oxygen_cells', [
     Column.text('owner_id'),
     Column.integer('slot'),

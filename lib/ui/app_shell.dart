@@ -13,6 +13,7 @@ import '../data/db/database.dart';
 import '../data/db/dive_annotations_dao.dart';
 import '../data/db/dive_attachments_dao.dart';
 import '../data/db/dive_dao.dart';
+import '../data/db/dive_merge_dao.dart';
 import '../data/db/dive_plans_dao.dart';
 import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
@@ -89,6 +90,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final EquipmentDao _equipmentDao;
   late final DiveAnnotationsDao _diveAnnotationsDao;
   late final DiveAttachmentsDao _diveAttachmentsDao;
+  late final DiveMergeDao _diveMergeDao;
   late final DiveListNotifier _diveListNotifier;
   late final DivePlansDao _divePlansDao;
   late final DivePlanNotifier _divePlanNotifier;
@@ -152,7 +154,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       widget.powerSyncDb,
       SupabaseAuthSessionSource(Supabase.instance.client),
     );
-    _diveListNotifier = DiveListNotifier(_diveDao, _diveAnnotationsDao);
+    _diveMergeDao = DiveMergeDao(
+      widget.db,
+      widget.powerSyncDb,
+      SupabaseAuthSessionSource(Supabase.instance.client),
+    );
+    _diveListNotifier = DiveListNotifier(_diveDao, _diveAnnotationsDao, _diveMergeDao);
     _divePlansDao = DivePlansDao(
       widget.powerSyncDb,
       SupabaseAuthSessionSource(Supabase.instance.client),
@@ -344,8 +351,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final isPhone = isMobile && mq.size.shortestSide < 600;
     final isLandscape =
         isPhone && mq.orientation == Orientation.landscape;
-    return Scaffold(
-      appBar: isLandscape ? null : AppBar(
+    return ListenableBuilder(
+      listenable: _diveListNotifier,
+      builder: (context, _) => Scaffold(
+      appBar: isLandscape
+          ? null
+          : (_currentIndex == 0 && _diveListNotifier.selectionMode
+              ? _buildSelectionAppBar(context)
+              : AppBar(
         // Wordmark SVG (anchor + "Anchorline" lockup) instead of a plain
         // text title. The SVG's dark background blends with the AppBar's
         // wreck-palette surface so only the mark + text show.
@@ -406,7 +419,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               },
             ),
         ],
-      ),
+      )),
       body: material.Column(
         children: [
           SyncHealthBanner(service: _syncHealthService),
@@ -520,6 +533,36 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           ),
         ],
       ),
+    ));
+  }
+
+  /// Contextual app bar shown while multi-selecting dives on the Dives tab.
+  /// The Merge action is enabled only when the current selection passes the
+  /// guardrails; otherwise tapping it explains why via a SnackBar.
+  AppBar _buildSelectionAppBar(BuildContext context) {
+    final n = _diveListNotifier;
+    final eligibility = n.mergeEligibility;
+    return AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.close),
+        tooltip: 'Cancel selection',
+        onPressed: n.exitSelectionMode,
+      ),
+      title: Text('${n.selectedDiveIds.length} selected'),
+      actions: [
+        IconButton(
+          tooltip: eligibility.canMerge
+              ? 'Merge selected dives'
+              : (eligibility.reason ?? 'Cannot merge'),
+          icon: const Icon(Icons.merge_type),
+          onPressed: eligibility.canMerge
+              ? () => n.mergeSelected()
+              : () => ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text(eligibility.reason ?? 'Cannot merge')),
+                  ),
+        ),
+      ],
     );
   }
 }

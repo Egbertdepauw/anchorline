@@ -7,8 +7,10 @@ import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/dive_attachments_dao.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
+import '../../analysis/merge/merged_sample_builder.dart';
 import '../../sync/attachments/attachment_downloader.dart';
 import '../../sync/attachments/attachment_uploader.dart';
+import '../models/dive_list_item.dart';
 import '../notifiers/dive_list_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import '../util/dive_mode_color.dart';
@@ -17,6 +19,7 @@ import '../util/format.dart';
 import '../widgets/dive_filter_sheet.dart';
 import '../widgets/dive_tile.dart';
 import 'dive_detail_pager.dart';
+import 'dive_detail_screen.dart';
 
 class DiveListScreen extends StatefulWidget {
   final DiveListNotifier notifier;
@@ -150,11 +153,19 @@ class _DiveListScreenState extends State<DiveListScreen> {
     setState(() => _filters = _filters.copyWith(tags: next));
   }
 
-  Map<String, List<Dive>> _groupByMonth(List<Dive> dives) {
-    final groups = <String, List<Dive>>{};
-    for (final dive in dives) {
-      final key = formatMonthYear(dive.startTime);
-      groups.putIfAbsent(key, () => []).add(dive);
+  /// Representative start time (epoch seconds) used to month-group and
+  /// position a list item. A merged group sits at its latest member's start,
+  /// so it lands naturally among the start-DESC singles.
+  int _itemStartTime(DiveListItem item) => switch (item) {
+        SingleDive(:final dive) => dive.startTime,
+        MergedGroupItem(:final group) => group.latest.startTime,
+      };
+
+  Map<String, List<DiveListItem>> _groupByMonth(List<DiveListItem> items) {
+    final groups = <String, List<DiveListItem>>{};
+    for (final item in items) {
+      final key = formatMonthYear(_itemStartTime(item));
+      groups.putIfAbsent(key, () => []).add(item);
     }
     return groups;
   }
@@ -191,7 +202,8 @@ class _DiveListScreenState extends State<DiveListScreen> {
     }
 
     final filtered = _filteredDives;
-    final groups = _groupByMonth(filtered);
+    final items = buildListItems(filtered, notifier.links);
+    final groups = _groupByMonth(items);
 
     return Column(
       children: [
@@ -287,19 +299,33 @@ class _DiveListScreenState extends State<DiveListScreen> {
                         SliverList(
                           delegate: SliverChildBuilderDelegate(
                             (context, index) {
-                              final dive = entry.value[index];
-                              return _DiveTileWithSparkline(
-                                dive: dive,
-                                orderedDives: filtered,
-                                notifier: notifier,
-                                diveDao: widget.diveDao,
-                                annotationsDao: widget.annotationsDao,
-                                equipmentDao: widget.equipmentDao,
-                                attachmentsDao: widget.attachmentsDao,
-                                attachmentUploader: widget.attachmentUploader,
-                                attachmentDownloader: widget.attachmentDownloader,
-                                settingsNotifier: widget.settingsNotifier,
-                              );
+                              final item = entry.value[index];
+                              return switch (item) {
+                                SingleDive(:final dive) =>
+                                  _DiveTileWithSparkline(
+                                    dive: dive,
+                                    orderedDives: filtered,
+                                    notifier: notifier,
+                                    diveDao: widget.diveDao,
+                                    annotationsDao: widget.annotationsDao,
+                                    equipmentDao: widget.equipmentDao,
+                                    attachmentsDao: widget.attachmentsDao,
+                                    attachmentUploader:
+                                        widget.attachmentUploader,
+                                    attachmentDownloader:
+                                        widget.attachmentDownloader,
+                                    settingsNotifier: widget.settingsNotifier,
+                                  ),
+                                MergedGroupItem(:final group) =>
+                                  _MergedGroupTile(
+                                    group: group,
+                                    notifier: notifier,
+                                    diveDao: widget.diveDao,
+                                    annotationsDao: widget.annotationsDao,
+                                    equipmentDao: widget.equipmentDao,
+                                    settingsNotifier: widget.settingsNotifier,
+                                  ),
+                              };
                             },
                             childCount: entry.value.length,
                           ),
@@ -347,6 +373,8 @@ class _DiveTileWithSparkline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selecting = notifier.selectionMode;
+    final selected = notifier.isSelected(dive.id);
     return FutureBuilder(
       future: notifier.getSparklineData(dive.id),
       builder: (context, snapshot) {
@@ -379,7 +407,35 @@ class _DiveTileWithSparkline extends StatelessWidget {
           },
         );
 
-        return Dismissible(
+        // Selection mode: a leading checkbox + whole-row tap toggles
+        // selection. Swipe-to-delete is suppressed to avoid gesture
+        // conflicts and accidental deletes while multi-selecting.
+        if (selecting) {
+          return Material(
+            color: selected
+                ? Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.08)
+                : null,
+            child: InkWell(
+              onTap: () => notifier.toggleSelected(dive.id),
+              child: Row(
+                children: [
+                  const SizedBox(width: 8),
+                  IgnorePointer(
+                    child: Checkbox(value: selected, onChanged: (_) {}),
+                  ),
+                  Expanded(child: IgnorePointer(child: tile)),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return GestureDetector(
+          onLongPress: () => notifier.enterSelectionMode(dive.id),
+          child: Dismissible(
           key: ValueKey(dive.id),
           direction: DismissDirection.endToStart,
           background: Container(
@@ -423,9 +479,147 @@ class _DiveTileWithSparkline extends StatelessWidget {
               duration: const Duration(seconds: 6),
             ));
           },
-          child: tile,
+            child: tile,
+          ),
         );
       },
     );
+  }
+}
+
+class _MergedGroupTile extends StatelessWidget {
+  final MergeGroup group;
+  final DiveListNotifier notifier;
+  final DiveDao diveDao;
+  final DiveAnnotationsDao annotationsDao;
+  final EquipmentDao equipmentDao;
+  final SettingsNotifier settingsNotifier;
+
+  const _MergedGroupTile({
+    required this.group,
+    required this.notifier,
+    required this.diveDao,
+    required this.annotationsDao,
+    required this.equipmentDao,
+    required this.settingsNotifier,
+  });
+
+  String _mergeLine() {
+    final gaps = group.surfaceGapsSeconds;
+    final si = gaps.length == 1
+        ? 'SI ${formatDuration(gaps.first)}'
+        : '${gaps.length} surface intervals';
+    return '${group.members.length} dives · $si';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // A summary dive that reuses the normal DiveTile layout: earliest member's
+    // identity (mode, site, date, CCRLog sequence number) with the combined
+    // max depth + total in-water time substituted in.
+    final summaryDive = group.earliest.copyWith(
+      maxDepthMm: group.maxDepthMm,
+      durationSeconds: group.totalInWaterSeconds,
+    );
+    final seq = notifier.sequenceByDiveId[group.earliest.id];
+    final ann = notifier.annotationsByDiveId[group.earliest.id];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FutureBuilder(
+          future: notifier
+              .getMergedSparklineData(group.members.map((m) => m.id).toList()),
+          builder: (context, snapshot) => DiveTile(
+            dive: summaryDive,
+            sparklineData: snapshot.data,
+            annotation: ann,
+            sequenceNumber: seq,
+            onTap: () => _openMerged(context),
+          ),
+        ),
+        // Extra line marking this as a merge: chain icon + dive count + SI.
+        InkWell(
+          onTap: () => _openMerged(context),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 8, 6),
+            child: Row(
+              children: [
+                Icon(Icons.link, size: 14, color: scheme.outlineVariant),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _mergeLine(),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.outlineVariant,
+                        ),
+                  ),
+                ),
+                SizedBox(
+                  height: 28,
+                  child: PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Merge options',
+                    icon: Icon(Icons.more_vert,
+                        size: 18, color: scheme.outlineVariant),
+                    onSelected: (v) {
+                      if (v == 'unmerge') notifier.unmergeGroup(group.groupId);
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'unmerge', child: Text('Unmerge')),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openMerged(BuildContext context) async {
+    final navigator = Navigator.of(context);
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+    final messenger = ScaffoldMessenger.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    final members = <MergeMember>[];
+    for (final dv in group.members) {
+      final samples = await diveDao.getSamples(dv.id);
+      if (samples == null) {
+        rootNavigator.pop(); // dismiss loader
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Samples not available yet — try again later.')));
+        return;
+      }
+      members.add((dive: dv, samples: samples));
+    }
+    final merged = buildMergedDive(mergedId: group.groupId, members: members);
+    rootNavigator.pop(); // dismiss loader
+    // The synthetic dive's id is the merge-group id, not a real dive. Anchor
+    // annotations (site, notes, buddies, rating, …) to the earliest member's
+    // real dive id so edits persist and any pre-merge annotation on that dive
+    // shows through. Sections keyed on the dive (bailout carry, mapped
+    // cylinders, active cells) read as-if the first member.
+    await navigator.push(MaterialPageRoute(
+      builder: (_) => DiveDetailScreen(
+        dive: merged.dive,
+        preloadedSamples: merged.samples,
+        dao: diveDao,
+        annotationsDao: annotationsDao,
+        equipmentDao: equipmentDao,
+        settingsNotifier: settingsNotifier,
+        annotationsDiveId: group.earliest.id,
+        // Show the CCRLog sequence number of the earliest member (e.g. #716),
+        // not the synthetic dive's raw dcDiveNumber.
+        sequenceNumber: notifier.sequenceByDiveId[group.earliest.id],
+      ),
+    ));
+    await notifier.loadDives();
   }
 }

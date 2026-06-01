@@ -1,24 +1,34 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import '../../analysis/merge/merge_validator.dart';
 import '../../data/db/database.dart';
 import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/dive_dao.dart';
+import '../../data/db/dive_merge_dao.dart';
 import '../../data/models/annotation.dart' as dom;
+import '../models/dive_list_item.dart';
 import '../util/format.dart';
 
 class DiveListNotifier extends ChangeNotifier {
   final DiveDao _dao;
   final DiveAnnotationsDao _annotationsDao;
+  final DiveMergeDao _mergeDao;
   StreamSubscription<void>? _annotationsWatchSub;
+  StreamSubscription<void>? _mergeWatchSub;
   List<Dive> _dives = [];
   Map<String, dom.DiveAnnotation> _annotationsByDiveId = {};
+  List<MergeLink> _links = [];
   bool _loading = false;
   final _sparklineCache = _LruCache<String, Float32List>(50);
 
   bool _disposed = false;
 
-  DiveListNotifier(this._dao, this._annotationsDao) {
+  // Selection mode (for creating merges).
+  bool _selectionMode = false;
+  final Set<String> _selectedDiveIds = {};
+
+  DiveListNotifier(this._dao, this._annotationsDao, this._mergeDao) {
     // Refresh whenever annotations change locally or arrive from the cloud.
     // Drift dives don't need a watch — they only mutate via local imports,
     // and the import flow already calls loadDives().
@@ -32,12 +42,20 @@ class DiveListNotifier extends ChangeNotifier {
       // surfacing them as unhandled stream errors.
       onError: (_) {},
     );
+    _mergeWatchSub = _mergeDao.watchChanges().listen(
+      (_) {
+        if (_disposed) return;
+        loadDives();
+      },
+      onError: (_) {},
+    );
   }
 
   @override
   void dispose() {
     _disposed = true;
     _annotationsWatchSub?.cancel();
+    _mergeWatchSub?.cancel();
     super.dispose();
   }
 
@@ -45,6 +63,58 @@ class DiveListNotifier extends ChangeNotifier {
   bool get loading => _loading;
   Map<String, dom.DiveAnnotation> get annotationsByDiveId =>
       Map.unmodifiable(_annotationsByDiveId);
+
+  List<MergeLink> get links => List.unmodifiable(_links);
+  List<DiveListItem> get listItems => buildListItems(_dives, _links);
+
+  bool get selectionMode => _selectionMode;
+  Set<String> get selectedDiveIds => Set.unmodifiable(_selectedDiveIds);
+  bool isSelected(String diveId) => _selectedDiveIds.contains(diveId);
+
+  void enterSelectionMode(String firstDiveId) {
+    _selectionMode = true;
+    _selectedDiveIds
+      ..clear()
+      ..add(firstDiveId);
+    notifyListeners();
+  }
+
+  void exitSelectionMode() {
+    _selectionMode = false;
+    _selectedDiveIds.clear();
+    notifyListeners();
+  }
+
+  void toggleSelected(String diveId) {
+    if (!_selectedDiveIds.remove(diveId)) {
+      _selectedDiveIds.add(diveId);
+    }
+    if (_selectedDiveIds.isEmpty) {
+      _selectionMode = false;
+    }
+    notifyListeners();
+  }
+
+  /// Eligibility of the current selection (drives the Merge button state).
+  MergeEligibility get mergeEligibility {
+    final selected =
+        _dives.where((d) => _selectedDiveIds.contains(d.id)).toList();
+    return validateMerge(selected: selected, allDives: _dives);
+  }
+
+  /// Merges the current selection (assumes [mergeEligibility].canMerge).
+  Future<void> mergeSelected() async {
+    final ids = _selectedDiveIds.toList();
+    await _mergeDao.mergeDives(ids);
+    exitSelectionMode();
+    await loadDives();
+  }
+
+  /// Unmerges a group and refreshes.
+  Future<void> unmergeGroup(String groupId) async {
+    await _mergeDao.unmerge(groupId);
+    await loadDives();
+  }
 
   /// CCRLog-internal sequential dive number, keyed by dive id. Computed
   /// over all non-deleted dives sorted by `start_time` ascending — the
@@ -82,8 +152,11 @@ class DiveListNotifier extends ChangeNotifier {
     final annotations =
         await _annotationsDao.getAnnotationsForDives(dives.map((d) => d.id));
     if (_disposed) return;
+    final links = await _mergeDao.getActiveLinks();
+    if (_disposed) return;
     _dives = dives;
     _annotationsByDiveId = annotations;
+    _links = links;
     _loading = false;
     notifyListeners();
   }
@@ -108,6 +181,26 @@ class DiveListNotifier extends ChangeNotifier {
     if (samples == null) return null;
     _sparklineCache.put(diveId, samples.depthMeters);
     return samples.depthMeters;
+  }
+
+  /// Combined depth sparkline for a merge group: each member's depth track
+  /// concatenated (no gap — the thumbnail is tiny) so the merged tile shows
+  /// both dives' shapes. Reuses the per-dive [getSparklineData] cache.
+  Future<Float32List?> getMergedSparklineData(List<String> diveIds) async {
+    final parts = <Float32List>[];
+    for (final id in diveIds) {
+      final part = await getSparklineData(id);
+      if (part != null && part.isNotEmpty) parts.add(part);
+    }
+    if (parts.isEmpty) return null;
+    final total = parts.fold<int>(0, (sum, p) => sum + p.length);
+    final out = Float32List(total);
+    var w = 0;
+    for (final p in parts) {
+      out.setAll(w, p);
+      w += p.length;
+    }
+    return out;
   }
 }
 

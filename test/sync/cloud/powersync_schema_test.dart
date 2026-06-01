@@ -22,6 +22,8 @@ void main() {
         'dive_attachments',
         // Dive Plan tab: draft + saved plans.
         'dive_plans',
+        // Merge dives: reversible stored grouping.
+        'dive_merge_links',
       });
     });
 

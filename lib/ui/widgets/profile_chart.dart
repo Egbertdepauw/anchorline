@@ -19,6 +19,38 @@ import 'trace_segmented_bar.dart' show TraceType;
 import '../theme/tokens.dart';
 import '../util/tank_labels.dart';
 
+/// Builds a polyline [Path] over the first [n] samples of [data], starting a
+/// fresh subpath after any NaN sample. A NaN coordinate makes Skia reject the
+/// ENTIRE path (drawing nothing), so without this a merged-dive surface gap
+/// (NaN) would erase the whole trace — PPO2, setpoint, temperature, cells.
+/// Breaking at NaN also gives the right visual: the trace stops over the
+/// surface and resumes on the next dive segment.
+Path buildBrokenTracePath(
+  Float32List data,
+  int n,
+  double Function(int) xOf,
+  double Function(double) yOf,
+) {
+  final path = Path();
+  var penDown = false;
+  for (var i = 0; i < n; i++) {
+    final v = data[i];
+    if (v.isNaN) {
+      penDown = false;
+      continue;
+    }
+    final x = xOf(i);
+    final y = yOf(v);
+    if (penDown) {
+      path.lineTo(x, y);
+    } else {
+      path.moveTo(x, y);
+      penDown = true;
+    }
+  }
+  return path;
+}
+
 // ── Layout constants ────────────────────────────────────────────
 
 const double _leftPad = 40.0;
@@ -1004,12 +1036,7 @@ class ProfileChartPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    final path = Path();
-    path.moveTo(xOf(0), yOf(data[0]));
-    for (int i = 1; i < n; i++) {
-      path.lineTo(xOf(i), yOf(data[i]));
-    }
-    canvas.drawPath(path, paint);
+    canvas.drawPath(buildBrokenTracePath(data, n, xOf, yOf), paint);
   }
 
   void _drawDashedTrace(
@@ -1028,11 +1055,7 @@ class ProfileChartPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.butt;
 
-    final fullPath = Path();
-    fullPath.moveTo(xOf(0), yOf(data[0]));
-    for (int i = 1; i < n; i++) {
-      fullPath.lineTo(xOf(i), yOf(data[i]));
-    }
+    final fullPath = buildBrokenTracePath(data, n, xOf, yOf);
 
     // Materialise as dashes: 6px on, 4px off.
     const dashOn = 6.0;

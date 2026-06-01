@@ -193,7 +193,7 @@ void main() {
   test('schema v2: has cylinders, pressure_mappings, oxygen_cells.label', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    expect(db.schemaVersion, 16);
+    expect(db.schemaVersion, 17);
 
     // Inserting a row exercises the full schema.
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -278,7 +278,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 16);
+    expect(db.schemaVersion, 17);
 
     // Step 5: verify the seeded oxygen_cells row survived.
     final cells = await db.select(db.oxygenCells).get();
@@ -355,7 +355,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 16);
+    expect(db.schemaVersion, 17);
 
     // Step 5: verify the seeded annotation row survived.
     final annotations = await db.select(db.diveAnnotations).get();
@@ -402,7 +402,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 16);
+    expect(db.schemaVersion, 17);
 
     final dives = await db.select(db.dives).get();
     expect(dives, hasLength(1));
@@ -446,7 +446,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 16);
+    expect(db.schemaVersion, 17);
 
     // Migrated row: tanks_json is null on the existing v4 row.
     final migrated = await db.select(db.dives).get();
@@ -533,7 +533,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 16);
+    expect(db.schemaVersion, 17);
 
     // The migrated row's tank_pressures_blob is null.
     final migrated = await db.select(db.diveSamples).get();
@@ -624,7 +624,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 16);
+    expect(db.schemaVersion, 17);
 
     // The migrated row has a null subsurface_uploaded_at.
     final migrated = await db.select(db.dives).get();
@@ -832,7 +832,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 16);
+    expect(db.schemaVersion, 17);
 
     // Pre-existing rows survive the migration with owner_id null.
     expect((await db.select(db.diveAnnotations).get()).single.ownerId, isNull);
@@ -939,7 +939,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 16);
+    expect(db.schemaVersion, 17);
 
     // Pre-existing dive survives with deleted_at null (visible in queries).
     final migrated = await db.select(db.dives).get();
@@ -1046,7 +1046,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 16);
+    expect(db.schemaVersion, 17);
 
     // Pre-existing v10 row survives with sensor_calibration_json null —
     // the mapper's fallback (Petrel default 0.021) is what handles legacy
@@ -1163,7 +1163,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 16);
+    expect(db.schemaVersion, 17);
 
     // Pre-existing v11 row survives; new columns default to null/empty.
     final migrated = await db.select(db.diveAnnotations).get();
@@ -1296,7 +1296,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 16);
+    expect(db.schemaVersion, 17);
 
     // Pre-existing v13 row survives; new column defaults to null.
     final migrated = await db.select(db.diveAnnotations).get();
@@ -1316,5 +1316,33 @@ void main() {
           ..where((a) => a.diveId.equals('dive_v14')))
         .getSingle();
     expect(fresh.displayDecoAlgorithm, 'vpmb');
+  });
+
+  test('v16 → v17 onUpgrade creates dive_merge_links', () async {
+    final raw = sqlite3.openInMemory();
+    addTearDown(raw.close);
+
+    // A v16 database has no dive_merge_links table yet. The onUpgrade
+    // step `if (from < 17)` should create it on open.
+    raw.execute('PRAGMA user_version = 16;');
+
+    final db = AppDatabase(NativeDatabase.opened(raw));
+    addTearDown(db.close);
+
+    await db.customSelect('SELECT 1').get();
+    expect(db.schemaVersion, 17);
+
+    // The new table exists and is writable.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.customStatement(
+      'INSERT INTO dive_merge_links '
+      '(dive_id, group_id, created_at, updated_at, version, sync_status) '
+      'VALUES (?, ?, ?, ?, 1, 0)',
+      ['dive_a', 'grp_1', now, now],
+    );
+    final rows =
+        await db.customSelect('SELECT group_id FROM dive_merge_links').get();
+    expect(rows, hasLength(1));
+    expect(rows.single.data['group_id'], 'grp_1');
   });
 }

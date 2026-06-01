@@ -22,13 +22,14 @@ part 'database.g.dart';
     DivePlans,
     DiveBailoutCarry,
     ImportStates,
+    DiveMergeLinks,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -143,6 +144,9 @@ class AppDatabase extends _$AppDatabase {
               'CREATE INDEX IF NOT EXISTS idx_dive_plans_owner_updated '
               'ON dive_plans (owner_id, deleted_at, updated_at DESC)',
             );
+          }
+          if (from < 17) {
+            await m.createTable(diveMergeLinks);
           }
         },
       );

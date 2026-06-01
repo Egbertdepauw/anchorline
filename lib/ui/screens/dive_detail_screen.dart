@@ -105,6 +105,18 @@ class DiveDetailScreen extends StatefulWidget {
   /// callers (cell_detail_screen, tests) get a full self-contained screen.
   final bool wrappedInPager;
 
+  /// Pre-built (synthetic) sample set to use instead of loading from the
+  /// database. When non-null, [DiveDetailNotifier] will use this directly
+  /// and skip the DAO lookup. Used by merged-dive presentations where the
+  /// combined [SampleSet] is built in memory and has no database row.
+  final SampleSet? preloadedSamples;
+
+  /// Real dive id to load/save annotations against. For a merged dive, [dive]
+  /// is synthetic (its id is a group id), so this points at the earliest
+  /// member's real dive id — edits persist there and a pre-merge annotation on
+  /// that dive shows through. Null for solo dives → falls back to [dive].id.
+  final String? annotationsDiveId;
+
   const DiveDetailScreen({
     super.key,
     required this.dive,
@@ -119,6 +131,8 @@ class DiveDetailScreen extends StatefulWidget {
     this.attachmentDownloader,
     this.sequenceNumber,
     this.wrappedInPager = false,
+    this.preloadedSamples,
+    this.annotationsDiveId,
   });
   @override
   State<DiveDetailScreen> createState() => _DiveDetailScreenState();
@@ -179,6 +193,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       dive: widget.dive,
       dao: widget.dao,
       equipmentDao: widget.equipmentDao,
+      preloadedSamples: widget.preloadedSamples,
     );
     _notifier.addListener(_onChanged);
     _notifier.loadSamples();
@@ -189,7 +204,11 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         widget.annotationsDao,
         widget.equipmentDao,
       );
-      _annotationsNotifier.load(widget.dive.id);
+      // For a merged dive, [dive].id is a synthetic group id (no annotation
+      // row of its own). Anchor annotations to the earliest member's real
+      // dive id so edits persist and a pre-merge annotation on that dive
+      // shows through. Solo dives leave annotationsDiveId null → dive.id.
+      _annotationsNotifier.load(widget.annotationsDiveId ?? widget.dive.id);
     } else {
       _annotationsNotifier = widget.annotationsNotifier!;
     }
@@ -510,16 +529,23 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                             widget.settingsNotifier.visibleTraces;
                         final useSpeedColored =
                             widget.settingsNotifier.useSpeedColoredGraph;
-                        // In landscape the user is here to study the
+                        // In PHONE landscape the user is here to study the
                         // graph — let the chart fill most of the viewport
                         // height instead of being clipped to 250 dp.
-                        // 250 dp portrait keeps room for the cards below;
-                        // landscape grows up to ~440 dp on most phones,
-                        // i.e. nearly the entire visible height.
+                        // 250 dp keeps room for the cards below. Guard on
+                        // phone: desktop/tablet windows also report
+                        // Orientation.landscape (width > height), and there the
+                        // fill-height branch made the chart absurdly tall and
+                        // pushed the trace toggles + cards off-screen.
                         final mq = MediaQuery.of(context);
-                        final isLandscape =
+                        final isMobile =
+                            defaultTargetPlatform == TargetPlatform.iOS ||
+                                defaultTargetPlatform == TargetPlatform.android;
+                        final isPhone =
+                            isMobile && mq.size.shortestSide < 600;
+                        final isPhoneLandscape = isPhone &&
                             mq.orientation == Orientation.landscape;
-                        final chartHeight = isLandscape
+                        final chartHeight = isPhoneLandscape
                             ? (mq.size.height - 160).clamp(240.0, 600.0)
                             : 250.0;
                         return Column(

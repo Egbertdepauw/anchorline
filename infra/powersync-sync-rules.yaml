@@ -14,3 +14,4 @@ bucket_definitions:
       - SELECT * FROM dives WHERE owner_id = bucket.user_id
       - SELECT * FROM dive_samples WHERE owner_id = bucket.user_id
       - SELECT * FROM dive_attachments WHERE owner_id = bucket.user_id
+      - SELECT * FROM dive_merge_links WHERE owner_id = bucket.user_id

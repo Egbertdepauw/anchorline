@@ -195,5 +195,36 @@ void main() {
       expect(result.gfLow, 30);
       expect(result.gfHigh, 85);
     });
+
+    test('NaN setpoint (merged-dive surface gap) does not poison GF', () {
+      // A merged dive inserts a flat surface block with NaN setpoint where the
+      // computer logged nothing. The replay must treat that as SP-off (OC) and
+      // keep producing finite GF instead of NaN — otherwise surfaceGf.round()
+      // throws "Infinity or NaN toInt".
+      const n = 60;
+      final depth = Float32List(n)..fillRange(0, n, 20.0);
+      final setpoint = Float32List(n)..fillRange(0, n, 1.2);
+      for (var i = 20; i < 40; i++) {
+        depth[i] = 0.0;
+        setpoint[i] = double.nan;
+      }
+      final samples = SampleStub(
+        depthMeters: depth,
+        gasMixIndex: Uint8List(n),
+        sampleIntervalMs: 10000,
+        setpointBar: setpoint,
+      );
+      final result = Zhl16cReplay().run(
+        samples: samples,
+        gasMixes: [
+          DiveGasMix(oxygenPercent: 21, heliumPercent: 0, isDiluent: true)
+        ],
+        gfLow: 30,
+        gfHigh: 85,
+      );
+      expect(result.surfaceGfFinal.isNaN, isFalse);
+      expect(result.maxGf99.isNaN, isFalse);
+      expect(result.gf99Series.every((g) => !g.isNaN), isTrue);
+    });
   });
 }
