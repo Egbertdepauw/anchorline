@@ -917,8 +917,17 @@ class EquipmentDao {
   Future<List<({DiveBailoutCarryData carry, Cylinder cylinder})>>
       listBailoutCarryWithCylinders(String diveId) async {
     final rows = await _ps.getAll(
-      'SELECT bc.id AS bc_id, bc.dive_id, bc.cylinder_id, bc.gas_mix, '
-      '       bc.fill_pressure_bar, bc.bailout_order, '
+      // Alias every dive_bailout_carry column with a `bc_` prefix.
+      // Otherwise `c.*` brings in cylinders.bailout_order (NULL for
+      // non-bailout-role cylinders), cylinders.gas_mix, and
+      // cylinders.dive_id — these silently overwrite the bc.* values
+      // in the result map because SQLite uses the LAST-seen name
+      // when columns collide. Result was a `Null is not a subtype of
+      // int` cast failure on the bailoutOrder field.
+      'SELECT bc.id AS bc_id, bc.dive_id AS bc_dive_id, '
+      '       bc.cylinder_id AS bc_cylinder_id, bc.gas_mix AS bc_gas_mix, '
+      '       bc.fill_pressure_bar AS bc_fill_pressure_bar, '
+      '       bc.bailout_order AS bc_bailout_order, '
       '       bc.created_at AS bc_created_at, bc.updated_at AS bc_updated_at, '
       '       bc.deleted_at AS bc_deleted_at, bc.version AS bc_version, '
       '       bc.sync_status AS bc_sync_status, bc.owner_id AS bc_owner_id, '
@@ -932,11 +941,11 @@ class EquipmentDao {
     return rows.map((r) {
       final carry = DiveBailoutCarryData(
         id: r['bc_id'] as String,
-        diveId: r['dive_id'] as String,
-        cylinderId: r['cylinder_id'] as String,
-        gasMix: r['gas_mix'] as String,
-        fillPressureBar: r['fill_pressure_bar'] as int?,
-        bailoutOrder: r['bailout_order'] as int,
+        diveId: r['bc_dive_id'] as String,
+        cylinderId: r['bc_cylinder_id'] as String,
+        gasMix: r['bc_gas_mix'] as String,
+        fillPressureBar: r['bc_fill_pressure_bar'] as int?,
+        bailoutOrder: r['bc_bailout_order'] as int,
         createdAt: r['bc_created_at'] as int,
         updatedAt: r['bc_updated_at'] as int,
         deletedAt: r['bc_deleted_at'] as int?,
@@ -955,16 +964,46 @@ class EquipmentDao {
     int? fillPressureBar,
     required int bailoutOrder,
   }) async {
+    // id is the deterministic `(diveId, cylinderId)` composite —
+    // [deleteBailoutCarry] is a soft-delete that leaves the row in
+    // place with `deleted_at` set, so a plain INSERT here would fail
+    // with a UNIQUE-constraint error on any "add → delete → re-add"
+    // cycle.
+    //
+    // PowerSync exposes its tables as views, which can't be UPSERTed
+    // (SQLite rejects ON CONFLICT on a view), so do a SELECT-first
+    // and dispatch to UPDATE (revive a soft-deleted row) or INSERT
+    // (the common path) explicitly.
     final id = '$diveId:$cylinderId';
     final now = DateTime.now().millisecondsSinceEpoch;
-    await _ps.execute(
-      'INSERT INTO dive_bailout_carry '
-      '(id, owner_id, dive_id, cylinder_id, gas_mix, fill_pressure_bar, '
-      ' bailout_order, created_at, updated_at, deleted_at, version, sync_status) '
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, 0)',
-      [id, _ownerId, diveId, cylinderId, gasMix, fillPressureBar,
-        bailoutOrder, now, now],
+    final existing = await _ps.getOptional(
+      'SELECT id FROM dive_bailout_carry WHERE id = ?',
+      [id],
     );
+    if (existing != null) {
+      await _ps.execute(
+        'UPDATE dive_bailout_carry SET '
+        '  gas_mix = ?, '
+        '  fill_pressure_bar = ?, '
+        '  bailout_order = ?, '
+        '  deleted_at = NULL, '
+        '  updated_at = ?, '
+        '  version = COALESCE(version, 0) + 1, '
+        '  sync_status = 0 '
+        'WHERE id = ?',
+        [gasMix, fillPressureBar, bailoutOrder, now, id],
+      );
+    } else {
+      await _ps.execute(
+        'INSERT INTO dive_bailout_carry '
+        '(id, owner_id, dive_id, cylinder_id, gas_mix, fill_pressure_bar, '
+        ' bailout_order, created_at, updated_at, deleted_at, version, '
+        ' sync_status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, 0)',
+        [id, _ownerId, diveId, cylinderId, gasMix, fillPressureBar,
+          bailoutOrder, now, now],
+      );
+    }
     return id;
   }
 

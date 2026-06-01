@@ -6,6 +6,8 @@ library;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+
+import 'ble_debug_logger.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'protocol.dart';
@@ -179,11 +181,20 @@ class FlutterBluePlusBleIo implements BleIo {
   /// Disconnect and clean up.
   Future<void> disconnect() async {
     await _notifySub?.cancel();
+    _notifySub = null;
     final waiter = _frameSignal;
     _frameSignal = null;
     if (waiter != null && !waiter.isCompleted) {
       waiter.completeError(StateError('Disconnected'));
     }
+    // Clear cached characteristic references + rx queue so a
+    // subsequent connect() rebuilds them cleanly. Without this, an
+    // inter-dive reconnect would carry over the old chars (which
+    // point at a closed GATT handle) and leave stale frames in the
+    // queue.
+    _writeChar = null;
+    _notifyChar = null;
+    _frames.clear();
     await device.disconnect();
   }
 
@@ -199,7 +210,8 @@ class FlutterBluePlusBleIo implements BleIo {
   void drainPendingFrames() {
     final dropped = _frames.length;
     if (dropped > 0) {
-      debugPrint('BLE drainPendingFrames: dropped $dropped stale frame(s)');
+      BleDebugLogger.instance.log(
+          'drainPendingFrames: dropped $dropped stale frame(s)');
       _frames.clear();
     }
     // Don't touch _frameSignal — if a reader is currently blocked on it,

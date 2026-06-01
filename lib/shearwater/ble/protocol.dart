@@ -321,25 +321,29 @@ class ShearwaterProtocol {
       if (blockPayload[0] == 0x7F) {
         final svc = blockPayload[1];
         final nrc = blockPayload.length > 2 ? blockPayload[2] : 0xFF;
-        // NRC 0x24 (requestSequenceError) after we've received valid data
-        // is the Petrel's "no more data for this dive" signal. The
-        // manifest's endAddress field is a flash-allocation boundary
-        // (next-dive-start or next-sector-start, rounded up), not the
-        // exact compressed-end — when we request that many bytes the
-        // firmware happily streams up to its internal end-of-dive marker
-        // and then NAKs the next request. Treat it as clean EOS so the
-        // remaining in-flight responses can drain and we proceed to Quit.
+        // NRC 0x24 (requestSequenceError) on a block request means the
+        // Petrel has no data for this block number. Two paths got here:
+        // either we never saw the LRE marker (the firmware ran past
+        // the dive's actual content into unwritten flash), or we
+        // already saw the marker but a pipelined request landed past
+        // the end. Either way, once the Petrel issues this NAK it
+        // considers the session OVER — sending Quit afterward has
+        // been observed to either get no response or actively
+        // confuse the firmware into dropping the BLE link, which
+        // then breaks the next dive's Init.
+        //
+        // So the moment we see this NAK, set sessionEndedByPeer=true
+        // and SKIP Quit. With pipelineWindow=1 (libdc convention) we
+        // shouldn't reach this path at all on a healthy dive — the
+        // LRE-final block arrives, we exit cleanly, and Quit is
+        // acked. The NAK path is now strictly a safety net.
         if (nrc == 0x24 && nbytes > 0) {
-          _bleLog('← Petrel NAK 0x24 (end-of-data) after '
-              '$blocksRead blocks, $nbytes bytes — '
-              'inFlight=[${inFlight.join(",")}] '
+          _bleLog('← Petrel NAK 0x24 after $blocksRead blocks, '
+              '$nbytes bytes (done-via-LRE=$done, '
+              'inFlight=[${inFlight.join(",")}]) — '
               'session retired by Petrel; skipping Quit');
           done = true;
           sessionEndedByPeer = true;
-          // Petrel has already closed the download session on its side.
-          // Pipelined-but-unanswered requests will not be responded to —
-          // clear inFlight so we don't sit in _receiveResponse() waiting
-          // 5 s for each pending request to time out.
           inFlight.clear();
           break;
         }
