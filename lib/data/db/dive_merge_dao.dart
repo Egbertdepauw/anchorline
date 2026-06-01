@@ -60,10 +60,11 @@ class DiveMergeDao {
       for (final diveId in diveIds) {
         if (existing.contains(diveId)) {
           await tx.execute(
-            'UPDATE dive_merge_links SET group_id = ?, deleted_at = NULL, '
-            'updated_at = ?, version = COALESCE(version, 0) + 1, '
+            'UPDATE dive_merge_links SET group_id = ?, owner_id = ?, '
+            'deleted_at = NULL, updated_at = ?, '
+            'version = COALESCE(version, 0) + 1, '
             'sync_status = 0 WHERE id = ?',
-            [groupId, now, diveId],
+            [groupId, _ownerId, now, diveId],
           );
         } else {
           await tx.execute(
@@ -94,7 +95,8 @@ class DiveMergeDao {
   Future<void> unmerge(String groupId) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await _ps.execute(
-      'UPDATE dive_merge_links SET deleted_at = ?, updated_at = ? '
+      'UPDATE dive_merge_links SET deleted_at = ?, updated_at = ?, '
+      'version = COALESCE(version, 0) + 1 '
       'WHERE group_id = ? AND deleted_at IS NULL',
       [now, now, groupId],
     );

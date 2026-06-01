@@ -131,4 +131,45 @@ void main() {
       throwsArgumentError,
     );
   });
+
+  test('three members with two different gaps stitch in order', () {
+    // A: 0..1000 (100 samples). Gap 200s -> 20 samples.
+    // B: 1200..2200 (100 samples). Gap 500s -> 50 samples.
+    // C: 2700..3700 (100 samples). Passed out of order to check sorting.
+    final a = d(id: 'a', start: 0, end: 1000);
+    final b = d(id: 'b', start: 1200, end: 2200);
+    final c = d(id: 'c', start: 2700, end: 3700);
+    final res = buildMergedDive(mergedId: 'grp', members: [
+      (dive: c, samples: samples(diveId: 'c', count: 100, depth: 12.0)),
+      (dive: a, samples: samples(diveId: 'a', count: 100, depth: 10.0)),
+      (dive: b, samples: samples(diveId: 'b', count: 100, depth: 11.0)),
+    ]);
+
+    expect(res.samples.sampleCount, 100 + 20 + 100 + 50 + 100);
+    // First gap block (indices 100..119) is surface.
+    expect(res.samples.depthMeters[110], 0.0);
+    // B segment (after A=100 + gap=20) starts at 120.
+    expect(res.samples.depthMeters[120], 11.0);
+    // Second gap block (after 120+100=220, length 50) is surface.
+    expect(res.samples.depthMeters[250], 0.0);
+    // C segment starts at 220+50=270.
+    expect(res.samples.depthMeters[270], 12.0);
+    expect(res.dive.startTime, 0);
+    expect(res.dive.endTime, 3700);
+    expect(res.dive.durationSeconds, 1000 * 3);
+  });
+
+  test('overlapping members clamp the gap to zero (no negative block)', () {
+    // B starts before A ends (overlap) — builder must not produce a
+    // negative-length surface block. (Guardrails reject this upstream, but
+    // the builder defends independently.)
+    final a = d(id: 'a', start: 0, end: 1000);
+    final b = d(id: 'b', start: 500, end: 1500);
+    final res = buildMergedDive(mergedId: 'grp', members: [
+      (dive: a, samples: samples(diveId: 'a', count: 100)),
+      (dive: b, samples: samples(diveId: 'b', count: 100)),
+    ]);
+    // Gap clamped to 0 -> total is just the two segments.
+    expect(res.samples.sampleCount, 200);
+  });
 }

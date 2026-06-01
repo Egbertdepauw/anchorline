@@ -111,6 +111,13 @@ class DiveDetailScreen extends StatefulWidget {
   /// combined [SampleSet] is built in memory and has no database row.
   final SampleSet? preloadedSamples;
 
+  /// Whether annotation editing is offered. Synthetic merged-dive views set
+  /// this false: their [dive].id is a merge-group id, not a real dive, so
+  /// saving annotations against it would write an orphan `dive_annotations`
+  /// row that no other screen reads. When false the Save action and the
+  /// unsaved-changes guard are suppressed.
+  final bool annotationsEditable;
+
   const DiveDetailScreen({
     super.key,
     required this.dive,
@@ -126,6 +133,7 @@ class DiveDetailScreen extends StatefulWidget {
     this.sequenceNumber,
     this.wrappedInPager = false,
     this.preloadedSamples,
+    this.annotationsEditable = true,
   });
   @override
   State<DiveDetailScreen> createState() => _DiveDetailScreenState();
@@ -232,7 +240,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     // In pager mode the parent owns the unsaved-changes guard — it sees
     // every cached page's dirty state, not just the visible one. Solo
     // callers still get the per-screen PopScope.
-    final guardPop = _ownsAnnotations;
+    final guardPop = _ownsAnnotations && widget.annotationsEditable;
     return PopScope(
       canPop: !guardPop || !_annotationsNotifier.dirty,
       onPopInvokedWithResult: (didPop, result) async {
@@ -297,26 +305,27 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
             icon: const Icon(Icons.chevron_right),
             onPressed: widget.onNext,
           ),
-          AnimatedBuilder(
-            animation: _annotationsNotifier,
-            builder: (context, _) {
-              final dirty = _annotationsNotifier.dirty;
-              return IconButton(
-                tooltip: dirty ? 'Save (unsaved changes)' : 'Save',
-                icon: Icon(
-                  dirty ? Icons.save : Icons.save_outlined,
-                  color: dirty
-                      ? Theme.of(context).colorScheme.primary
+          if (widget.annotationsEditable)
+            AnimatedBuilder(
+              animation: _annotationsNotifier,
+              builder: (context, _) {
+                final dirty = _annotationsNotifier.dirty;
+                return IconButton(
+                  tooltip: dirty ? 'Save (unsaved changes)' : 'Save',
+                  icon: Icon(
+                    dirty ? Icons.save : Icons.save_outlined,
+                    color: dirty
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                  onPressed: dirty
+                      ? () async {
+                          await _annotationsNotifier.save();
+                        }
                       : null,
-                ),
-                onPressed: dirty
-                    ? () async {
-                        await _annotationsNotifier.save();
-                      }
-                    : null,
-              );
-            },
-          ),
+                );
+              },
+            ),
         ],
       ),
       body: _notifier.loading && _notifier.samples == null

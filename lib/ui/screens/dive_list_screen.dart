@@ -553,6 +553,11 @@ class _MergedGroupTile extends StatelessWidget {
     }
     final merged = buildMergedDive(mergedId: group.groupId, members: members);
     rootNavigator.pop(); // dismiss loader
+    // The synthetic dive's id is the merge-group id, not a real dive, so
+    // annotation editing is suppressed (saving would orphan a row). Sections
+    // keyed on the dive (bailout carry, mapped cylinders, active cells) read
+    // as-if the first member — empty/first-dive values — acceptable for the
+    // merged profile view in v1.
     await navigator.push(MaterialPageRoute(
       builder: (_) => DiveDetailScreen(
         dive: merged.dive,
@@ -561,6 +566,7 @@ class _MergedGroupTile extends StatelessWidget {
         annotationsDao: annotationsDao,
         equipmentDao: equipmentDao,
         settingsNotifier: settingsNotifier,
+        annotationsEditable: false,
       ),
     ));
     await notifier.loadDives();

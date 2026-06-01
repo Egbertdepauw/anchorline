@@ -8,10 +8,12 @@ import '../../_helpers/powersync_test_helper.dart';
 void main() {
   late AppDatabase db;
   late DiveMergeDao dao;
+  late DiveMergeDaoTestRig rig;
 
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
-    dao = (await openDiveMergeDaoForTest(db)).dao;
+    rig = await openDiveMergeDaoForTest(db);
+    dao = rig.dao;
   });
 
   tearDown(() async => db.close());
@@ -45,5 +47,23 @@ void main() {
     final links = await dao.getActiveLinks();
     expect(links, hasLength(2));
     expect(links.every((l) => l.groupId == g2), isTrue);
+  });
+
+  Future<int?> ownerCount(String diveId) async {
+    final row = await rig.ps.getOptional(
+      'SELECT owner_id FROM dive_merge_links WHERE id = ?',
+      [diveId],
+    );
+    return row?['owner_id'] == 'test-user' ? 1 : 0;
+  }
+
+  test('owner_id is stamped on insert and on reactivate', () async {
+    await dao.mergeDives(['d1', 'd2']);
+    expect(await ownerCount('d1'), 1);
+
+    // Unmerge then re-merge must keep owner_id stamped (RLS upload safety).
+    await dao.unmerge(generateMergeGroupId(['d1', 'd2']));
+    await dao.mergeDives(['d1', 'd2']);
+    expect(await ownerCount('d1'), 1);
   });
 }
