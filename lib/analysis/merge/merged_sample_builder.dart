@@ -10,6 +10,7 @@ import 'dart:typed_data';
 
 import '../../data/db/database.dart';
 import '../../data/models/sample_set.dart';
+import 'merge_constants.dart';
 
 /// One member of a merge: its (Drift) dive row + decoded samples.
 typedef MergeMember = ({Dive dive, SampleSet samples});
@@ -54,12 +55,18 @@ typedef MergeMember = ({Dive dive, SampleSet samples});
     remaps.add(remap);
   }
 
-  // Surface gaps (in samples) and total length.
+  // Surface gaps (in samples) and total length. The drawn gap is clamped to
+  // [kMergedSurfaceGapDisplayCap] so a long real surface interval doesn't bury
+  // the recorded dive data under thousands of empty samples — the true
+  // interval is surfaced as a label on the list tile. Short gaps still render
+  // proportionally.
+  final maxGapSamples =
+      (kMergedSurfaceGapDisplayCap.inMilliseconds / interval).round();
   final gapSamples = <int>[];
   for (var i = 1; i < sorted.length; i++) {
     final gapSec = sorted[i].dive.startTime - sorted[i - 1].dive.endTime;
     final g = ((gapSec * 1000) / interval).round();
-    gapSamples.add(g < 0 ? 0 : g);
+    gapSamples.add(g < 0 ? 0 : (g > maxGapSamples ? maxGapSamples : g));
   }
   var total = 0;
   for (final m in sorted) {

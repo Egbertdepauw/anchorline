@@ -32,6 +32,29 @@ void main() {
     expect(minAvgMax(Float32List(0), 0), isNull);
   });
 
+  test('minAvgMax ignores NaN values (merged-dive surface gaps)', () {
+    // Surface-gap samples are NaN; they must not poison the average.
+    final values = Float32List.fromList([10.0, double.nan, 20.0, double.nan]);
+    final stats = minAvgMax(values, 4);
+    expect(stats?.min, closeTo(10.0, 1e-6));
+    expect(stats?.max, closeTo(20.0, 1e-6));
+    expect(stats?.avg, closeTo(15.0, 1e-6));
+  });
+
+  test('minAvgMax returns null when every value is NaN', () {
+    final values = Float32List.fromList([double.nan, double.nan]);
+    expect(minAvgMax(values, 2), isNull);
+  });
+
+  test('computeOtu skips NaN ppo2 (merged-dive surface gaps)', () {
+    // 60 real samples at 1.0 bar (=1.0 OTU/min over 1 min) plus NaN gaps.
+    final ppo2 = Float32List.fromList([...List.filled(60, 1.0), double.nan, double.nan]);
+    final otu = computeOtu(
+        ppo2Bar: ppo2, sampleCount: 62, sampleIntervalMs: 1000);
+    expect(otu, closeTo(1.0, 1e-3));
+    expect(otu.isNaN, isFalse);
+  });
+
   group('verticalSpeedExtremes', () {
     test('returns zero when fewer than two samples', () {
       final res = verticalSpeedExtremes(

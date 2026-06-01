@@ -95,10 +95,15 @@ class Zhl16cReplay {
 
       final mix =
           gasMixes[samples.gasMixIndex[i].clamp(0, gasMixes.length - 1)];
+      // NaN guard: merged-dive surface gaps carry a NaN setpoint (no data
+      // logged on the surface). Treat it as 0 (open-circuit / SP off) so the
+      // tissue model keeps off-gassing instead of propagating NaN into every
+      // downstream GF99/ceiling/surfaceGf value.
+      final sp = samples.setpointBar[i];
       final (paN2, paHe) = inertPartialPressures(
         ambientBar: ambientBar,
         mix: mix,
-        setpointBar: samples.setpointBar[i],
+        setpointBar: sp.isNaN ? 0.0 : sp,
       );
 
       for (var c = 0; c < 16; c++) {

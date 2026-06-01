@@ -504,30 +504,78 @@ class _MergedGroupTile extends StatelessWidget {
     required this.settingsNotifier,
   });
 
-  String _gapLabel() {
+  String _mergeLine() {
     final gaps = group.surfaceGapsSeconds;
-    if (gaps.length == 1) return 'SI ${formatDuration(gaps.first)}';
-    return '${gaps.length} surface intervals';
+    final si = gaps.length == 1
+        ? 'SI ${formatDuration(gaps.first)}'
+        : '${gaps.length} surface intervals';
+    return '${group.members.length} dives · $si';
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: const Icon(Icons.link),
-      title: Text(
-          '${formatDateTime(group.earliest.startTime)} · ${group.members.length} dives'),
-      subtitle: Text(
-          '${formatDuration(group.totalInWaterSeconds)} · '
-          '${formatDepth(group.maxDepthMm)} · ${_gapLabel()}'),
-      trailing: PopupMenuButton<String>(
-        onSelected: (v) {
-          if (v == 'unmerge') notifier.unmergeGroup(group.groupId);
-        },
-        itemBuilder: (_) => const [
-          PopupMenuItem(value: 'unmerge', child: Text('Unmerge')),
-        ],
-      ),
-      onTap: () => _openMerged(context),
+    final scheme = Theme.of(context).colorScheme;
+    // A summary dive that reuses the normal DiveTile layout: earliest member's
+    // identity (mode, site, date, CCRLog sequence number) with the combined
+    // max depth + total in-water time substituted in.
+    final summaryDive = group.earliest.copyWith(
+      maxDepthMm: group.maxDepthMm,
+      durationSeconds: group.totalInWaterSeconds,
+    );
+    final seq = notifier.sequenceByDiveId[group.earliest.id];
+    final ann = notifier.annotationsByDiveId[group.earliest.id];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FutureBuilder(
+          future: notifier
+              .getMergedSparklineData(group.members.map((m) => m.id).toList()),
+          builder: (context, snapshot) => DiveTile(
+            dive: summaryDive,
+            sparklineData: snapshot.data,
+            annotation: ann,
+            sequenceNumber: seq,
+            onTap: () => _openMerged(context),
+          ),
+        ),
+        // Extra line marking this as a merge: chain icon + dive count + SI.
+        InkWell(
+          onTap: () => _openMerged(context),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 8, 6),
+            child: Row(
+              children: [
+                Icon(Icons.link, size: 14, color: scheme.outlineVariant),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _mergeLine(),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.outlineVariant,
+                        ),
+                  ),
+                ),
+                SizedBox(
+                  height: 28,
+                  child: PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Merge options',
+                    icon: Icon(Icons.more_vert,
+                        size: 18, color: scheme.outlineVariant),
+                    onSelected: (v) {
+                      if (v == 'unmerge') notifier.unmergeGroup(group.groupId);
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'unmerge', child: Text('Unmerge')),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -567,6 +615,9 @@ class _MergedGroupTile extends StatelessWidget {
         equipmentDao: equipmentDao,
         settingsNotifier: settingsNotifier,
         annotationsEditable: false,
+        // Show the CCRLog sequence number of the earliest member (e.g. #716),
+        // not the synthetic dive's raw dcDiveNumber.
+        sequenceNumber: notifier.sequenceByDiveId[group.earliest.id],
       ),
     ));
     await notifier.loadDives();

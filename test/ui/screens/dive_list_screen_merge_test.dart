@@ -99,9 +99,10 @@ void main() {
 
     await _pump(tester, rig);
 
-    // One merged group tile (leading link icon), no individual dive tiles.
+    // The two dives collapse into ONE merged entry: a summary DiveTile
+    // (reusing the normal list format) plus a chain line with count + SI.
+    expect(find.byType(DiveTile), findsOneWidget);
     expect(find.byIcon(Icons.link), findsOneWidget);
-    expect(find.byType(DiveTile), findsNothing);
     expect(find.textContaining('2 dives'), findsOneWidget);
   });
 

@@ -17,7 +17,9 @@ double computeOtu({
   var total = 0.0;
   for (var i = 0; i < n; i++) {
     final p = ppo2Bar[i];
-    if (p <= 0.5) continue;
+    // NaN guard: merged-dive surface gaps carry NaN. `NaN <= 0.5` is false,
+    // so without this the pow() would propagate NaN into the total.
+    if (p.isNaN || p <= 0.5) continue;
     total += math.pow((p - 0.5) / 0.5, 5.0 / 6.0) * minutesPerSample;
   }
   return total;
@@ -33,13 +35,19 @@ double computeOtu({
   var min = double.infinity;
   var max = double.negativeInfinity;
   var sum = 0.0;
+  var count = 0;
   for (var i = 0; i < n; i++) {
     final v = values[i];
+    // Skip NaN: merged-dive surface gaps carry NaN, which would otherwise
+    // poison the sum (avg → NaN) and crash the `.round()` in the stats row.
+    if (v.isNaN) continue;
     if (v < min) min = v;
     if (v > max) max = v;
     sum += v;
+    count++;
   }
-  return (min: min, avg: sum / n, max: max);
+  if (count == 0) return null;
+  return (min: min, avg: sum / count, max: max);
 }
 
 /// Worst-case vertical speed extremes from the sample depth track,

@@ -60,24 +60,39 @@ SampleSet samples({
 
 void main() {
   test('stitches two dives with a flat surface gap between them', () {
+    // Gap 60s at 10s interval = 6 surface samples (under the display cap).
     final a = d(id: 'a', start: 0, end: 1000, maxDepthMm: 30000);
-    final b = d(id: 'b', start: 1300, end: 2300, maxDepthMm: 42000);
+    final b = d(id: 'b', start: 1060, end: 2060, maxDepthMm: 42000);
     final res = buildMergedDive(mergedId: 'grp', members: [
       (dive: a, samples: samples(diveId: 'a', count: 100, depth: 20.0)),
       (dive: b, samples: samples(diveId: 'b', count: 100, depth: 30.0)),
     ]);
 
-    expect(res.samples.sampleCount, 100 + 30 + 100);
+    expect(res.samples.sampleCount, 100 + 6 + 100);
     expect(res.samples.diveId, 'grp');
-    expect(res.samples.depthMeters[110], 0.0);
-    expect(res.samples.ppo2Bar[110].isNaN, isTrue);
-    expect(res.samples.depthMeters[150], 30.0);
+    // Surface block occupies indices 100..105.
+    expect(res.samples.depthMeters[102], 0.0);
+    expect(res.samples.ppo2Bar[102].isNaN, isTrue);
+    // Dive B resumes at index 106.
+    expect(res.samples.depthMeters[110], 30.0);
 
     expect(res.dive.id, 'grp');
     expect(res.dive.maxDepthMm, 42000);
     expect(res.dive.durationSeconds, 1000 + 1000);
     expect(res.dive.startTime, 0);
-    expect(res.dive.endTime, 2300);
+    expect(res.dive.endTime, 2060);
+  });
+
+  test('long surface interval is clamped to the display cap', () {
+    // Real gap 1h (3600s -> 360 samples at 10s); cap is 2min -> 12 samples.
+    final a = d(id: 'a', start: 0, end: 1000);
+    final b = d(id: 'b', start: 1000 + 3600, end: 1000 + 3600 + 1000);
+    final res = buildMergedDive(mergedId: 'grp', members: [
+      (dive: a, samples: samples(diveId: 'a', count: 100)),
+      (dive: b, samples: samples(diveId: 'b', count: 100)),
+    ]);
+    // Gap drawn as 12 samples (capped), NOT 360 — recorded data stays visible.
+    expect(res.samples.sampleCount, 100 + 12 + 100);
   });
 
   test('merges gas-mix lists and remaps gasMixIndex', () {
@@ -88,8 +103,8 @@ void main() {
         gasMixesJson: '[{"o2":21,"he":0,"dil":false}]');
     final b = d(
         id: 'b',
-        start: 1300,
-        end: 2300,
+        start: 1060,
+        end: 2060,
         gasMixesJson:
             '[{"o2":18,"he":45,"dil":true},{"o2":21,"he":0,"dil":false}]');
     final res = buildMergedDive(mergedId: 'grp', members: [
@@ -98,8 +113,8 @@ void main() {
     ]);
 
     expect(res.dive.gasMixesJson.contains('"o2":18'), isTrue);
-    // B's gas index 0 (18/45) remaps to 1; first B sample is at 10 + gap(30) = 40.
-    expect(res.samples.gasMixIndex[40], 1);
+    // B's gas index 0 (18/45) remaps to 1; first B sample is at 10 + gap(6) = 16.
+    expect(res.samples.gasMixIndex[16], 1);
   });
 
   test('throws on mismatched sample intervals', () {
@@ -132,30 +147,27 @@ void main() {
     );
   });
 
-  test('three members with two different gaps stitch in order', () {
-    // A: 0..1000 (100 samples). Gap 200s -> 20 samples.
-    // B: 1200..2200 (100 samples). Gap 500s -> 50 samples.
-    // C: 2700..3700 (100 samples). Passed out of order to check sorting.
+  test('three members with two sub-cap gaps stitch in order', () {
+    // Gaps of 60s each -> 6 surface samples each (under the 2-min cap).
+    // A: 0..1000 (100). gap 6. B: 1060..2060 (100). gap 6. C: 2120..3120 (100).
+    // C is passed first to verify the builder sorts by start time.
     final a = d(id: 'a', start: 0, end: 1000);
-    final b = d(id: 'b', start: 1200, end: 2200);
-    final c = d(id: 'c', start: 2700, end: 3700);
+    final b = d(id: 'b', start: 1060, end: 2060);
+    final c = d(id: 'c', start: 2120, end: 3120);
     final res = buildMergedDive(mergedId: 'grp', members: [
       (dive: c, samples: samples(diveId: 'c', count: 100, depth: 12.0)),
       (dive: a, samples: samples(diveId: 'a', count: 100, depth: 10.0)),
       (dive: b, samples: samples(diveId: 'b', count: 100, depth: 11.0)),
     ]);
 
-    expect(res.samples.sampleCount, 100 + 20 + 100 + 50 + 100);
-    // First gap block (indices 100..119) is surface.
-    expect(res.samples.depthMeters[110], 0.0);
-    // B segment (after A=100 + gap=20) starts at 120.
-    expect(res.samples.depthMeters[120], 11.0);
-    // Second gap block (after 120+100=220, length 50) is surface.
-    expect(res.samples.depthMeters[250], 0.0);
-    // C segment starts at 220+50=270.
-    expect(res.samples.depthMeters[270], 12.0);
+    expect(res.samples.sampleCount, 100 + 6 + 100 + 6 + 100);
+    // Layout: A 0..99, gap1 100..105, B 106..205, gap2 206..211, C 212..311.
+    expect(res.samples.depthMeters[102], 0.0); // gap1 surface
+    expect(res.samples.depthMeters[106], 11.0); // B start
+    expect(res.samples.depthMeters[208], 0.0); // gap2 surface
+    expect(res.samples.depthMeters[212], 12.0); // C start
     expect(res.dive.startTime, 0);
-    expect(res.dive.endTime, 3700);
+    expect(res.dive.endTime, 3120);
     expect(res.dive.durationSeconds, 1000 * 3);
   });
 

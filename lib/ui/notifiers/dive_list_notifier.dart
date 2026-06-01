@@ -182,6 +182,26 @@ class DiveListNotifier extends ChangeNotifier {
     _sparklineCache.put(diveId, samples.depthMeters);
     return samples.depthMeters;
   }
+
+  /// Combined depth sparkline for a merge group: each member's depth track
+  /// concatenated (no gap — the thumbnail is tiny) so the merged tile shows
+  /// both dives' shapes. Reuses the per-dive [getSparklineData] cache.
+  Future<Float32List?> getMergedSparklineData(List<String> diveIds) async {
+    final parts = <Float32List>[];
+    for (final id in diveIds) {
+      final part = await getSparklineData(id);
+      if (part != null && part.isNotEmpty) parts.add(part);
+    }
+    if (parts.isEmpty) return null;
+    final total = parts.fold<int>(0, (sum, p) => sum + p.length);
+    final out = Float32List(total);
+    var w = 0;
+    for (final p in parts) {
+      out.setAll(w, p);
+      w += p.length;
+    }
+    return out;
+  }
 }
 
 class _LruCache<K, V> {
