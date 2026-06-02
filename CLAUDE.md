@@ -150,27 +150,9 @@ This order isolates the risk and keeps something demonstrable at every step.
 
 ### Known third-party defects + local workarounds
 
-- **`git2dart_binaries` 1.10.3 has four macOS packaging defects.** Three SIGABRT at launch (`dyld: Library not loaded: ...`), the fourth throws at first sync attempt (`Bad state: Unable to resolve git2dart_binaries package location.`). The fourth defect (libcrypto) only surfaces in shipped builds, not on the dev machine, because the dev machine has Homebrew openssl@3 at the hardcoded path. **Workaround applied locally** — the package files in `~/.pub-cache/hosted/pub.dev/git2dart_binaries-1.10.3/` have been edited:
-   1. **Misnamed dylib.** `libgit2.dylib` has install_name `@rpath/libgit2-experimental.1.9.dylib`. File renamed locally to match.
-   2. **Missing vendored dependency.** `libssh2.1.dylib` (a libgit2 dependency) ships in the package but wasn't declared in the podspec's `vendored_libraries`, so it never embedded into the `.app`. Added to the podspec.
-   3. **Hardcoded Homebrew libcrypto path.** `libssh2.1.dylib` links to `/opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib` (the dev machine's absolute Homebrew path). On any other Mac that path doesn't exist or its Team ID doesn't match the app's, so the app crashes at launch with `Library not loaded`. Fix: copied libcrypto.3.dylib from Homebrew into the package, rewrote its install_name + libssh2's dependency to point at `@rpath/libcrypto.3.dylib`, added it to vendored_libraries.
-   4. **Mismatched DynamicLibrary.open arg.** `lib/src/util.dart` opens `'libgit2.dylib'`, which doesn't match the renamed file (or the install_name). Patched to open `'libgit2-experimental.1.9.dylib'` on macOS. The fallback path uses `Isolate.resolvePackageUriSync`, which doesn't work in compiled Flutter apps (no `package_config.json` at runtime), so the open call must succeed first try.
-   **This fix lives only in pub-cache** — it survives `flutter clean` / `flutter pub get` / `pod install`, but NOT `dart pub cache clean` or a fresh machine. If macOS sync starts breaking after a cache wipe, redo all four:
-   ```bash
-   cd ~/.pub-cache/hosted/pub.dev/git2dart_binaries-1.10.3/macos
-   mv libgit2.dylib libgit2-experimental.1.9.dylib
-   cp /opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib ./libcrypto.3.dylib
-   chmod u+w libcrypto.3.dylib
-   install_name_tool -id "@rpath/libcrypto.3.dylib" libcrypto.3.dylib
-   install_name_tool -change "/opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib" "@rpath/libcrypto.3.dylib" libssh2.1.dylib
-   codesign --force --sign - libcrypto.3.dylib libssh2.1.dylib
-   # Edit git2dart_binaries.podspec — replace s.vendored_libraries with:
-   #   s.vendored_libraries = ['libgit2-experimental.1.9.dylib', 'libssh2.1.dylib', 'libcrypto.3.dylib']
-   # Edit ../lib/src/util.dart line ~19 — replace the macOS branch with:
-   #   return (name: 'libgit2-experimental.1.9.dylib', subDir: 'macos');
-   cd <repo>/macos && rm -rf Pods Podfile.lock && pod install
-   ```
-   Upstream issue: https://github.com/DartGit-dev/git2dart_binaries/issues/14. When upstream ships a fixed version, pin it in pubspec and delete this section.
+- **`git2dart_binaries` macOS packaging defects — RESOLVED upstream in 1.10.4.** Versions ≤1.10.3 had four macOS packaging bugs (three SIGABRT at launch via `dyld: Library not loaded`, plus a libcrypto hardcoded-path crash that only surfaced on clean / non-Homebrew Macs). These were fixed upstream (DartGit-dev/git2dart_binaries#14) and the app now pins **`git2dart_binaries: ^1.10.4`** (capped `<1.11.0` by `git2dart 0.4.0`). **The local pub-cache workaround is no longer applied or needed** — builds use the standard published package.
+   - If a shipped/TestFlight macOS build ever regresses with a `Library not loaded` / `git2dart_binaries package location` crash, the full four-step pub-cache workaround that previously fixed it is preserved in git history (removed in the commit that introduced this note) — recover it from there.
+   - **Verify on a clean Mac:** the worst defect (hardcoded Homebrew `libcrypto` path) was invisible on egbert's dev machine (Homebrew openssl@3 present) and only crashed on machines without it. So the upstream fix isn't fully confirmed until a TestFlight/.dmg build launches on a Mac that has never had Homebrew openssl.
 
 - **Xcode 26 + Command Line Tools "MacOSX SDK shadowing" breaks iOS builds.** Symptom (release-mode `flutter build ios` or `flutter build ipa` only — debug `flutter run` is unaffected):
   ```
