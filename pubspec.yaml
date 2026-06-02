@@ -68,7 +68,10 @@ dependencies:
   # open inline instead of dropping the user into a share sheet.
   pdfx: ^2.6.0
   git2dart: ^0.4.0
-  git2dart_binaries: ^1.10.3
+  # 1.10.4 ships the upstream fix for the macOS packaging defects
+  # (DartGit-dev/git2dart_binaries#14) — drops the local pub-cache
+  # workaround. Capped <1.11.0 by git2dart 0.4.0.
+  git2dart_binaries: ^1.10.4
   flutter_secure_storage: ^10.1.0
 
   # Crash + unhandled-exception reporting for release / beta builds.
