@@ -179,6 +179,14 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   /// `dives` row never uploaded — re-upsert the parent from [fetchLocalRow] and
   /// retry once. That drains the queue and recovers the orphan instead of
   /// wedging sync forever (issue #2, Part 2).
+  ///
+  /// Drop: when the FK parent doesn't exist locally *either* — a child row
+  /// whose dive was deleted/re-hashed but never cascaded (e.g. a
+  /// `dive_bailout_carry` pointing at a `dives` id that exists in no layer) —
+  /// the op can never satisfy its FK no matter how many times it's retried.
+  /// Skip it so the caller's `batch.complete()` clears it, instead of letting
+  /// it sit at the head of the FIFO queue and block every op behind it forever
+  /// (issue #2, Part 3).
   Future<void> replayCrud(
     List<CrudEntry> entries, {
     Future<Map<String, dynamic>?> Function(String table, String id)?
@@ -192,7 +200,17 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
             fetchLocalRow != null &&
             _fkParents.containsKey(op.table)) {
           try {
-            if (await _healMissingParents(op, fetchLocalRow)) {
+            final heal = await _healMissingParents(op, fetchLocalRow);
+            if (heal.missingLocally) {
+              // A required parent doesn't exist locally either — this child is
+              // orphaned referential garbage that can never upload. Drop it so
+              // it can't wedge the queue forever. (Its row may linger locally,
+              // invisible without its parent; it won't re-queue unless edited.)
+              debugPrint('replayCrud: dropping orphaned ${op.op.name} '
+                  '${op.table} id=${op.id} — FK parent missing locally: $e');
+              continue;
+            }
+            if (heal.uploadedAny) {
               await _applyOp(op);
               continue;
             }
@@ -223,24 +241,37 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
     }
   }
 
-  /// Upserts any FK parents of [op] (per [_fkParents]) that exist locally.
-  /// Returns true if it uploaded at least one — i.e. a retry is worth a shot.
-  Future<bool> _healMissingParents(
+  /// Re-uploads any FK parents of [op] (per [_fkParents]) found locally, and
+  /// reports the outcome so [replayCrud] can decide between retry and drop:
+  ///
+  /// - `uploadedAny`   — at least one parent was found locally and upserted, so
+  ///   retrying the child op is worth a shot.
+  /// - `missingLocally` — at least one required parent row is absent from the
+  ///   local DB too, so the child can never satisfy its FK and must be dropped.
+  ///
+  /// A `null` parent id (e.g. a PATCH whose opData doesn't carry the FK column)
+  /// is neither uploaded nor counted missing — such ops don't FK-fault anyway
+  /// (an UPDATE matching no cloud row is a harmless no-op).
+  Future<({bool uploadedAny, bool missingLocally})> _healMissingParents(
     CrudEntry op,
     Future<Map<String, dynamic>?> Function(String, String) fetchLocalRow,
   ) async {
-    var healed = false;
+    var uploadedAny = false;
+    var missingLocally = false;
     for (final (column, parentTable) in _fkParents[op.table]!) {
       final parentId =
           column == 'id' ? op.id : op.opData?[column] as String?;
       if (parentId == null) continue;
       final row = await fetchLocalRow(parentTable, parentId);
-      if (row == null) continue;
+      if (row == null) {
+        missingLocally = true;
+        continue;
+      }
       await _uploader.upsert(
           parentTable, {..._decodeJsonColumns(parentTable, row), 'id': parentId});
-      healed = true;
+      uploadedAny = true;
     }
-    return healed;
+    return (uploadedAny: uploadedAny, missingLocally: missingLocally);
   }
 }
 

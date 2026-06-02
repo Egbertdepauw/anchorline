@@ -353,8 +353,12 @@ void main() {
       expect(up.upserted.where((t) => t == 'dive_bailout_carry').length, 1);
     });
 
-    test('FK 23503 still throws CrudUploadException when the parent is not local',
+    test('FK 23503 drops the op when a required parent is missing locally too',
         () async {
+      // Issue #2, Part 3: a dive_bailout_carry op references a dive that exists
+      // in no layer (deleted/re-hashed, never cascaded). The parent can't be
+      // healed, so the op can NEVER upload — it must be dropped, not thrown, or
+      // it wedges the FIFO queue forever.
       final up = _FkPoisonUploader(failTable: 'dive_bailout_carry', failTimes: 99);
       final c = CcrloggerBackendConnector.forTesting(
         sessions: _FakeSessions(),
@@ -362,10 +366,28 @@ void main() {
       );
       final op = CrudEntry(21, UpdateType.put, 'dive_bailout_carry', 'd:c',
           null, {'dive_id': 'd', 'cylinder_id': 'c'});
-      expect(
-        () => c.replayCrud([op], fetchLocalRow: (_, _) async => null),
-        throwsA(isA<CrudUploadException>()),
+      // No parent exists locally → does not throw; the op is dropped.
+      await c.replayCrud([op], fetchLocalRow: (_, _) async => null);
+      expect(up.upserted, isEmpty);
+    });
+
+    test('a dropped orphan op does not block good ops behind it', () async {
+      // The whole point: the poison op at the head of the queue is skipped and
+      // the ops behind it still apply, so batch.complete() drains everything.
+      final up = _FkPoisonUploader(failTable: 'dive_bailout_carry', failTimes: 99);
+      final c = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions(),
+        uploader: up,
       );
+      final entries = [
+        CrudEntry(30, UpdateType.put, 'dive_bailout_carry', 'ghost:c', null,
+            {'dive_id': 'ghost', 'cylinder_id': 'c'}),
+        CrudEntry(31, UpdateType.patch, 'dives', 'real-dive', null, {'version': 2}),
+      ];
+      await c.replayCrud(entries, fetchLocalRow: (_, _) async => null);
+      // Orphan PUT dropped (no upsert), the dives PATCH still went through.
+      expect(up.upserted, isEmpty);
+      expect(up.updated, contains('dives'));
     });
   });
 }
@@ -375,6 +397,7 @@ class _FkPoisonUploader implements SupabaseRestUploader {
   final int failTimes;
   int _fails = 0;
   final List<String> upserted = [];
+  final List<String> updated = [];
   _FkPoisonUploader({required this.failTable, this.failTimes = 1});
 
   @override
@@ -388,7 +411,9 @@ class _FkPoisonUploader implements SupabaseRestUploader {
   }
 
   @override
-  Future<void> update(String t, String id, Map<String, dynamic> d) async {}
+  Future<void> update(String t, String id, Map<String, dynamic> d) async {
+    updated.add(t);
+  }
 
   @override
   Future<void> delete(String t, String id) async {}
