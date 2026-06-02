@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
+import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/data/models/dive.dart' as model;
+import 'package:powersync/powersync.dart';
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
 import 'package:ccrlogger/shearwater/parser/hardware.dart';
@@ -329,6 +331,65 @@ void main() {
       final visible = await dao.getAllDives();
       expect(visible.any((d) => d.id == id), isTrue);
       expect(visible, hasLength(3));
+    });
+  });
+
+  group('cascade-delete dive_bailout_carry', () {
+    late DiveDao diveDao;
+    late EquipmentDao equipDao;
+    late PowerSyncDatabase ps;
+    late String diveId;
+
+    setUp(() async {
+      // Own rig so DiveDao and EquipmentDao share ONE PowerSync handle.
+      final rig = await openDiveDaoForTest(db);
+      diveDao = rig.dao;
+      ps = rig.ps;
+      equipDao = EquipmentDao(db, rig.ps, rig.session);
+      await diveDao.importDive(
+        converted: _convertFixture(711),
+        rawBlob: File('test/fixtures/dives/dive_711.bin').readAsBytesSync(),
+        parserVersion: 1,
+      );
+      diveId = (await diveDao.getAllDives()).single.id;
+      await equipDao.addBailoutCarry(
+          diveId: diveId, cylinderId: 'cyl-a', gasMix: '50', bailoutOrder: 1);
+      await equipDao.addBailoutCarry(
+          diveId: diveId, cylinderId: 'cyl-b', gasMix: '100', bailoutOrder: 2);
+    });
+
+    Future<int> rawRowCount() async => (await ps.getAll(
+            'SELECT id FROM dive_bailout_carry WHERE dive_id = ?', [diveId]))
+        .length;
+
+    test('softDeleteDive cascade-soft-deletes the bailout rows', () async {
+      expect(await equipDao.listBailoutCarry(diveId), hasLength(2));
+      await diveDao.softDeleteDive(diveId);
+      // Hidden from the live list, but the rows still exist (soft delete).
+      expect(await equipDao.listBailoutCarry(diveId), isEmpty);
+      expect(await rawRowCount(), 2);
+    });
+
+    test('restoreDive cascade-restores the bailout rows', () async {
+      await diveDao.softDeleteDive(diveId);
+      expect(await equipDao.listBailoutCarry(diveId), isEmpty);
+      await diveDao.restoreDive(diveId);
+      expect(await equipDao.listBailoutCarry(diveId), hasLength(2));
+    });
+
+    test('restoreDive does not revive an independently-deleted cylinder',
+        () async {
+      // Mark cyl-b deleted at a clearly-earlier instant (as if the user removed
+      // it before deleting the dive). Direct write keeps the timestamp distinct
+      // and deterministic regardless of test speed.
+      await ps.execute(
+        'UPDATE dive_bailout_carry SET deleted_at = 1 WHERE id = ?',
+        ['$diveId:cyl-b'],
+      );
+      await diveDao.softDeleteDive(diveId); // cascades cyl-a only
+      await diveDao.restoreDive(diveId);
+      final live = await equipDao.listBailoutCarry(diveId);
+      expect(live.map((b) => b.cylinderId), ['cyl-a']);
     });
   });
 }

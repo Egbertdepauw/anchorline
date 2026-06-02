@@ -219,6 +219,13 @@ class DiveDao {
 
   /// Soft-deletes a dive. Row stays in PowerSync (so undo works and it
   /// syncs to other devices); list queries filter it out.
+  ///
+  /// The dive's `dive_bailout_carry` rows are cascade-soft-deleted in the same
+  /// transaction. Without this they'd be left referencing a hidden/absent dive
+  /// — a dangling `dive_id` that, if the dives row ever vanishes (re-import
+  /// re-hash, "Reset Everything"), becomes an orphan whose CRUD op wedges the
+  /// sync upload queue forever (the case [CcrloggerBackendConnector] now has to
+  /// drop). Cascading here stops the orphan forming in the first place.
   Future<void> softDeleteDive(String id) async {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     await _ps.writeTransaction((tx) async {
@@ -230,20 +237,45 @@ class DiveDao {
         'UPDATE dives SET owner_id = ?, deleted_at = ?, version = ? WHERE id = ?',
         [_ownerId, nowMs, newVersion, id],
       );
+      // Stamp the children with the SAME deleted_at as the dive so restoreDive
+      // can revive exactly the rows that went down with it (and not ones the
+      // user had removed independently beforehand).
+      await tx.execute(
+        'UPDATE dive_bailout_carry '
+        'SET owner_id = ?, deleted_at = ?, updated_at = ?, '
+        '    version = COALESCE(version, 0) + 1 '
+        'WHERE dive_id = ? AND deleted_at IS NULL',
+        [_ownerId, nowMs, nowMs, id],
+      );
     });
   }
 
   /// Clears the soft-delete flag — paired with the SnackBar UNDO action.
+  /// Cascade-restores the `dive_bailout_carry` rows that were soft-deleted
+  /// together with the dive (matched by the dive's deleted_at instant), so undo
+  /// puts the dive back exactly as it was — without reviving a bailout cylinder
+  /// the user had removed before deleting the dive.
   Future<void> restoreDive(String id) async {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
     await _ps.writeTransaction((tx) async {
       final existing = await tx.getOptional(
-          'SELECT version FROM dives WHERE id = ?', [id]);
+          'SELECT version, deleted_at FROM dives WHERE id = ?', [id]);
       if (existing == null) return;
+      final deletedAt = existing['deleted_at'] as int?;
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dives SET owner_id = ?, deleted_at = NULL, version = ? WHERE id = ?',
         [_ownerId, newVersion, id],
       );
+      if (deletedAt != null) {
+        await tx.execute(
+          'UPDATE dive_bailout_carry '
+          'SET owner_id = ?, deleted_at = NULL, updated_at = ?, '
+          '    version = COALESCE(version, 0) + 1 '
+          'WHERE dive_id = ? AND deleted_at = ?',
+          [_ownerId, nowMs, id, deletedAt],
+        );
+      }
     });
   }
 
