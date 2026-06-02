@@ -36,7 +36,6 @@ import '../widgets/dive_equipment_section.dart';
 import '../widgets/cell_data_chart.dart';
 import '../widgets/profile_chart.dart';
 import 'fullscreen_chart_screen.dart';
-import '../widgets/site_mini_map.dart';
 import 'image_viewer_screen.dart';
 import 'pdf_viewer_screen.dart';
 import 'sites_map_screen.dart';
@@ -401,122 +400,191 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-                  // Header
+                  // Header — dive summary readout
                   Builder(builder: (context) {
+                    const palette = AppColors.wreck;
                     final siteName = _annotationsNotifier.siteName;
                     final hasSite =
                         siteName != null && siteName.isNotEmpty;
                     final lat = _annotationsNotifier.siteLatitude;
                     final lon = _annotationsNotifier.siteLongitude;
                     final hasCoords = lat != null && lon != null;
+                    final buddies = _annotationsNotifier.buddies;
+                    final rating = _annotationsNotifier.rating;
+                    // Avg depth from the loaded profile (metric, like max
+                    // depth). Null until samples load / for a sample-less
+                    // dive — shown as an em dash then.
+                    final s = _notifier.samples;
+                    final avgDepthM = s != null
+                        ? minAvgMax(s.depthMeters, s.sampleCount)?.avg
+                        : null;
+                    // On phones the hero readout reads better centered;
+                    // wider (tablet / desktop) layouts keep it left-aligned.
+                    final centerStats =
+                        MediaQuery.sizeOf(context).width < 600;
+                    // Demoted detail line: GF setting · buddies. (DC model
+                    // now lives in the mode badge on the right.)
+                    final gf = formatGf(dive.gfLow, dive.gfHigh);
+                    final metaParts = <String>[
+                      if (gf.isNotEmpty) gf,
+                      if (buddies.isNotEmpty) buddies.join(', '),
+                    ];
+                    // Tap-to-map: preserved from the old thumbnail. Same
+                    // target (SitesMapScreen) the bigger map on the
+                    // Information tab uses, so both entry points stay
+                    // consistent.
+                    void openMap() =>
+                        Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => SitesMapScreen(
+                        dao: widget.annotationsDao,
+                        currentLat: lat!,
+                        currentLon: lon!,
+                        settingsNotifier: widget.settingsNotifier,
+                      ),
+                    ));
                     return Container(
-                      color: const Color(0xFF152238),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (hasCoords) ...[
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () =>
-                                    Navigator.of(context).push(MaterialPageRoute(
-                                  builder: (_) => SitesMapScreen(
-                                    dao: widget.annotationsDao,
-                                    currentLat: lat,
-                                    currentLon: lon,
-                                    settingsNotifier: widget.settingsNotifier,
-                                  ),
-                                )),
-                                child: IgnorePointer(
-                                  child: SiteMiniMap(
-                                      lat: lat, lon: lon, size: 72),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                            ],
-                            Expanded(
+                      color: palette.surfaceRaised,
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Site (prominent, left) + rating & mode badge
+                          // stacked on the right.
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
                                 child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                  Row(children: [
-                                    Text(diveModeLabel(dive.diveMode),
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    if (hasSite)
+                                      GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: hasCoords ? openMap : null,
+                                        child: Row(children: [
+                                          Flexible(
+                                            child: Text(siteName,
+                                                maxLines: 1,
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                    color:
+                                                        palette.textPrimary,
+                                                    fontSize: 19,
+                                                    fontWeight:
+                                                        FontWeight.w700,
+                                                    letterSpacing: 0.1)),
+                                          ),
+                                          if (hasCoords) ...[
+                                            const SizedBox(width: 6),
+                                            Icon(Icons.place_outlined,
+                                                size: 17, color: modeColor),
+                                          ],
+                                        ]),
+                                      ),
+                                    if (hasSite)
+                                      const SizedBox(height: 3),
+                                    Text(formatDateTime(dive.startTime),
                                         style: TextStyle(
-                                            color: modeColor,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600)),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                        '#${widget.sequenceNumber ?? dive.dcDiveNumber}',
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 16)),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: Text(modelName,
+                                            color: palette.textSecondary,
+                                            fontSize: 13)),
+                                    if (metaParts.isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(metaParts.join('  ·  '),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                              color: theme
-                                                  .colorScheme.onSurface
-                                                  .withValues(alpha: 0.4),
+                                              color: palette.textMuted,
                                               fontSize: 12)),
-                                    ),
-                                  ]),
-                                  const SizedBox(height: 4),
-                                  Text(formatDateTime(dive.startTime),
-                                      style: TextStyle(
-                                          color: theme
-                                              .colorScheme.onSurface
-                                              .withValues(alpha: 0.5),
-                                          fontSize: 12)),
-                                  if (hasSite) ...[
-                                    const SizedBox(height: 2),
-                                    Text(siteName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                            color: theme
-                                                .colorScheme.onSurface
-                                                .withValues(alpha: 0.7),
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w500)),
+                                    ],
                                   ],
-                                  if (_annotationsNotifier
-                                      .buddies.isNotEmpty)
-                                    Text(
-                                      _annotationsNotifier.buddies.join(', '),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                          color: theme.colorScheme.onSurface
-                                              .withValues(alpha: 0.5),
-                                          fontSize: 11),
-                                    ),
-                                ])),
-                            Column(
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  Text(formatDepth(dive.maxDepthMm),
-                                      style: TextStyle(
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.w600,
-                                          color: modeColor)),
-                                  Text(
-                                      '${formatDuration(dive.durationSeconds)} ${formatGf(dive.gfLow, dive.gfHigh)}',
-                                      style: TextStyle(
-                                          color: theme
-                                              .colorScheme.onSurface
-                                              .withValues(alpha: 0.5),
-                                          fontSize: 11)),
-                                  StarRating(
-                                    value: _annotationsNotifier.rating,
-                                    readOnly: true,
-                                    size: 12,
+                                  // Fixed-height slot so the stars and the
+                                  // smaller "Not rated" text share one
+                                  // vertical band (badge below stays put).
+                                  SizedBox(
+                                    height: 16,
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: rating != null
+                                          ? StarRating(
+                                              value: rating,
+                                              readOnly: true,
+                                              size: 15)
+                                          : Text('Not rated',
+                                              style: TextStyle(
+                                                  color: palette.textMuted,
+                                                  fontSize: 11,
+                                                  letterSpacing: 0.4)),
+                                    ),
                                   ),
-                                ]),
-                          ]),
+                                  const SizedBox(height: 8),
+                                  _ModeBadge(
+                                      mode: diveModeLabel(dive.diveMode),
+                                      model: modelName,
+                                      color: modeColor),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          Divider(
+                              height: 1,
+                              thickness: 1,
+                              color: palette.surfaceBezel),
+                          const SizedBox(height: 12),
+                          // Hero readout: Max depth · Runtime · Avg depth.
+                          IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(
+                                  child: _HeroStat(
+                                      value: (dive.maxDepthMm / 1000)
+                                          .toStringAsFixed(1),
+                                      unit: 'm',
+                                      label: 'MAX DEPTH',
+                                      valueColor: modeColor,
+                                      centered: centerStats),
+                                ),
+                                VerticalDivider(
+                                    width: 25,
+                                    thickness: 1,
+                                    color: palette.surfaceBezel),
+                                Expanded(
+                                  child: _HeroStat(
+                                      value: _runtimeReadout(
+                                          dive.durationSeconds),
+                                      label: 'RUNTIME',
+                                      valueColor: palette.textPrimary,
+                                      centered: centerStats),
+                                ),
+                                VerticalDivider(
+                                    width: 25,
+                                    thickness: 1,
+                                    color: palette.surfaceBezel),
+                                Expanded(
+                                  child: _HeroStat(
+                                      value: avgDepthM != null
+                                          ? avgDepthM.toStringAsFixed(1)
+                                          : '—',
+                                      unit: avgDepthM != null ? 'm' : null,
+                                      label: 'AVG DEPTH',
+                                      valueColor: palette.textPrimary,
+                                      centered: centerStats),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     );
                   }),
 
@@ -1521,4 +1589,118 @@ class _SampleSetAdapter implements SampleStream {
 
   @override
   int get sampleIntervalMs => _s.sampleIntervalMs;
+}
+
+/// Compact runtime for the summary readout, e.g. `1h 02m` / `42m`. Zero-pads
+/// minutes so the figure stays tidy beside the other tabular readouts.
+String _runtimeReadout(int seconds) {
+  final h = seconds ~/ 3600;
+  final m = (seconds % 3600) ~/ 60;
+  return h > 0 ? '${h}h ${m.toString().padLeft(2, '0')}m' : '${m}m';
+}
+
+/// Dive-mode badge: the mode (CC / OC / SC …) over the DC model in smaller
+/// print, in a bordered mode-coloured box. Sits under the rating, right-aligned
+/// in the summary card.
+class _ModeBadge extends StatelessWidget {
+  final String mode;
+  final String model;
+  final Color color;
+  const _ModeBadge(
+      {required this.mode, required this.model, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    const palette = AppColors.wreck;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(mode,
+              style: TextStyle(
+                  fontFamily: 'JetBrainsMono',
+                  color: color,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                  height: 1.0)),
+          const SizedBox(height: 2),
+          Text(model,
+              style: TextStyle(
+                  fontFamily: 'JetBrainsMono',
+                  color: palette.textMuted,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  height: 1.0)),
+        ],
+      ),
+    );
+  }
+}
+
+/// One column of the summary card's hero readout: a tabular mono value with an
+/// optional unit suffix above an uppercase micro-label. Centred on phones,
+/// left-aligned on wider layouts.
+class _HeroStat extends StatelessWidget {
+  final String value;
+  final String? unit;
+  final String label;
+  final Color valueColor;
+  final bool centered;
+  const _HeroStat({
+    required this.value,
+    this.unit,
+    required this.label,
+    required this.valueColor,
+    this.centered = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const palette = AppColors.wreck;
+    return Column(
+      crossAxisAlignment:
+          centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment:
+              centered ? MainAxisAlignment.center : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Flexible(
+              child: Text(value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.readoutLg
+                      .copyWith(fontSize: 22, color: valueColor)),
+            ),
+            if (unit != null) ...[
+              const SizedBox(width: 2),
+              Text(unit!,
+                  style: TextStyle(
+                      fontFamily: 'JetBrainsMono',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: palette.textSecondary)),
+            ],
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(label,
+            textAlign: centered ? TextAlign.center : TextAlign.start,
+            style: TextStyle(
+                fontSize: 10,
+                letterSpacing: 1.2,
+                fontWeight: FontWeight.w600,
+                color: palette.textSecondary)),
+      ],
+    );
+  }
 }
