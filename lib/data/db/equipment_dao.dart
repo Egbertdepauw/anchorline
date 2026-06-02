@@ -13,6 +13,9 @@
 /// public API surface so the existing UI/notifier callers don't change;
 /// internally they're rebuilt from PowerSync `Map<String, dynamic>` rows.
 library;
+
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 
@@ -362,15 +365,10 @@ class EquipmentDao {
       return true;
     }
 
-    final query = _drift.select(_drift.dives);
-    if (installed != null) {
-      query.where((t) => t.startTime.isBiggerOrEqualValue(installed ~/ 1000));
-    }
-    if (retired != null) {
-      query.where((t) => t.startTime.isSmallerThanValue(retired ~/ 1000));
-    }
-    query.limit(1);
-    final overlapping = await query.get();
+    // Dives live in PowerSync (not Drift) — reuse the same window query the
+    // cell aggregation uses, so a cell that actually has dives in its window
+    // is correctly protected from deletion.
+    final overlapping = await _divesInWindow(installed, retired);
     if (overlapping.isNotEmpty) return false;
 
     await _ps.execute('DELETE FROM oxygen_cells WHERE id = ?', [id]);
@@ -450,28 +448,59 @@ class EquipmentDao {
     );
   }
 
-  Future<List<Dive>> _divesInWindow(int? installedMs, int? retiredMs) {
-    final query = _drift.select(_drift.dives);
+  /// Dives whose start falls in `[installed, retired)`, oldest first.
+  /// Reads from PowerSync — dives live there since Phase 2.5, NOT in the Drift
+  /// `dives` table (which is empty). Returns only the fields the cell
+  /// aggregation needs (id, start_time in epoch seconds).
+  Future<List<({String id, int startTime})>> _divesInWindow(
+      int? installedMs, int? retiredMs) async {
+    final clauses = <String>['deleted_at IS NULL'];
+    final args = <Object?>[];
     if (installedMs != null) {
-      query.where((t) => t.startTime.isBiggerOrEqualValue(installedMs ~/ 1000));
+      clauses.add('start_time >= ?');
+      args.add(installedMs ~/ 1000);
     }
     if (retiredMs != null) {
-      query.where((t) => t.startTime.isSmallerThanValue(retiredMs ~/ 1000));
+      clauses.add('start_time < ?');
+      args.add(retiredMs ~/ 1000);
     }
-    query.orderBy([(t) => OrderingTerm.asc(t.startTime)]);
-    return query.get();
+    final rows = await _ps.getAll(
+      'SELECT id, start_time FROM dives WHERE ${clauses.join(' AND ')} '
+      'ORDER BY start_time ASC',
+      args,
+    );
+    return [
+      for (final r in rows)
+        (id: r['id'] as String, startTime: r['start_time'] as int)
+    ];
   }
 
-  Future<Map<String, DiveSample>> _samplesForDives(List<Dive> dives) async {
+  /// Cell-mV + depth sample blobs for the given dives, keyed by dive id.
+  /// Reads from PowerSync (`dive_samples`, id = dive id); the blobs are stored
+  /// base64-encoded there, so decode them back to bytes for [ColumnPacker].
+  Future<Map<String, _CellSampleData>> _samplesForDives(
+      List<({String id, int startTime})> dives) async {
     final ids = dives.map((d) => d.id).toList();
     if (ids.isEmpty) return const {};
-    final samples = await (_drift.select(_drift.diveSamples)
-          ..where((t) => t.diveId.isIn(ids)))
-        .get();
-    return {for (final s in samples) s.diveId: s};
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final rows = await _ps.getAll(
+      'SELECT id, sample_count, depth_blob, cell_mv0_blob, cell_mv1_blob, '
+      'cell_mv2_blob FROM dive_samples WHERE id IN ($placeholders)',
+      ids,
+    );
+    return {
+      for (final r in rows)
+        r['id'] as String: _CellSampleData(
+          sampleCount: r['sample_count'] as int,
+          depthBlob: base64Decode(r['depth_blob'] as String),
+          cellMv0Blob: base64Decode(r['cell_mv0_blob'] as String),
+          cellMv1Blob: base64Decode(r['cell_mv1_blob'] as String),
+          cellMv2Blob: base64Decode(r['cell_mv2_blob'] as String),
+        ),
+    };
   }
 
-  double? _peakMvForSlot(DiveSample sample, int mvCol) {
+  double? _peakMvForSlot(_CellSampleData sample, int mvCol) {
     final mvBlob = switch (mvCol) {
       0 => sample.cellMv0Blob,
       1 => sample.cellMv1Blob,
@@ -489,7 +518,7 @@ class EquipmentDao {
     return any ? peak : null;
   }
 
-  double? _computeSurfaceMv(DiveSample sample, int mvCol) {
+  double? _computeSurfaceMv(_CellSampleData sample, int mvCol) {
     final depths =
         ColumnPacker.unpackFloat32(sample.depthBlob, sample.sampleCount);
     final mvBlob = switch (mvCol) {
@@ -1149,4 +1178,22 @@ class EquipmentDao {
         syncStatus: r['sync_status'] as int? ?? 0,
         ownerId: r['owner_id'] as String?,
       );
+}
+
+/// Decoded cell-mV + depth sample blobs for one dive, sourced from PowerSync's
+/// `dive_samples` row (base64 decoded). Just the columns the cell-health
+/// aggregation reads — not the full [DiveSample].
+class _CellSampleData {
+  final int sampleCount;
+  final Uint8List depthBlob;
+  final Uint8List cellMv0Blob;
+  final Uint8List cellMv1Blob;
+  final Uint8List cellMv2Blob;
+  const _CellSampleData({
+    required this.sampleCount,
+    required this.depthBlob,
+    required this.cellMv0Blob,
+    required this.cellMv1Blob,
+    required this.cellMv2Blob,
+  });
 }
