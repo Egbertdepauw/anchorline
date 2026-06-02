@@ -1076,6 +1076,31 @@ class EquipmentDao {
     );
   }
 
+  /// One-shot local GC: hard-deletes `dive_bailout_carry` rows whose `dive_id`
+  /// matches no row in `dives` at all — true orphans left behind when a dive
+  /// vanished entirely (re-import re-hash, "Reset Everything", or a delete from
+  /// before [DiveDao.softDeleteDive]'s cascade landed). Left in place they ride
+  /// the upload queue as an unresolvable FK 23503 and wedge sync; the connector
+  /// now drops the op, and this clears the dead local row so it can't reappear.
+  ///
+  /// A *soft-deleted* dive still HAS its `dives` row, so its bailout rows are
+  /// NOT orphans here — they're handled by the delete cascade. The view delete
+  /// propagates a DELETE op, which is harmless/desirable: any cloud row is
+  /// equally orphaned. Returns the number of rows removed.
+  ///
+  /// Run once at startup before sync connects, on the last persisted (and thus
+  /// referentially consistent — dives + dive_bailout_carry share one sync
+  /// bucket) checkpoint, so it can't race an in-flight download.
+  Future<int> purgeOrphanedBailoutCarry() async {
+    const where = 'WHERE NOT EXISTS '
+        '(SELECT 1 FROM dives WHERE dives.id = dive_bailout_carry.dive_id)';
+    final orphans =
+        await _ps.getAll('SELECT id FROM dive_bailout_carry $where');
+    if (orphans.isEmpty) return 0;
+    await _ps.execute('DELETE FROM dive_bailout_carry $where');
+    return orphans.length;
+  }
+
   DiveBailoutCarryData _rowToBailoutCarry(Map<String, dynamic> r) =>
       DiveBailoutCarryData(
         id: r['id'] as String,
