@@ -12,7 +12,6 @@ import 'package:ccrlogger/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/dive_detail_screen.dart';
 import 'package:ccrlogger/ui/screens/sites_map_screen.dart';
-import 'package:ccrlogger/ui/widgets/site_mini_map.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -287,12 +286,12 @@ void main() {
     expect(find.textContaining('TANKS'), findsNothing);
   });
 
-  testWidgets('tapping the header mini-map opens SitesMapScreen',
+  testWidgets('tapping the header site name opens SitesMapScreen',
       (tester) async {
     final s = await _seedDive(tester);
     addTearDown(() async => s.db.close());
 
-    // Stamp an annotation with coords so the header mini-map renders.
+    // Stamp an annotation with coords so the site headline is tappable.
     final now = DateTime.now();
     await tester.runAsync(() async {
       await s.annotationsDao.upsert(DiveAnnotation(
@@ -306,13 +305,11 @@ void main() {
     });
 
     await _pumpScreen(tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
-    // Two SiteMiniMap widgets now: the header one and another inside the
-    // Map tab of the site sub-block's tab-group. Both open SitesMapScreen
-    // on tap; this test exercises the header (the first match).
-    expect(find.byType(SiteMiniMap), findsNWidgets(2));
     expect(find.byType(SitesMapScreen), findsNothing);
 
-    await tester.tap(find.byType(SiteMiniMap).first);
+    // The prominent site headline in the summary card is the tap-to-map
+    // target now that the mini-map thumbnail is gone.
+    await tester.tap(find.text('Lagoon').first);
     // SitesMapScreen wraps a FlutterMap whose tile loaders never settle
     // under the test framework, so pumpAndSettle would hang. Pump a few
     // frames to advance the page transition and stop.
@@ -322,6 +319,19 @@ void main() {
 
     expect(find.byType(SitesMapScreen), findsOneWidget);
     expect(find.text('Dive sites'), findsOneWidget);
+  });
+
+  testWidgets('summary card shows the hero readout labels', (tester) async {
+    final s = await _seedDive(tester);
+    addTearDown(() async => s.db.close());
+
+    await _pumpScreen(
+        tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
+
+    // The three hero metrics headline the card (the redundant dive # is gone).
+    expect(find.text('MAX DEPTH'), findsOneWidget);
+    expect(find.text('RUNTIME'), findsOneWidget);
+    expect(find.text('AVG DEPTH'), findsOneWidget);
   });
 
   testWidgets('survives with sentinel raw blob (smoke)', (tester) async {
