@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart';
@@ -6,6 +7,7 @@ import 'package:ccrlogger/data/models/equipment.dart';
 import 'package:ccrlogger/data/sample_codec/column_packer.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 
 import '../../_helpers/powersync_test_helper.dart';
 
@@ -14,8 +16,12 @@ AppDatabase _db() => AppDatabase(NativeDatabase.memory());
 /// Inserts a Dives row + a DiveSamples row whose per-channel blobs hold
 /// the supplied Float32 series. All other channels are filled with
 /// zero-blobs of the same length. Returns the dive id.
+/// Inserts a dive + dive_samples row into PowerSync (where dives/samples live
+/// since Phase 2.5 — NOT the Drift tables). Sample blobs are base64-encoded
+/// gzipped Float32, matching how DiveDao stores them. Only the columns the
+/// cell aggregation reads are populated. Returns the dive id.
 Future<String> _insertDiveWithSamples(
-  AppDatabase db, {
+  PowerSyncDatabase ps, {
   required String id,
   required int dcSerial,
   required DateTime startTime,
@@ -27,63 +33,49 @@ Future<String> _insertDiveWithSamples(
   final n = depthM.length;
   assert(cellMv0.length == n && cellMv1.length == n && cellMv2.length == n);
 
-  Uint8List packF(List<double> xs) =>
-      ColumnPacker.packFloat32(Float32List.fromList(xs));
-  final zerosF = packF(List.filled(n, 0.0));
+  String packB64(List<double> xs) =>
+      base64Encode(ColumnPacker.packFloat32(Float32List.fromList(xs)));
 
-  await db.into(db.dives).insert(DivesCompanion.insert(
-        id: id,
-        dcSerial: dcSerial,
-        dcDiveNumber: 1,
-        startTime: startTime.millisecondsSinceEpoch ~/ 1000,
-        endTime: startTime.millisecondsSinceEpoch ~/ 1000 + 60,
-        durationSeconds: 60,
-        maxDepthMm: 0,
-        diveMode: 0,
-        decoModel: 0,
-        atmosphericPressureMbar: 1013,
-        waterDensity: 1030,
-        logVersion: 1,
-        dcModel: 0xB407,
-        sampleIntervalMs: 10000,
-        gasMixesJson: '[]',
-        rawBlob: Uint8List(0),
-        parserVersion: 1,
-        importedAt: 0,
-      ));
-
-  await db.into(db.diveSamples).insert(DiveSamplesCompanion.insert(
-        diveId: id,
-        sampleCount: n,
-        depthBlob: packF(depthM),
-        temperatureBlob: zerosF,
-        ppo2Blob: zerosF,
-        cellMv0Blob: packF(cellMv0),
-        cellMv1Blob: packF(cellMv1),
-        cellMv2Blob: packF(cellMv2),
-        setpointBlob: zerosF,
-        cnsBlob: zerosF,
-        decoDepthBlob: zerosF,
-        decoTimeBlob:
-            ColumnPacker.packInt32(Int32List.fromList(List.filled(n, 0))),
-        ttsBlob:
-            ColumnPacker.packInt32(Int32List.fromList(List.filled(n, 0))),
-        gasMixIdxBlob:
-            ColumnPacker.packUint8(Uint8List.fromList(List.filled(n, 0))),
-        statusBlob:
-            ColumnPacker.packUint8(Uint8List.fromList(List.filled(n, 0))),
-      ));
-
+  await _insertBareDive(ps, id: id, dcSerial: dcSerial, startTime: startTime);
+  await ps.execute(
+    'INSERT INTO dive_samples '
+    '(id, sample_count, depth_blob, cell_mv0_blob, cell_mv1_blob, '
+    ' cell_mv2_blob) VALUES (?, ?, ?, ?, ?, ?)',
+    [id, n, packB64(depthM), packB64(cellMv0), packB64(cellMv1),
+      packB64(cellMv2)],
+  );
   return id;
+}
+
+/// Inserts a minimal dives row into PowerSync (the columns the cell-window
+/// query reads, plus enough to be a valid row).
+Future<void> _insertBareDive(
+  PowerSyncDatabase ps, {
+  required String id,
+  required int dcSerial,
+  required DateTime startTime,
+}) async {
+  final startSec = startTime.millisecondsSinceEpoch ~/ 1000;
+  await ps.execute(
+    'INSERT INTO dives (id, dc_serial, dc_dive_number, start_time, end_time, '
+    'duration_seconds, max_depth_mm, dive_mode, deco_model, '
+    'atmospheric_pressure_mbar, water_density, log_version, dc_model, '
+    'sample_interval_ms, gas_mixes_json, parser_version, imported_at) '
+    'VALUES (?, ?, 1, ?, ?, 60, 0, 0, 0, 1013, 1030, 1, ?, 10000, ?, 1, 0)',
+    [id, dcSerial, startSec, startSec + 3600, 0xB407, '[]'],
+  );
 }
 
 void main() {
   late AppDatabase db;
   late EquipmentDao dao;
+  late PowerSyncDatabase ps;
 
   setUp(() async {
     db = _db();
-    dao = (await openEquipmentDaoForTest(db)).dao;
+    final rig = await openEquipmentDaoForTest(db);
+    dao = rig.dao;
+    ps = rig.ps;
   });
 
   tearDown(() async {
@@ -211,27 +203,8 @@ void main() {
     test('deleteCellIfUnused refuses when a dive falls in the cell window',
         () async {
       await dao.upsertDiveComputer(serial: 0xAA, model: 0xB407);
-      await db.into(db.dives).insert(DivesCompanion.insert(
-        id: 'd1',
-        dcSerial: 0xAA,
-        dcDiveNumber: 1,
-        startTime: DateTime(2025, 6, 1).millisecondsSinceEpoch ~/ 1000,
-        endTime:
-            DateTime(2025, 6, 1).millisecondsSinceEpoch ~/ 1000 + 3600,
-        durationSeconds: 3600,
-        maxDepthMm: 0,
-        diveMode: 0,
-        decoModel: 0,
-        atmosphericPressureMbar: 1013,
-        waterDensity: 1030,
-        logVersion: 1,
-        dcModel: 0xB407,
-        sampleIntervalMs: 10000,
-        gasMixesJson: '[]',
-        rawBlob: Uint8List(0),
-        parserVersion: 1,
-        importedAt: 0,
-      ));
+      await _insertBareDive(ps,
+          id: 'd1', dcSerial: 0xAA, startTime: DateTime(2025, 6, 1));
       final id = await dao.addCell(slot: 1, installedDate: DateTime(2025, 1, 1));
       final ok = await dao.deleteCellIfUnused(id);
       expect(ok, isFalse);
@@ -320,7 +293,7 @@ void main() {
       );
       // Slot 1 → cellMv0 column.
       await _insertDiveWithSamples(
-        db,
+        ps,
         id: 'dive_a',
         dcSerial: 1,
         startTime: DateTime(2025, 6, 1),
@@ -345,7 +318,7 @@ void main() {
       await dao.retireCell(cellId, retiredAt: DateTime(2025, 3, 1));
 
       await _insertDiveWithSamples(
-        db,
+        ps,
         id: 'dive_outside',
         dcSerial: 1,
         startTime: DateTime(2025, 6, 1),
@@ -365,7 +338,7 @@ void main() {
         installedDate: DateTime(2025, 1, 1),
       );
       await _insertDiveWithSamples(
-        db,
+        ps,
         id: 'dive_vo',
         dcSerial: 1,
         startTime: DateTime(2025, 6, 1),
