@@ -145,7 +145,15 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
     final batch = await database.getCrudBatch();
     if (batch == null) return;
     try {
-      await replayCrud(batch.crud);
+      await replayCrud(
+        batch.crud,
+        // Self-heal lookup: fetch a parent row from the LOCAL PowerSync DB so a
+        // child op whose parent never reached the cloud can re-upload it. The
+        // table comes only from the hard-coded [_fkParents] map (never user
+        // input), so the interpolation is safe.
+        fetchLocalRow: (table, id) =>
+            database.getOptional('SELECT * FROM $table WHERE id = ?', [id]),
+      );
     } catch (e, st) {
       // The batch is NOT completed — PowerSync keeps it queued and retries.
       // A single rejected op therefore blocks the whole queue (issue #2);
@@ -164,31 +172,88 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   /// offending table/id/op, so the error PowerSync stores (and our diagnostic
   /// report shows) identifies the "poison" op instead of a bare
   /// `PostgrestException`.
-  Future<void> replayCrud(List<CrudEntry> entries) async {
+  ///
+  /// Self-heal: when a `dive_*` child op fails with a foreign-key violation
+  /// (Postgres 23503) because its parent row never reached the cloud — an
+  /// orphaned local dive/cylinder, e.g. one imported while signed-out whose
+  /// `dives` row never uploaded — re-upsert the parent from [fetchLocalRow] and
+  /// retry once. That drains the queue and recovers the orphan instead of
+  /// wedging sync forever (issue #2, Part 2).
+  Future<void> replayCrud(
+    List<CrudEntry> entries, {
+    Future<Map<String, dynamic>?> Function(String table, String id)?
+        fetchLocalRow,
+  }) async {
     for (final op in entries) {
       try {
-        switch (op.op) {
-          case UpdateType.put:
-            final data = {
-              ..._decodeJsonColumns(op.table, op.opData),
-              'id': op.id
-            };
-            await _uploader.upsert(op.table, data);
-          case UpdateType.patch:
-            if (op.opData != null) {
-              await _uploader.update(
-                  op.table, op.id, _decodeJsonColumns(op.table, op.opData));
+        await _applyOp(op);
+      } on PostgrestException catch (e) {
+        if (e.code == '23503' &&
+            fetchLocalRow != null &&
+            _fkParents.containsKey(op.table)) {
+          try {
+            if (await _healMissingParents(op, fetchLocalRow)) {
+              await _applyOp(op);
+              continue;
             }
-          case UpdateType.delete:
-            await _uploader.delete(op.table, op.id);
+          } catch (e2) {
+            throw CrudUploadException(op, e2);
+          }
         }
+        throw CrudUploadException(op, e);
       } catch (e) {
         if (e is CrudUploadException) rethrow;
         throw CrudUploadException(op, e);
       }
     }
   }
+
+  Future<void> _applyOp(CrudEntry op) async {
+    switch (op.op) {
+      case UpdateType.put:
+        await _uploader
+            .upsert(op.table, {..._decodeJsonColumns(op.table, op.opData), 'id': op.id});
+      case UpdateType.patch:
+        if (op.opData != null) {
+          await _uploader.update(
+              op.table, op.id, _decodeJsonColumns(op.table, op.opData));
+        }
+      case UpdateType.delete:
+        await _uploader.delete(op.table, op.id);
+    }
+  }
+
+  /// Upserts any FK parents of [op] (per [_fkParents]) that exist locally.
+  /// Returns true if it uploaded at least one — i.e. a retry is worth a shot.
+  Future<bool> _healMissingParents(
+    CrudEntry op,
+    Future<Map<String, dynamic>?> Function(String, String) fetchLocalRow,
+  ) async {
+    var healed = false;
+    for (final (column, parentTable) in _fkParents[op.table]!) {
+      final parentId =
+          column == 'id' ? op.id : op.opData?[column] as String?;
+      if (parentId == null) continue;
+      final row = await fetchLocalRow(parentTable, parentId);
+      if (row == null) continue;
+      await _uploader.upsert(
+          parentTable, {..._decodeJsonColumns(parentTable, row), 'id': parentId});
+      healed = true;
+    }
+    return healed;
+  }
 }
+
+/// Child table → its FK parents as `(local id column, parent table)`. Used by
+/// the self-heal path to re-upload an orphaned parent before retrying a child.
+/// `'id'` means the child's own id IS the parent id (1:1 tables). Mirrors the
+/// Postgres FKs in supabase/migrations (`dive_bailout_carry`, `dive_samples`,
+/// `dive_merge_links` reference `dives`; bailout also references `cylinders`).
+const Map<String, List<(String, String)>> _fkParents = {
+  'dive_bailout_carry': [('dive_id', 'dives'), ('cylinder_id', 'cylinders')],
+  'dive_samples': [('id', 'dives')],
+  'dive_merge_links': [('id', 'dives')],
+};
 
 /// Wraps the underlying error from a single failed CRUD upload op, tagging it
 /// with the op's table/id/type so a stalled upload queue (issue #2) is
