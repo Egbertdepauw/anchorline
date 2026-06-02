@@ -323,7 +323,75 @@ void main() {
       // The first (valid) op uploaded before the poison op threw.
       expect(throwing.upserted, ['dives']);
     });
+
+    test('FK 23503 on a dive-child op self-heals by upserting the parent',
+        () async {
+      // Issue #2 orphaned-parent case: a dive_bailout_carry op fails FK because
+      // its parent dive isn't in the cloud. The connector re-uploads the
+      // parent(s) from local and retries — instead of wedging the queue.
+      final up = _FkPoisonUploader(failTable: 'dive_bailout_carry', failTimes: 1);
+      final c = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions(),
+        uploader: up,
+      );
+      final op = CrudEntry(20, UpdateType.put, 'dive_bailout_carry',
+          'dive-x:cyl-1', null,
+          {'dive_id': 'dive-x', 'cylinder_id': 'cyl-1', 'gas_mix': '21/35'});
+
+      await c.replayCrud([op], fetchLocalRow: (table, id) async {
+        if (table == 'dives' && id == 'dive-x') {
+          return {'id': 'dive-x', 'dc_serial': 1, 'owner_id': 'u'};
+        }
+        if (table == 'cylinders' && id == 'cyl-1') {
+          return {'id': 'cyl-1', 'label': 'AL40'};
+        }
+        return null;
+      });
+
+      // Parents uploaded from local, then the child op retried successfully.
+      expect(up.upserted, containsAll(['dives', 'cylinders']));
+      expect(up.upserted.where((t) => t == 'dive_bailout_carry').length, 1);
+    });
+
+    test('FK 23503 still throws CrudUploadException when the parent is not local',
+        () async {
+      final up = _FkPoisonUploader(failTable: 'dive_bailout_carry', failTimes: 99);
+      final c = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions(),
+        uploader: up,
+      );
+      final op = CrudEntry(21, UpdateType.put, 'dive_bailout_carry', 'd:c',
+          null, {'dive_id': 'd', 'cylinder_id': 'c'});
+      expect(
+        () => c.replayCrud([op], fetchLocalRow: (_, _) async => null),
+        throwsA(isA<CrudUploadException>()),
+      );
+    });
   });
+}
+
+class _FkPoisonUploader implements SupabaseRestUploader {
+  final String failTable;
+  final int failTimes;
+  int _fails = 0;
+  final List<String> upserted = [];
+  _FkPoisonUploader({required this.failTable, this.failTimes = 1});
+
+  @override
+  Future<void> upsert(String table, Map<String, dynamic> data) async {
+    if (table == failTable && _fails < failTimes) {
+      _fails++;
+      throw PostgrestException(
+          message: 'violates foreign key constraint', code: '23503');
+    }
+    upserted.add(table);
+  }
+
+  @override
+  Future<void> update(String t, String id, Map<String, dynamic> d) async {}
+
+  @override
+  Future<void> delete(String t, String id) async {}
 }
 
 class _ThrowingUploader implements SupabaseRestUploader {
