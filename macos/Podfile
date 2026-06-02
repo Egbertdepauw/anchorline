@@ -1,4 +1,4 @@
-platform :osx, '10.15'
+platform :osx, '12.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -26,6 +26,57 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_macos_podfile_setup
 
+# ── git2dart_binaries libcrypto fixup (defect #3) ─────────────────────────
+# git2dart_binaries (≤1.11.0) ships libssh2.1.dylib linked against the
+# absolute Homebrew path /opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib and
+# bundles no libcrypto. A signed/shipped .app can't load that — dyld rejects it
+# with a Team-ID mismatch on dev Macs, or "Library not loaded" on Macs without
+# Homebrew — so the app SIGABRTs at launch. Upstream fixed the libgit2 naming
+# (DartGit-dev/git2dart_binaries#14) but NOT this.
+#
+# Until upstream bundles libcrypto, vendor our own committed copy
+# (macos/vendored/libcrypto.3.dylib) into the pod and repoint libssh2 at
+# @rpath. This runs every `pod install` (idempotent), so it survives clean
+# machines / CI / `dart pub cache clean` — unlike the old hand-edited
+# pub-cache workaround. CocoaPods' Embed-Frameworks phase then signs the
+# bundled dylibs with the app's identity, so the Team IDs match.
+require 'fileutils'
+
+def fix_git2dart_libcrypto
+  pod = File.expand_path(
+    'Flutter/ephemeral/.symlinks/plugins/git2dart_binaries/macos', __dir__)
+  vendored = File.expand_path('vendored/libcrypto.3.dylib', __dir__)
+  libssh2 = File.join(pod, 'libssh2.1.dylib')
+  libcrypto = File.join(pod, 'libcrypto.3.dylib')
+  podspec = File.join(pod, 'git2dart_binaries.podspec')
+  unless File.exist?(libssh2) && File.exist?(vendored) && File.exist?(podspec)
+    Pod::UI.warn 'git2dart libcrypto fixup skipped: plugin/vendored not found'
+    return
+  end
+
+  # 1. Vendor our libcrypto next to the other dylibs, with an @rpath id.
+  FileUtils.cp(vendored, libcrypto)
+  system('install_name_tool', '-id', '@rpath/libcrypto.3.dylib', libcrypto)
+
+  # 2. Repoint libssh2 at the bundled copy (only while still absolute).
+  linkage = `otool -L "#{libssh2}"`
+  if linkage.include?('/opt/homebrew') &&
+     (ref = linkage[%r{\S*/libcrypto\.3\.dylib}])
+    system('install_name_tool', '-change', ref,
+           '@rpath/libcrypto.3.dylib', libssh2)
+  end
+
+  # 3. Ensure libcrypto is in vendored_libraries so CocoaPods embeds + signs it.
+  spec = File.read(podspec)
+  unless spec.include?('libcrypto.3.dylib')
+    spec = spec.sub("'libssh2.1.dylib']",
+                    "'libssh2.1.dylib', 'libcrypto.3.dylib']")
+    File.write(podspec, spec)
+  end
+end
+
+fix_git2dart_libcrypto
+
 target 'Runner' do
   use_frameworks!
 
@@ -43,9 +94,21 @@ post_install do |installer|
     # Xcode 26+ has dropped support for anything below 10.13. Override it
     # here so the build doesn't warn on every invocation.
     target.build_configurations.each do |config|
-      if config.build_settings['MACOSX_DEPLOYMENT_TARGET'].to_f < 10.13
-        config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '10.15'
+      # Apple's MAS validator requires deployment target >= 12.0 for
+      # arm64-only submissions (which is what we ship — see ARCHS
+      # block below + CLAUDE.md "git2dart_binaries arm64-only" note).
+      # Pre-Monterey Macs are out of scope.
+      if config.build_settings['MACOSX_DEPLOYMENT_TARGET'].to_f < 12.0
+        config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '12.0'
       end
+      # Match the Runner target's arm64-only build (see
+      # macos/Runner/Configs/Release.xcconfig). Without this, Pods
+      # still attempt the Universal Binary x86_64 slice and fail
+      # downstream of the linker rejecting git2dart_binaries' arm64-
+      # only dylibs.
+      config.build_settings['ARCHS'] = 'arm64'
+      config.build_settings['EXCLUDED_ARCHS[sdk=macosx*]'] = 'x86_64'
+      config.build_settings['ONLY_ACTIVE_ARCH'] = 'NO'
     end
   end
 end
