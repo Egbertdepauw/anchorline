@@ -3,6 +3,7 @@ import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/data/models/equipment.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:powersync/powersync.dart';
 
 import '../../_helpers/powersync_test_helper.dart';
 
@@ -113,5 +114,55 @@ void main() {
     );
     final ordered = await dao.listBailoutCarry('d');
     expect(ordered.map((r) => r.bailoutOrder).toList(), [1, 3]);
+  });
+
+  group('purgeOrphanedBailoutCarry', () {
+    late EquipmentDao gcDao;
+    late PowerSyncDatabase ps;
+
+    setUp(() async {
+      final rig = await openEquipmentDaoForTest(db);
+      gcDao = rig.dao;
+      ps = rig.ps;
+    });
+
+    test('removes rows whose dive is gone, keeps rows with a live dive',
+        () async {
+      // PowerSync's local schema enforces no NOT NULL, so a minimal dives row
+      // is enough to make the FK parent "exist".
+      await ps.execute('INSERT INTO dives (id) VALUES (?)', ['live-dive']);
+      await gcDao.addBailoutCarry(
+          diveId: 'live-dive', cylinderId: 'cyl-a', gasMix: '50', bailoutOrder: 1);
+      // Orphan: references a dive that exists nowhere.
+      await gcDao.addBailoutCarry(
+          diveId: 'ghost', cylinderId: 'cyl-b', gasMix: '100', bailoutOrder: 1);
+
+      final purged = await gcDao.purgeOrphanedBailoutCarry();
+      expect(purged, 1);
+      expect(await gcDao.listBailoutCarry('live-dive'), hasLength(1));
+      // The orphan is gone from storage entirely (hard delete, not soft).
+      final remaining =
+          await ps.getAll('SELECT dive_id FROM dive_bailout_carry');
+      expect(remaining.map((r) => r['dive_id']), ['live-dive']);
+    });
+
+    test('is a no-op when there are no orphans', () async {
+      await ps.execute('INSERT INTO dives (id) VALUES (?)', ['d1']);
+      await gcDao.addBailoutCarry(
+          diveId: 'd1', cylinderId: 'c', gasMix: '21', bailoutOrder: 1);
+      expect(await gcDao.purgeOrphanedBailoutCarry(), 0);
+      expect(await ps.getAll('SELECT id FROM dive_bailout_carry'), hasLength(1));
+    });
+
+    test('leaves a soft-deleted dive\'s rows alone (its dives row still exists)',
+        () async {
+      // A soft-deleted dive keeps its row, so its bailout rows are NOT orphans
+      // — the delete cascade owns them, not the GC.
+      await ps.execute(
+          'INSERT INTO dives (id, deleted_at) VALUES (?, ?)', ['soft', 123]);
+      await gcDao.addBailoutCarry(
+          diveId: 'soft', cylinderId: 'c', gasMix: '21', bailoutOrder: 1);
+      expect(await gcDao.purgeOrphanedBailoutCarry(), 0);
+    });
   });
 }

@@ -11,6 +11,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'data/db/database.dart';
+import 'data/db/equipment_dao.dart';
 import 'dev/fixture_seeder.dart';
 import 'sync/cloud/auth_service.dart';
 import 'sync/cloud/ccrlogger_backend_connector.dart';
@@ -53,6 +54,20 @@ void main() async {
   // pre-2.5 build. Idempotent — safe to run on every launch.
   final session = SupabaseAuthSessionSource(Supabase.instance.client);
   await DivesPowerSyncMigrator(db, powerSyncDb, session).migrate();
+
+  // One-shot local GC: drop dive_bailout_carry rows orphaned by a dive that no
+  // longer exists anywhere. Runs before sync connects (below), on the last
+  // persisted checkpoint, so it can't race a download. Idempotent — 0 rows on
+  // a clean DB. Non-fatal: a failure here must never block app launch.
+  try {
+    final purged =
+        await EquipmentDao(db, powerSyncDb, session).purgeOrphanedBailoutCarry();
+    if (purged > 0) {
+      debugPrint('purgeOrphanedBailoutCarry: removed $purged orphan row(s)');
+    }
+  } catch (e, st) {
+    debugPrint('purgeOrphanedBailoutCarry failed: $e\n$st');
+  }
 
   // Skip seeding in release builds — beta and store users land on a
   // genuinely empty dive list and import their own dives via BLE or
