@@ -5,7 +5,7 @@
 /// Phase 2.3: hybrid backend. The six sync-eligible tables live in
 /// PowerSync (raw SQL via the `PowerSyncDatabase` view). Analysis
 /// methods that join with imported dive data still query Drift directly
-/// — `recentImportsForComputer`, `surfaceMvSeriesForCell`, scrubber
+/// — `recentImportsForComputer`, `mvSeriesForCell`, scrubber
 /// minute accumulation. The DAO holds both database handles and stitches
 /// the two halves in Dart.
 ///
@@ -438,19 +438,9 @@ class EquipmentDao {
 
     final divePeaks = <({DateTime start, double peakMv})>[];
     if (mvCol >= 0 && mvCol <= 2) {
-      final dives = await _divesInWindow(cell.installedDate, cell.retiredDate);
-      if (dives.isNotEmpty) {
-        final samplesById = await _samplesForDives(dives);
-        for (final dive in dives) {
-          final sample = samplesById[dive.id];
-          if (sample == null) continue;
-          final peak = _peakMvForSlot(sample, mvCol);
-          if (peak == null) continue;
-          divePeaks.add((
-            start: DateTime.fromMillisecondsSinceEpoch(dive.startTime * 1000),
-            peakMv: peak,
-          ));
-        }
+      final peakSeries = (await mvSeriesForCell(cellId)).peak;
+      for (final p in peakSeries) {
+        divePeaks.add((start: p.date, peakMv: p.mv));
       }
     }
 

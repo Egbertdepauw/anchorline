@@ -88,7 +88,6 @@ void main() {
 
     // surfaceMvSeriesForCell now delegates to mvSeriesForCell(...).surface
     final legacy = await equipDao.surfaceMvSeriesForCell(cellId);
-    expect(legacy.length, result.surface.length);
-    expect(legacy.first.mv, result.surface.first.mv);
+    expect(legacy, equals(result.surface));
   });
 }
