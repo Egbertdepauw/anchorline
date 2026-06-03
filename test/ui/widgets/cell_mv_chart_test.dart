@@ -70,4 +70,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('help button opens the cell-health explanation dialog',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: CellMvChart(
+          surfaceSeries: surface,
+          peakSeries: peak,
+          baselinePeakMv: 90.0,
+          recentPeakMv: 80.0,
+        ),
+      ),
+    ));
+
+    expect(find.text('Reading cell health'), findsNothing);
+    await tester.tap(find.byIcon(Icons.help_outline));
+    await tester.pumpAndSettle();
+    expect(find.text('Reading cell health'), findsOneWidget);
+
+    await tester.tap(find.text('Got it'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reading cell health'), findsNothing);
+  });
 }

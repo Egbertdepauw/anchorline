@@ -245,6 +245,7 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
                   surfaceSeries: _surface,
                   peakSeries: _peak,
                   baselinePeakMv: _health?.baselinePeakMv,
+                  recentPeakMv: _health?.recentPeakMv,
                   onDiveTap: _openDive,
                 ),
                 const SizedBox(height: 16),

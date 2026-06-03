@@ -10,9 +10,15 @@ class CellMvChart extends StatefulWidget {
   final List<({DateTime date, double mv, String diveId})> peakSeries;
 
   /// Peak-mV baseline (max peak of the first 5 dives, from CellHealth). When
-  /// non-null, the peak view draws baseline / 0.85x (Watch) / 0.70x (Replace)
-  /// reference lines. Null (fewer than 5 dives) => no reference lines.
+  /// non-null, the peak view draws the BASELINE / WATCH (0.85x) / REPLACE
+  /// (0.70x) reference lines. Null (fewer than 5 dives) => no reference lines.
   final double? baselinePeakMv;
+
+  /// Peak-mV recent ceiling (max peak of the last 5 dives, from CellHealth).
+  /// Drawn as the RECENT line, coloured by where it lands relative to the
+  /// thresholds — this is the value the health verdict actually compares
+  /// against [baselinePeakMv].
+  final double? recentPeakMv;
   final double height;
   final void Function(String diveId)? onDiveTap;
 
@@ -21,6 +27,7 @@ class CellMvChart extends StatefulWidget {
     required this.surfaceSeries,
     required this.peakSeries,
     this.baselinePeakMv,
+    this.recentPeakMv,
     this.height = 220,
     this.onDiveTap,
   });
@@ -36,9 +43,11 @@ class _CellMvChartState extends State<CellMvChart> {
   List<({DateTime date, double mv, String diveId})> get _series =>
       _metric == CellMvMetric.peak ? widget.peakSeries : widget.surfaceSeries;
 
-  // Threshold lines apply to the peak view only, and only with a baseline.
+  // Reference lines apply to the peak view only, and only with a baseline.
   double? get _baseline =>
       _metric == CellMvMetric.peak ? widget.baselinePeakMv : null;
+  double? get _recent =>
+      _metric == CellMvMetric.peak ? widget.recentPeakMv : null;
 
   @override
   Widget build(BuildContext context) {
@@ -46,21 +55,36 @@ class _CellMvChartState extends State<CellMvChart> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SegmentedButton<CellMvMetric>(
-            showSelectedIcon: false,
-            segments: const [
-              ButtonSegment(
-                  value: CellMvMetric.surface, label: Text('Surface mV')),
-              ButtonSegment(value: CellMvMetric.peak, label: Text('Peak mV')),
-            ],
-            selected: {_metric},
-            onSelectionChanged: (s) => setState(() {
-              _metric = s.first;
-              _selectedIndex = null;
-            }),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: SegmentedButton<CellMvMetric>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(
+                        value: CellMvMetric.surface,
+                        label: Text('Surface mV')),
+                    ButtonSegment(
+                        value: CellMvMetric.peak, label: Text('Peak mV')),
+                  ],
+                  selected: {_metric},
+                  onSelectionChanged: (s) => setState(() {
+                    _metric = s.first;
+                    _selectedIndex = null;
+                  }),
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: () => _showHelp(context),
+              icon: const Icon(Icons.help_outline),
+              iconSize: 20,
+              visualDensity: VisualDensity.compact,
+              tooltip: 'How to read this',
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         SizedBox(
@@ -87,6 +111,7 @@ class _CellMvChartState extends State<CellMvChart> {
                                 theme,
                                 _selectedIndex,
                                 _baseline,
+                                _recent,
                               ),
                             ),
                           ),
@@ -105,6 +130,56 @@ class _CellMvChartState extends State<CellMvChart> {
                 ),
         ),
       ],
+    );
+  }
+
+  void _showHelp(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        final t = Theme.of(ctx);
+        final body = t.textTheme.bodyMedium;
+        return AlertDialog(
+          title: const Text('Reading cell health'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                    "This tracks the cell's peak mV — the highest reading on "
+                    'each dive, hit near your setpoint at depth.',
+                    style: body),
+                const SizedBox(height: 12),
+                Text('Health compares two ceilings:', style: body),
+                const SizedBox(height: 4),
+                Text('•  BASELINE — best peak of the first 5 dives.',
+                    style: body),
+                Text('•  RECENT — best peak of the last 5 dives.', style: body),
+                const SizedBox(height: 12),
+                Text(
+                    'Healthy if RECENT is at least 85% of BASELINE (on or above '
+                    'the WATCH line). Watch if at least 70% (above REPLACE). '
+                    'Replace below that.',
+                    style: body),
+                const SizedBox(height: 12),
+                Text(
+                    "Individual dips don't count against the cell — "
+                    'low-setpoint, short, or surface-flushed dives simply never '
+                    'push it to its ceiling. What matters is that it can still '
+                    'reach a high peak recently.',
+                    style: body),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Got it'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -147,10 +222,10 @@ class _ChartLayout {
   late final double timeRange;
   late final double mvRange;
 
-  static const double left = 46.0;
+  static const double left = 56.0;
   static const double right = 14.0;
-  static const double top = 14.0;
-  static const double bottom = 24.0;
+  static const double top = 16.0;
+  static const double bottom = 28.0;
 
   _ChartLayout(this.size, this.series, this.baseline) {
     minTime = series.first.date.millisecondsSinceEpoch.toDouble();
@@ -235,25 +310,41 @@ String _formatMonthYear(DateTime d) {
   return "${_monthAbbr[local.month]} '${(local.year % 100).toString().padLeft(2, '0')}";
 }
 
+/// One horizontal reference line on the peak view.
+typedef _Ref = ({double mv, Color color, String label, bool dashed});
+
 class _ChartPainter extends CustomPainter {
   final List<({DateTime date, double mv, String diveId})> series;
   final ThemeData theme;
   final int? selectedIndex;
   final double? baseline;
+  final double? recent;
 
-  _ChartPainter(this.series, this.theme, this.selectedIndex, this.baseline);
+  _ChartPainter(
+      this.series, this.theme, this.selectedIndex, this.baseline, this.recent);
 
   static const _gridColor = Color(0xFF1A2832); // AppColors.wreck.chartGrid
   static const _axisLabel = Color(0xFFA0AEB6); // AppColors.wreck.textSecondary
+  static const _healthyColor = Color(0xFF4ADE80); // AppColors.wreck.statusSuccess
   static const _watchColor = Color(0xFFF39C12); // AppColors.wreck.statusWarning
   static const _replaceColor = Color(0xFFE74C3C); // AppColors.wreck.statusDanger
+  static const _pillBg = Color(0xCC0A1518); // AppColors.wreck.surfaceBg @ ~80%
 
   static const _labelStyle = TextStyle(
     fontFamily: 'JetBrainsMono',
-    fontSize: 9,
+    fontSize: 11,
     color: _axisLabel,
     height: 1.0,
   );
+
+  /// Colour of the RECENT line: where the recent ceiling lands against the
+  /// baseline drives the Healthy / Watch / Replace verdict.
+  static Color _recentColor(double recent, double base) {
+    final ratio = recent / base;
+    if (ratio >= 0.85) return _healthyColor;
+    if (ratio >= 0.70) return _watchColor;
+    return _replaceColor;
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -267,7 +358,7 @@ class _ChartPainter extends CustomPainter {
       ..color = theme.colorScheme.outline
       ..strokeWidth = 1;
 
-    // mV grid + labels
+    // ── mV grid + numeric labels ─────────────────────────────────────
     final decimals = layout.mvStep >= 1 ? 0 : 1;
     for (var v = layout.niceMinMv;
         v <= layout.niceMaxMv + 1e-6;
@@ -283,21 +374,21 @@ class _ChartPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
       )..layout();
       tp.paint(canvas,
-          Offset(_ChartLayout.left - tp.width - 5, y - tp.height / 2));
+          Offset(_ChartLayout.left - tp.width - 8, y - tp.height / 2));
     }
 
-    // "mV" unit above the top of the axis.
-    final unitTp = TextPainter(
-      text: const TextSpan(
-        text: 'mV',
-        style: TextStyle(fontFamily: 'Inter', fontSize: 9, color: _axisLabel),
-      ),
+    // ── "mV" axis title, rotated up the left gutter ──────────────────
+    final titleTp = TextPainter(
+      text: const TextSpan(text: 'mV', style: _labelStyle),
       textDirection: TextDirection.ltr,
     )..layout();
-    unitTp.paint(canvas,
-        Offset(_ChartLayout.left - unitTp.width - 5, _ChartLayout.top - 12));
+    canvas.save();
+    canvas.translate(12, _ChartLayout.top + layout.plotH / 2);
+    canvas.rotate(-math.pi / 2);
+    titleTp.paint(canvas, Offset(-titleTp.width / 2, -titleTp.height / 2));
+    canvas.restore();
 
-    // Date axis (4 ticks evenly across the time span)
+    // ── Date axis (4 ticks evenly across the time span) ──────────────
     const dateTicks = 3; // 4 labels: i = 0..3
     for (var i = 0; i <= dateTicks; i++) {
       final frac = i / dateTicks;
@@ -305,8 +396,8 @@ class _ChartPainter extends CustomPainter {
       final x = layout.xAt(t);
       final tp = TextPainter(
         text: TextSpan(
-          text: _formatMonthYear(
-              DateTime.fromMillisecondsSinceEpoch(t.round())),
+          text:
+              _formatMonthYear(DateTime.fromMillisecondsSinceEpoch(t.round())),
           style: _labelStyle,
         ),
         textDirection: TextDirection.ltr,
@@ -319,20 +410,46 @@ class _ChartPainter extends CustomPainter {
       } else {
         lx = x - tp.width / 2;
       }
-      tp.paint(canvas, Offset(lx, _ChartLayout.top + layout.plotH + 6));
+      tp.paint(canvas, Offset(lx, _ChartLayout.top + layout.plotH + 8));
     }
 
-    // Threshold reference lines (peak view with a baseline)
+    // ── Reference lines (peak view with a baseline) ──────────────────
+    // Build the set, then draw the lines now (under the data) and the
+    // labels later (over the data, so they stay legible).
+    final refs = <_Ref>[];
     final b = baseline;
     if (b != null && b > 0) {
-      _drawThreshold(canvas, layout, b, _axisLabel, 'base', dashed: false);
-      _drawThreshold(canvas, layout, b * 0.85, _watchColor, '0.85x',
-          dashed: true);
-      _drawThreshold(canvas, layout, b * 0.70, _replaceColor, '0.70x',
-          dashed: true);
+      void addRef(double mv, Color c, String label, bool dashed) {
+        if (mv >= layout.niceMinMv && mv <= layout.niceMaxMv) {
+          refs.add((mv: mv, color: c, label: label, dashed: dashed));
+        }
+      }
+
+      addRef(b, _axisLabel, 'BASELINE ${b.round()}', false);
+      final rec = recent;
+      if (rec != null && rec > 0) {
+        addRef(rec, _recentColor(rec, b), 'RECENT ${rec.round()}', false);
+      }
+      addRef(b * 0.85, _watchColor, 'WATCH ${(b * 0.85).round()}', true);
+      addRef(b * 0.70, _replaceColor, 'REPLACE ${(b * 0.70).round()}', true);
+
+      for (final r in refs) {
+        final y = layout.yAt(r.mv);
+        final paint = Paint()
+          ..color = r.color
+          ..strokeWidth = r.dashed ? 1 : 1.5;
+        final x0 = _ChartLayout.left;
+        final x1 = _ChartLayout.left + layout.plotW;
+        if (r.dashed) {
+          _drawDashedLine(canvas, Offset(x0, y), Offset(x1, y), paint,
+              dashWidth: 5, gapWidth: 4);
+        } else {
+          canvas.drawLine(Offset(x0, y), Offset(x1, y), paint);
+        }
+      }
     }
 
-    // Axes
+    // ── Axes ─────────────────────────────────────────────────────────
     canvas.drawLine(
       const Offset(_ChartLayout.left, _ChartLayout.top),
       Offset(_ChartLayout.left, _ChartLayout.top + layout.plotH),
@@ -340,12 +457,12 @@ class _ChartPainter extends CustomPainter {
     );
     canvas.drawLine(
       Offset(_ChartLayout.left, _ChartLayout.top + layout.plotH),
-      Offset(_ChartLayout.left + layout.plotW,
-          _ChartLayout.top + layout.plotH),
+      Offset(
+          _ChartLayout.left + layout.plotW, _ChartLayout.top + layout.plotH),
       axisPaint,
     );
 
-    // Trend line + dots
+    // ── Trend line + dots ────────────────────────────────────────────
     final linePaint = Paint()
       ..color = theme.colorScheme.primary
       ..strokeWidth = 2
@@ -354,8 +471,7 @@ class _ChartPainter extends CustomPainter {
     final dotPaint = Paint()..color = theme.colorScheme.primary;
     final selectedPaint = Paint()..color = theme.colorScheme.error;
 
-    final path = Path()
-      ..moveTo(layout.pointAt(0).dx, layout.pointAt(0).dy);
+    final path = Path()..moveTo(layout.pointAt(0).dx, layout.pointAt(0).dy);
     for (var i = 1; i < series.length; i++) {
       final p = layout.pointAt(i);
       path.lineTo(p.dx, p.dy);
@@ -371,34 +487,43 @@ class _ChartPainter extends CustomPainter {
         isSelected ? selectedPaint : dotPaint,
       );
     }
+
+    // ── Reference labels, on top of everything, de-collided ──────────
+    _drawRefLabels(canvas, layout, refs);
   }
 
-  void _drawThreshold(
-    Canvas canvas,
-    _ChartLayout layout,
-    double mv,
-    Color color,
-    String label, {
-    required bool dashed,
-  }) {
-    if (mv < layout.niceMinMv || mv > layout.niceMaxMv) return;
-    final y = layout.yAt(mv);
-    final x0 = _ChartLayout.left;
-    final x1 = _ChartLayout.left + layout.plotW;
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1;
-    if (dashed) {
-      _drawDashedLine(canvas, Offset(x0, y), Offset(x1, y), paint,
-          dashWidth: 4, gapWidth: 3);
-    } else {
-      canvas.drawLine(Offset(x0, y), Offset(x1, y), paint);
+  /// Right-aligned label pills for the reference lines. Pills are nudged
+  /// downward so neighbouring labels (e.g. RECENT just above WATCH) don't
+  /// overlap, while the lines themselves stay at their true mV.
+  void _drawRefLabels(Canvas canvas, _ChartLayout layout, List<_Ref> refs) {
+    if (refs.isEmpty) return;
+    final items = <({double y, TextPainter tp, Color color})>[];
+    for (final r in refs) {
+      final tp = TextPainter(
+        text: TextSpan(
+          text: r.label,
+          style: _labelStyle.copyWith(
+              color: r.color, fontWeight: FontWeight.w600),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      items.add((y: layout.yAt(r.mv) - tp.height / 2, tp: tp, color: r.color));
     }
-    final tp = TextPainter(
-      text: TextSpan(text: label, style: _labelStyle.copyWith(color: color)),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, Offset(x1 - tp.width - 2, y - tp.height - 1));
+    items.sort((a, b) => a.y.compareTo(b.y));
+
+    double? prevBottom;
+    for (final it in items) {
+      var y = it.y;
+      if (prevBottom != null && y < prevBottom + 1) y = prevBottom + 1;
+      final x = _ChartLayout.left + layout.plotW - it.tp.width - 6;
+      final rect = Rect.fromLTWH(x - 4, y - 2, it.tp.width + 8, it.tp.height + 4);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(2)),
+        Paint()..color = _pillBg,
+      );
+      it.tp.paint(canvas, Offset(x, y));
+      prevBottom = y + it.tp.height + 2;
+    }
   }
 
   void _drawDashedLine(
@@ -433,7 +558,8 @@ class _ChartPainter extends CustomPainter {
       old.series != series ||
       old.theme != theme ||
       old.selectedIndex != selectedIndex ||
-      old.baseline != baseline;
+      old.baseline != baseline ||
+      old.recent != recent;
 }
 
 class _Tooltip extends StatelessWidget {
