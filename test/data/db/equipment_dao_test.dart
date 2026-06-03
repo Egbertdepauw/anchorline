@@ -121,53 +121,16 @@ void main() {
     test('recentImportsForComputer returns recent dives sorted desc', () async {
       await dao.upsertDiveComputer(serial: 0xAA, model: 0xB407);
 
-      // Note: real Dives schema column names differ from the planned task code.
-      // We use the actual schema fields here (startTime, endTime,
-      // durationSeconds, diveMode, decoModel, etc.) — see lib/data/db/tables.dart.
-      await db.into(db.dives).insert(
-            DivesCompanion.insert(
-              id: 'd1',
-              dcSerial: 0xAA,
-              dcDiveNumber: 1,
-              startTime: 1000,
-              endTime: 2000,
-              durationSeconds: 1000,
-              maxDepthMm: 0,
-              diveMode: 0,
-              decoModel: 0,
-              atmosphericPressureMbar: 1013,
-              waterDensity: 1030,
-              logVersion: 1,
-              dcModel: 0,
-              sampleIntervalMs: 10000,
-              gasMixesJson: '[]',
-              rawBlob: Uint8List(0),
-              parserVersion: 1,
-              importedAt: 1000,
-            ),
-          );
-      await db.into(db.dives).insert(
-            DivesCompanion.insert(
-              id: 'd2',
-              dcSerial: 0xAA,
-              dcDiveNumber: 2,
-              startTime: 5000,
-              endTime: 6000,
-              durationSeconds: 1000,
-              maxDepthMm: 0,
-              diveMode: 0,
-              decoModel: 0,
-              atmosphericPressureMbar: 1013,
-              waterDensity: 1030,
-              logVersion: 1,
-              dcModel: 0,
-              sampleIntervalMs: 10000,
-              gasMixesJson: '[]',
-              rawBlob: Uint8List(0),
-              parserVersion: 1,
-              importedAt: 5000,
-            ),
-          );
+      // Dives live in PowerSync since Phase 2.5 (the Drift `dives` table is
+      // empty at runtime), so seed them there via the shared helper.
+      await _insertBareDive(ps,
+          id: 'd1',
+          dcSerial: 0xAA,
+          startTime: DateTime.fromMillisecondsSinceEpoch(1000 * 1000));
+      await _insertBareDive(ps,
+          id: 'd2',
+          dcSerial: 0xAA,
+          startTime: DateTime.fromMillisecondsSinceEpoch(5000 * 1000));
 
       final recent = await dao.recentImportsForComputer(0xAA, limit: 10);
       expect(recent.map((d) => d.id).toList(), ['d2', 'd1']);
