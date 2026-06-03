@@ -45,7 +45,7 @@ void main() {
 
     expect(find.text('Slot'), findsOneWidget);
     expect(find.byType(DropdownButtonFormField<int>), findsOneWidget);
-    expect(find.text('No surface-mV data yet'), findsOneWidget);
+    expect(find.text('No peak-mV data yet'), findsOneWidget);
   });
 
   testWidgets('installedDate picker is present and persists selection',

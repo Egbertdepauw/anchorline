@@ -34,7 +34,8 @@ class CellDetailScreen extends StatefulWidget {
 
 class _CellDetailScreenState extends State<CellDetailScreen> {
   OxygenCell? _cell;
-  List<({DateTime date, double mv, String diveId})> _series = const [];
+  List<({DateTime date, double mv, String diveId})> _surface = const [];
+  List<({DateTime date, double mv, String diveId})> _peak = const [];
   CellHealth? _health;
   final _labelCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
@@ -57,12 +58,13 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
   Future<void> _load() async {
     final cell = await widget.dao.getCell(widget.id!);
     if (cell == null) return;
-    final series = await widget.dao.surfaceMvSeriesForCell(cell.id);
+    final mv = await widget.dao.mvSeriesForCell(cell.id);
     final health = await widget.dao.evaluateHealthForCell(cell.id);
     if (!mounted) return;
     setState(() {
       _cell = cell;
-      _series = series;
+      _surface = mv.surface;
+      _peak = mv.peak;
       _health = health;
       _slot = cell.slot;
       _labelCtrl.text = cell.label ?? '';
@@ -231,7 +233,7 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
                 if (_cell?.retiredDate != null)
                   Text('Retired: '
                       '${_fmtDate(DateTime.fromMillisecondsSinceEpoch(_cell!.retiredDate!))}'),
-                Text('Dives with mV data: ${_series.length}'),
+                Text('Dives with mV data: ${_peak.length}'),
                 const SizedBox(height: 16),
                 if (_health != null)
                   Padding(
@@ -239,7 +241,9 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
                     child: CellHealthStrip(health: _health!, slot: _slot),
                   ),
                 CellMvChart(
-                  series: _series,
+                  surfaceSeries: _surface,
+                  peakSeries: _peak,
+                  baselinePeakMv: _health?.baselinePeakMv,
                   onDiveTap: _openDive,
                 ),
                 const SizedBox(height: 16),
