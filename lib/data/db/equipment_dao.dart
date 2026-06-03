@@ -5,7 +5,7 @@
 /// Phase 2.3: hybrid backend. The six sync-eligible tables live in
 /// PowerSync (raw SQL via the `PowerSyncDatabase` view). Analysis
 /// methods that join with imported dive data still query Drift directly
-/// — `recentImportsForComputer`, `surfaceMvSeriesForCell`, scrubber
+/// — `recentImportsForComputer`, `mvSeriesForCell`, scrubber
 /// minute accumulation. The DAO holds both database handles and stitches
 /// the two halves in Dart.
 ///
@@ -24,6 +24,10 @@ import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
 import '../models/equipment.dart' show CylinderRole, SlotInUseException;
 import '../sample_codec/column_packer.dart';
 import 'database.dart';
+
+/// One per-dive mV reading for a cell: the dive's start, the mV value, and
+/// the dive id (for tap-through to the dive).
+typedef MvPoint = ({DateTime date, double mv, String diveId});
 
 class EquipmentDao {
   final AppDatabase _drift;
@@ -377,33 +381,42 @@ class EquipmentDao {
 
   // ── Cell aggregation ─────────────────────────────────────────────────────
 
-  /// Per-dive surface-mV time series for a cell. Surface mV = mean of
-  /// `cellMv[slot]` over samples with `depthM < 1.0` AND `cellMv >= 5.0`.
-  Future<List<({DateTime date, double mv, String diveId})>>
-      surfaceMvSeriesForCell(String cellId) async {
+  /// Per-dive surface-mV AND peak-mV time series for a cell, computed in a
+  /// single pass over the cell's dive window so the sample blobs are loaded
+  /// once. Surface mV = mean of `cellMv[slot]` over samples with `depthM < 1.0`
+  /// AND `cellMv >= 5.0`. Peak mV = max `cellMv[slot]` over samples with
+  /// `cellMv >= 5.0`. The two lists may differ in length (a dive can have a
+  /// peak reading but no in-record surface samples).
+  Future<({List<MvPoint> surface, List<MvPoint> peak})> mvSeriesForCell(
+      String cellId) async {
+    final empty = (surface: <MvPoint>[], peak: <MvPoint>[]);
     final cell = await getCell(cellId);
-    if (cell == null) return const [];
+    if (cell == null) return empty;
     final mvCol = cell.slot - 1;
-    if (mvCol < 0 || mvCol > 2) return const [];
+    if (mvCol < 0 || mvCol > 2) return empty;
 
     final dives = await _divesInWindow(cell.installedDate, cell.retiredDate);
-    if (dives.isEmpty) return const [];
+    if (dives.isEmpty) return empty;
     final samplesById = await _samplesForDives(dives);
 
-    final out = <({DateTime date, double mv, String diveId})>[];
+    final surface = <MvPoint>[];
+    final peak = <MvPoint>[];
     for (final dive in dives) {
       final sample = samplesById[dive.id];
       if (sample == null) continue;
-      final mv = _computeSurfaceMv(sample, mvCol);
-      if (mv == null) continue;
-      out.add((
-        date: DateTime.fromMillisecondsSinceEpoch(dive.startTime * 1000),
-        mv: mv,
-        diveId: dive.id,
-      ));
+      final date = DateTime.fromMillisecondsSinceEpoch(dive.startTime * 1000);
+      final s = _computeSurfaceMv(sample, mvCol);
+      if (s != null) surface.add((date: date, mv: s, diveId: dive.id));
+      final p = _peakMvForSlot(sample, mvCol);
+      if (p != null) peak.add((date: date, mv: p, diveId: dive.id));
     }
-    return out;
+    return (surface: surface, peak: peak);
   }
+
+  /// Surface-mV series only. Thin delegate over [mvSeriesForCell] kept for
+  /// existing callers.
+  Future<List<MvPoint>> surfaceMvSeriesForCell(String cellId) async =>
+      (await mvSeriesForCell(cellId)).surface;
 
   Future<CellHealth> evaluateHealthForCell(String cellId,
       {DateTime? now}) async {
@@ -425,19 +438,9 @@ class EquipmentDao {
 
     final divePeaks = <({DateTime start, double peakMv})>[];
     if (mvCol >= 0 && mvCol <= 2) {
-      final dives = await _divesInWindow(cell.installedDate, cell.retiredDate);
-      if (dives.isNotEmpty) {
-        final samplesById = await _samplesForDives(dives);
-        for (final dive in dives) {
-          final sample = samplesById[dive.id];
-          if (sample == null) continue;
-          final peak = _peakMvForSlot(sample, mvCol);
-          if (peak == null) continue;
-          divePeaks.add((
-            start: DateTime.fromMillisecondsSinceEpoch(dive.startTime * 1000),
-            peakMv: peak,
-          ));
-        }
+      final peakSeries = (await mvSeriesForCell(cellId)).peak;
+      for (final p in peakSeries) {
+        divePeaks.add((start: p.date, peakMv: p.mv));
       }
     }
 

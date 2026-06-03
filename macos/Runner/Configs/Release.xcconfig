@@ -6,3 +6,14 @@
 // (declared in Release.entitlements) provides the additional MAS
 // requirement; the two are complementary.
 ENABLE_HARDENED_RUNTIME = YES
+
+// arm64-only release builds. The git2dart_binaries dylibs ship
+// arm64 only (see CLAUDE.md "Known third-party defects"), so a
+// Universal-Binary x86_64 slice cannot link. Without this, MAS .pkg
+// + Developer ID archives fail with Sentry x86_64 compile errors
+// downstream of the linker warnings about missing x86_64 in
+// libgit2/libssh2/libcrypto. Intel Mac support is out of scope until
+// git2dart_binaries ships a universal build upstream.
+ARCHS = arm64
+EXCLUDED_ARCHS[sdk=macosx*] = x86_64
+ONLY_ACTIVE_ARCH = NO
