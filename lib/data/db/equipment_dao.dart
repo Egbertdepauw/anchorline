@@ -24,6 +24,7 @@ import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
 import '../models/equipment.dart' show CylinderRole, SlotInUseException;
 import '../sample_codec/column_packer.dart';
 import 'database.dart';
+import 'dive_dao.dart' show DiveDao;
 
 /// One per-dive mV reading for a cell: the dive's start, the mV value, and
 /// the dive id (for tap-through to the dive).
@@ -203,13 +204,18 @@ class EquipmentDao {
   }
 
   /// Most recent dives imported from this computer (by `dcSerial`).
-  /// Stays on Drift — Dives are not sync-eligible.
-  Future<List<Dive>> recentImportsForComputer(int serial, {int limit = 10}) {
-    return (_drift.select(_drift.dives)
-          ..where((t) => t.dcSerial.equals(serial))
-          ..orderBy([(t) => OrderingTerm.desc(t.startTime)])
-          ..limit(limit))
-        .get();
+  /// Reads from PowerSync — dives live there since Phase 2.5, NOT in the
+  /// Drift `dives` table (which is empty at runtime). Reuses
+  /// [DiveDao.rowToDive] for the row→`Dive` mapping. Excludes soft-deleted
+  /// rows.
+  Future<List<Dive>> recentImportsForComputer(int serial,
+      {int limit = 10}) async {
+    final rows = await _ps.getAll(
+      'SELECT * FROM dives WHERE dc_serial = ? AND deleted_at IS NULL '
+      'ORDER BY start_time DESC LIMIT ?',
+      [serial, limit],
+    );
+    return rows.map(DiveDao.rowToDive).toList();
   }
 
   // ── OxygenCells ──────────────────────────────────────────────────────────

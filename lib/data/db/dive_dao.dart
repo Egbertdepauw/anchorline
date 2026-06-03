@@ -207,14 +207,14 @@ class DiveDao {
       'SELECT * FROM dives WHERE deleted_at IS NULL '
       'ORDER BY start_time DESC',
     );
-    return rows.map(_rowToDive).toList();
+    return rows.map(rowToDive).toList();
   }
 
   /// Get a single dive by ID, or `null` if not found. Returns soft-deleted
   /// rows too — the undo path needs them.
   Future<Dive?> getDive(String id) async {
     final row = await _ps.getOptional('SELECT * FROM dives WHERE id = ?', [id]);
-    return row == null ? null : _rowToDive(row);
+    return row == null ? null : rowToDive(row);
   }
 
   /// Soft-deletes a dive. Row stays in PowerSync (so undo works and it
@@ -335,7 +335,7 @@ class DiveDao {
       'WHERE subsurface_uploaded_at IS NULL AND deleted_at IS NULL '
       'ORDER BY start_time ASC',
     );
-    return rows.map(_rowToDive).toList();
+    return rows.map(rowToDive).toList();
   }
 
   /// Latest `subsurface_uploaded_at` (epoch seconds) across all live
@@ -374,7 +374,10 @@ class DiveDao {
   /// Builds a Drift `Dive` row from a PowerSync result map. The legacy
   /// `rawBlob` field on the Drift class is filled with empty bytes —
   /// callers that need actual raw bytes use [getRawBlob].
-  Dive _rowToDive(Map<String, dynamic> r) => Dive(
+  ///
+  /// Public + static so other DAOs reading the PowerSync `dives` table
+  /// (e.g. [EquipmentDao.recentImportsForComputer]) can reuse the mapping.
+  static Dive rowToDive(Map<String, dynamic> r) => Dive(
         id: r['id'] as String,
         dcSerial: r['dc_serial'] as int,
         dcDiveNumber: r['dc_dive_number'] as int,
