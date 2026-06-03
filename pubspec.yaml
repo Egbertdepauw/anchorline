@@ -92,6 +92,7 @@ dev_dependencies:
   build_runner: ^2.4.14
   sqlite3: ^3.3.1
   flutter_launcher_icons: ^0.14.4
+  sentry_dart_plugin: ^3.4.0
 
 flutter_launcher_icons:
   image_path: "assets/brand/launcher-1024.png"
@@ -166,3 +167,16 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Sentry debug-symbol upload (sentry_dart_plugin). Run AFTER an archive:
+#   SENTRY_ORG=<org-slug> SENTRY_PROJECT=<project-slug> \
+#   SENTRY_AUTH_TOKEN=<token> dart run sentry_dart_plugin
+# org / project / auth_token are read from the SENTRY_ORG / SENTRY_PROJECT /
+# SENTRY_AUTH_TOKEN env vars so nothing secret (or guessed) is committed.
+# The slugs aren't secret — hardcode `org:` / `project:` here if you'd rather
+# only pass SENTRY_AUTH_TOKEN. So future macOS Sentry hangs/crashes (#4)
+# arrive with symbolicated native frames instead of <redacted>.
+sentry:
+  upload_debug_symbols: true
+  upload_sources: false
+  upload_source_maps: false
