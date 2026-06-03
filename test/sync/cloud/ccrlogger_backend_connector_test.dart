@@ -389,7 +389,133 @@ void main() {
       expect(up.upserted, isEmpty);
       expect(up.updated, contains('dives'));
     });
+
+    // ── Issue #2 Part 2: permanent-error quarantine ─────────────────────
+    // A permanently-rejected op (e.g. an oversized dive_samples blob, or a
+    // constraint violation) must NOT wedge the FIFO queue forever. Quarantine
+    // it (record + skip) so the ops behind it drain and batch.complete()
+    // clears the poison op. Transient errors must still rethrow so PowerSync
+    // retries rather than silently dropping recoverable data.
+
+    test('a permanent PostgrestException quarantines the op, drains the rest',
+        () async {
+      final q = _RecordingQuarantine();
+      final up = _CodePoisonUploader(failTable: 'dive_samples', code: '22001');
+      final c = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions(),
+        uploader: up,
+        quarantine: q,
+      );
+      final entries = [
+        CrudEntry(40, UpdateType.put, 'dive_samples', 'dive-1', null, {'b': 1}),
+        CrudEntry(41, UpdateType.put, 'dives', 'dive-2', null, {'x': 1}),
+      ];
+
+      // Must not throw — the poison op is quarantined, not rethrown.
+      await c.replayCrud(entries);
+
+      expect(q.records.map((e) => e.id), ['dive-1'],
+          reason: 'the permanent op is quarantined');
+      expect(up.upserted, ['dives'],
+          reason: 'the op behind the poison one still uploaded');
+    });
+
+    test('an oversized-body (HTTP 413) op is treated as permanent', () async {
+      final q = _RecordingQuarantine();
+      final up = _CodePoisonUploader(failTable: 'dive_samples', code: '413');
+      final c = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions(),
+        uploader: up,
+        quarantine: q,
+      );
+      await c.replayCrud([
+        CrudEntry(42, UpdateType.put, 'dive_samples', 'dive-9', null, {'b': 1}),
+      ]);
+      expect(q.records.single.table, 'dive_samples');
+    });
+
+    test('a transient error is rethrown to retry, not quarantined', () async {
+      final q = _RecordingQuarantine();
+      // 503 Service Unavailable — transient; retrying later should succeed.
+      final up = _CodePoisonUploader(failTable: 'dives', code: '503');
+      final c = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions(),
+        uploader: up,
+        quarantine: q,
+      );
+
+      Object? caught;
+      try {
+        await c.replayCrud(
+            [CrudEntry(43, UpdateType.put, 'dives', 'd', null, {'x': 1})]);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught, isA<CrudUploadException>(),
+          reason: 'transient errors rethrow so PowerSync retries the batch');
+      expect(q.records, isEmpty,
+          reason: 'must not quarantine recoverable data');
+    });
+
+    test('an unknown (non-Postgrest) error is treated as transient', () async {
+      // Conservative: anything we cannot positively classify as a permanent
+      // backend rejection is retried, never dropped.
+      final q = _RecordingQuarantine();
+      final up = _ThrowingUploader(failTable: 'dives');
+      final c = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions(),
+        uploader: up,
+        quarantine: q,
+      );
+      Object? caught;
+      try {
+        await c.replayCrud(
+            [CrudEntry(44, UpdateType.put, 'dives', 'd', null, {'x': 1})]);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught, isA<CrudUploadException>());
+      expect(q.records, isEmpty);
+    });
   });
+}
+
+class _RecordingQuarantine implements CrudQuarantine {
+  final List<CrudEntry> records = [];
+
+  @override
+  Future<void> record(CrudEntry op, Object cause) async => records.add(op);
+}
+
+/// Uploader that rejects [failTable] with a PostgrestException carrying a
+/// chosen [code] (SQLSTATE like '22001' or an HTTP status like '413'/'503').
+class _CodePoisonUploader implements SupabaseRestUploader {
+  final String failTable;
+  final String code;
+  final List<String> upserted = [];
+  _CodePoisonUploader({required this.failTable, required this.code});
+
+  void _maybeFail(String table) {
+    if (table == failTable) {
+      throw PostgrestException(message: 'rejected $table', code: code);
+    }
+  }
+
+  @override
+  Future<void> upsert(String table, Map<String, dynamic> data) async {
+    _maybeFail(table);
+    upserted.add(table);
+  }
+
+  @override
+  Future<void> update(String table, String id, Map<String, dynamic> data) async {
+    _maybeFail(table);
+  }
+
+  @override
+  Future<void> delete(String table, String id) async {
+    _maybeFail(table);
+  }
 }
 
 class _FkPoisonUploader implements SupabaseRestUploader {

@@ -10607,6 +10607,531 @@ class DiveMergeLinksCompanion extends UpdateCompanion<DiveMergeLink> {
   }
 }
 
+class $SyncQuarantineTable extends SyncQuarantine
+    with TableInfo<$SyncQuarantineTable, SyncQuarantineData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncQuarantineTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _opClientIdMeta = const VerificationMeta(
+    'opClientId',
+  );
+  @override
+  late final GeneratedColumn<int> opClientId = GeneratedColumn<int>(
+    'op_client_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _opTypeMeta = const VerificationMeta('opType');
+  @override
+  late final GeneratedColumn<String> opType = GeneratedColumn<String>(
+    'op_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _targetTableMeta = const VerificationMeta(
+    'targetTable',
+  );
+  @override
+  late final GeneratedColumn<String> targetTable = GeneratedColumn<String>(
+    'target_table',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _rowIdMeta = const VerificationMeta('rowId');
+  @override
+  late final GeneratedColumn<String> rowId = GeneratedColumn<String>(
+    'row_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _opDataMeta = const VerificationMeta('opData');
+  @override
+  late final GeneratedColumn<String> opData = GeneratedColumn<String>(
+    'op_data',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _errorMeta = const VerificationMeta('error');
+  @override
+  late final GeneratedColumn<String> error = GeneratedColumn<String>(
+    'error',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _quarantinedAtMeta = const VerificationMeta(
+    'quarantinedAt',
+  );
+  @override
+  late final GeneratedColumn<int> quarantinedAt = GeneratedColumn<int>(
+    'quarantined_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    opClientId,
+    opType,
+    targetTable,
+    rowId,
+    opData,
+    error,
+    quarantinedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_quarantine';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncQuarantineData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('op_client_id')) {
+      context.handle(
+        _opClientIdMeta,
+        opClientId.isAcceptableOrUnknown(
+          data['op_client_id']!,
+          _opClientIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_opClientIdMeta);
+    }
+    if (data.containsKey('op_type')) {
+      context.handle(
+        _opTypeMeta,
+        opType.isAcceptableOrUnknown(data['op_type']!, _opTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_opTypeMeta);
+    }
+    if (data.containsKey('target_table')) {
+      context.handle(
+        _targetTableMeta,
+        targetTable.isAcceptableOrUnknown(
+          data['target_table']!,
+          _targetTableMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_targetTableMeta);
+    }
+    if (data.containsKey('row_id')) {
+      context.handle(
+        _rowIdMeta,
+        rowId.isAcceptableOrUnknown(data['row_id']!, _rowIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rowIdMeta);
+    }
+    if (data.containsKey('op_data')) {
+      context.handle(
+        _opDataMeta,
+        opData.isAcceptableOrUnknown(data['op_data']!, _opDataMeta),
+      );
+    }
+    if (data.containsKey('error')) {
+      context.handle(
+        _errorMeta,
+        error.isAcceptableOrUnknown(data['error']!, _errorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_errorMeta);
+    }
+    if (data.containsKey('quarantined_at')) {
+      context.handle(
+        _quarantinedAtMeta,
+        quarantinedAt.isAcceptableOrUnknown(
+          data['quarantined_at']!,
+          _quarantinedAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_quarantinedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SyncQuarantineData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncQuarantineData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      opClientId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}op_client_id'],
+      )!,
+      opType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}op_type'],
+      )!,
+      targetTable: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}target_table'],
+      )!,
+      rowId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}row_id'],
+      )!,
+      opData: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}op_data'],
+      ),
+      error: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error'],
+      )!,
+      quarantinedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}quarantined_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncQuarantineTable createAlias(String alias) {
+    return $SyncQuarantineTable(attachedDatabase, alias);
+  }
+}
+
+class SyncQuarantineData extends DataClass
+    implements Insertable<SyncQuarantineData> {
+  /// Surrogate key — the same row id can be quarantined more than once.
+  final int id;
+
+  /// The op's PowerSync `CrudEntry.clientId`.
+  final int opClientId;
+
+  /// `put` / `patch` / `delete`.
+  final String opType;
+
+  /// The Postgres/PowerSync table the op targeted (named `targetTable` to
+  /// avoid clashing with drift's built-in `Table.tableName`).
+  final String targetTable;
+  final String rowId;
+
+  /// JSON of the op's payload (for a future re-drive); null for deletes.
+  final String? opData;
+
+  /// String form of the backend rejection that quarantined the op.
+  final String error;
+
+  /// When it was quarantined (epoch milliseconds).
+  final int quarantinedAt;
+  const SyncQuarantineData({
+    required this.id,
+    required this.opClientId,
+    required this.opType,
+    required this.targetTable,
+    required this.rowId,
+    this.opData,
+    required this.error,
+    required this.quarantinedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['op_client_id'] = Variable<int>(opClientId);
+    map['op_type'] = Variable<String>(opType);
+    map['target_table'] = Variable<String>(targetTable);
+    map['row_id'] = Variable<String>(rowId);
+    if (!nullToAbsent || opData != null) {
+      map['op_data'] = Variable<String>(opData);
+    }
+    map['error'] = Variable<String>(error);
+    map['quarantined_at'] = Variable<int>(quarantinedAt);
+    return map;
+  }
+
+  SyncQuarantineCompanion toCompanion(bool nullToAbsent) {
+    return SyncQuarantineCompanion(
+      id: Value(id),
+      opClientId: Value(opClientId),
+      opType: Value(opType),
+      targetTable: Value(targetTable),
+      rowId: Value(rowId),
+      opData: opData == null && nullToAbsent
+          ? const Value.absent()
+          : Value(opData),
+      error: Value(error),
+      quarantinedAt: Value(quarantinedAt),
+    );
+  }
+
+  factory SyncQuarantineData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncQuarantineData(
+      id: serializer.fromJson<int>(json['id']),
+      opClientId: serializer.fromJson<int>(json['opClientId']),
+      opType: serializer.fromJson<String>(json['opType']),
+      targetTable: serializer.fromJson<String>(json['targetTable']),
+      rowId: serializer.fromJson<String>(json['rowId']),
+      opData: serializer.fromJson<String?>(json['opData']),
+      error: serializer.fromJson<String>(json['error']),
+      quarantinedAt: serializer.fromJson<int>(json['quarantinedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'opClientId': serializer.toJson<int>(opClientId),
+      'opType': serializer.toJson<String>(opType),
+      'targetTable': serializer.toJson<String>(targetTable),
+      'rowId': serializer.toJson<String>(rowId),
+      'opData': serializer.toJson<String?>(opData),
+      'error': serializer.toJson<String>(error),
+      'quarantinedAt': serializer.toJson<int>(quarantinedAt),
+    };
+  }
+
+  SyncQuarantineData copyWith({
+    int? id,
+    int? opClientId,
+    String? opType,
+    String? targetTable,
+    String? rowId,
+    Value<String?> opData = const Value.absent(),
+    String? error,
+    int? quarantinedAt,
+  }) => SyncQuarantineData(
+    id: id ?? this.id,
+    opClientId: opClientId ?? this.opClientId,
+    opType: opType ?? this.opType,
+    targetTable: targetTable ?? this.targetTable,
+    rowId: rowId ?? this.rowId,
+    opData: opData.present ? opData.value : this.opData,
+    error: error ?? this.error,
+    quarantinedAt: quarantinedAt ?? this.quarantinedAt,
+  );
+  SyncQuarantineData copyWithCompanion(SyncQuarantineCompanion data) {
+    return SyncQuarantineData(
+      id: data.id.present ? data.id.value : this.id,
+      opClientId: data.opClientId.present
+          ? data.opClientId.value
+          : this.opClientId,
+      opType: data.opType.present ? data.opType.value : this.opType,
+      targetTable: data.targetTable.present
+          ? data.targetTable.value
+          : this.targetTable,
+      rowId: data.rowId.present ? data.rowId.value : this.rowId,
+      opData: data.opData.present ? data.opData.value : this.opData,
+      error: data.error.present ? data.error.value : this.error,
+      quarantinedAt: data.quarantinedAt.present
+          ? data.quarantinedAt.value
+          : this.quarantinedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncQuarantineData(')
+          ..write('id: $id, ')
+          ..write('opClientId: $opClientId, ')
+          ..write('opType: $opType, ')
+          ..write('targetTable: $targetTable, ')
+          ..write('rowId: $rowId, ')
+          ..write('opData: $opData, ')
+          ..write('error: $error, ')
+          ..write('quarantinedAt: $quarantinedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    opClientId,
+    opType,
+    targetTable,
+    rowId,
+    opData,
+    error,
+    quarantinedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncQuarantineData &&
+          other.id == this.id &&
+          other.opClientId == this.opClientId &&
+          other.opType == this.opType &&
+          other.targetTable == this.targetTable &&
+          other.rowId == this.rowId &&
+          other.opData == this.opData &&
+          other.error == this.error &&
+          other.quarantinedAt == this.quarantinedAt);
+}
+
+class SyncQuarantineCompanion extends UpdateCompanion<SyncQuarantineData> {
+  final Value<int> id;
+  final Value<int> opClientId;
+  final Value<String> opType;
+  final Value<String> targetTable;
+  final Value<String> rowId;
+  final Value<String?> opData;
+  final Value<String> error;
+  final Value<int> quarantinedAt;
+  const SyncQuarantineCompanion({
+    this.id = const Value.absent(),
+    this.opClientId = const Value.absent(),
+    this.opType = const Value.absent(),
+    this.targetTable = const Value.absent(),
+    this.rowId = const Value.absent(),
+    this.opData = const Value.absent(),
+    this.error = const Value.absent(),
+    this.quarantinedAt = const Value.absent(),
+  });
+  SyncQuarantineCompanion.insert({
+    this.id = const Value.absent(),
+    required int opClientId,
+    required String opType,
+    required String targetTable,
+    required String rowId,
+    this.opData = const Value.absent(),
+    required String error,
+    required int quarantinedAt,
+  }) : opClientId = Value(opClientId),
+       opType = Value(opType),
+       targetTable = Value(targetTable),
+       rowId = Value(rowId),
+       error = Value(error),
+       quarantinedAt = Value(quarantinedAt);
+  static Insertable<SyncQuarantineData> custom({
+    Expression<int>? id,
+    Expression<int>? opClientId,
+    Expression<String>? opType,
+    Expression<String>? targetTable,
+    Expression<String>? rowId,
+    Expression<String>? opData,
+    Expression<String>? error,
+    Expression<int>? quarantinedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (opClientId != null) 'op_client_id': opClientId,
+      if (opType != null) 'op_type': opType,
+      if (targetTable != null) 'target_table': targetTable,
+      if (rowId != null) 'row_id': rowId,
+      if (opData != null) 'op_data': opData,
+      if (error != null) 'error': error,
+      if (quarantinedAt != null) 'quarantined_at': quarantinedAt,
+    });
+  }
+
+  SyncQuarantineCompanion copyWith({
+    Value<int>? id,
+    Value<int>? opClientId,
+    Value<String>? opType,
+    Value<String>? targetTable,
+    Value<String>? rowId,
+    Value<String?>? opData,
+    Value<String>? error,
+    Value<int>? quarantinedAt,
+  }) {
+    return SyncQuarantineCompanion(
+      id: id ?? this.id,
+      opClientId: opClientId ?? this.opClientId,
+      opType: opType ?? this.opType,
+      targetTable: targetTable ?? this.targetTable,
+      rowId: rowId ?? this.rowId,
+      opData: opData ?? this.opData,
+      error: error ?? this.error,
+      quarantinedAt: quarantinedAt ?? this.quarantinedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (opClientId.present) {
+      map['op_client_id'] = Variable<int>(opClientId.value);
+    }
+    if (opType.present) {
+      map['op_type'] = Variable<String>(opType.value);
+    }
+    if (targetTable.present) {
+      map['target_table'] = Variable<String>(targetTable.value);
+    }
+    if (rowId.present) {
+      map['row_id'] = Variable<String>(rowId.value);
+    }
+    if (opData.present) {
+      map['op_data'] = Variable<String>(opData.value);
+    }
+    if (error.present) {
+      map['error'] = Variable<String>(error.value);
+    }
+    if (quarantinedAt.present) {
+      map['quarantined_at'] = Variable<int>(quarantinedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncQuarantineCompanion(')
+          ..write('id: $id, ')
+          ..write('opClientId: $opClientId, ')
+          ..write('opType: $opType, ')
+          ..write('targetTable: $targetTable, ')
+          ..write('rowId: $rowId, ')
+          ..write('opData: $opData, ')
+          ..write('error: $error, ')
+          ..write('quarantinedAt: $quarantinedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -10632,6 +11157,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $ImportStatesTable importStates = $ImportStatesTable(this);
   late final $DiveMergeLinksTable diveMergeLinks = $DiveMergeLinksTable(this);
+  late final $SyncQuarantineTable syncQuarantine = $SyncQuarantineTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10651,6 +11177,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     diveBailoutCarry,
     importStates,
     diveMergeLinks,
+    syncQuarantine,
   ];
 }
 
@@ -16876,6 +17403,269 @@ typedef $$DiveMergeLinksTableProcessedTableManager =
       DiveMergeLink,
       PrefetchHooks Function({bool diveId})
     >;
+typedef $$SyncQuarantineTableCreateCompanionBuilder =
+    SyncQuarantineCompanion Function({
+      Value<int> id,
+      required int opClientId,
+      required String opType,
+      required String targetTable,
+      required String rowId,
+      Value<String?> opData,
+      required String error,
+      required int quarantinedAt,
+    });
+typedef $$SyncQuarantineTableUpdateCompanionBuilder =
+    SyncQuarantineCompanion Function({
+      Value<int> id,
+      Value<int> opClientId,
+      Value<String> opType,
+      Value<String> targetTable,
+      Value<String> rowId,
+      Value<String?> opData,
+      Value<String> error,
+      Value<int> quarantinedAt,
+    });
+
+class $$SyncQuarantineTableFilterComposer
+    extends Composer<_$AppDatabase, $SyncQuarantineTable> {
+  $$SyncQuarantineTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get opClientId => $composableBuilder(
+    column: $table.opClientId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get opType => $composableBuilder(
+    column: $table.opType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get targetTable => $composableBuilder(
+    column: $table.targetTable,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rowId => $composableBuilder(
+    column: $table.rowId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get opData => $composableBuilder(
+    column: $table.opData,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get error => $composableBuilder(
+    column: $table.error,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get quarantinedAt => $composableBuilder(
+    column: $table.quarantinedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncQuarantineTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyncQuarantineTable> {
+  $$SyncQuarantineTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get opClientId => $composableBuilder(
+    column: $table.opClientId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get opType => $composableBuilder(
+    column: $table.opType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get targetTable => $composableBuilder(
+    column: $table.targetTable,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get rowId => $composableBuilder(
+    column: $table.rowId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get opData => $composableBuilder(
+    column: $table.opData,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get error => $composableBuilder(
+    column: $table.error,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get quarantinedAt => $composableBuilder(
+    column: $table.quarantinedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncQuarantineTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyncQuarantineTable> {
+  $$SyncQuarantineTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get opClientId => $composableBuilder(
+    column: $table.opClientId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get opType =>
+      $composableBuilder(column: $table.opType, builder: (column) => column);
+
+  GeneratedColumn<String> get targetTable => $composableBuilder(
+    column: $table.targetTable,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get rowId =>
+      $composableBuilder(column: $table.rowId, builder: (column) => column);
+
+  GeneratedColumn<String> get opData =>
+      $composableBuilder(column: $table.opData, builder: (column) => column);
+
+  GeneratedColumn<String> get error =>
+      $composableBuilder(column: $table.error, builder: (column) => column);
+
+  GeneratedColumn<int> get quarantinedAt => $composableBuilder(
+    column: $table.quarantinedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$SyncQuarantineTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SyncQuarantineTable,
+          SyncQuarantineData,
+          $$SyncQuarantineTableFilterComposer,
+          $$SyncQuarantineTableOrderingComposer,
+          $$SyncQuarantineTableAnnotationComposer,
+          $$SyncQuarantineTableCreateCompanionBuilder,
+          $$SyncQuarantineTableUpdateCompanionBuilder,
+          (
+            SyncQuarantineData,
+            BaseReferences<
+              _$AppDatabase,
+              $SyncQuarantineTable,
+              SyncQuarantineData
+            >,
+          ),
+          SyncQuarantineData,
+          PrefetchHooks Function()
+        > {
+  $$SyncQuarantineTableTableManager(
+    _$AppDatabase db,
+    $SyncQuarantineTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncQuarantineTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncQuarantineTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncQuarantineTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> opClientId = const Value.absent(),
+                Value<String> opType = const Value.absent(),
+                Value<String> targetTable = const Value.absent(),
+                Value<String> rowId = const Value.absent(),
+                Value<String?> opData = const Value.absent(),
+                Value<String> error = const Value.absent(),
+                Value<int> quarantinedAt = const Value.absent(),
+              }) => SyncQuarantineCompanion(
+                id: id,
+                opClientId: opClientId,
+                opType: opType,
+                targetTable: targetTable,
+                rowId: rowId,
+                opData: opData,
+                error: error,
+                quarantinedAt: quarantinedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int opClientId,
+                required String opType,
+                required String targetTable,
+                required String rowId,
+                Value<String?> opData = const Value.absent(),
+                required String error,
+                required int quarantinedAt,
+              }) => SyncQuarantineCompanion.insert(
+                id: id,
+                opClientId: opClientId,
+                opType: opType,
+                targetTable: targetTable,
+                rowId: rowId,
+                opData: opData,
+                error: error,
+                quarantinedAt: quarantinedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncQuarantineTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SyncQuarantineTable,
+      SyncQuarantineData,
+      $$SyncQuarantineTableFilterComposer,
+      $$SyncQuarantineTableOrderingComposer,
+      $$SyncQuarantineTableAnnotationComposer,
+      $$SyncQuarantineTableCreateCompanionBuilder,
+      $$SyncQuarantineTableUpdateCompanionBuilder,
+      (
+        SyncQuarantineData,
+        BaseReferences<_$AppDatabase, $SyncQuarantineTable, SyncQuarantineData>,
+      ),
+      SyncQuarantineData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -16908,4 +17698,6 @@ class $AppDatabaseManager {
       $$ImportStatesTableTableManager(_db, _db.importStates);
   $$DiveMergeLinksTableTableManager get diveMergeLinks =>
       $$DiveMergeLinksTableTableManager(_db, _db.diveMergeLinks);
+  $$SyncQuarantineTableTableManager get syncQuarantine =>
+      $$SyncQuarantineTableTableManager(_db, _db.syncQuarantine);
 }

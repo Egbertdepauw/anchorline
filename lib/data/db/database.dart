@@ -23,13 +23,14 @@ part 'database.g.dart';
     DiveBailoutCarry,
     ImportStates,
     DiveMergeLinks,
+    SyncQuarantine,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -147,6 +148,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 17) {
             await m.createTable(diveMergeLinks);
+          }
+          if (from < 18) {
+            await m.createTable(syncQuarantine);
           }
         },
       );
