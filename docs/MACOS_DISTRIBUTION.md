@@ -97,6 +97,30 @@ xcodebuild -exportArchive \
 
 Output: `build/macos/export-mas/Anchorline.pkg`.
 
+### Upload native dSYMs to Sentry (do this right after the archive)
+
+So macOS hangs/crashes (e.g. issue #4) arrive symbolicated instead of
+`<redacted> in unknown file`. Runs `sentry_dart_plugin`, which scans the
+build output + archive for debug files and uploads them. The slugs aren't
+secret; the token is — all three come from env so nothing is committed:
+
+```bash
+SENTRY_ORG=<your-org-slug> \
+SENTRY_PROJECT=<your-project-slug> \
+SENTRY_AUTH_TOKEN=<token-with-project:releases scope> \
+  dart run sentry_dart_plugin
+```
+
+Get the token at Sentry → Settings → Auth Tokens (scope
+`project:releases` / `project:read`). The org + project slugs are in the
+Sentry URL: `sentry.io/organizations/<org-slug>/projects/<project-slug>/`.
+If you'd rather only pass the token, hardcode `org:`/`project:` under the
+`sentry:` block in `pubspec.yaml`. Config knobs live in that block.
+
+> Not yet verified end-to-end (needs your auth token). After the first run,
+> confirm the dSYMs show up under Sentry → Settings → Debug Files for the
+> project, then trigger/await a macOS event to check frames symbolicate.
+
 ### App Store Connect — create a SEPARATE Mac app record
 
 Flutter Mac apps can't share an App Store Connect record with iOS

@@ -27,6 +27,7 @@
 library;
 
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:git2dart/git2dart.dart';
 import 'package:git2dart_binaries/git2dart_binaries.dart' show LibGit2Error;
@@ -122,23 +123,16 @@ class SubsurfaceRepo {
       localDir.createSync(recursive: true);
     }
 
-    Repository? repo;
-    try {
-      repo = Repository.clone(
-        url: remoteUrl,
-        localPath: localDir.path,
-        callbacks: Callbacks(
-          credentials: UserPass(
-            username: creds.email,
-            password: creds.password,
-          ),
-        ),
-      );
-    } on LibGit2Error catch (e) {
-      throw _classifyNetworkError(e, 'clone failed');
-    } finally {
-      repo?.free();
-    }
+    // libgit2's clone blocks the calling thread on network + filesystem I/O
+    // (seconds on a slow link). Run it on a background isolate so the UI
+    // thread stays responsive — macOS's watchdog otherwise flags the freeze
+    // as an app hang (issue #4). The isolate opens its own libgit2 handle
+    // from the path; only sendable strings cross the boundary.
+    final url = remoteUrl;
+    final path = localDir.path;
+    final email = creds.email;
+    final password = creds.password;
+    await Isolate.run(() => _cloneInIsolate(url, path, email, password));
   }
 
   /// Fetch from `origin` and fast-forward the current branch. Throws
@@ -151,81 +145,15 @@ class SubsurfaceRepo {
   Future<void> pull() async {
     _ensurePlatform();
     final creds = await _readCredentialsOrThrow();
-    final repo = _openExisting();
-    try {
-      // Step 1: fetch.
-      Remote? remote;
-      try {
-        remote = Remote.lookup(repo: repo, name: 'origin');
-        remote.fetch(
-          callbacks: Callbacks(
-            credentials: UserPass(
-              username: creds.email,
-              password: creds.password,
-            ),
-          ),
-        );
-      } on LibGit2Error catch (e) {
-        throw _classifyNetworkError(e, 'fetch failed');
-      } finally {
-        remote?.free();
-      }
-
-      // Step 2: figure out what we just fetched (the remote-tracking
-      // tip of our branch) and decide whether we can fast-forward.
-      final branchName = repo.head.shorthand;
-      String theirSha;
-      try {
-        final remoteBranch = Branch.lookup(
-          repo: repo,
-          name: 'origin/$branchName',
-          type: GitBranch.remote,
-        );
-        try {
-          // Capture the SHA *before* freeing the branch — the Oid
-          // returned from `target` shares memory with the underlying
-          // git_reference and its pointer dangles after free().
-          theirSha = remoteBranch.target.sha;
-        } finally {
-          remoteBranch.free();
-        }
-      } on LibGit2Error catch (e) {
-        throw GitException('no remote-tracking branch for $branchName: $e',
-            cause: e);
-      }
-      final theirHead = Oid.fromSHA(repo, theirSha);
-
-      final analysis = Merge.analysis(repo: repo, theirHead: theirHead);
-      if (analysis.result.contains(GitMergeAnalysis.upToDate)) {
-        return;
-      }
-      if (analysis.result.contains(GitMergeAnalysis.fastForward) ||
-          analysis.result.contains(GitMergeAnalysis.unborn)) {
-        // Fast-forward: move the branch ref + HEAD to theirHead, then
-        // checkout to update the working tree.
-        try {
-          // Update local branch ref.
-          Reference.create(
-            repo: repo,
-            name: 'refs/heads/$branchName',
-            target: theirHead,
-            force: true,
-          ).free();
-          repo.setHead('refs/heads/$branchName');
-          Checkout.head(repo: repo, strategy: {GitCheckout.force});
-          return;
-        } on LibGit2Error catch (e) {
-          throw GitException('fast-forward failed: $e', cause: e);
-        }
-      }
-      // Anything else (normal divergence) is a conflict — orchestrator
-      // decides what to do.
-      throw PullConflictException(
-        'remote diverged from local; analysis=${analysis.result}',
-      );
-    } finally {
-      repo.free();
-    }
+    // fetch + fast-forward block on network + working-tree I/O — offload to a
+    // background isolate so the UI stays responsive (issue #4). The isolate
+    // opens its own repo handle from the path; PullConflictException /
+    // GitException thrown inside it carry only strings, so they survive the
+    // isolate boundary and the orchestrator can still catch them by type.
+    final path = localDir.path;
+    final email = creds.email;
+    final password = creds.password;
+    await Isolate.run(() => _pullInIsolate(path, email, password));
   }
 
   /// Stage every change in the working tree, including deletions.
@@ -233,25 +161,8 @@ class SubsurfaceRepo {
   /// with [commit] when ready.
   Future<void> stageAll() async {
     _ensurePlatform();
-    final repo = _openExisting();
-    try {
-      final index = repo.index;
-      try {
-        // Pass `['*']` as pathspec to match every path. `addAll`
-        // handles both new files and modifications; `updateAll` then
-        // catches deletes (libgit2's addAll respects gitignore but
-        // doesn't pick up removals).
-        index.addAll(['*']);
-        index.updateAll(['*']);
-        index.write();
-      } on LibGit2Error catch (e) {
-        throw GitException('stageAll failed: $e', cause: e);
-      } finally {
-        index.free();
-      }
-    } finally {
-      repo.free();
-    }
+    final path = localDir.path;
+    await Isolate.run(() => _stageAllInIsolate(path));
   }
 
   /// Build a commit from whatever is staged. Returns the new commit's
@@ -263,55 +174,10 @@ class SubsurfaceRepo {
   /// ([authorName] / [authorEmail]).
   Future<String?> commit(String message) async {
     _ensurePlatform();
-    final repo = _openExisting();
-    try {
-      final index = repo.index;
-      Signature? signature;
-      try {
-        // writeTree builds a tree from the current index. If the
-        // resulting tree matches HEAD's tree, there's nothing to
-        // commit. We check that before creating a commit so callers
-        // can run a stage/commit pair unconditionally.
-        final treeOid = index.writeTree();
-        final tree = Tree.lookup(repo: repo, oid: treeOid);
-        try {
-          final isUnborn = repo.isEmpty || repo.isBranchUnborn;
-          Commit? parent;
-          if (!isUnborn) {
-            parent = Commit.lookup(repo: repo, oid: repo.head.target);
-            if (parent.tree.oid == tree.oid) {
-              // Nothing changed.
-              parent.free();
-              return null;
-            }
-          }
-          signature = Signature.create(
-            name: authorName,
-            email: authorEmail,
-          );
-          final oid = Commit.create(
-            repo: repo,
-            updateRef: 'HEAD',
-            author: signature,
-            committer: signature,
-            message: message,
-            tree: tree,
-            parents: [?parent],
-          );
-          parent?.free();
-          return oid.sha;
-        } finally {
-          tree.free();
-        }
-      } on LibGit2Error catch (e) {
-        throw GitException('commit failed: $e', cause: e);
-      } finally {
-        signature?.free();
-        index.free();
-      }
-    } finally {
-      repo.free();
-    }
+    final path = localDir.path;
+    final name = authorName;
+    final email = authorEmail;
+    return Isolate.run(() => _commitInIsolate(path, message, name, email));
   }
 
   /// Push the current branch to `origin`. Auth is read fresh from
@@ -321,48 +187,10 @@ class SubsurfaceRepo {
   Future<void> push() async {
     _ensurePlatform();
     final creds = await _readCredentialsOrThrow();
-    final repo = _openExisting();
-    try {
-      final branchName = repo.head.shorthand;
-      final refspec = 'refs/heads/$branchName:refs/heads/$branchName';
-      Remote? remote;
-      String? rejection;
-      try {
-        remote = Remote.lookup(repo: repo, name: 'origin');
-        remote.push(
-          refspecs: [refspec],
-          callbacks: Callbacks(
-            credentials: UserPass(
-              username: creds.email,
-              password: creds.password,
-            ),
-            // libgit2 reports per-ref rejection through the
-            // pushUpdateReference callback — message is empty when
-            // the push was accepted, otherwise it's the server's
-            // refusal text (typically containing "non-fast-forward").
-            pushUpdateReference: (refname, message) {
-              if (message.isNotEmpty) {
-                rejection = message;
-              }
-            },
-          ),
-        );
-      } on LibGit2Error catch (e) {
-        throw _classifyNetworkError(e, 'push failed');
-      } finally {
-        remote?.free();
-      }
-      final r = rejection;
-      if (r != null) {
-        if (r.toLowerCase().contains('non-fast-forward') ||
-            r.toLowerCase().contains('rejected')) {
-          throw PullConflictException('push rejected: $r');
-        }
-        throw GitException('push rejected: $r');
-      }
-    } finally {
-      repo.free();
-    }
+    final path = localDir.path;
+    final email = creds.email;
+    final password = creds.password;
+    await Isolate.run(() => _pushInIsolate(path, email, password));
   }
 
   // ── internals ──────────────────────────────────────────────────────
@@ -398,19 +226,225 @@ class SubsurfaceRepo {
     }
     return creds;
   }
+}
 
-  /// Map a libgit2 network error to one of our typed exceptions. We
-  /// look at the message text because libgit2's error class enum is
-  /// not reliably exposed across all the bindings.
-  GitException _classifyNetworkError(LibGit2Error e, String prefix) {
-    final msg = e.toString().toLowerCase();
-    if (msg.contains('authentication') ||
-        msg.contains('401') ||
-        msg.contains('unauthorized')) {
-      return GitAuthException('$prefix: $e', cause: e);
-    }
-    return GitException('$prefix: $e', cause: e);
+// ── Isolate entry points ─────────────────────────────────────────────────
+//
+// These run the blocking libgit2 work (network + working-tree I/O) on a
+// background isolate so the UI thread stays responsive (issue #4). git2dart
+// handles can't cross an isolate boundary, so each entry point reopens the
+// on-disk repo from [localPath] within the worker isolate. Every exception
+// thrown here carries only strings (no `cause` object) so it stays sendable
+// across the boundary while preserving its type — the orchestrator still
+// catches [PullConflictException] / [GitAuthException] by `is`.
+
+void _cloneInIsolate(
+    String url, String localPath, String email, String password) {
+  Repository? repo;
+  try {
+    repo = Repository.clone(
+      url: url,
+      localPath: localPath,
+      callbacks: Callbacks(
+        credentials: UserPass(username: email, password: password),
+      ),
+    );
+  } on LibGit2Error catch (e) {
+    throw _classifyNetworkError(e, 'clone failed');
+  } finally {
+    repo?.free();
   }
+}
+
+void _pullInIsolate(String localPath, String email, String password) {
+  final repo = _openRepo(localPath);
+  try {
+    // Step 1: fetch.
+    Remote? remote;
+    try {
+      remote = Remote.lookup(repo: repo, name: 'origin');
+      remote.fetch(
+        callbacks: Callbacks(
+          credentials: UserPass(username: email, password: password),
+        ),
+      );
+    } on LibGit2Error catch (e) {
+      throw _classifyNetworkError(e, 'fetch failed');
+    } finally {
+      remote?.free();
+    }
+
+    // Step 2: decide whether we can fast-forward to the fetched tip.
+    final branchName = repo.head.shorthand;
+    String theirSha;
+    try {
+      final remoteBranch = Branch.lookup(
+        repo: repo,
+        name: 'origin/$branchName',
+        type: GitBranch.remote,
+      );
+      try {
+        // Capture the SHA before freeing — the Oid shares memory with the
+        // underlying git_reference and dangles after free().
+        theirSha = remoteBranch.target.sha;
+      } finally {
+        remoteBranch.free();
+      }
+    } on LibGit2Error catch (e) {
+      throw GitException('no remote-tracking branch for $branchName: $e');
+    }
+    final theirHead = Oid.fromSHA(repo, theirSha);
+
+    final analysis = Merge.analysis(repo: repo, theirHead: theirHead);
+    if (analysis.result.contains(GitMergeAnalysis.upToDate)) {
+      return;
+    }
+    if (analysis.result.contains(GitMergeAnalysis.fastForward) ||
+        analysis.result.contains(GitMergeAnalysis.unborn)) {
+      try {
+        Reference.create(
+          repo: repo,
+          name: 'refs/heads/$branchName',
+          target: theirHead,
+          force: true,
+        ).free();
+        repo.setHead('refs/heads/$branchName');
+        Checkout.head(repo: repo, strategy: {GitCheckout.force});
+        return;
+      } on LibGit2Error catch (e) {
+        throw GitException('fast-forward failed: $e');
+      }
+    }
+    // Normal divergence — the orchestrator decides what to do.
+    throw PullConflictException(
+      'remote diverged from local; analysis=${analysis.result}',
+    );
+  } finally {
+    repo.free();
+  }
+}
+
+void _stageAllInIsolate(String localPath) {
+  final repo = _openRepo(localPath);
+  try {
+    final index = repo.index;
+    try {
+      index.addAll(['*']);
+      index.updateAll(['*']);
+      index.write();
+    } on LibGit2Error catch (e) {
+      throw GitException('stageAll failed: $e');
+    } finally {
+      index.free();
+    }
+  } finally {
+    repo.free();
+  }
+}
+
+String? _commitInIsolate(
+    String localPath, String message, String authorName, String authorEmail) {
+  final repo = _openRepo(localPath);
+  try {
+    final index = repo.index;
+    Signature? signature;
+    try {
+      final treeOid = index.writeTree();
+      final tree = Tree.lookup(repo: repo, oid: treeOid);
+      try {
+        final isUnborn = repo.isEmpty || repo.isBranchUnborn;
+        Commit? parent;
+        if (!isUnborn) {
+          parent = Commit.lookup(repo: repo, oid: repo.head.target);
+          if (parent.tree.oid == tree.oid) {
+            // Nothing changed — don't litter the log with empty commits.
+            parent.free();
+            return null;
+          }
+        }
+        signature = Signature.create(name: authorName, email: authorEmail);
+        final oid = Commit.create(
+          repo: repo,
+          updateRef: 'HEAD',
+          author: signature,
+          committer: signature,
+          message: message,
+          tree: tree,
+          parents: [?parent],
+        );
+        parent?.free();
+        return oid.sha;
+      } finally {
+        tree.free();
+      }
+    } on LibGit2Error catch (e) {
+      throw GitException('commit failed: $e');
+    } finally {
+      signature?.free();
+      index.free();
+    }
+  } finally {
+    repo.free();
+  }
+}
+
+void _pushInIsolate(String localPath, String email, String password) {
+  final repo = _openRepo(localPath);
+  try {
+    final branchName = repo.head.shorthand;
+    final refspec = 'refs/heads/$branchName:refs/heads/$branchName';
+    Remote? remote;
+    String? rejection;
+    try {
+      remote = Remote.lookup(repo: repo, name: 'origin');
+      remote.push(
+        refspecs: [refspec],
+        callbacks: Callbacks(
+          credentials: UserPass(username: email, password: password),
+          // libgit2 reports per-ref rejection here — message is empty on
+          // accept, else the server's refusal text.
+          pushUpdateReference: (refname, message) {
+            if (message.isNotEmpty) rejection = message;
+          },
+        ),
+      );
+    } on LibGit2Error catch (e) {
+      throw _classifyNetworkError(e, 'push failed');
+    } finally {
+      remote?.free();
+    }
+    final r = rejection;
+    if (r != null) {
+      if (r.toLowerCase().contains('non-fast-forward') ||
+          r.toLowerCase().contains('rejected')) {
+        throw PullConflictException('push rejected: $r');
+      }
+      throw GitException('push rejected: $r');
+    }
+  } finally {
+    repo.free();
+  }
+}
+
+Repository _openRepo(String localPath) {
+  try {
+    return Repository.open(localPath);
+  } on LibGit2Error catch (e) {
+    throw GitException('cannot open repository at $localPath: $e');
+  }
+}
+
+/// String-only network-error classifier for the isolate entry points. The
+/// returned exception must be sendable across the isolate boundary, so the
+/// libgit2 error text is folded into the message rather than kept as `cause`.
+GitException _classifyNetworkError(LibGit2Error e, String prefix) {
+  final msg = e.toString().toLowerCase();
+  if (msg.contains('authentication') ||
+      msg.contains('401') ||
+      msg.contains('unauthorized')) {
+    return GitAuthException('$prefix: $e');
+  }
+  return GitException('$prefix: $e');
 }
 
 /// Base class for everything this wrapper throws. Carries a [message]
