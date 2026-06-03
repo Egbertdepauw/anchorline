@@ -65,22 +65,27 @@ class SupabaseAuthSessionSource implements SessionSource {
 class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   final SessionSource _sessions;
   final SupabaseRestUploader _uploader;
+  final CrudQuarantine? _quarantine;
   final String _endpoint;
 
   CcrloggerBackendConnector(
     SupabaseClient supabase, {
     String endpoint = CloudConfig.powerSyncEndpoint,
+    CrudQuarantine? quarantine,
   })  : _sessions = SupabaseAuthSessionSource(supabase),
         _uploader = SupabaseClientRestUploader(supabase),
+        _quarantine = quarantine,
         _endpoint = endpoint;
 
   /// Test-only: inject the auth + REST seams directly.
   CcrloggerBackendConnector.forTesting({
     required SessionSource sessions,
     required SupabaseRestUploader uploader,
+    CrudQuarantine? quarantine,
     String endpoint = 'https://test.powersync.invalid',
   })  : _sessions = sessions,
         _uploader = uploader,
+        _quarantine = quarantine,
         _endpoint = endpoint;
 
   /// Window before token expiry within which we try to refresh
@@ -218,12 +223,55 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
             throw CrudUploadException(op, e2);
           }
         }
+        // Permanent backend rejection (constraint / oversized body / bad
+        // data): retrying the same payload can never succeed, so it would
+        // wedge the FIFO queue forever (issue #2). Quarantine it — record it
+        // for the "N changes couldn't sync" surface, then skip so the caller's
+        // batch.complete() clears it and the ops behind it drain. Transient
+        // errors (5xx / network) fall through to rethrow so PowerSync retries.
+        if (_isPermanent(e)) {
+          await _quarantine?.record(op, e);
+          debugPrint('replayCrud: quarantined ${op.op.name} ${op.table} '
+              'id=${op.id} — permanent backend rejection: $e');
+          continue;
+        }
         throw CrudUploadException(op, e);
       } catch (e) {
+        // Anything we cannot positively classify as a permanent rejection
+        // (network errors, timeouts, non-Postgrest failures) is treated as
+        // transient and retried — never silently dropped.
         if (e is CrudUploadException) rethrow;
         throw CrudUploadException(op, e);
       }
     }
+  }
+
+  /// SQLSTATE codes for backend rejections that a retry of the same payload
+  /// can never fix (so the op must be quarantined, not retried forever).
+  /// Deliberately EXCLUDES 23503 (foreign-key — handled by self-heal/drop
+  /// above) and 42501 (RLS — recoverable once `owner_id` is backfilled).
+  static const _permanentSqlStates = {
+    '23505', // unique_violation
+    '23502', // not_null_violation
+    '23514', // check_violation
+    '22001', // string_data_right_truncation (value too long)
+    '22003', // numeric_value_out_of_range
+    '22P02', // invalid_text_representation
+  };
+
+  /// Permanent HTTP client errors (4xx) that won't change on retry — notably
+  /// 413 for an oversized `dive_samples` body, the prime suspect in #2.
+  static const _permanentHttpStatuses = {400, 409, 413, 422};
+
+  /// Whether [e] is a permanent backend rejection. Conservative by design:
+  /// only a [PostgrestException] whose code is a known-permanent SQLSTATE or
+  /// 4xx status counts. Everything else is transient (retry, never drop).
+  static bool _isPermanent(PostgrestException e) {
+    final code = e.code;
+    if (code == null) return false;
+    if (_permanentSqlStates.contains(code)) return true;
+    final status = int.tryParse(code);
+    return status != null && _permanentHttpStatuses.contains(status);
   }
 
   Future<void> _applyOp(CrudEntry op) async {
@@ -285,6 +333,16 @@ const Map<String, List<(String, String)>> _fkParents = {
   'dive_samples': [('id', 'dives')],
   'dive_merge_links': [('id', 'dives')],
 };
+
+/// Sink for CRUD ops the backend permanently rejected, so a single "poison"
+/// op can't wedge the FIFO upload queue forever (issue #2). Implementations
+/// persist the op durably so it can be surfaced ("N changes couldn't sync")
+/// and re-driven once the underlying cause (e.g. an oversized `dive_samples`
+/// body) is fixed. [replayCrud] records here, then skips the op so the batch
+/// can complete and the ops behind it drain.
+abstract class CrudQuarantine {
+  Future<void> record(CrudEntry op, Object cause);
+}
 
 /// Wraps the underlying error from a single failed CRUD upload op, tagging it
 /// with the op's table/id/type so a stalled upload queue (issue #2) is
