@@ -492,9 +492,11 @@ class _ChartPainter extends CustomPainter {
     _drawRefLabels(canvas, layout, refs);
   }
 
-  /// Right-aligned label pills for the reference lines. Pills are nudged
-  /// downward so neighbouring labels (e.g. RECENT just above WATCH) don't
-  /// overlap, while the lines themselves stay at their true mV.
+  /// Left-aligned label pills for the reference lines, anchored just inside
+  /// the Y-axis so they sit over the cell's earliest dives rather than the
+  /// recent ones that drive the verdict. Pills are nudged downward so
+  /// neighbouring labels (e.g. RECENT just above WATCH) don't overlap, while
+  /// the lines themselves stay at their true mV.
   void _drawRefLabels(Canvas canvas, _ChartLayout layout, List<_Ref> refs) {
     if (refs.isEmpty) return;
     final items = <({double y, TextPainter tp, Color color})>[];
@@ -511,11 +513,11 @@ class _ChartPainter extends CustomPainter {
     }
     items.sort((a, b) => a.y.compareTo(b.y));
 
+    const x = _ChartLayout.left + 6;
     double? prevBottom;
     for (final it in items) {
       var y = it.y;
       if (prevBottom != null && y < prevBottom + 1) y = prevBottom + 1;
-      final x = _ChartLayout.left + layout.plotW - it.tp.width - 6;
       final rect = Rect.fromLTWH(x - 4, y - 2, it.tp.width + 8, it.tp.height + 4);
       canvas.drawRRect(
         RRect.fromRectAndRadius(rect, const Radius.circular(2)),
