@@ -395,11 +395,7 @@ class _ChartPainter extends CustomPainter {
       canvas.drawLine(Offset(x0, y), Offset(x1, y), paint);
     }
     final tp = TextPainter(
-      text: TextSpan(
-        text: label,
-        style: TextStyle(
-            fontFamily: 'JetBrainsMono', fontSize: 9, color: color),
-      ),
+      text: TextSpan(text: label, style: _labelStyle.copyWith(color: color)),
       textDirection: TextDirection.ltr,
     )..layout();
     tp.paint(canvas, Offset(x1 - tp.width - 2, y - tp.height - 1));

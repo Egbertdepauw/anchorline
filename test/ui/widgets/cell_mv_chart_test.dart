@@ -46,4 +46,28 @@ void main() {
 
     expect(find.text('No peak-mV data yet'), findsOneWidget);
   });
+
+  testWidgets('peak view with baseline renders and survives a toggle roundtrip',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: CellMvChart(
+          surfaceSeries: surface,
+          peakSeries: peak,
+          baselinePeakMv: 52.0,
+        ),
+      ),
+    ));
+
+    // Default peak view with a baseline must render the chart, not empty state.
+    expect(find.byType(CustomPaint), findsWidgets);
+    expect(find.text('No peak-mV data yet'), findsNothing);
+
+    // Surface -> back to Peak must not throw.
+    await tester.tap(find.text('Surface mV'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Peak mV'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 }
