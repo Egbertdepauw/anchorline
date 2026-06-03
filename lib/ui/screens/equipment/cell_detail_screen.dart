@@ -233,7 +233,8 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
                 if (_cell?.retiredDate != null)
                   Text('Retired: '
                       '${_fmtDate(DateTime.fromMillisecondsSinceEpoch(_cell!.retiredDate!))}'),
-                Text('Dives with mV data: ${_peak.length}'),
+                Text('Dives with mV data: ${_peak.length}'
+                    '${_surface.length != _peak.length ? ' (${_surface.length} with surface readings)' : ''}'),
                 const SizedBox(height: 16),
                 if (_health != null)
                   Padding(
