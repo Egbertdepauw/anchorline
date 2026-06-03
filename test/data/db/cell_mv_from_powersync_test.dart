@@ -51,4 +51,44 @@ void main() {
     expect(series, isNotEmpty);
     expect(series.first.diveId, dive.id);
   });
+
+  test('mvSeriesForCell returns surface + peak series in one pass', () async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final ps = await openPowerSyncForTest();
+    final session = FakeSessionSource()..setUserId('u');
+    final diveDao = DiveDao(db, ps, session);
+    final equipDao = EquipmentDao(db, ps, session);
+
+    final data = File('test/fixtures/dives/dive_716.bin').readAsBytesSync();
+    final parsed =
+        ShearwaterDiveParser(model: ShearwaterModel.petrel3).parse(data);
+    final converted = DiveConverter.convert(
+      parsed: parsed,
+      dcSerial: 0xB89641E4,
+      dcDiveNumber: 716,
+      dcModel: ShearwaterModel.petrel3,
+    );
+    await diveDao.importDive(
+        converted: converted, rawBlob: data, parserVersion: 1);
+
+    final dive = (await diveDao.getAllDives()).single;
+    final installed = DateTime.fromMillisecondsSinceEpoch(dive.startTime * 1000)
+        .subtract(const Duration(days: 1));
+    final cellId = await equipDao.addCell(slot: 1, installedDate: installed);
+
+    final result = await equipDao.mvSeriesForCell(cellId);
+    expect(result.surface, isNotEmpty);
+    expect(result.peak, isNotEmpty);
+    expect(result.peak.first.diveId, dive.id);
+    // peak = global max of mv>=5; surface = mean of a subset of those samples,
+    // so peak.mv must be >= surface.mv for the same dive.
+    expect(result.peak.first.mv,
+        greaterThanOrEqualTo(result.surface.first.mv));
+
+    // surfaceMvSeriesForCell now delegates to mvSeriesForCell(...).surface
+    final legacy = await equipDao.surfaceMvSeriesForCell(cellId);
+    expect(legacy.length, result.surface.length);
+    expect(legacy.first.mv, result.surface.first.mv);
+  });
 }
