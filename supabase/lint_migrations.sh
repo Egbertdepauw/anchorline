@@ -17,7 +17,8 @@ for f in "$dir"/*.sql; do
     fail=1
   done < <(
     grep -niE 'create table |create (unique )?index |add column |drop column ' "$f" \
-      | grep -viE 'if not exists|if exists' || true
+      | grep -viE 'if not exists|if exists' \
+      | grep -vE '^[0-9]+:[[:space:]]*--' || true
   )
 
   # Rule 6: an `alter publication ... add table` must be guarded — only allowed
@@ -28,11 +29,11 @@ for f in "$dir"/*.sql; do
       echo "  $name:$ln  (unguarded) $(echo "$text" | sed 's/^[[:space:]]*//')"
       fail=1
     fi
-  done < <(grep -niE 'alter publication .* add table' "$f" || true)
+  done < <(grep -niE 'alter publication .* add table' "$f" | grep -vE '^[0-9]+:[[:space:]]*--' || true)
 
   # Rule 5: every `create policy` needs a matching `drop policy if exists`.
-  creates="$(grep -ciE 'create policy' "$f" || true)"
-  drops="$(grep -ciE 'drop policy if exists' "$f" || true)"
+  creates="$(grep -vE '^[[:space:]]*--' "$f" | grep -ciE 'create policy' || true)"
+  drops="$(grep -vE '^[[:space:]]*--' "$f" | grep -ciE 'drop policy if exists' || true)"
   if [ "${creates:-0}" -gt "${drops:-0}" ]; then
     echo "  $name  create policy ($creates) without matching drop policy if exists ($drops)"
     fail=1
