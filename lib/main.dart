@@ -19,6 +19,7 @@ import 'sync/cloud/cloud_config.dart';
 import 'sync/cloud/cloud_data_wiper.dart';
 import 'sync/cloud/cloud_sync_coordinator.dart';
 import 'sync/cloud/dives_powersync_migrator.dart';
+import 'sync/cloud/drift_crud_quarantine.dart';
 import 'sync/cloud/powersync_database.dart';
 import 'sync/cloud/usage_tracker.dart';
 import 'ui/app_shell.dart';
@@ -92,7 +93,10 @@ void main() async {
   // WebSockets after Mac sleep / backgrounding.
   final cloudSyncCoordinator = CloudSyncCoordinator(
     database: powerSyncDb,
-    connector: CcrloggerBackendConnector(Supabase.instance.client),
+    connector: CcrloggerBackendConnector(
+      Supabase.instance.client,
+      quarantine: DriftCrudQuarantine(db),
+    ),
     authService: authService,
   )..start();
 

@@ -15,6 +15,7 @@ import '../../sync/attachments/attachment_object_wiper.dart';
 import '../../sync/cloud/auth_service.dart';
 import '../../shearwater/ble/ble_debug_logger.dart';
 import '../../sync/cloud/cloud_data_wiper.dart';
+import '../../sync/cloud/drift_crud_quarantine.dart';
 import '../../sync/cloud/sync_status_source.dart';
 import '../../sync/subsurface_git/bootstrap_importer.dart';
 import '../../sync/subsurface_git/credentials.dart';
@@ -649,6 +650,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       }
       report.writeln('');
+
+      // Ops the connector permanently quarantined so they couldn't wedge the
+      // queue (issue #2). A non-zero count means those changes never synced.
+      final db = widget.db;
+      if (db != null) {
+        final quarantined = await DriftCrudQuarantine(db).count();
+        report.writeln('Changes that couldn\'t sync (quarantined): '
+            '$quarantined');
+        report.writeln('');
+      }
 
       // PowerSync sync status.
       final s = widget.syncStatusSource?.currentStatus;

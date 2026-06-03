@@ -375,3 +375,36 @@ class DiveMergeLinks extends Table {
   @override
   Set<Column> get primaryKey => {diveId};
 }
+
+/// CRUD upload ops the backend permanently rejected, recorded so a single
+/// "poison" op can't wedge the FIFO upload queue forever (issue #2). The
+/// connector skips such an op (so the queue drains) and writes it here, where
+/// the diagnostic surfaces the count ("N changes couldn't sync") and a future
+/// re-drive can replay them after the underlying cause is fixed.
+///
+/// Local-only — NOT sync-eligible (it records failures of the sync itself, and
+/// is meaningful only on the device that hit them).
+class SyncQuarantine extends Table {
+  /// Surrogate key — the same row id can be quarantined more than once.
+  IntColumn get id => integer().autoIncrement()();
+
+  /// The op's PowerSync `CrudEntry.clientId`.
+  IntColumn get opClientId => integer()();
+
+  /// `put` / `patch` / `delete`.
+  TextColumn get opType => text()();
+
+  /// The Postgres/PowerSync table the op targeted (named `targetTable` to
+  /// avoid clashing with drift's built-in `Table.tableName`).
+  TextColumn get targetTable => text()();
+  TextColumn get rowId => text()();
+
+  /// JSON of the op's payload (for a future re-drive); null for deletes.
+  TextColumn get opData => text().nullable()();
+
+  /// String form of the backend rejection that quarantined the op.
+  TextColumn get error => text()();
+
+  /// When it was quarantined (epoch milliseconds).
+  IntColumn get quarantinedAt => integer()();
+}
