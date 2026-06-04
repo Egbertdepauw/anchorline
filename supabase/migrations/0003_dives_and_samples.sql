@@ -11,7 +11,7 @@
 -- handles jsonb in 0001_initial_schema.sql).
 
 -- dives ----------------------------------------------------------------------
-create table dives (
+create table if not exists dives (
   id text primary key,
   owner_id uuid not null references auth.users(id) on delete cascade,
 
@@ -46,12 +46,13 @@ create table dives (
 );
 
 alter table dives enable row level security;
+drop policy if exists "owner_full_access" on dives;
 create policy "owner_full_access"
   on dives for all
   using (auth.uid() = owner_id)
   with check (auth.uid() = owner_id);
 
-create index dives_owner_id_idx on dives (owner_id);
+create index if not exists dives_owner_id_idx on dives (owner_id);
 
 -- dive_samples ---------------------------------------------------------------
 -- 1:1 with dives — `id` is both the PK and the FK to dives(id), so a
@@ -61,7 +62,7 @@ create index dives_owner_id_idx on dives (owner_id);
 -- here keeps the sync path / upload path in lockstep.)
 -- Blobs are base64-encoded gzipped Float32 channels. `tank_pressures_blob`
 -- is null for OC dives + pre-v6 imports.
-create table dive_samples (
+create table if not exists dive_samples (
   id text primary key references dives(id) on delete cascade,
   owner_id uuid not null references auth.users(id) on delete cascade,
   sample_count integer not null,
@@ -86,15 +87,26 @@ create table dive_samples (
 );
 
 alter table dive_samples enable row level security;
+drop policy if exists "owner_full_access" on dive_samples;
 create policy "owner_full_access"
   on dive_samples for all
   using (auth.uid() = owner_id)
   with check (auth.uid() = owner_id);
 
-create index dive_samples_owner_id_idx on dive_samples (owner_id);
+create index if not exists dive_samples_owner_id_idx on dive_samples (owner_id);
 
 -- PowerSync publication ------------------------------------------------------
 -- Add the two new tables to the existing publication so logical
 -- replication picks them up. (`alter publication ... add table` is the
 -- idempotent-ish way; safer than recreating the publication.)
-alter publication powersync add table dives, dive_samples;
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables
+                 where pubname = 'powersync' and schemaname = 'public' and tablename = 'dives') then
+    execute 'alter publication powersync add table public.dives';
+  end if;
+  if not exists (select 1 from pg_publication_tables
+                 where pubname = 'powersync' and schemaname = 'public' and tablename = 'dive_samples') then
+    execute 'alter publication powersync add table public.dive_samples';
+  end if;
+end $$;

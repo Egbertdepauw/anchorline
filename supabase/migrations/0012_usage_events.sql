@@ -25,7 +25,7 @@
 --     one-way feed. We query the table via the Supabase SQL Editor /
 --     Management API using the service role, which bypasses RLS.
 
-create table usage_events (
+create table if not exists usage_events (
   id         uuid primary key default gen_random_uuid(),
   owner_id   uuid references auth.users (id) on delete cascade,
   event_name text not null,
@@ -35,9 +35,9 @@ create table usage_events (
 
 -- (owner_id, created_at desc) for "this user's recent events" queries.
 -- (event_name, created_at desc) for "how often does event X fire" queries.
-create index usage_events_owner_created
+create index if not exists usage_events_owner_created
   on usage_events (owner_id, created_at desc);
-create index usage_events_name_created
+create index if not exists usage_events_name_created
   on usage_events (event_name, created_at desc);
 
 alter table usage_events enable row level security;
@@ -45,6 +45,7 @@ alter table usage_events enable row level security;
 -- The only thing authenticated users are allowed to do: insert their
 -- own rows. No SELECT, no UPDATE, no DELETE — telemetry is write-once
 -- from the client side. We read it via the Editor.
+drop policy if exists "owner_insert_only" on usage_events;
 create policy "owner_insert_only"
   on usage_events
   for insert

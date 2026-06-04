@@ -26,7 +26,7 @@
 -- write-once-on-create + soft-delete. The retry sweep on app
 -- foreground re-tries `pending`/`failed` rows.
 
-create table dive_attachments (
+create table if not exists dive_attachments (
   id text primary key,
   owner_id uuid not null references auth.users(id) on delete cascade,
 
@@ -72,24 +72,31 @@ create table dive_attachments (
 );
 
 alter table dive_attachments enable row level security;
+drop policy if exists "owner_full_access" on dive_attachments;
 create policy "owner_full_access"
   on dive_attachments for all
   using (auth.uid() = owner_id)
   with check (auth.uid() = owner_id);
 
 -- RLS query path index (mirrors 0002_owner_id_indexes.sql).
-create index dive_attachments_owner_id_idx
+create index if not exists dive_attachments_owner_id_idx
   on dive_attachments (owner_id);
 
 -- The "list everything attached to this dive" query.
-create index dive_attachments_parent_idx
+create index if not exists dive_attachments_parent_idx
   on dive_attachments (parent_kind, parent_id);
 
 -- Used by the orphan-cleanup tooling; partial because link rows have
 -- null storage_key and we never look them up by it.
-create index dive_attachments_storage_key_idx
+create index if not exists dive_attachments_storage_key_idx
   on dive_attachments (storage_key)
   where storage_key is not null;
 
 -- PowerSync publication ------------------------------------------------------
-alter publication powersync add table dive_attachments;
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables
+                 where pubname = 'powersync' and schemaname = 'public' and tablename = 'dive_attachments') then
+    execute 'alter publication powersync add table public.dive_attachments';
+  end if;
+end $$;
