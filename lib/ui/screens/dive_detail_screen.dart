@@ -846,7 +846,12 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
             equipmentDao: widget.equipmentDao,
           ),
           DiveBailoutCarrySection(
-            diveId: widget.dive.id,
+            // For a merged dive, [dive].id is a synthetic group id with no
+            // `dives` row — a bailout row written against it is an FK-orphan
+            // that the sync connector drops, so PowerSync GCs it locally and
+            // the row "appears then disappears" (#54). Anchor to the earliest
+            // member's real dive id, exactly like annotations above.
+            diveId: widget.annotationsDiveId ?? widget.dive.id,
             dao: widget.equipmentDao,
           ),
           DiveEquipmentSection(
