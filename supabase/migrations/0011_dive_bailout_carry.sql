@@ -1,5 +1,5 @@
 -- Cylinders are physical vessels — what gas they hold is recorded per dive.
-ALTER TABLE cylinders DROP COLUMN gas_mix;
+ALTER TABLE cylinders DROP COLUMN IF EXISTS gas_mix;
 
 -- One row per (dive_id, cylinder_id) the diver carried as OC bailout on this
 -- dive. id is "{dive_id}:{cylinder_id}" (PowerSync-friendly synthetic PK).

@@ -5,4 +5,4 @@
 -- JSON-text array of three doubles (length 0 on OC; length 3 on CCR).
 -- Mirrors the gas_mixes_json column shape.
 alter table dives
-  add column sensor_calibration_json text;
+  add column if not exists sensor_calibration_json text;

@@ -17,11 +17,11 @@
 -- `atmospheric_pressure_mbar`) and would duplicate state if mirrored.
 
 alter table dive_annotations
-  add column visibility integer,
-  add column wavesize integer,
-  add column "current" integer,
-  add column surge integer,
-  add column chill integer,
-  add column air_temp_c real,
-  add column water_temp_c real,
-  add column weights_json jsonb;
+  add column if not exists visibility integer,
+  add column if not exists wavesize integer,
+  add column if not exists "current" integer,
+  add column if not exists surge integer,
+  add column if not exists chill integer,
+  add column if not exists air_temp_c real,
+  add column if not exists water_temp_c real,
+  add column if not exists weights_json jsonb;
