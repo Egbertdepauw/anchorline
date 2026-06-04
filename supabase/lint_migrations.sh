@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Fails if any migration contains non-idempotent DDL. No database needed —
+# a pure static check, safe to run in CI. See supabase/README.md for the
+# idempotency rule every migration must follow (issue #20).
+set -euo pipefail
+
+dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/migrations" && pwd)"
+[ -d "$dir" ] || { echo "migrations dir not found: $dir" >&2; exit 1; }
+shopt -s nullglob
+sqls=("$dir"/*.sql)
+[ "${#sqls[@]}" -gt 0 ] || { echo "no migration .sql files found in $dir" >&2; exit 1; }
+fail=0
+
+for f in "${sqls[@]}"; do
+  name="$(basename "$f")"
+
+  # Rules 1–4: these statements must carry IF [NOT] EXISTS on the same line.
+  while IFS=: read -r ln text; do
+    [ -z "$ln" ] && continue
+    echo "  $name:$ln  $(echo "$text" | sed 's/^[[:space:]]*//')"
+    fail=1
+  done < <(
+    grep -niE 'create table |create (unique )?index |add column |drop column ' "$f" \
+      | grep -viE 'if not exists|if exists' \
+      | grep -vE '^[0-9]+:[[:space:]]*--' || true
+  )
+
+  # Rule 6: an `alter publication ... add table` must be guarded — only allowed
+  # inside an EXECUTE string (the DO-block form). A bare ALTER is flagged.
+  while IFS=: read -r ln text; do
+    [ -z "$ln" ] && continue
+    if ! echo "$text" | grep -qiE 'execute'; then
+      echo "  $name:$ln  (unguarded) $(echo "$text" | sed 's/^[[:space:]]*//')"
+      fail=1
+    fi
+  done < <(grep -niE '(alter|create) publication ' "$f" | grep -vE '^[0-9]+:[[:space:]]*--' || true)
+
+  # Rule 5: every `create policy` needs a matching `drop policy if exists`.
+  creates="$(grep -vE '^[[:space:]]*--' "$f" | grep -ciE 'create policy' || true)"
+  drops="$(grep -vE '^[[:space:]]*--' "$f" | grep -ciE 'drop policy if exists' || true)"
+  if [ "${creates:-0}" -gt "${drops:-0}" ]; then
+    echo "  $name  create policy ($creates) without matching drop policy if exists ($drops)"
+    fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "FAIL: non-idempotent migration statements found (issue #20)." >&2
+  exit 1
+fi
+echo "OK: all migrations are idempotent."

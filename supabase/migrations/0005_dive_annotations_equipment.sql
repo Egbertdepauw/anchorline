@@ -10,8 +10,8 @@
 -- entities (e.g. a "DPV serial + battery cycles" record), revisit then.
 
 alter table dive_annotations
-  add column suit text,
-  add column undersuit text,
-  add column weight_system text,
-  add column dpv text,
-  add column camera text;
+  add column if not exists suit text,
+  add column if not exists undersuit text,
+  add column if not exists weight_system text,
+  add column if not exists dpv text,
+  add column if not exists camera text;

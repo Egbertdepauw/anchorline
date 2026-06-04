@@ -6,7 +6,7 @@
 -- synthetic id column here; the client composes it at sync time.
 
 -- dive_annotations -----------------------------------------------------------
-create table dive_annotations (
+create table if not exists dive_annotations (
   id text primary key,
   owner_id uuid not null references auth.users(id) on delete cascade,
   dive_id text not null,
@@ -26,13 +26,14 @@ create table dive_annotations (
 );
 
 alter table dive_annotations enable row level security;
+drop policy if exists "owner_full_access" on dive_annotations;
 create policy "owner_full_access"
   on dive_annotations for all
   using (auth.uid() = owner_id)
   with check (auth.uid() = owner_id);
 
 -- cylinders ------------------------------------------------------------------
-create table cylinders (
+create table if not exists cylinders (
   id text primary key,
   owner_id uuid not null references auth.users(id) on delete cascade,
   label text not null,
@@ -50,13 +51,14 @@ create table cylinders (
 );
 
 alter table cylinders enable row level security;
+drop policy if exists "owner_full_access" on cylinders;
 create policy "owner_full_access"
   on cylinders for all
   using (auth.uid() = owner_id)
   with check (auth.uid() = owner_id);
 
 -- oxygen_cells ---------------------------------------------------------------
-create table oxygen_cells (
+create table if not exists oxygen_cells (
   id text primary key,
   owner_id uuid not null references auth.users(id) on delete cascade,
   slot integer not null,
@@ -72,13 +74,14 @@ create table oxygen_cells (
 );
 
 alter table oxygen_cells enable row level security;
+drop policy if exists "owner_full_access" on oxygen_cells;
 create policy "owner_full_access"
   on oxygen_cells for all
   using (auth.uid() = owner_id)
   with check (auth.uid() = owner_id);
 
 -- scrubber_sessions ----------------------------------------------------------
-create table scrubber_sessions (
+create table if not exists scrubber_sessions (
   id text primary key,
   owner_id uuid not null references auth.users(id) on delete cascade,
   started_date bigint,
@@ -93,6 +96,7 @@ create table scrubber_sessions (
 );
 
 alter table scrubber_sessions enable row level security;
+drop policy if exists "owner_full_access" on scrubber_sessions;
 create policy "owner_full_access"
   on scrubber_sessions for all
   using (auth.uid() = owner_id)
@@ -101,7 +105,7 @@ create policy "owner_full_access"
 -- pressure_mappings ----------------------------------------------------------
 -- Drift PK is composite (dive_computer_id, channel_index); we synthesize
 -- `id` as "<dive_computer_id>:<channel_index>" client-side at sync time.
-create table pressure_mappings (
+create table if not exists pressure_mappings (
   id text primary key,
   owner_id uuid not null references auth.users(id) on delete cascade,
   dive_computer_id text not null,
@@ -116,6 +120,7 @@ create table pressure_mappings (
 );
 
 alter table pressure_mappings enable row level security;
+drop policy if exists "owner_full_access" on pressure_mappings;
 create policy "owner_full_access"
   on pressure_mappings for all
   using (auth.uid() = owner_id)
@@ -124,7 +129,7 @@ create policy "owner_full_access"
 -- dive_cylinders -------------------------------------------------------------
 -- Drift PK is composite (dive_id, gas_mix_index); synthesized as
 -- "<dive_id>:<gas_mix_index>" at sync time.
-create table dive_cylinders (
+create table if not exists dive_cylinders (
   id text primary key,
   owner_id uuid not null references auth.users(id) on delete cascade,
   dive_id text not null,
@@ -139,13 +144,14 @@ create table dive_cylinders (
 );
 
 alter table dive_cylinders enable row level security;
+drop policy if exists "owner_full_access" on dive_cylinders;
 create policy "owner_full_access"
   on dive_cylinders for all
   using (auth.uid() = owner_id)
   with check (auth.uid() = owner_id);
 
 -- dive_computers -------------------------------------------------------------
-create table dive_computers (
+create table if not exists dive_computers (
   id text primary key,
   owner_id uuid not null references auth.users(id) on delete cascade,
   serial bigint not null,
@@ -161,12 +167,16 @@ create table dive_computers (
 );
 
 alter table dive_computers enable row level security;
+drop policy if exists "owner_full_access" on dive_computers;
 create policy "owner_full_access"
   on dive_computers for all
   using (auth.uid() = owner_id)
   with check (auth.uid() = owner_id);
 
 -- PowerSync publication ------------------------------------------------------
-create publication powersync for table dive_annotations, cylinders,
-  oxygen_cells, scrubber_sessions, pressure_mappings, dive_cylinders,
-  dive_computers;
+do $$
+begin
+  if not exists (select 1 from pg_publication where pubname = 'powersync') then
+    execute 'create publication powersync for table dive_annotations, cylinders, oxygen_cells, scrubber_sessions, pressure_mappings, dive_cylinders, dive_computers';
+  end if;
+end $$;
