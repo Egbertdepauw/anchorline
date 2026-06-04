@@ -174,6 +174,9 @@ create policy "owner_full_access"
   with check (auth.uid() = owner_id);
 
 -- PowerSync publication ------------------------------------------------------
-create publication powersync for table dive_annotations, cylinders,
-  oxygen_cells, scrubber_sessions, pressure_mappings, dive_cylinders,
-  dive_computers;
+do $$
+begin
+  if not exists (select 1 from pg_publication where pubname = 'powersync') then
+    execute 'create publication powersync for table dive_annotations, cylinders, oxygen_cells, scrubber_sessions, pressure_mappings, dive_cylinders, dive_computers';
+  end if;
+end $$;

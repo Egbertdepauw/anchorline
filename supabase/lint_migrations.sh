@@ -33,7 +33,7 @@ for f in "${sqls[@]}"; do
       echo "  $name:$ln  (unguarded) $(echo "$text" | sed 's/^[[:space:]]*//')"
       fail=1
     fi
-  done < <(grep -niE 'alter publication .* add table' "$f" | grep -vE '^[0-9]+:[[:space:]]*--' || true)
+  done < <(grep -niE '(alter|create) publication ' "$f" | grep -vE '^[0-9]+:[[:space:]]*--' || true)
 
   # Rule 5: every `create policy` needs a matching `drop policy if exists`.
   creates="$(grep -vE '^[[:space:]]*--' "$f" | grep -ciE 'create policy' || true)"
