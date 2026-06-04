@@ -11,6 +11,7 @@ import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
 import 'package:ccrlogger/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/dive_detail_screen.dart';
+import 'package:ccrlogger/ui/widgets/dive_bailout_carry_section.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,6 +29,8 @@ void main() {
     addTearDown(db.close);
 
     late final int mergedDurationSeconds;
+    late final String earliestId;
+    late final String mergedId;
     await tester.runAsync(() async {
       final ps = await openPowerSyncForTest();
       final session = FakeSessionSource()..setUserId('u');
@@ -56,12 +59,13 @@ void main() {
       }
       final merged = buildMergedDive(mergedId: 'grp', members: members);
       mergedDurationSeconds = merged.dive.durationSeconds;
+      mergedId = merged.dive.id;
 
       final annDao = DiveAnnotationsDao(ps, session);
       final equipDao = EquipmentDao(db, ps, session);
       // Pre-merge annotation on the earliest member: it must surface on the
       // merged view (the user's "annotations disregarded after merge" report).
-      final earliestId = all.first.id;
+      earliestId = all.first.id;
       final now = DateTime.now();
       await annDao.upsert(DiveAnnotation(
         diveId: earliestId,
@@ -97,5 +101,25 @@ void main() {
     expect(find.textContaining('CNS'), findsWidgets);
     // The earliest member's annotation surfaces on the merged view.
     expect(find.textContaining('Test Reef'), findsWidgets);
+
+    // #54: the bailout-carry section on a merged dive must be anchored to the
+    // earliest member's REAL dive id, not the synthetic merge-group id —
+    // otherwise the row is an FK-orphan PowerSync GCs ("appears then
+    // disappears"). Switch to the Equipment tab so the section builds.
+    await tester.tap(find.text('Equipment'));
+    await tester.pump(); // start the tab transition
+    await tester.pump(const Duration(milliseconds: 400)); // finish it + build
+    final bailout = tester.widget<DiveBailoutCarrySection>(
+      find.byType(DiveBailoutCarrySection),
+    );
+    expect(bailout.diveId, earliestId,
+        reason: 'bailout carry must anchor to the real segment dive id');
+    expect(bailout.diveId, isNot(mergedId),
+        reason: 'must NOT use the synthetic merge-group id');
+
+    // Unmount so the section's PowerSync watch subscription is cancelled and
+    // no timer is left pending at teardown.
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    await tester.pump();
   });
 }
