@@ -459,29 +459,41 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                       CrossAxisAlignment.start,
                                   children: [
                                     if (hasSite)
-                                      GestureDetector(
-                                        behavior: HitTestBehavior.opaque,
+                                      // InkWell + vertical padding (mirrors the
+                                      // working SiteMapView tap target) so the
+                                      // hit region comfortably covers the name.
+                                      // The old bare GestureDetector was only
+                                      // as tall as the text line, so clicks on
+                                      // or just below the glyphs missed it — on
+                                      // macOS that read as "needs a double-click
+                                      // slightly above the name" (#56).
+                                      InkWell(
                                         onTap: hasCoords ? openMap : null,
-                                        child: Row(children: [
-                                          Flexible(
-                                            child: Text(siteName,
-                                                maxLines: 1,
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                    color:
-                                                        palette.textPrimary,
-                                                    fontSize: 19,
-                                                    fontWeight:
-                                                        FontWeight.w700,
-                                                    letterSpacing: 0.1)),
-                                          ),
-                                          if (hasCoords) ...[
-                                            const SizedBox(width: 6),
-                                            Icon(Icons.place_outlined,
-                                                size: 17, color: modeColor),
-                                          ],
-                                        ]),
+                                        borderRadius: BorderRadius.circular(4),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 4),
+                                          child: Row(children: [
+                                            Flexible(
+                                              child: Text(siteName,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                      color:
+                                                          palette.textPrimary,
+                                                      fontSize: 19,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      letterSpacing: 0.1)),
+                                            ),
+                                            if (hasCoords) ...[
+                                              const SizedBox(width: 6),
+                                              Icon(Icons.place_outlined,
+                                                  size: 17, color: modeColor),
+                                            ],
+                                          ]),
+                                        ),
                                       ),
                                     if (hasSite)
                                       const SizedBox(height: 3),
