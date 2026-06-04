@@ -5,9 +5,13 @@
 set -euo pipefail
 
 dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/migrations" && pwd)"
+[ -d "$dir" ] || { echo "migrations dir not found: $dir" >&2; exit 1; }
+shopt -s nullglob
+sqls=("$dir"/*.sql)
+[ "${#sqls[@]}" -gt 0 ] || { echo "no migration .sql files found in $dir" >&2; exit 1; }
 fail=0
 
-for f in "$dir"/*.sql; do
+for f in "${sqls[@]}"; do
   name="$(basename "$f")"
 
   # Rules 1–4: these statements must carry IF [NOT] EXISTS on the same line.
