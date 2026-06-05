@@ -80,4 +80,31 @@ void main() {
     await StatisticsNotifier(source: source, cacheDao: cacheDao).load();
     expect(source.sampleLoads, 1); // same parser version → cache hit, no re-decode
   });
+
+  test('resultForScope filters by year and month', () async {
+    // 2025-01-20 UTC
+    const dive2025Jan = StatsDiveInput(
+        id: 'jan2025', startTime: 1737363600, durationSeconds: 3600,
+        maxDepthMm: 40000, diveMode: 0);
+    // 2024-06-15 UTC
+    const dive2024Jun = StatsDiveInput(
+        id: 'jun2024', startTime: 1718445600, durationSeconds: 1800,
+        maxDepthMm: 30000, diveMode: 0);
+
+    final source = _FakeDives(
+      [dive2025Jan, dive2024Jun],
+      {
+        'jan2025': _samples(temp: 4.0, stop: 0.0),
+        'jun2024': _samples(temp: 20.0, stop: 0.0),
+      },
+    );
+    final n = StatisticsNotifier(
+        source: source, cacheDao: DiveDerivedStatsDao(db));
+    await n.load();
+
+    expect(n.resultForScope(const StatsScope.total()).totalDives, 2);
+    expect(n.resultForScope(const StatsScope.year(2025)).totalDives, 1);
+    expect(n.resultForScope(const StatsScope.month(2025, 1)).totalDives, 1);
+    expect(n.resultForScope(const StatsScope.month(2025, 2)).totalDives, 0);
+  });
 }

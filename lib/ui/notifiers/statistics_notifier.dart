@@ -8,6 +8,21 @@ import '../../data/db/dive_derived_stats_dao.dart';
 import '../../data/models/sample_set.dart';
 import '../../data/sample_codec/dive_stats.dart';
 
+enum StatsScopeKind { total, year, month }
+
+/// What slice of the logbook the Statistics screen is showing.
+class StatsScope {
+  final StatsScopeKind kind;
+  final int year; // used for year/month
+  final int month; // used for month (1-12)
+  const StatsScope.total()
+      : kind = StatsScopeKind.total, year = 0, month = 0;
+  const StatsScope.year(this.year)
+      : kind = StatsScopeKind.year, month = 0;
+  const StatsScope.month(this.year, this.month)
+      : kind = StatsScopeKind.month;
+}
+
 /// Narrow seam over the PowerSync-backed dive data, so the notifier is testable
 /// with fakes. Production impl is [_DaoStatsDiveSource].
 abstract class StatsDiveSource {
@@ -42,6 +57,10 @@ class StatisticsNotifier extends ChangeNotifier {
   StatsResult? _result;
   StatsResult? get result => _result;
 
+  List<StatsDiveInput> _dives = const [];
+  Map<String, DerivedStats> _derived = const {};
+  Map<String, String?> _sites = const {};
+
   Future<void> load() async {
     _loading = true;
     notifyListeners();
@@ -67,9 +86,31 @@ class StatisticsNotifier extends ChangeNotifier {
     }
     if (toUpsert.isNotEmpty) await _cacheDao.upsertAll(toUpsert);
 
+    _dives = dives;
+    _derived = derived;
+    _sites = sites;
     _result = DiveStatsAggregator.aggregate(dives, derived, sites);
     _loading = false;
     notifyListeners();
+  }
+
+  /// Re-aggregate for a period scope. Total reuses the already-computed
+  /// all-time result; year/month filter the retained dives and re-run the
+  /// (pure, cheap) aggregator.
+  StatsResult resultForScope(StatsScope scope) {
+    if (scope.kind == StatsScopeKind.total) {
+      return _result ?? const StatsResult(totalDives: 0, totalSeconds: 0);
+    }
+    final filtered = _dives.where((d) {
+      final dt =
+          DateTime.fromMillisecondsSinceEpoch(d.startTime * 1000, isUtc: true);
+      if (dt.year != scope.year) return false;
+      if (scope.kind == StatsScopeKind.month && dt.month != scope.month) {
+        return false;
+      }
+      return true;
+    }).toList();
+    return DiveStatsAggregator.aggregate(filtered, _derived, _sites);
   }
 
   Future<DerivedStats> _compute(String diveId) async {
