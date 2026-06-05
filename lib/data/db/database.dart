@@ -31,7 +31,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 19;
+  int get schemaVersion => 20;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -155,6 +155,19 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 19) {
             await m.createTable(diveDerivedStats);
+          }
+          if (from < 20) {
+            // Guard with a sqlite_master probe so sparse test fixtures that
+            // don't seed dive_annotations (e.g. v16→v17, v17→v18 tests)
+            // don't crash when the table doesn't exist.
+            final hasDiveAnnotations = await customSelect(
+              "SELECT 1 FROM sqlite_master "
+              "WHERE type = 'table' AND name = 'dive_annotations'",
+            ).get();
+            if (hasDiveAnnotations.isNotEmpty) {
+              await m.addColumn(
+                  diveAnnotations, diveAnnotations.userDiveNumber);
+            }
           }
         },
       );
