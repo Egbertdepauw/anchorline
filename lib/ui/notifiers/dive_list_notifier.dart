@@ -9,6 +9,7 @@ import '../../data/db/dive_merge_dao.dart';
 import '../../data/models/annotation.dart' as dom;
 import '../models/dive_list_item.dart';
 import '../util/format.dart';
+import 'dive_renumber.dart';
 
 class DiveListNotifier extends ChangeNotifier {
   final DiveDao _dao;
@@ -116,6 +117,45 @@ class DiveListNotifier extends ChangeNotifier {
     await loadDives();
   }
 
+  /// Representative dive id for a list item (a merged group → its earliest
+  /// member, which carries the group's annotation/number).
+  String _representativeId(DiveListItem item) => switch (item) {
+        SingleDive(:final dive) => dive.id,
+        MergedGroupItem(:final group) => group.earliest.id,
+      };
+
+  /// Select every visible list item (merged groups via their representative id).
+  void selectAll() {
+    _selectionMode = true;
+    _selectedDiveIds
+      ..clear()
+      ..addAll(listItems.map(_representativeId));
+    notifyListeners();
+  }
+
+  /// Renumber the current selection from [start] in date order, persisting
+  /// `user_dive_number`. No-op when nothing is selected.
+  Future<void> renumberSelected(int start) async {
+    if (_selectedDiveIds.isEmpty) return;
+    final byId = {for (final d in _dives) d.id: d};
+    final targets = _selectedDiveIds
+        .where(byId.containsKey)
+        .map((id) => (diveId: id, startTime: byId[id]!.startTime))
+        .toList();
+    await _annotationsDao.setUserDiveNumbers(computeRenumber(targets, start));
+    exitSelectionMode();
+    await loadDives();
+  }
+
+  /// Clear custom numbers for the current selection (back to auto sequence).
+  Future<void> resetNumberingSelected() async {
+    if (_selectedDiveIds.isEmpty) return;
+    await _annotationsDao
+        .setUserDiveNumbers({for (final id in _selectedDiveIds) id: null});
+    exitSelectionMode();
+    await loadDives();
+  }
+
   /// CCRLog-internal sequential dive number, keyed by dive id. Computed
   /// over all non-deleted dives sorted by `start_time` ascending — the
   /// chronologically-oldest dive is `#1`, newest is `#N`. Stable across
@@ -130,7 +170,9 @@ class DiveListNotifier extends ChangeNotifier {
   Map<String, int> get sequenceByDiveId {
     final n = _dives.length;
     return {
-      for (var i = 0; i < n; i++) _dives[i].id: n - i,
+      for (var i = 0; i < n; i++)
+        _dives[i].id:
+            _annotationsByDiveId[_dives[i].id]?.userDiveNumber ?? (n - i),
     };
   }
 
