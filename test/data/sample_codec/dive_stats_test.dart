@@ -169,5 +169,23 @@ void main() {
       final tts = Int32List.fromList([0, 0, 0]);
       expect(peakTtsSeconds(ttsSeconds: tts, sampleCount: 3), 0);
     });
+
+    test('totalTimeInDecoSeconds is 0 for empty input (sampleCount 0)', () {
+      // Exercises the sampleCount==0 early-return, not the loop body.
+      final stops = Float32List.fromList([6, 6, 6]);
+      expect(
+        totalTimeInDecoSeconds(
+            decoStopDepthMeters: stops, sampleCount: 0, sampleIntervalMs: 10000),
+        0,
+      );
+    });
+
+    test('peakTtsSeconds is 0 for empty input (sampleCount 0)', () {
+      // Exercises the sampleCount==0 early-return, not the loop body.
+      expect(
+        peakTtsSeconds(ttsSeconds: Int32List.fromList([1380]), sampleCount: 0),
+        0,
+      );
+    });
   });
 }

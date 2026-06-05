@@ -142,6 +142,9 @@ int totalTimeInDecoSeconds({
     if (d.isNaN || d <= 0) continue;
     inDeco++;
   }
+  // Whole-second result. Shearwater sample intervals are whole seconds
+  // (5000/10000 ms), so the sub-second remainder dropped by ~/ is always 0
+  // for real data; the value is exact integer seconds.
   return inDeco * sampleIntervalMs ~/ 1000;
 }
 
