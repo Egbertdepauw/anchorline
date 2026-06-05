@@ -46,6 +46,8 @@ class StatTile extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             hint!,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: AppTypography.caption.copyWith(color: scheme.outlineVariant),
           ),
         ],

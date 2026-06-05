@@ -376,6 +376,21 @@ class DiveMergeLinks extends Table {
   Set<Column> get primaryKey => {diveId};
 }
 
+/// Local, device-only, re-derivable cache of per-dive stats that require
+/// decoding the sample blob (water temperature extremes, time-in-deco).
+/// Keyed by dive id; `parserVersion` mirrors the dive's parser version so a
+/// re-parse invalidates the row. Not synced — recomputed per device.
+class DiveDerivedStats extends Table {
+  TextColumn get diveId => text()();
+  IntColumn get parserVersion => integer()();
+  RealColumn get minWaterTempC => real().nullable()();
+  RealColumn get maxWaterTempC => real().nullable()();
+  IntColumn get timeInDecoSeconds => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {diveId};
+}
+
 /// CRUD upload ops the backend permanently rejected, recorded so a single
 /// "poison" op can't wedge the FIFO upload queue forever (issue #2). The
 /// connector skips such an op (so the queue drains) and writes it here, where
