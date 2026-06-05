@@ -44,6 +44,7 @@ import '../widgets/tissue_saturation_heatmap.dart';
 import '../widgets/trace_segmented_bar.dart';
 import '../components/stat_tile.dart';
 import '../theme/tokens.dart';
+import '../theme/gf_color.dart';
 import '../../analysis/gas_density.dart';
 import '../../analysis/end.dart';
 import '../../analysis/deco/replay_engine.dart';
@@ -1414,12 +1415,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     final surfaceGf = decoReplay.surfaceGfFinal;
     final maxGf = decoReplay.maxGf99;
 
-    Color colourForGf(double gf) {
-      final gfHighVal = (widget.dive.gfHigh ?? 85).toDouble();
-      if (gf > 100) return const Color(0xFFDC2626); // red
-      if (gf > gfHighVal) return const Color(0xFFF59E0B); // orange
-      return const Color(0xFF4ADE80); // green
-    }
+    Color colourForGf(double gf) =>
+        gfBandColor(gf, gfHigh: (widget.dive.gfHigh ?? 85).toDouble());
 
     Color colourForDensityValue(double v) => switch (densityBand(v)) {
           DensityBand.green => const Color(0xFF4ADE80),
