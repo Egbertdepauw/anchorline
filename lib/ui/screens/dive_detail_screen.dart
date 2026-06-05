@@ -636,30 +636,23 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                               child: LayoutBuilder(
                                   builder: (context, constraints) {
                                 final samples = _notifier.samples!;
-                                final needsReplay =
-                                    visibleTraces.contains(TraceType.gf99) ||
-                                        visibleTraces
-                                            .contains(TraceType.ceiling);
                                 final gasMixes = _decodeGasMixes();
-                                DecoReplayResult? decoReplay;
-                                if (needsReplay) {
-                                  final algo = _annotationsNotifier
-                                              .displayDecoAlgorithm ==
-                                          'vpmb'
-                                      ? DecoAlgorithm.vpmb
-                                      : DecoAlgorithm.zhl16c;
-                                  decoReplay = _decoEngine.replay(
-                                    diveId: widget.dive.id,
-                                    samples: _SampleSetAdapter(samples),
-                                    gasMixes: gasMixes,
-                                    algorithm: algo,
-                                    vpmbConservatism: widget
-                                        .settingsNotifier.vpmbConservatism,
-                                    gfLow: widget.dive.gfLow,
-                                    gfHigh: widget.dive.gfHigh,
-                                    surfacePressureBar: _surfacePressureBar,
-                                  );
-                                }
+                                final algo = _annotationsNotifier
+                                            .displayDecoAlgorithm ==
+                                        'vpmb'
+                                    ? DecoAlgorithm.vpmb
+                                    : DecoAlgorithm.zhl16c;
+                                final decoReplay = _decoEngine.replay(
+                                  diveId: widget.dive.id,
+                                  samples: _SampleSetAdapter(samples),
+                                  gasMixes: gasMixes,
+                                  algorithm: algo,
+                                  vpmbConservatism:
+                                      widget.settingsNotifier.vpmbConservatism,
+                                  gfLow: widget.dive.gfLow,
+                                  gfHigh: widget.dive.gfHigh,
+                                  surfacePressureBar: _surfacePressureBar,
+                                );
                                 return CrosshairOverlay(
                                   sampleCount: samples.sampleCount,
                                   chartLeftPad: 40,
@@ -726,6 +719,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         mappedCylinders:
                                             _notifier.mappedCylinders,
                                         gasMixes: _decodeGasMixes(),
+                                        decoReplay: decoReplay,
                                       ),
                                   ]),
                                 );

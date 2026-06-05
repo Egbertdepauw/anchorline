@@ -224,6 +224,7 @@ class _FullscreenChartScreenState extends State<FullscreenChartScreen> {
                     tanks: widget.tanks,
                     mappedCylinders: widget.mappedCylinders,
                     gasMixes: widget.gasMixes,
+                    decoReplay: widget.decoReplay,
                   ),
               ]),
             ),
