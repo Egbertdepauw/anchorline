@@ -82,14 +82,14 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: SizedBox(
-                width: 300,
+                width: 800,
                 height: 200,
                 child: CrosshairTooltip(
                     samples: samples,
                     sampleIndex: 1,
                     visibleTraces: const {TraceType.cells},
                     chartX: 50,
-                    chartWidth: 300,
+                    chartWidth: 800,
                     cellsBySlot: cellsBySlot)))));
     expect(find.text('Top R-22D'), findsOneWidget);
     expect(find.text('Slot 2'), findsOneWidget);
@@ -104,14 +104,14 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: SizedBox(
-                width: 300,
+                width: 800,
                 height: 200,
                 child: CrosshairTooltip(
                     samples: samples,
                     sampleIndex: 1,
                     visibleTraces: const {},
                     chartX: 50,
-                    chartWidth: 300)))));
+                    chartWidth: 800)))));
     expect(find.text('Rate'), findsOneWidget);
     expect(find.text('↓ 18 m/min'), findsOneWidget);
   });
@@ -122,14 +122,14 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: SizedBox(
-                width: 300,
+                width: 800,
                 height: 200,
                 child: CrosshairTooltip(
                     samples: samples,
                     sampleIndex: 1,
                     visibleTraces: const {TraceType.cells},
                     chartX: 50,
-                    chartWidth: 300)))));
+                    chartWidth: 800)))));
     expect(find.text('C1'), findsOneWidget);
     expect(find.text('C2'), findsOneWidget);
     expect(find.text('C3'), findsOneWidget);
@@ -145,14 +145,14 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: SizedBox(
-                width: 300,
+                width: 800,
                 height: 200,
                 child: CrosshairTooltip(
                     samples: samples,
                     sampleIndex: 1,
                     visibleTraces: const {},
                     chartX: 50,
-                    chartWidth: 300,
+                    chartWidth: 800,
                     tanks: tanks)))));
     expect(find.text('DIL'), findsOneWidget);
     expect(find.text('165 bar'), findsOneWidget);
@@ -169,14 +169,14 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: SizedBox(
-                width: 300,
+                width: 800,
                 height: 200,
                 child: CrosshairTooltip(
                     samples: samples,
                     sampleIndex: 1,
                     visibleTraces: const {},
                     chartX: 50,
-                    chartWidth: 300,
+                    chartWidth: 800,
                     tanks: tanks)))));
     expect(find.text('DIL'), findsNothing);
   });
