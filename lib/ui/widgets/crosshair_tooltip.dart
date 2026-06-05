@@ -55,6 +55,9 @@ class CrosshairTooltip extends StatelessWidget {
     if (i == 0) return '—';
     final delta = samples.depthMeters[i] - samples.depthMeters[i - 1];
     final rate = delta * 60000.0 / samples.sampleIntervalMs;
+    // Merged dives carry NaN depth across surface gaps -> NaN rate. Guard
+    // before .round() (NaN/Infinity .round() throws "Infinity or NaN toInt").
+    if (!rate.isFinite) return '—';
     if (rate.round() == 0) return '0 m/min';
     if (rate > 0) return '↓ ${rate.round()} m/min';
     return '↑ ${(-rate).round()} m/min';
@@ -120,7 +123,7 @@ class CrosshairTooltip extends StatelessWidget {
         decoRows.add(_Row(
             'Ceiling', '${replay.ceilingMeters[i].toStringAsFixed(1)}m'));
       }
-      if (i < replay.gf99Series.length) {
+      if (i < replay.gf99Series.length && replay.gf99Series[i].isFinite) {
         final gf = replay.gf99Series[i];
         decoRows.add(_Row('GF99', '${gf.round()}%',
             valueColor: gfBandColor(gf, gfHigh: (replay.gfHigh ?? 85).toDouble())));
@@ -155,7 +158,7 @@ class CrosshairTooltip extends StatelessWidget {
         final ch = samples.tankPressuresBar[t];
         if (i >= ch.length) continue;
         final p = ch[i];
-        if (p == 0) continue;
+        if (p == 0 || !p.isFinite) continue;
         tankRows.add(
             _Row(labelForTank(tanks![t], mappedCylinders), '${p.round()} bar'));
       }
@@ -164,49 +167,56 @@ class CrosshairTooltip extends StatelessWidget {
 
     final onRightSide = chartX > chartWidth / 2;
 
+    // IntrinsicWidth keeps the tooltip only as wide as its content; without it
+    // the full-width divider Container below stretches the box to the chart's
+    // entire width.
     return Align(
       alignment:
           onRightSide ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 8),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-            color: const Color(0xE0152238),
-            borderRadius: BorderRadius.circular(8)),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final row in rows)
-              if (row.isDivider)
-                Container(
-                  height: 1,
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  color: const Color(0xFF778899).withValues(alpha: 0.25),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 1),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    ConstrainedBox(
-                        constraints:
-                            const BoxConstraints(minWidth: 40, maxWidth: 110),
-                        child: Text(row.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                color: Color(0xFF778899), fontSize: 10))),
-                    const SizedBox(width: 6),
-                    Text(row.value,
-                        style: TextStyle(
-                            color: row.valueColor ?? Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            fontFeatures: const [FontFeature.tabularFigures()])),
-                  ]),
-                )
-          ],
+      child: IntrinsicWidth(
+        child: Container(
+          key: const ValueKey('crosshairTooltipBox'),
+          margin: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+              color: const Color(0xE0152238),
+              borderRadius: BorderRadius.circular(8)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final row in rows)
+                if (row.isDivider)
+                  Container(
+                    height: 1,
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    color: const Color(0xFF778899).withValues(alpha: 0.25),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 1),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      ConstrainedBox(
+                          constraints:
+                              const BoxConstraints(minWidth: 40, maxWidth: 110),
+                          child: Text(row.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: Color(0xFF778899), fontSize: 10))),
+                      const SizedBox(width: 6),
+                      Text(row.value,
+                          style: TextStyle(
+                              color: row.valueColor ?? Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures()
+                              ])),
+                    ]),
+                  )
+            ],
+          ),
         ),
       ),
     );
