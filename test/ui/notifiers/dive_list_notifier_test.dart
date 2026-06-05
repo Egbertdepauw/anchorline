@@ -121,6 +121,15 @@ void main() {
     final seq = notifier.sequenceByDiveId;
     final numbers = seq.values.toList()..sort();
     expect(numbers, [10, 11, 12]);
+    // Verify date ordering: _dives is newest-first, so dives.last is the
+    // chronologically oldest and must receive the start number (10);
+    // dives.first is the newest and must receive the highest number (12).
+    final oldestId = notifier.dives.last.id;
+    final newestId = notifier.dives.first.id;
+    expect(seq[oldestId], 10,
+        reason: 'chronologically oldest dive should receive start number');
+    expect(seq[newestId], 12,
+        reason: 'chronologically newest dive should receive highest number');
   });
 
   test('resetNumberingSelected clears custom numbers back to auto', () async {

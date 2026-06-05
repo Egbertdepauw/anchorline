@@ -135,6 +135,12 @@ class DiveListNotifier extends ChangeNotifier {
 
   /// Renumber the current selection from [start] in date order, persisting
   /// `user_dive_number`. No-op when nothing is selected.
+  ///
+  /// Selection holds one representative id per visible item (a merged group's
+  /// earliest member), so a group is numbered once with no gaps. Non-
+  /// representative members of a merged group are not written — harmless while
+  /// the group displays via its representative; they fall back to the auto
+  /// sequence if ever shown individually (e.g. after unmerge).
   Future<void> renumberSelected(int start) async {
     if (_selectedDiveIds.isEmpty) return;
     final byId = {for (final d in _dives) d.id: d};
