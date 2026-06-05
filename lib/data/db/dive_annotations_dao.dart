@@ -644,6 +644,11 @@ class DiveAnnotationsDao {
         final diveId = entry.key;
         final number = entry.value;
         if (versions.containsKey(diveId)) {
+          // Note: the UPDATE branch intentionally does not re-stamp owner_id —
+          // existing rows already carry it (set when first created), and the
+          // INSERT branch below stamps owner_id for dives with no annotation yet.
+          // (The main upsert() re-stamps on update; here we deliberately don't,
+          // to avoid changing ownership of an already-owned row during a bulk renumber.)
           await tx.execute(
             'UPDATE dive_annotations SET user_dive_number = ?, '
             'updated_at = ?, version = ?, sync_status = ? WHERE dive_id = ?',
