@@ -54,6 +54,7 @@ import 'screens/sites_map_screen.dart';
 import 'screens/statistics_screen.dart';
 import 'widgets/anchorline_logo.dart';
 import 'widgets/background_watermark.dart';
+import 'widgets/renumber_dialog.dart';
 import 'widgets/sync_health_banner.dart';
 
 class AppShell extends StatefulWidget {
@@ -568,6 +569,26 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       ),
       title: Text('${n.selectedDiveIds.length} selected'),
       actions: [
+        IconButton(
+          tooltip: 'Select all',
+          icon: const Icon(Icons.select_all),
+          onPressed: n.selectAll,
+        ),
+        IconButton(
+          tooltip: 'Renumber selected dives',
+          icon: const Icon(Icons.format_list_numbered),
+          onPressed: n.selectedDiveIds.isEmpty
+              ? null
+              : () async {
+                  final result = await showRenumberDialog(
+                      context, n.selectedDiveIds.length);
+                  if (result is RenumberApply) {
+                    await n.renumberSelected(result.start);
+                  } else if (result is RenumberReset) {
+                    await n.resetNumberingSelected();
+                  }
+                },
+        ),
         IconButton(
           tooltip: eligibility.canMerge
               ? 'Merge selected dives'
