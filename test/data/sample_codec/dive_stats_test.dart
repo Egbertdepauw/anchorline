@@ -115,4 +115,77 @@ void main() {
       expect(res.maxAscentEndIndex, 7);
     });
   });
+
+  group('deco stats', () {
+    test('totalTimeInDecoSeconds is 0 for a no-stop (NDL) dive', () {
+      final stops = Float32List.fromList([0, 0, 0, 0]);
+      expect(
+        totalTimeInDecoSeconds(
+            decoStopDepthMeters: stops, sampleCount: 4, sampleIntervalMs: 10000),
+        0,
+      );
+    });
+
+    test('totalTimeInDecoSeconds counts in-deco samples x interval', () {
+      // 3 of 5 samples carry a stop depth; 10s interval -> 30s.
+      final stops = Float32List.fromList([0, 6, 6, 3, 0]);
+      expect(
+        totalTimeInDecoSeconds(
+            decoStopDepthMeters: stops, sampleCount: 5, sampleIntervalMs: 10000),
+        30,
+      );
+    });
+
+    test('totalTimeInDecoSeconds scales with sample interval', () {
+      final stops = Float32List.fromList([6, 6, 6]);
+      expect(
+        totalTimeInDecoSeconds(
+            decoStopDepthMeters: stops, sampleCount: 3, sampleIntervalMs: 5000),
+        15,
+      );
+      expect(
+        totalTimeInDecoSeconds(
+            decoStopDepthMeters: stops, sampleCount: 3, sampleIntervalMs: 10000),
+        30,
+      );
+    });
+
+    test('totalTimeInDecoSeconds skips NaN stop depths (merged-dive gaps)', () {
+      final stops = Float32List.fromList([6, double.nan, 6, double.nan]);
+      // 2 real in-deco samples x 10s = 20s; NaNs ignored.
+      expect(
+        totalTimeInDecoSeconds(
+            decoStopDepthMeters: stops, sampleCount: 4, sampleIntervalMs: 10000),
+        20,
+      );
+    });
+
+    test('peakTtsSeconds returns the maximum TTS', () {
+      final tts = Int32List.fromList([0, 600, 1380, 1200, 0]);
+      expect(peakTtsSeconds(ttsSeconds: tts, sampleCount: 5), 1380);
+    });
+
+    test('peakTtsSeconds is 0 when no TTS recorded', () {
+      final tts = Int32List.fromList([0, 0, 0]);
+      expect(peakTtsSeconds(ttsSeconds: tts, sampleCount: 3), 0);
+    });
+
+    test('totalTimeInDecoSeconds is 0 for empty input (sampleCount 0)', () {
+      // Exercises the sampleCount==0 early-return, not the loop body.
+      final stops = Float32List.fromList([6, 6, 6]);
+      expect(
+        totalTimeInDecoSeconds(
+            decoStopDepthMeters: stops, sampleCount: 0, sampleIntervalMs: 10000),
+        0,
+      );
+    });
+
+    test('peakTtsSeconds is 0 for empty input (sampleCount 0)', () {
+      // Exercises the sampleCount==0 early-return, not the loop body.
+      expect(
+        peakTtsSeconds(ttsSeconds: Int32List.fromList([1380]), sampleCount: 0),
+        0,
+      );
+    });
+  });
 }

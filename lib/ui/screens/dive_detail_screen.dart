@@ -44,6 +44,7 @@ import '../widgets/tissue_saturation_heatmap.dart';
 import '../widgets/trace_segmented_bar.dart';
 import '../components/stat_tile.dart';
 import '../theme/tokens.dart';
+import '../theme/gf_color.dart';
 import '../../analysis/gas_density.dart';
 import '../../analysis/end.dart';
 import '../../analysis/deco/replay_engine.dart';
@@ -635,30 +636,23 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                               child: LayoutBuilder(
                                   builder: (context, constraints) {
                                 final samples = _notifier.samples!;
-                                final needsReplay =
-                                    visibleTraces.contains(TraceType.gf99) ||
-                                        visibleTraces
-                                            .contains(TraceType.ceiling);
                                 final gasMixes = _decodeGasMixes();
-                                DecoReplayResult? decoReplay;
-                                if (needsReplay) {
-                                  final algo = _annotationsNotifier
-                                              .displayDecoAlgorithm ==
-                                          'vpmb'
-                                      ? DecoAlgorithm.vpmb
-                                      : DecoAlgorithm.zhl16c;
-                                  decoReplay = _decoEngine.replay(
-                                    diveId: widget.dive.id,
-                                    samples: _SampleSetAdapter(samples),
-                                    gasMixes: gasMixes,
-                                    algorithm: algo,
-                                    vpmbConservatism: widget
-                                        .settingsNotifier.vpmbConservatism,
-                                    gfLow: widget.dive.gfLow,
-                                    gfHigh: widget.dive.gfHigh,
-                                    surfacePressureBar: _surfacePressureBar,
-                                  );
-                                }
+                                final algo = _annotationsNotifier
+                                            .displayDecoAlgorithm ==
+                                        'vpmb'
+                                    ? DecoAlgorithm.vpmb
+                                    : DecoAlgorithm.zhl16c;
+                                final decoReplay = _decoEngine.replay(
+                                  diveId: widget.dive.id,
+                                  samples: _SampleSetAdapter(samples),
+                                  gasMixes: gasMixes,
+                                  algorithm: algo,
+                                  vpmbConservatism:
+                                      widget.settingsNotifier.vpmbConservatism,
+                                  gfLow: widget.dive.gfLow,
+                                  gfHigh: widget.dive.gfHigh,
+                                  surfacePressureBar: _surfacePressureBar,
+                                );
                                 return CrosshairOverlay(
                                   sampleCount: samples.sampleCount,
                                   chartLeftPad: 40,
@@ -725,6 +719,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                         mappedCylinders:
                                             _notifier.mappedCylinders,
                                         gasMixes: _decodeGasMixes(),
+                                        decoReplay: decoReplay,
                                       ),
                                   ]),
                                 );
@@ -1359,6 +1354,21 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       sampleCount: samples.sampleCount,
       sampleIntervalMs: samples.sampleIntervalMs,
     );
+    final timeInDecoSec = totalTimeInDecoSeconds(
+      decoStopDepthMeters: samples.decoStopDepthMeters,
+      sampleCount: samples.sampleCount,
+      sampleIntervalMs: samples.sampleIntervalMs,
+    );
+    final peakTtsSec = peakTtsSeconds(
+      ttsSeconds: samples.ttsSeconds,
+      sampleCount: samples.sampleCount,
+    );
+    final showDeco = timeInDecoSec > 0;
+    var deepestStopM = 0.0; // for the Deco tile hint
+    for (var i = 0; i < n; i++) {
+      final d = samples.decoStopDepthMeters[i];
+      if (!d.isNaN && d > deepestStopM) deepestStopM = d;
+    }
 
     // For CCR dives, pass the voted/measured PPO2 trace so density and
     // END are computed against the live LOOP gas (diluent inert +
@@ -1414,12 +1424,8 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
     final surfaceGf = decoReplay.surfaceGfFinal;
     final maxGf = decoReplay.maxGf99;
 
-    Color colourForGf(double gf) {
-      final gfHighVal = (widget.dive.gfHigh ?? 85).toDouble();
-      if (gf > 100) return const Color(0xFFDC2626); // red
-      if (gf > gfHighVal) return const Color(0xFFF59E0B); // orange
-      return const Color(0xFF4ADE80); // green
-    }
+    Color colourForGf(double gf) =>
+        gfBandColor(gf, gfHigh: (widget.dive.gfHigh ?? 85).toDouble());
 
     Color colourForDensityValue(double v) => switch (densityBand(v)) {
           DensityBand.green => const Color(0xFF4ADE80),
@@ -1505,6 +1511,19 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
           value: maxGf.round().toString(),
           valueColor: colourForGf(maxGf),
         ),
+        if (showDeco)
+          StatTile(
+            label: 'Deco',
+            unit: 'min',
+            value: '${(timeInDecoSec / 60).round()}',
+            hint: 'max ${deepestStopM.toStringAsFixed(0)} m',
+          ),
+        if (showDeco)
+          StatTile(
+            label: 'TTS',
+            unit: 'min',
+            value: '${(peakTtsSec / 60).round()}',
+          ),
       ];
       // Width per cell at ~80px lands at 4 columns on iPhone-portrait (374
       // available / 80 ≈ 4.7 → 4 cells fit with spacing). Below that, wrap

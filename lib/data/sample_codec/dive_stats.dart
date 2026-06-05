@@ -121,3 +121,45 @@ double computeOtu({
     maxDescentEndIndex: descIdx,
   );
 }
+
+/// Total time spent in mandatory decompression, in seconds.
+///
+/// Counts samples carrying a non-zero deco stop depth and multiplies by the
+/// sample interval. Returns 0 for a no-stop (NDL) dive. NaN stop depths
+/// (merged-dive surface gaps) are skipped.
+int totalTimeInDecoSeconds({
+  required Float32List decoStopDepthMeters,
+  required int sampleCount,
+  required int sampleIntervalMs,
+}) {
+  if (sampleCount == 0) return 0;
+  final n = sampleCount < decoStopDepthMeters.length
+      ? sampleCount
+      : decoStopDepthMeters.length;
+  var inDeco = 0;
+  for (var i = 0; i < n; i++) {
+    final d = decoStopDepthMeters[i];
+    if (d.isNaN || d <= 0) continue;
+    inDeco++;
+  }
+  // Whole-second result. Shearwater sample intervals are whole seconds
+  // (5000/10000 ms), so the sub-second remainder dropped by ~/ is always 0
+  // for real data; the value is exact integer seconds.
+  return inDeco * sampleIntervalMs ~/ 1000;
+}
+
+/// Peak time-to-surface reached during the dive, in seconds.
+///
+/// Returns the largest TTS value across the dive, or 0 if none was recorded.
+int peakTtsSeconds({
+  required Int32List ttsSeconds,
+  required int sampleCount,
+}) {
+  if (sampleCount == 0) return 0;
+  final n = sampleCount < ttsSeconds.length ? sampleCount : ttsSeconds.length;
+  var peak = 0;
+  for (var i = 0; i < n; i++) {
+    if (ttsSeconds[i] > peak) peak = ttsSeconds[i];
+  }
+  return peak;
+}
