@@ -68,6 +68,8 @@ class StatsPeriodList extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(_periodLabel(p),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: AppTypography.body.copyWith(color: scheme.onSurface)),
           Flexible(
             child: Text(_summary(p),

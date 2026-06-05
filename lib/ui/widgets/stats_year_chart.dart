@@ -33,6 +33,8 @@ class StatsYearChart extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     Text('${y.diveCount}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: AppTypography.caption
                             .copyWith(color: scheme.outlineVariant)),
                     const SizedBox(height: 3),
@@ -50,7 +52,9 @@ class StatsYearChart extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text("'${y.year % 100}",
+                    Text("'${(y.year % 100).toString().padLeft(2, '0')}",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: AppTypography.caption
                             .copyWith(color: scheme.outlineVariant)),
                   ],

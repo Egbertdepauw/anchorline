@@ -45,9 +45,13 @@ class StatsModeBreakdown extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Text('${m.count} · ${formatDuration(m.totalSeconds)}',
-                    style: AppTypography.caption
-                        .copyWith(color: scheme.outlineVariant)),
+                Flexible(
+                  child: Text('${m.count} · ${formatDuration(m.totalSeconds)}',
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.caption
+                          .copyWith(color: scheme.outlineVariant)),
+                ),
               ]),
             ),
         ],
