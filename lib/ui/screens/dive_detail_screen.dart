@@ -1354,6 +1354,21 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       sampleCount: samples.sampleCount,
       sampleIntervalMs: samples.sampleIntervalMs,
     );
+    final timeInDecoSec = totalTimeInDecoSeconds(
+      decoStopDepthMeters: samples.decoStopDepthMeters,
+      sampleCount: samples.sampleCount,
+      sampleIntervalMs: samples.sampleIntervalMs,
+    );
+    final peakTtsSec = peakTtsSeconds(
+      ttsSeconds: samples.ttsSeconds,
+      sampleCount: samples.sampleCount,
+    );
+    final showDeco = timeInDecoSec > 0;
+    var deepestStopM = 0.0; // for the Deco tile hint
+    for (var i = 0; i < n; i++) {
+      final d = samples.decoStopDepthMeters[i];
+      if (!d.isNaN && d > deepestStopM) deepestStopM = d;
+    }
 
     // For CCR dives, pass the voted/measured PPO2 trace so density and
     // END are computed against the live LOOP gas (diluent inert +
@@ -1496,6 +1511,19 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
           value: maxGf.round().toString(),
           valueColor: colourForGf(maxGf),
         ),
+        if (showDeco)
+          StatTile(
+            label: 'Deco',
+            unit: 'min',
+            value: '${(timeInDecoSec / 60).round()}',
+            hint: 'max ${deepestStopM.toStringAsFixed(0)} m',
+          ),
+        if (showDeco)
+          StatTile(
+            label: 'TTS',
+            unit: 'min',
+            value: '${(peakTtsSec / 60).round()}',
+          ),
       ];
       // Width per cell at ~80px lands at 4 columns on iPhone-portrait (374
       // available / 80 ≈ 4.7 → 4 cells fit with spacing). Below that, wrap
