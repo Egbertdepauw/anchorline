@@ -11132,6 +11132,401 @@ class SyncQuarantineCompanion extends UpdateCompanion<SyncQuarantineData> {
   }
 }
 
+class $DiveDerivedStatsTable extends DiveDerivedStats
+    with TableInfo<$DiveDerivedStatsTable, DiveDerivedStat> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DiveDerivedStatsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _diveIdMeta = const VerificationMeta('diveId');
+  @override
+  late final GeneratedColumn<String> diveId = GeneratedColumn<String>(
+    'dive_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _parserVersionMeta = const VerificationMeta(
+    'parserVersion',
+  );
+  @override
+  late final GeneratedColumn<int> parserVersion = GeneratedColumn<int>(
+    'parser_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _minWaterTempCMeta = const VerificationMeta(
+    'minWaterTempC',
+  );
+  @override
+  late final GeneratedColumn<double> minWaterTempC = GeneratedColumn<double>(
+    'min_water_temp_c',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _maxWaterTempCMeta = const VerificationMeta(
+    'maxWaterTempC',
+  );
+  @override
+  late final GeneratedColumn<double> maxWaterTempC = GeneratedColumn<double>(
+    'max_water_temp_c',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _timeInDecoSecondsMeta = const VerificationMeta(
+    'timeInDecoSeconds',
+  );
+  @override
+  late final GeneratedColumn<int> timeInDecoSeconds = GeneratedColumn<int>(
+    'time_in_deco_seconds',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    diveId,
+    parserVersion,
+    minWaterTempC,
+    maxWaterTempC,
+    timeInDecoSeconds,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'dive_derived_stats';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DiveDerivedStat> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('dive_id')) {
+      context.handle(
+        _diveIdMeta,
+        diveId.isAcceptableOrUnknown(data['dive_id']!, _diveIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_diveIdMeta);
+    }
+    if (data.containsKey('parser_version')) {
+      context.handle(
+        _parserVersionMeta,
+        parserVersion.isAcceptableOrUnknown(
+          data['parser_version']!,
+          _parserVersionMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_parserVersionMeta);
+    }
+    if (data.containsKey('min_water_temp_c')) {
+      context.handle(
+        _minWaterTempCMeta,
+        minWaterTempC.isAcceptableOrUnknown(
+          data['min_water_temp_c']!,
+          _minWaterTempCMeta,
+        ),
+      );
+    }
+    if (data.containsKey('max_water_temp_c')) {
+      context.handle(
+        _maxWaterTempCMeta,
+        maxWaterTempC.isAcceptableOrUnknown(
+          data['max_water_temp_c']!,
+          _maxWaterTempCMeta,
+        ),
+      );
+    }
+    if (data.containsKey('time_in_deco_seconds')) {
+      context.handle(
+        _timeInDecoSecondsMeta,
+        timeInDecoSeconds.isAcceptableOrUnknown(
+          data['time_in_deco_seconds']!,
+          _timeInDecoSecondsMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {diveId};
+  @override
+  DiveDerivedStat map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DiveDerivedStat(
+      diveId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dive_id'],
+      )!,
+      parserVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}parser_version'],
+      )!,
+      minWaterTempC: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}min_water_temp_c'],
+      ),
+      maxWaterTempC: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}max_water_temp_c'],
+      ),
+      timeInDecoSeconds: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}time_in_deco_seconds'],
+      )!,
+    );
+  }
+
+  @override
+  $DiveDerivedStatsTable createAlias(String alias) {
+    return $DiveDerivedStatsTable(attachedDatabase, alias);
+  }
+}
+
+class DiveDerivedStat extends DataClass implements Insertable<DiveDerivedStat> {
+  final String diveId;
+  final int parserVersion;
+  final double? minWaterTempC;
+  final double? maxWaterTempC;
+  final int timeInDecoSeconds;
+  const DiveDerivedStat({
+    required this.diveId,
+    required this.parserVersion,
+    this.minWaterTempC,
+    this.maxWaterTempC,
+    required this.timeInDecoSeconds,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['dive_id'] = Variable<String>(diveId);
+    map['parser_version'] = Variable<int>(parserVersion);
+    if (!nullToAbsent || minWaterTempC != null) {
+      map['min_water_temp_c'] = Variable<double>(minWaterTempC);
+    }
+    if (!nullToAbsent || maxWaterTempC != null) {
+      map['max_water_temp_c'] = Variable<double>(maxWaterTempC);
+    }
+    map['time_in_deco_seconds'] = Variable<int>(timeInDecoSeconds);
+    return map;
+  }
+
+  DiveDerivedStatsCompanion toCompanion(bool nullToAbsent) {
+    return DiveDerivedStatsCompanion(
+      diveId: Value(diveId),
+      parserVersion: Value(parserVersion),
+      minWaterTempC: minWaterTempC == null && nullToAbsent
+          ? const Value.absent()
+          : Value(minWaterTempC),
+      maxWaterTempC: maxWaterTempC == null && nullToAbsent
+          ? const Value.absent()
+          : Value(maxWaterTempC),
+      timeInDecoSeconds: Value(timeInDecoSeconds),
+    );
+  }
+
+  factory DiveDerivedStat.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DiveDerivedStat(
+      diveId: serializer.fromJson<String>(json['diveId']),
+      parserVersion: serializer.fromJson<int>(json['parserVersion']),
+      minWaterTempC: serializer.fromJson<double?>(json['minWaterTempC']),
+      maxWaterTempC: serializer.fromJson<double?>(json['maxWaterTempC']),
+      timeInDecoSeconds: serializer.fromJson<int>(json['timeInDecoSeconds']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'diveId': serializer.toJson<String>(diveId),
+      'parserVersion': serializer.toJson<int>(parserVersion),
+      'minWaterTempC': serializer.toJson<double?>(minWaterTempC),
+      'maxWaterTempC': serializer.toJson<double?>(maxWaterTempC),
+      'timeInDecoSeconds': serializer.toJson<int>(timeInDecoSeconds),
+    };
+  }
+
+  DiveDerivedStat copyWith({
+    String? diveId,
+    int? parserVersion,
+    Value<double?> minWaterTempC = const Value.absent(),
+    Value<double?> maxWaterTempC = const Value.absent(),
+    int? timeInDecoSeconds,
+  }) => DiveDerivedStat(
+    diveId: diveId ?? this.diveId,
+    parserVersion: parserVersion ?? this.parserVersion,
+    minWaterTempC: minWaterTempC.present
+        ? minWaterTempC.value
+        : this.minWaterTempC,
+    maxWaterTempC: maxWaterTempC.present
+        ? maxWaterTempC.value
+        : this.maxWaterTempC,
+    timeInDecoSeconds: timeInDecoSeconds ?? this.timeInDecoSeconds,
+  );
+  DiveDerivedStat copyWithCompanion(DiveDerivedStatsCompanion data) {
+    return DiveDerivedStat(
+      diveId: data.diveId.present ? data.diveId.value : this.diveId,
+      parserVersion: data.parserVersion.present
+          ? data.parserVersion.value
+          : this.parserVersion,
+      minWaterTempC: data.minWaterTempC.present
+          ? data.minWaterTempC.value
+          : this.minWaterTempC,
+      maxWaterTempC: data.maxWaterTempC.present
+          ? data.maxWaterTempC.value
+          : this.maxWaterTempC,
+      timeInDecoSeconds: data.timeInDecoSeconds.present
+          ? data.timeInDecoSeconds.value
+          : this.timeInDecoSeconds,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiveDerivedStat(')
+          ..write('diveId: $diveId, ')
+          ..write('parserVersion: $parserVersion, ')
+          ..write('minWaterTempC: $minWaterTempC, ')
+          ..write('maxWaterTempC: $maxWaterTempC, ')
+          ..write('timeInDecoSeconds: $timeInDecoSeconds')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    diveId,
+    parserVersion,
+    minWaterTempC,
+    maxWaterTempC,
+    timeInDecoSeconds,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DiveDerivedStat &&
+          other.diveId == this.diveId &&
+          other.parserVersion == this.parserVersion &&
+          other.minWaterTempC == this.minWaterTempC &&
+          other.maxWaterTempC == this.maxWaterTempC &&
+          other.timeInDecoSeconds == this.timeInDecoSeconds);
+}
+
+class DiveDerivedStatsCompanion extends UpdateCompanion<DiveDerivedStat> {
+  final Value<String> diveId;
+  final Value<int> parserVersion;
+  final Value<double?> minWaterTempC;
+  final Value<double?> maxWaterTempC;
+  final Value<int> timeInDecoSeconds;
+  final Value<int> rowid;
+  const DiveDerivedStatsCompanion({
+    this.diveId = const Value.absent(),
+    this.parserVersion = const Value.absent(),
+    this.minWaterTempC = const Value.absent(),
+    this.maxWaterTempC = const Value.absent(),
+    this.timeInDecoSeconds = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DiveDerivedStatsCompanion.insert({
+    required String diveId,
+    required int parserVersion,
+    this.minWaterTempC = const Value.absent(),
+    this.maxWaterTempC = const Value.absent(),
+    this.timeInDecoSeconds = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : diveId = Value(diveId),
+       parserVersion = Value(parserVersion);
+  static Insertable<DiveDerivedStat> custom({
+    Expression<String>? diveId,
+    Expression<int>? parserVersion,
+    Expression<double>? minWaterTempC,
+    Expression<double>? maxWaterTempC,
+    Expression<int>? timeInDecoSeconds,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (diveId != null) 'dive_id': diveId,
+      if (parserVersion != null) 'parser_version': parserVersion,
+      if (minWaterTempC != null) 'min_water_temp_c': minWaterTempC,
+      if (maxWaterTempC != null) 'max_water_temp_c': maxWaterTempC,
+      if (timeInDecoSeconds != null) 'time_in_deco_seconds': timeInDecoSeconds,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DiveDerivedStatsCompanion copyWith({
+    Value<String>? diveId,
+    Value<int>? parserVersion,
+    Value<double?>? minWaterTempC,
+    Value<double?>? maxWaterTempC,
+    Value<int>? timeInDecoSeconds,
+    Value<int>? rowid,
+  }) {
+    return DiveDerivedStatsCompanion(
+      diveId: diveId ?? this.diveId,
+      parserVersion: parserVersion ?? this.parserVersion,
+      minWaterTempC: minWaterTempC ?? this.minWaterTempC,
+      maxWaterTempC: maxWaterTempC ?? this.maxWaterTempC,
+      timeInDecoSeconds: timeInDecoSeconds ?? this.timeInDecoSeconds,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (diveId.present) {
+      map['dive_id'] = Variable<String>(diveId.value);
+    }
+    if (parserVersion.present) {
+      map['parser_version'] = Variable<int>(parserVersion.value);
+    }
+    if (minWaterTempC.present) {
+      map['min_water_temp_c'] = Variable<double>(minWaterTempC.value);
+    }
+    if (maxWaterTempC.present) {
+      map['max_water_temp_c'] = Variable<double>(maxWaterTempC.value);
+    }
+    if (timeInDecoSeconds.present) {
+      map['time_in_deco_seconds'] = Variable<int>(timeInDecoSeconds.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiveDerivedStatsCompanion(')
+          ..write('diveId: $diveId, ')
+          ..write('parserVersion: $parserVersion, ')
+          ..write('minWaterTempC: $minWaterTempC, ')
+          ..write('maxWaterTempC: $maxWaterTempC, ')
+          ..write('timeInDecoSeconds: $timeInDecoSeconds, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -11158,6 +11553,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ImportStatesTable importStates = $ImportStatesTable(this);
   late final $DiveMergeLinksTable diveMergeLinks = $DiveMergeLinksTable(this);
   late final $SyncQuarantineTable syncQuarantine = $SyncQuarantineTable(this);
+  late final $DiveDerivedStatsTable diveDerivedStats = $DiveDerivedStatsTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -11178,6 +11576,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     importStates,
     diveMergeLinks,
     syncQuarantine,
+    diveDerivedStats,
   ];
 }
 
@@ -17666,6 +18065,220 @@ typedef $$SyncQuarantineTableProcessedTableManager =
       SyncQuarantineData,
       PrefetchHooks Function()
     >;
+typedef $$DiveDerivedStatsTableCreateCompanionBuilder =
+    DiveDerivedStatsCompanion Function({
+      required String diveId,
+      required int parserVersion,
+      Value<double?> minWaterTempC,
+      Value<double?> maxWaterTempC,
+      Value<int> timeInDecoSeconds,
+      Value<int> rowid,
+    });
+typedef $$DiveDerivedStatsTableUpdateCompanionBuilder =
+    DiveDerivedStatsCompanion Function({
+      Value<String> diveId,
+      Value<int> parserVersion,
+      Value<double?> minWaterTempC,
+      Value<double?> maxWaterTempC,
+      Value<int> timeInDecoSeconds,
+      Value<int> rowid,
+    });
+
+class $$DiveDerivedStatsTableFilterComposer
+    extends Composer<_$AppDatabase, $DiveDerivedStatsTable> {
+  $$DiveDerivedStatsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get diveId => $composableBuilder(
+    column: $table.diveId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get parserVersion => $composableBuilder(
+    column: $table.parserVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get minWaterTempC => $composableBuilder(
+    column: $table.minWaterTempC,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get maxWaterTempC => $composableBuilder(
+    column: $table.maxWaterTempC,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get timeInDecoSeconds => $composableBuilder(
+    column: $table.timeInDecoSeconds,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DiveDerivedStatsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DiveDerivedStatsTable> {
+  $$DiveDerivedStatsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get diveId => $composableBuilder(
+    column: $table.diveId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get parserVersion => $composableBuilder(
+    column: $table.parserVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get minWaterTempC => $composableBuilder(
+    column: $table.minWaterTempC,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get maxWaterTempC => $composableBuilder(
+    column: $table.maxWaterTempC,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get timeInDecoSeconds => $composableBuilder(
+    column: $table.timeInDecoSeconds,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DiveDerivedStatsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DiveDerivedStatsTable> {
+  $$DiveDerivedStatsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get diveId =>
+      $composableBuilder(column: $table.diveId, builder: (column) => column);
+
+  GeneratedColumn<int> get parserVersion => $composableBuilder(
+    column: $table.parserVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get minWaterTempC => $composableBuilder(
+    column: $table.minWaterTempC,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get maxWaterTempC => $composableBuilder(
+    column: $table.maxWaterTempC,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get timeInDecoSeconds => $composableBuilder(
+    column: $table.timeInDecoSeconds,
+    builder: (column) => column,
+  );
+}
+
+class $$DiveDerivedStatsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DiveDerivedStatsTable,
+          DiveDerivedStat,
+          $$DiveDerivedStatsTableFilterComposer,
+          $$DiveDerivedStatsTableOrderingComposer,
+          $$DiveDerivedStatsTableAnnotationComposer,
+          $$DiveDerivedStatsTableCreateCompanionBuilder,
+          $$DiveDerivedStatsTableUpdateCompanionBuilder,
+          (
+            DiveDerivedStat,
+            BaseReferences<
+              _$AppDatabase,
+              $DiveDerivedStatsTable,
+              DiveDerivedStat
+            >,
+          ),
+          DiveDerivedStat,
+          PrefetchHooks Function()
+        > {
+  $$DiveDerivedStatsTableTableManager(
+    _$AppDatabase db,
+    $DiveDerivedStatsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DiveDerivedStatsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DiveDerivedStatsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DiveDerivedStatsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> diveId = const Value.absent(),
+                Value<int> parserVersion = const Value.absent(),
+                Value<double?> minWaterTempC = const Value.absent(),
+                Value<double?> maxWaterTempC = const Value.absent(),
+                Value<int> timeInDecoSeconds = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DiveDerivedStatsCompanion(
+                diveId: diveId,
+                parserVersion: parserVersion,
+                minWaterTempC: minWaterTempC,
+                maxWaterTempC: maxWaterTempC,
+                timeInDecoSeconds: timeInDecoSeconds,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String diveId,
+                required int parserVersion,
+                Value<double?> minWaterTempC = const Value.absent(),
+                Value<double?> maxWaterTempC = const Value.absent(),
+                Value<int> timeInDecoSeconds = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DiveDerivedStatsCompanion.insert(
+                diveId: diveId,
+                parserVersion: parserVersion,
+                minWaterTempC: minWaterTempC,
+                maxWaterTempC: maxWaterTempC,
+                timeInDecoSeconds: timeInDecoSeconds,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DiveDerivedStatsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DiveDerivedStatsTable,
+      DiveDerivedStat,
+      $$DiveDerivedStatsTableFilterComposer,
+      $$DiveDerivedStatsTableOrderingComposer,
+      $$DiveDerivedStatsTableAnnotationComposer,
+      $$DiveDerivedStatsTableCreateCompanionBuilder,
+      $$DiveDerivedStatsTableUpdateCompanionBuilder,
+      (
+        DiveDerivedStat,
+        BaseReferences<_$AppDatabase, $DiveDerivedStatsTable, DiveDerivedStat>,
+      ),
+      DiveDerivedStat,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -17700,4 +18313,6 @@ class $AppDatabaseManager {
       $$DiveMergeLinksTableTableManager(_db, _db.diveMergeLinks);
   $$SyncQuarantineTableTableManager get syncQuarantine =>
       $$SyncQuarantineTableTableManager(_db, _db.syncQuarantine);
+  $$DiveDerivedStatsTableTableManager get diveDerivedStats =>
+      $$DiveDerivedStatsTableTableManager(_db, _db.diveDerivedStats);
 }
