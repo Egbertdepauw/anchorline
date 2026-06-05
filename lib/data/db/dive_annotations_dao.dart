@@ -87,13 +87,13 @@ class DiveAnnotationsDao {
           'INSERT INTO dive_annotations '
           '(id, owner_id, dive_id, site_name, site_latitude_e5, site_longitude_e5, '
           'notes, buddies_json, tags_json, rating, conditions, divemaster, '
-          'display_deco_algorithm, '
+          'display_deco_algorithm, user_dive_number, '
           'suit, undersuit, weight_system, dpv, camera, '
           'visibility, wavesize, current, surge, chill, '
           'air_temp_c, water_temp_c, weights_json, '
           'created_at, updated_at, deleted_at, version, sync_status) '
           'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-          '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             a.diveId, // synthetic id == dive_id (one annotation per dive)
             ownerId,
@@ -108,6 +108,7 @@ class DiveAnnotationsDao {
             a.conditions,
             a.divemaster,
             a.displayDecoAlgorithm,
+            a.userDiveNumber,
             a.suit,
             a.undersuit,
             a.weightSystem,
@@ -143,6 +144,7 @@ class DiveAnnotationsDao {
           'conditions = ?, '
           'divemaster = ?, '
           'display_deco_algorithm = ?, '
+          'user_dive_number = ?, '
           'suit = ?, '
           'undersuit = ?, '
           'weight_system = ?, '
@@ -173,6 +175,7 @@ class DiveAnnotationsDao {
             a.conditions,
             a.divemaster,
             a.displayDecoAlgorithm,
+            a.userDiveNumber,
             a.suit,
             a.undersuit,
             a.weightSystem,
@@ -615,6 +618,55 @@ class DiveAnnotationsDao {
         .toList();
   }
 
+  // ── Renumbering ─────────────────────────────────────────────────────────
+
+  /// Bulk-set `user_dive_number` for many dives in one transaction (renumber).
+  /// A null value clears the custom number. Creates a minimal annotation row
+  /// for dives that don't have one yet. Stamps owner/updated/version/sync like
+  /// the single upsert.
+  Future<void> setUserDiveNumbers(Map<String, int?> byDiveId) async {
+    if (byDiveId.isEmpty) return;
+    final ownerId = _session.currentSession?.user.id;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final ids = byDiveId.keys.toList();
+    final placeholders = List.filled(ids.length, '?').join(',');
+    await _db.writeTransaction((tx) async {
+      final existing = await tx.getAll(
+        'SELECT dive_id, version FROM dive_annotations '
+        'WHERE dive_id IN ($placeholders)',
+        ids,
+      );
+      final versions = <String, int>{
+        for (final r in existing)
+          r['dive_id'] as String: (r['version'] as int? ?? 0),
+      };
+      for (final entry in byDiveId.entries) {
+        final diveId = entry.key;
+        final number = entry.value;
+        if (versions.containsKey(diveId)) {
+          // Note: the UPDATE branch intentionally does not re-stamp owner_id —
+          // existing rows already carry it (set when first created), and the
+          // INSERT branch below stamps owner_id for dives with no annotation yet.
+          // (The main upsert() re-stamps on update; here we deliberately don't,
+          // to avoid changing ownership of an already-owned row during a bulk renumber.)
+          await tx.execute(
+            'UPDATE dive_annotations SET user_dive_number = ?, '
+            'updated_at = ?, version = ?, sync_status = ? WHERE dive_id = ?',
+            [number, now, versions[diveId]! + 1, SyncStatus.pending.index, diveId],
+          );
+        } else {
+          await tx.execute(
+            'INSERT INTO dive_annotations '
+            '(id, owner_id, dive_id, user_dive_number, '
+            'created_at, updated_at, version, sync_status) '
+            'VALUES (?, ?, ?, ?, ?, ?, 1, ?)',
+            [diveId, ownerId, diveId, number, now, now, SyncStatus.pending.index],
+          );
+        }
+      }
+    });
+  }
+
   // ── Mapping helpers ─────────────────────────────────────────────────────
 
   DiveAnnotation _rowToModel(Map<String, dynamic> row) {
@@ -637,6 +689,7 @@ class DiveAnnotationsDao {
       conditions: row['conditions'] as String?,
       divemaster: row['divemaster'] as String?,
       displayDecoAlgorithm: row['display_deco_algorithm'] as String?,
+      userDiveNumber: row['user_dive_number'] as int?,
       suit: row['suit'] as String?,
       undersuit: row['undersuit'] as String?,
       weightSystem: row['weight_system'] as String?,

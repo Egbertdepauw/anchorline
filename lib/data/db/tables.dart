@@ -165,6 +165,9 @@ class DiveAnnotations extends Table {
   /// Values: 'zhl16c' or 'vpmb'. NULL = use default (ZHL-16C).
   TextColumn get displayDecoAlgorithm => text().nullable()();
 
+  /// User-assigned dive number (renumbering). NULL = automatic date sequence.
+  IntColumn get userDiveNumber => integer().nullable()();
+
   // Sync metadata.
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
