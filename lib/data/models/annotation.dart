@@ -64,6 +64,9 @@ class DiveAnnotation {
   /// 'zhl16c' or 'vpmb'. NULL = use app default (ZHL-16C).
   final String? displayDecoAlgorithm;
 
+  /// User-assigned dive number. NULL = use the DC's own dive number.
+  final int? userDiveNumber;
+
   // Equipment used on this dive (Phase 3). All freeform single-string
   // values; the UI surfaces each as a buddies-style autocomplete.
   final String? suit;
@@ -103,6 +106,7 @@ class DiveAnnotation {
     this.conditions,
     this.divemaster,
     this.displayDecoAlgorithm,
+    this.userDiveNumber,
     this.suit,
     this.undersuit,
     this.weightSystem,
@@ -135,6 +139,7 @@ class DiveAnnotation {
     Value<String?>? conditions,
     Value<String?>? divemaster,
     Value<String?>? displayDecoAlgorithm,
+    Value<int?>? userDiveNumber,
     Value<String?>? suit,
     Value<String?>? undersuit,
     Value<String?>? weightSystem,
@@ -170,6 +175,8 @@ class DiveAnnotation {
         displayDecoAlgorithm: displayDecoAlgorithm == null
             ? this.displayDecoAlgorithm
             : displayDecoAlgorithm.value,
+        userDiveNumber:
+            userDiveNumber == null ? this.userDiveNumber : userDiveNumber.value,
         suit: suit == null ? this.suit : suit.value,
         undersuit: undersuit == null ? this.undersuit : undersuit.value,
         weightSystem:
