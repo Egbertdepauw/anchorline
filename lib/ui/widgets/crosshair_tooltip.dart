@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../analysis/deco/replay_result.dart';
 import '../../data/db/database.dart';
 import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
 import '../../data/models/sample_set.dart';
 import 'trace_segmented_bar.dart' show TraceType;
+import '../theme/gf_color.dart';
 import '../util/tank_labels.dart';
 import 'profile_chart.dart' show cellTraceLabelForSlot;
 
@@ -16,6 +18,7 @@ class CrosshairTooltip extends StatelessWidget {
   final List<DiveTank>? tanks;
   final Map<int, Cylinder>? mappedCylinders;
   final List<DiveGasMix>? gasMixes;
+  final DecoReplayResult? decoReplay;
 
   const CrosshairTooltip({
     super.key,
@@ -28,6 +31,7 @@ class CrosshairTooltip extends StatelessWidget {
     this.tanks,
     this.mappedCylinders,
     this.gasMixes,
+    this.decoReplay,
   });
 
   String _cellLabelOrFallback(int slot, String fallback) {
@@ -56,6 +60,10 @@ class CrosshairTooltip extends StatelessWidget {
     return '↑ ${(-rate).round()} m/min';
   }
 
+  /// Deco/TTS/NDL durations are whole-minute values from the DC, stored as
+  /// seconds. Render them in minutes.
+  static String _fmtMinutes(int seconds) => '${(seconds / 60).round()} min';
+
   @override
   Widget build(BuildContext context) {
     final i = sampleIndex.clamp(0, samples.sampleCount - 1);
@@ -83,6 +91,39 @@ class CrosshairTooltip extends StatelessWidget {
           _cellLabelOrFallback(3, 'C3'), samples.cellMv2[i].toStringAsFixed(2)));
     }
     rows.add(_Row('Temp', '${samples.temperatureCelsius[i].toStringAsFixed(1)}°C'));
+
+    // ── Decompression group ───────────────────────────────────────────
+    final inDeco = i < samples.decoStopDepthMeters.length &&
+        samples.decoStopDepthMeters[i] > 0;
+    final ndlSeconds =
+        i < samples.decoTimeSeconds.length ? samples.decoTimeSeconds[i] : 0;
+    final ttsAt = i < samples.ttsSeconds.length ? samples.ttsSeconds[i] : 0;
+    final replay = decoReplay;
+    final hasDecoRows = inDeco || ndlSeconds > 0 || ttsAt > 0 || replay != null;
+    if (hasDecoRows) {
+      rows.add(_Row.divider());
+      if (inDeco) {
+        rows.add(_Row(
+            'Stop', '${samples.decoStopDepthMeters[i].toStringAsFixed(1)}m'));
+        rows.add(_Row('Stop time', _fmtMinutes(samples.decoTimeSeconds[i])));
+      } else if (ndlSeconds > 0) {
+        rows.add(_Row('NDL', _fmtMinutes(ndlSeconds)));
+      }
+      if (ttsAt > 0) {
+        rows.add(_Row('TTS', _fmtMinutes(ttsAt)));
+      }
+      if (replay != null) {
+        if (i < replay.ceilingMeters.length && replay.ceilingMeters[i] > 0) {
+          rows.add(_Row(
+              'Ceiling', '${replay.ceilingMeters[i].toStringAsFixed(1)}m'));
+        }
+        if (i < replay.gf99Series.length) {
+          final gf = replay.gf99Series[i];
+          rows.add(_Row('GF99', '${gf.round()}%',
+              valueColor: gfBandColor(gf, gfHigh: (replay.gfHigh ?? 85).toDouble())));
+        }
+      }
+    }
 
     if (visibleTraces.contains(TraceType.gasChanges) &&
         gasMixes != null &&
@@ -132,24 +173,33 @@ class CrosshairTooltip extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (final row in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 1),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  ConstrainedBox(
-                      constraints: const BoxConstraints(minWidth: 40, maxWidth: 110),
-                      child: Text(row.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: Color(0xFF778899), fontSize: 10))),
-                  const SizedBox(width: 6),
-                  Text(row.value,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500)),
-                ]),
-              )
+              if (row.isDivider)
+                Container(
+                  height: 1,
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  color: const Color(0xFF778899).withValues(alpha: 0.25),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 1),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    ConstrainedBox(
+                        constraints:
+                            const BoxConstraints(minWidth: 40, maxWidth: 110),
+                        child: Text(row.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Color(0xFF778899), fontSize: 10))),
+                    const SizedBox(width: 6),
+                    Text(row.value,
+                        style: TextStyle(
+                            color: row.valueColor ?? Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            fontFeatures: const [FontFeature.tabularFigures()])),
+                  ]),
+                )
           ],
         ),
       ),
@@ -159,5 +209,12 @@ class CrosshairTooltip extends StatelessWidget {
 
 class _Row {
   final String label, value;
-  _Row(this.label, this.value);
+  final Color? valueColor;
+  final bool isDivider;
+  _Row(this.label, this.value, {this.valueColor}) : isDivider = false;
+  _Row.divider()
+      : label = '',
+        value = '',
+        valueColor = null,
+        isDivider = true;
 }
