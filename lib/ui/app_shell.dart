@@ -13,6 +13,7 @@ import '../data/db/database.dart';
 import '../data/db/dive_annotations_dao.dart';
 import '../data/db/dive_attachments_dao.dart';
 import '../data/db/dive_dao.dart';
+import '../data/db/dive_derived_stats_dao.dart';
 import '../data/db/dive_merge_dao.dart';
 import '../data/db/dive_plans_dao.dart';
 import '../data/db/equipment_dao.dart';
@@ -50,6 +51,7 @@ import 'screens/equipment/equipment_landing_screen.dart';
 import 'screens/import_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/sites_map_screen.dart';
+import 'screens/statistics_screen.dart';
 import 'widgets/anchorline_logo.dart';
 import 'widgets/background_watermark.dart';
 import 'widgets/sync_health_banner.dart';
@@ -91,6 +93,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final DiveAnnotationsDao _diveAnnotationsDao;
   late final DiveAttachmentsDao _diveAttachmentsDao;
   late final DiveMergeDao _diveMergeDao;
+  late final DiveDerivedStatsDao _diveDerivedStatsDao;
   late final DiveListNotifier _diveListNotifier;
   late final DivePlansDao _divePlansDao;
   late final DivePlanNotifier _divePlanNotifier;
@@ -159,6 +162,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       widget.powerSyncDb,
       SupabaseAuthSessionSource(Supabase.instance.client),
     );
+    _diveDerivedStatsDao = DiveDerivedStatsDao(widget.db);
     _diveListNotifier = DiveListNotifier(_diveDao, _diveAnnotationsDao, _diveMergeDao);
     _divePlansDao = DivePlansDao(
       widget.powerSyncDb,
@@ -399,6 +403,20 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     builder: (_) => BuddiesListScreen(dao: _diveAnnotationsDao),
                   ),
                 );
+              },
+            ),
+          if (_currentIndex == 0)
+            IconButton(
+              tooltip: 'Statistics',
+              icon: const Icon(Icons.bar_chart),
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => StatisticsScreen(
+                    diveDao: _diveDao,
+                    annotationsDao: _diveAnnotationsDao,
+                    derivedStatsDao: _diveDerivedStatsDao,
+                  ),
+                ));
               },
             ),
           if (_currentIndex == 0)
