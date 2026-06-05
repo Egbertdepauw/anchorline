@@ -93,36 +93,42 @@ class CrosshairTooltip extends StatelessWidget {
     rows.add(_Row('Temp', '${samples.temperatureCelsius[i].toStringAsFixed(1)}°C'));
 
     // ── Decompression group ───────────────────────────────────────────
+    // Build the deco rows first; only emit the separating divider if there
+    // is actually content below it (avoids an orphaned hairline).
     final inDeco = i < samples.decoStopDepthMeters.length &&
         samples.decoStopDepthMeters[i] > 0;
-    final ndlSeconds =
+    // decoTimeSeconds holds the DC's "NDL or deco stop time" for sample i.
+    final decoTimeAt =
         i < samples.decoTimeSeconds.length ? samples.decoTimeSeconds[i] : 0;
     final ttsAt = i < samples.ttsSeconds.length ? samples.ttsSeconds[i] : 0;
+    // Local alias enables null-promotion (decoReplay is a public field, which
+    // Dart does not promote directly).
     final replay = decoReplay;
-    final hasDecoRows = inDeco || ndlSeconds > 0 || ttsAt > 0 || replay != null;
-    if (hasDecoRows) {
+    final decoRows = <_Row>[];
+    if (inDeco) {
+      decoRows.add(_Row(
+          'Stop', '${samples.decoStopDepthMeters[i].toStringAsFixed(1)}m'));
+      decoRows.add(_Row('Stop time', _fmtMinutes(decoTimeAt)));
+    } else if (decoTimeAt > 0) {
+      decoRows.add(_Row('NDL', _fmtMinutes(decoTimeAt)));
+    }
+    if (ttsAt > 0) {
+      decoRows.add(_Row('TTS', _fmtMinutes(ttsAt)));
+    }
+    if (replay != null) {
+      if (i < replay.ceilingMeters.length && replay.ceilingMeters[i] > 0) {
+        decoRows.add(_Row(
+            'Ceiling', '${replay.ceilingMeters[i].toStringAsFixed(1)}m'));
+      }
+      if (i < replay.gf99Series.length) {
+        final gf = replay.gf99Series[i];
+        decoRows.add(_Row('GF99', '${gf.round()}%',
+            valueColor: gfBandColor(gf, gfHigh: (replay.gfHigh ?? 85).toDouble())));
+      }
+    }
+    if (decoRows.isNotEmpty) {
       rows.add(_Row.divider());
-      if (inDeco) {
-        rows.add(_Row(
-            'Stop', '${samples.decoStopDepthMeters[i].toStringAsFixed(1)}m'));
-        rows.add(_Row('Stop time', _fmtMinutes(samples.decoTimeSeconds[i])));
-      } else if (ndlSeconds > 0) {
-        rows.add(_Row('NDL', _fmtMinutes(ndlSeconds)));
-      }
-      if (ttsAt > 0) {
-        rows.add(_Row('TTS', _fmtMinutes(ttsAt)));
-      }
-      if (replay != null) {
-        if (i < replay.ceilingMeters.length && replay.ceilingMeters[i] > 0) {
-          rows.add(_Row(
-              'Ceiling', '${replay.ceilingMeters[i].toStringAsFixed(1)}m'));
-        }
-        if (i < replay.gf99Series.length) {
-          final gf = replay.gf99Series[i];
-          rows.add(_Row('GF99', '${gf.round()}%',
-              valueColor: gfBandColor(gf, gfHigh: (replay.gfHigh ?? 85).toDouble())));
-        }
-      }
+      rows.addAll(decoRows);
     }
 
     if (visibleTraces.contains(TraceType.gasChanges) &&

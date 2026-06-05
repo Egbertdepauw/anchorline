@@ -77,9 +77,31 @@ void main() {
     await _pump(tester, 1);
     expect(find.text('NDL'), findsOneWidget);
     expect(find.text('18 min'), findsOneWidget);
+    expect(find.text('TTS'), findsOneWidget);
+    expect(find.text('2 min'), findsOneWidget);
     expect(find.text('Stop'), findsNothing);
     expect(find.text('Ceiling'), findsNothing); // ceiling 0 -> hidden
     expect(find.text('GF99'), findsOneWidget);
     expect(find.text('40%'), findsOneWidget);
+  });
+
+  testWidgets('without decoReplay: DC deco rows show, GF99/Ceiling do not',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: CrosshairTooltip(
+          samples: _samples(),
+          sampleIndex: 0,
+          visibleTraces: const <TraceType>{},
+          chartX: 10,
+          chartWidth: 300,
+          // decoReplay intentionally omitted (null)
+        ),
+      ),
+    ));
+    expect(find.text('Stop'), findsOneWidget);
+    expect(find.text('TTS'), findsOneWidget);
+    expect(find.text('GF99'), findsNothing);
+    expect(find.text('Ceiling'), findsNothing);
   });
 }
