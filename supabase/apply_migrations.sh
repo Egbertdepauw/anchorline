@@ -16,7 +16,14 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -c \
   "create table if not exists public._ccrl_migrations (
      version text primary key,
      applied_at timestamptz not null default now()
-   );"
+   );
+   -- Internal bookkeeping, never touched over the Data API (the apply/check
+   -- scripts use this direct psql connection, which has bypassrls). Enabling
+   -- RLS with no policies denies anon/authenticated outright, and revoking the
+   -- default grants keeps it off PostgREST entirely. Both idempotent, so this
+   -- self-heals the live DB on the next apply and every fresh recreate.
+   alter table public._ccrl_migrations enable row level security;
+   revoke all on table public._ccrl_migrations from anon, authenticated;"
 
 for f in "$dir"/*.sql; do
   version="$(basename "$f" | sed -E 's/^([0-9]+)_.*/\1/')"
