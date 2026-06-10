@@ -195,18 +195,30 @@ class DiveListNotifier extends ChangeNotifier {
     if (_disposed) return;
     _loading = true;
     notifyListeners();
-    final dives = await _dao.getAllDives();
-    if (_disposed) return;
-    final annotations =
-        await _annotationsDao.getAnnotationsForDives(dives.map((d) => d.id));
-    if (_disposed) return;
-    final links = await _mergeDao.getActiveLinks();
-    if (_disposed) return;
-    _dives = dives;
-    _annotationsByDiveId = annotations;
-    _links = links;
-    _loading = false;
-    notifyListeners();
+    try {
+      final dives = await _dao.getAllDives();
+      if (_disposed) return;
+      final annotations =
+          await _annotationsDao.getAnnotationsForDives(dives.map((d) => d.id));
+      if (_disposed) return;
+      final links = await _mergeDao.getActiveLinks();
+      if (_disposed) return;
+      _dives = dives;
+      _annotationsByDiveId = annotations;
+      _links = links;
+      _loading = false;
+      notifyListeners();
+    } catch (_) {
+      // A watch-triggered refresh can still be awaiting a DB read when the
+      // notifier is disposed and the underlying psDb is torn down (notably in
+      // tests, where the pool closes during teardown). Once disposed the
+      // result is discarded anyway, so swallow the resulting "connection
+      // closed" error instead of surfacing it as an unhandled async error —
+      // same intent as the onError handlers on the watch subscriptions above.
+      // A genuine failure while still live is rethrown.
+      if (_disposed) return;
+      rethrow;
+    }
   }
 
   /// Soft-deletes a dive and refreshes the list. Pair with [restoreDive]
