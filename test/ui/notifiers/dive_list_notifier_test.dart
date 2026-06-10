@@ -31,6 +31,19 @@ void main() {
     mergeDao = DiveMergeDao(db, psDb, FakeSessionSource());
     notifier = DiveListNotifier(dao, annotationsDao, mergeDao);
 
+    // Dispose the notifier BEFORE openPowerSyncForTest's own addTearDown
+    // closes psDb. addTearDowns run last-registered-first, so this one (added
+    // after the helper's) runs first: it flips _disposed and cancels the
+    // annotation/merge watch subscriptions, then pumpEventQueue drains any
+    // watch-triggered loadDives() still in flight from a late write
+    // (renumber/reset) while psDb is still open. Without this, the pool closes
+    // mid-read and the refresh throws "connection pool is closed" as an
+    // unhandled async error — flaky on CI (#62).
+    addTearDown(() async {
+      notifier.dispose();
+      await pumpEventQueue();
+    });
+
     for (final num in [711, 712, 718]) {
       final data = File('test/fixtures/dives/dive_$num.bin').readAsBytesSync();
       final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
@@ -44,7 +57,6 @@ void main() {
   });
 
   tearDown(() async {
-    notifier.dispose();
     await db.close();
   });
 
