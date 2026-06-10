@@ -126,6 +126,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 unit: 'm',
                 value: ((r.deepest!.value as int) / 1000).toStringAsFixed(1),
                 hint: hint(r.deepest!))),
+      if (r.longestDive != null)
+        _card(
+            scheme,
+            StatTile(
+                label: 'Longest dive',
+                value: formatDuration(r.longestDive!.value as int),
+                hint: hint(r.longestDive!))),
       if (r.longestDeco != null)
         _card(
             scheme,

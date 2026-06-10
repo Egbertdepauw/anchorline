@@ -62,6 +62,8 @@ void main() {
     expect(n.result!.totalDives, 1);
     expect(n.result!.coldest!.value, closeTo(3.6, 1e-3));
     expect(n.result!.longestDeco!.value, 30); // 3 samples × 10 s = 30 s
+    expect(n.result!.longestDive!.value, 3600);
+    expect(n.result!.longestDive!.diveId, 'a');
     expect(source.sampleLoads, 1);
   });
 

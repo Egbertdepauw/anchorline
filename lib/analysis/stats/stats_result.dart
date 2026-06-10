@@ -83,6 +83,7 @@ class StatsResult {
   final int totalDives;
   final int totalSeconds;
   final RecordStat? deepest;
+  final RecordStat? longestDive;
   final RecordStat? longestDeco;
   final RecordStat? coldest;
   final RecordStat? warmest;
@@ -92,6 +93,7 @@ class StatsResult {
     required this.totalDives,
     required this.totalSeconds,
     this.deepest,
+    this.longestDive,
     this.longestDeco,
     this.coldest,
     this.warmest,
