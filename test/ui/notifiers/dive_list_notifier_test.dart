@@ -115,6 +115,23 @@ void main() {
     expect(notifier.sequenceByDiveId[notifier.dives.last.id], 1);
   });
 
+  test('sequenceByDiveId continues auto numbers from renumbered anchors', () async {
+    await notifier.loadDives();
+    // _dives is newest-first. Give the two older dives explicit numbers and
+    // leave the newest unnumbered: it must continue from the newest anchor
+    // (717 + 1 = 718), not fall back to its chronological position (3).
+    final oldestId = notifier.dives.last.id;
+    final midId = notifier.dives[1].id;
+    final newestId = notifier.dives.first.id;
+    await annotationsDao.setUserDiveNumbers({oldestId: 716, midId: 717});
+    await notifier.loadDives();
+    final seq = notifier.sequenceByDiveId;
+    expect(seq[oldestId], 716);
+    expect(seq[midId], 717);
+    expect(seq[newestId], 718,
+        reason: 'unnumbered newest dive should continue from the anchor');
+  });
+
   test('selectAll selects all list items and enters selection mode', () async {
     await notifier.loadDives();
     notifier.selectAll();
