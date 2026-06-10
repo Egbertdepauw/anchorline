@@ -163,24 +163,30 @@ class DiveListNotifier extends ChangeNotifier {
   }
 
   /// CCRLog-internal sequential dive number, keyed by dive id. Computed
-  /// over all non-deleted dives sorted by `start_time` ascending — the
-  /// chronologically-oldest dive is `#1`, newest is `#N`. Stable across
-  /// filter changes (filtering hides rows; it doesn't renumber).
+  /// over all non-deleted dives sorted by `start_time` ascending. Explicit
+  /// `user_dive_number` annotations act as anchors: an unnumbered dive
+  /// continues counting from the nearest chronologically-older anchor, so
+  /// dives imported after a renumber to 716..718 display #719, #720 rather
+  /// than restarting from their position. With no anchors anywhere the
+  /// oldest dive is `#1`, newest is `#N`, as before. Stable across filter
+  /// changes (filtering hides rows; it doesn't renumber). An unnumbered
+  /// dive inserted between two anchors gets previousAnchor+1 even if that
+  /// duplicates the next anchor — deliberate; renumbering resolves it.
   ///
   /// Deliberately NOT the dive computer's own counter. dc_dive_number
   /// can have gaps (factory-reset DCs, deleted-on-device dives) and
   /// can collide across multiple dive computers — neither is what the
   /// user wants to see in the dive list. The user explicitly prefers
-  /// a continuous 1..N sequence even if it disagrees with what the
+  /// a continuous sequence even if it disagrees with what the
   /// Petrel and Subsurface display per-dive.
-  Map<String, int> get sequenceByDiveId {
-    final n = _dives.length;
-    return {
-      for (var i = 0; i < n; i++)
-        _dives[i].id:
-            _annotationsByDiveId[_dives[i].id]?.userDiveNumber ?? (n - i),
-    };
-  }
+  Map<String, int> get sequenceByDiveId => computeSequence([
+        for (final d in _dives)
+          (
+            diveId: d.id,
+            startTime: d.startTime,
+            userNumber: _annotationsByDiveId[d.id]?.userDiveNumber,
+          ),
+      ]);
 
   Map<String, List<Dive>> get groupedByMonth {
     final groups = <String, List<Dive>>{};
