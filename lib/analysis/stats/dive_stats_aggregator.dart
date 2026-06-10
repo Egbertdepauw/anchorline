@@ -17,7 +17,7 @@ class DiveStatsAggregator {
     DerivedStats dOf(String id) => derived[id] ?? const DerivedStats();
 
     var totalSeconds = 0;
-    StatsDiveInput? deepest, longestDeco, coldest, warmest;
+    StatsDiveInput? deepest, longestDive, longestDeco, coldest, warmest;
 
     // mode buckets keyed by label
     final modeAcc = <String, ({int rep, int count, int secs})>{};
@@ -29,6 +29,10 @@ class DiveStatsAggregator {
       final ds = dOf(d.id);
 
       if (deepest == null || d.maxDepthMm > deepest.maxDepthMm) deepest = d;
+      if (longestDive == null ||
+          d.durationSeconds > longestDive.durationSeconds) {
+        longestDive = d;
+      }
       if (ds.timeInDecoSeconds > 0 &&
           (longestDeco == null ||
               ds.timeInDecoSeconds > dOf(longestDeco.id).timeInDecoSeconds)) {
@@ -78,6 +82,7 @@ class DiveStatsAggregator {
       totalDives: dives.length,
       totalSeconds: totalSeconds,
       deepest: rec(deepest, (d) => d.maxDepthMm),
+      longestDive: rec(longestDive, (d) => d.durationSeconds),
       longestDeco: rec(longestDeco, (d) => dOf(d.id).timeInDecoSeconds),
       coldest: rec(coldest, (d) => dOf(d.id).minWaterTempC!),
       warmest: rec(warmest, (d) => dOf(d.id).maxWaterTempC!),

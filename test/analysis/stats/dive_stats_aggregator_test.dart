@@ -38,6 +38,21 @@ void main() {
     expect(r.deepest!.siteName, 'Jadran');
   });
 
+  test('longest dive picks max duration; empty → null', () {
+    final empty = DiveStatsAggregator.aggregate(const [], const {}, const {});
+    expect(empty.longestDive, isNull);
+
+    final dives = [
+      _d('a', _t2024Jun, 3600, 40000, 0),
+      _d('b', _t2025Jan, 5520, 30000, 0), // 1h 32min ← longest
+    ];
+    final r = DiveStatsAggregator.aggregate(dives, const {}, {'b': 'Jadran'});
+    expect(r.longestDive!.value, 5520);
+    expect(r.longestDive!.diveId, 'b');
+    expect(r.longestDive!.startTime, _t2025Jan);
+    expect(r.longestDive!.siteName, 'Jadran');
+  });
+
   test('longest deco picks max time-in-deco; none → null', () {
     final dives = [_d('a', _t2024Jun, 3600, 40000, 0), _d('b', _t2025Jan, 1800, 30000, 0)];
     final none = DiveStatsAggregator.aggregate(dives, const {}, const {});
