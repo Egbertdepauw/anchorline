@@ -85,6 +85,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   bool _syncing = false;
   int _currentIndex = 0;
 
+  /// Count of mounted [SuppressWatermark] descendants (media surfaces —
+  /// the dive-detail Media tab and the image/PDF viewers — that must not
+  /// get the brand tint composited over them). Incremented/decremented
+  /// post-frame by the surfaces themselves via [WatermarkSuppressionScope].
+  final _watermarkSuppressors = ValueNotifier<int>(0);
+
   /// Key for the Dives tab's nested Navigator, so tapping the Anchorline
   /// logo can pop any pushed route (dive detail) back to the dive list.
   final _divesNavigatorKey = GlobalKey<NavigatorState>();
@@ -275,6 +281,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _divePlanNotifier.dispose();
     _blendNotifier.dispose();
     _importNotifier.dispose();
+    _watermarkSuppressors.dispose();
     super.dispose();
   }
 
@@ -443,83 +450,107 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         children: [
           SyncHealthBanner(service: _syncHealthService),
           Expanded(
-            child: ListenableBuilder(
-              listenable: widget.settingsNotifier,
-              builder: (context, _) {
-                return BackgroundWatermark(
-                  // Suppress the branding watermark on the Settings tab
-                  // (index 5). Settings is a dense, utilitarian list —
-                  // the diver mark reads as visual clutter / a doubled
-                  // mark behind the controls there, where it adds nothing.
-                  opacity: _currentIndex == 5
-                      ? 0.0
-                      : widget.settingsNotifier.watermarkOpacity,
-                  child: IndexedStack(
-                    index: _currentIndex,
-                    children: [
-                      // Nested Navigator for the Dives tab so pushed
-                      // routes (dive detail) stack INSIDE this tab
-                      // instead of replacing the whole AppShell. Keeps
-                      // the bottom nav bar visible on detail screens
-                      // and — by virtue of Scaffold's bottomNavigationBar
-                      // slot insetting for the system bars — also fixes
-                      // the Android edge-to-edge clipping that
-                      // otherwise put content behind the gesture-nav
-                      // buttons. Only the Dives tab needs this; the
-                      // other tabs don't push routes deeper than their
-                      // root.
-                      Navigator(
-                        key: _divesNavigatorKey,
-                        onGenerateRoute: (settings) => MaterialPageRoute(
-                          settings: settings,
-                          builder: (_) => DiveListScreen(
-                            notifier: _diveListNotifier,
-                            diveDao: _diveDao,
-                            annotationsDao: _diveAnnotationsDao,
-                            equipmentDao: _equipmentDao,
-                            attachmentsDao: _diveAttachmentsDao,
-                            attachmentUploader: _attachmentUploader,
-                            attachmentDownloader: _attachmentDownloader,
-                            settingsNotifier: widget.settingsNotifier,
+            // Lets media surfaces anywhere in the IndexedStack — including
+            // routes pushed onto the Dives tab's nested Navigator — find
+            // the suppression counter and zero the watermark while mounted.
+            child: WatermarkSuppressionScope(
+              suppressors: _watermarkSuppressors,
+              child: ListenableBuilder(
+                listenable: Listenable.merge(
+                    [widget.settingsNotifier, _watermarkSuppressors]),
+                builder: (context, _) {
+                  return BackgroundWatermark(
+                    // Suppress the branding watermark on the Settings tab
+                    // (index 5). Settings is a dense, utilitarian list —
+                    // the diver mark reads as visual clutter / a doubled
+                    // mark behind the controls there, where it adds nothing.
+                    //
+                    // Also suppress while the Dives tab is frontmost and a
+                    // media surface — the dive-detail Media tab or a pushed
+                    // image/PDF viewer — is mounted (#70): the watermark
+                    // composites ON TOP of its child, which reads as a
+                    // visible tint over bright photos and PDF pages. The
+                    // Dives-tab gate exists because IndexedStack keeps the
+                    // nested navigator (and a mounted Media tab) alive while
+                    // other tabs are frontmost, and suppressors only mount
+                    // inside the Dives tab — without the gate a backgrounded
+                    // Media tab would strip the watermark from every other
+                    // tab. Conversely, dive_detail's TabBarView disposes
+                    // hidden inner tabs, so a mounted Media tab means a
+                    // visible one (modulo the swipe-transition frame, which
+                    // is imperceptible at ~6%).
+                    opacity: _currentIndex == 5 ||
+                            (_currentIndex == 0 &&
+                                _watermarkSuppressors.value > 0)
+                        ? 0.0
+                        : widget.settingsNotifier.watermarkOpacity,
+                    child: IndexedStack(
+                      index: _currentIndex,
+                      children: [
+                        // Nested Navigator for the Dives tab so pushed
+                        // routes (dive detail) stack INSIDE this tab
+                        // instead of replacing the whole AppShell. Keeps
+                        // the bottom nav bar visible on detail screens
+                        // and — by virtue of Scaffold's bottomNavigationBar
+                        // slot insetting for the system bars — also fixes
+                        // the Android edge-to-edge clipping that
+                        // otherwise put content behind the gesture-nav
+                        // buttons. Only the Dives tab needs this; the
+                        // other tabs don't push routes deeper than their
+                        // root.
+                        Navigator(
+                          key: _divesNavigatorKey,
+                          onGenerateRoute: (settings) => MaterialPageRoute(
+                            settings: settings,
+                            builder: (_) => DiveListScreen(
+                              notifier: _diveListNotifier,
+                              diveDao: _diveDao,
+                              annotationsDao: _diveAnnotationsDao,
+                              equipmentDao: _equipmentDao,
+                              attachmentsDao: _diveAttachmentsDao,
+                              attachmentUploader: _attachmentUploader,
+                              attachmentDownloader: _attachmentDownloader,
+                              settingsNotifier: widget.settingsNotifier,
+                            ),
                           ),
                         ),
-                      ),
-                      DivePlanScreen(
-                        notifier: _divePlanNotifier,
-                        settings: widget.settingsNotifier,
-                      ),
-                      BlendScreen(
-                        notifier: _blendNotifier,
-                        settings: widget.settingsNotifier,
-                      ),
-                      ImportScreen(
-                        notifier: _importNotifier,
-                        onViewDives: _onViewDives,
-                      ),
-                      EquipmentLandingScreen(
-                        dao: _equipmentDao,
-                        diveDao: _diveDao,
-                        annotationsDao: _diveAnnotationsDao,
-                        settingsNotifier: widget.settingsNotifier,
-                      ),
-                      SettingsScreen(
-                        notifier: widget.settingsNotifier,
-                        authService: widget.authService,
-                        syncStatusSource: _syncStatusSource,
-                        db: widget.db,
-                        powerSyncDb: widget.powerSyncDb,
-                        cloudDataWiper: widget.cloudDataWiper,
-                        attachmentObjectWiper: _attachmentObjectWiper,
-                        subsurfaceOrchestrator: _subsurfaceOrchestrator,
-                        subsurfaceCredentials: _subsurfaceCredentials,
-                        diveDao: _diveDao,
-                        subsurfaceBootstrapImporter:
-                            _subsurfaceBootstrapImporter,
-                      ),
-                    ],
-                  ),
-                );
-              },
+                        DivePlanScreen(
+                          notifier: _divePlanNotifier,
+                          settings: widget.settingsNotifier,
+                        ),
+                        BlendScreen(
+                          notifier: _blendNotifier,
+                          settings: widget.settingsNotifier,
+                        ),
+                        ImportScreen(
+                          notifier: _importNotifier,
+                          onViewDives: _onViewDives,
+                        ),
+                        EquipmentLandingScreen(
+                          dao: _equipmentDao,
+                          diveDao: _diveDao,
+                          annotationsDao: _diveAnnotationsDao,
+                          settingsNotifier: widget.settingsNotifier,
+                        ),
+                        SettingsScreen(
+                          notifier: widget.settingsNotifier,
+                          authService: widget.authService,
+                          syncStatusSource: _syncStatusSource,
+                          db: widget.db,
+                          powerSyncDb: widget.powerSyncDb,
+                          cloudDataWiper: widget.cloudDataWiper,
+                          attachmentObjectWiper: _attachmentObjectWiper,
+                          subsurfaceOrchestrator: _subsurfaceOrchestrator,
+                          subsurfaceCredentials: _subsurfaceCredentials,
+                          diveDao: _diveDao,
+                          subsurfaceBootstrapImporter:
+                              _subsurfaceBootstrapImporter,
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ],

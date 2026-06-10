@@ -19,6 +19,7 @@ import 'package:pdfx/pdfx.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/models/dive_attachment.dart';
+import '../widgets/background_watermark.dart' show SuppressWatermark;
 
 class PdfViewerScreen extends StatefulWidget {
   final File file;
@@ -88,43 +89,48 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black.withValues(alpha: 0.6),
-        foregroundColor: Colors.white,
-        title: Text(widget.title,
-            maxLines: 1, overflow: TextOverflow.ellipsis),
-        actions: [
-          IconButton(
-            tooltip: 'Info',
-            icon: const Icon(Icons.info_outline),
-            onPressed: () => _showInfo(context),
-          ),
-          Builder(
-            builder: (ctx) => IconButton(
-              tooltip: 'Share',
-              icon: const Icon(Icons.ios_share),
-              onPressed: () {
-                final box = ctx.findRenderObject() as RenderBox?;
-                final origin = box != null
-                    ? box.localToGlobal(Offset.zero) & box.size
-                    : null;
-                Share.shareXFiles(
-                  [XFile(widget.file.path)],
-                  sharePositionOrigin: origin,
-                );
-              },
+    // SuppressWatermark (#70): this route lives on the Dives tab's nested
+    // navigator, so the app shell's brand watermark would otherwise
+    // composite a visible tint over the (mostly white) PDF pages.
+    return SuppressWatermark(
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black.withValues(alpha: 0.6),
+          foregroundColor: Colors.white,
+          title: Text(widget.title,
+              maxLines: 1, overflow: TextOverflow.ellipsis),
+          actions: [
+            IconButton(
+              tooltip: 'Info',
+              icon: const Icon(Icons.info_outline),
+              onPressed: () => _showInfo(context),
             ),
-          ),
-          IconButton(
-            tooltip: 'Delete',
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => _confirmDelete(context),
-          ),
-        ],
+            Builder(
+              builder: (ctx) => IconButton(
+                tooltip: 'Share',
+                icon: const Icon(Icons.ios_share),
+                onPressed: () {
+                  final box = ctx.findRenderObject() as RenderBox?;
+                  final origin = box != null
+                      ? box.localToGlobal(Offset.zero) & box.size
+                      : null;
+                  Share.shareXFiles(
+                    [XFile(widget.file.path)],
+                    sharePositionOrigin: origin,
+                  );
+                },
+              ),
+            ),
+            IconButton(
+              tooltip: 'Delete',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => _confirmDelete(context),
+            ),
+          ],
+        ),
+        body: PdfViewPinch(controller: _controller),
       ),
-      body: PdfViewPinch(controller: _controller),
     );
   }
 }

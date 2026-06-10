@@ -25,6 +25,7 @@ import '../util/attachment_picker.dart';
 import '../util/dive_mode_color.dart';
 import '../util/format.dart';
 import '../util/tank_labels.dart';
+import '../widgets/background_watermark.dart' show SuppressWatermark;
 import '../widgets/crosshair_overlay.dart';
 import '../widgets/crosshair_tooltip.dart';
 import '../widgets/dive_annotations_section.dart';
@@ -808,22 +809,31 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   /// dedicated tab; the actual grid + image viewer enhancements arrive
   /// via the parallel media-tab agent. For now we slot the existing
   /// section unchanged so the tabs ship working.
+  ///
+  /// Wrapped in [SuppressWatermark] (#70): the app shell composites the
+  /// brand watermark over the whole Dives tab, which reads as a visible
+  /// tint over bright photo thumbnails. TabBarView disposes hidden
+  /// tabs, so suppression tracks this tab's actual visibility.
   Widget _buildMediaTab() {
     if (widget.attachmentsNotifier == null) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text('Attachments unavailable on this screen.'),
+      return const SuppressWatermark(
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(32),
+            child: Text('Attachments unavailable on this screen.'),
+          ),
         ),
       );
     }
-    return SingleChildScrollView(
-      child: DiveMediaTab(
-        notifier: widget.attachmentsNotifier!,
-        pickFiles: pickAttachments,
-        onOpen: _openAttachment,
-        loadFile:
-            widget.attachmentDownloader != null ? _loadAttachmentFile : null,
+    return SuppressWatermark(
+      child: SingleChildScrollView(
+        child: DiveMediaTab(
+          notifier: widget.attachmentsNotifier!,
+          pickFiles: pickAttachments,
+          onOpen: _openAttachment,
+          loadFile:
+              widget.attachmentDownloader != null ? _loadAttachmentFile : null,
+        ),
       ),
     );
   }
