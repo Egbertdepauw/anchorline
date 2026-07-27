@@ -243,11 +243,10 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
 
     final reordered = List<DiveAttachment>.of(_attachments);
     final moved = reordered.removeAt(oldIndex);
-    // Flutter's ReorderableListView convention: when dragging down,
-    // newIndex is one past the slot; clamp so the math is stable for
-    // both call shapes.
-    final insertAt = newIndex > oldIndex ? newIndex - 1 : newIndex;
-    reordered.insert(insertAt.clamp(0, reordered.length), moved);
+    // ReorderableListView.onReorderItem already adjusts newIndex for the
+    // removed row, so it is the final post-removal insert position — no
+    // pre-removal shift needed. Clamp defensively against stray callers.
+    reordered.insert(newIndex.clamp(0, reordered.length), moved);
 
     for (var i = 0; i < reordered.length; i++) {
       final row = reordered[i];

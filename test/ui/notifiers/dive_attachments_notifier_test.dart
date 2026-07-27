@@ -326,9 +326,11 @@ void main() {
     // displayOrder=0 sorts first, then l2 at 1, then l3 at 2.
     expect(n.attachments.map((a) => a.id), ['l1', 'l2', 'l3']);
 
-    // Move l1 (index 0) to the end (newIndex = 3, ReorderableListView
-    // convention: one past the slot when dragging down).
-    await n.reorder(0, 3);
+    // Move l1 (index 0) to the end. With the onReorderItem API the
+    // framework already adjusts newIndex for the removed row, so a
+    // drag-to-end arrives as the post-removal index 2 (not the old
+    // pre-removal ReorderableListView convention of 3).
+    await n.reorder(0, 2);
     expect(n.attachments.map((a) => a.id), ['l2', 'l3', 'l1']);
     // display_order has been rewritten to match the new positions.
     for (var i = 0; i < n.attachments.length; i++) {
