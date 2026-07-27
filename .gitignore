@@ -67,3 +67,11 @@ flutter_*.png
 # code) but kept out of the repo so it's not trivially grepable by drive-by
 # observers. `dart_defines.example.json` IS committed as a template.
 dart_defines.json
+
+# Supabase deploy connection string (DB password). Local-only, sourced by
+# apply_migrations.sh at deploy time. NEVER commit.
+supabase/.env.deploy.local
+
+# Sentry auth token for macos/scripts/upload_sentry_dsyms.sh. Local-only,
+# NEVER commit. sentry.env.example IS committed as the template.
+macos/scripts/sentry.env.local

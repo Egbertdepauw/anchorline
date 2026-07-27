@@ -168,15 +168,18 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
-# Sentry debug-symbol upload (sentry_dart_plugin). Run AFTER an archive:
-#   SENTRY_ORG=<org-slug> SENTRY_PROJECT=<project-slug> \
-#   SENTRY_AUTH_TOKEN=<token> dart run sentry_dart_plugin
-# org / project / auth_token are read from the SENTRY_ORG / SENTRY_PROJECT /
-# SENTRY_AUTH_TOKEN env vars so nothing secret (or guessed) is committed.
-# The slugs aren't secret — hardcode `org:` / `project:` here if you'd rather
-# only pass SENTRY_AUTH_TOKEN. So future macOS Sentry hangs/crashes (#4)
-# arrive with symbolicated native frames instead of <redacted>.
+# Sentry debug-symbol upload (sentry_dart_plugin). After a release archive:
+#   ./macos/scripts/upload_sentry_dsyms.sh
+# That wrapper sources the (gitignored) SENTRY_AUTH_TOKEN from
+# macos/scripts/sentry.env.local and runs `dart run sentry_dart_plugin`, so
+# future macOS Sentry hangs/crashes (#4) arrive with symbolicated native
+# frames instead of <redacted>. The org / project slugs below aren't secret
+# (the bundle id already carries the org); only the auth token stays out of
+# the repo. Any of them can be overridden by the SENTRY_ORG / SENTRY_PROJECT /
+# SENTRY_AUTH_TOKEN env vars at upload time.
 sentry:
   upload_debug_symbols: true
   upload_sources: false
   upload_source_maps: false
+  org: de-spaankamer-bv
+  project: ccrlogger
