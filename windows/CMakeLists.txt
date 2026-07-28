@@ -41,6 +41,14 @@ add_definitions(-DUNICODE -D_UNICODE)
 # load-bearing for a beta.
 set(SENTRY_BACKEND "inproc" CACHE STRING "Sentry crash backend" FORCE)
 
+# pdfx downloads + configures pdfium in a nested CMake build tree whose
+# cmake_minimum_required predates 3.5. CMake >=4.0 removed compatibility
+# with that and hard-fails the configure. Seeding the policy floor into
+# the ENVIRONMENT (not a -D flag, which wouldn't reach the nested tree)
+# lets the child configure accept it. No-op on CMake 3.x, and scoped to
+# this process tree only. See issue #74.
+set(ENV{CMAKE_POLICY_VERSION_MINIMUM} 3.5)
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
