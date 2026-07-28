@@ -1,6 +1,6 @@
 PODS:
   - FlutterMacOS (1.0.0)
-  - git2dart_binaries (1.9.0):
+  - git2dart_binaries (1.11.2):
     - FlutterMacOS
   - pdfx (1.0.0):
     - FlutterMacOS
@@ -20,9 +20,9 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
-  git2dart_binaries: 10f29aaa3f42bc0b5b15c56a20568e55abc60e93
+  git2dart_binaries: ce40f0f9b064d25651410d394274ff87b6aad208
   pdfx: 1e79f57f7a6ce2f4a4c30f21fa54d3dc82441b51
 
-PODFILE CHECKSUM: c52ad2b2a109e0b2d80677136daacc2966597849
+PODFILE CHECKSUM: c7e0023930482c6ec98a84a955c8ec4ef5a70f93
 
-COCOAPODS: 1.16.2
+COCOAPODS: 1.17.0
