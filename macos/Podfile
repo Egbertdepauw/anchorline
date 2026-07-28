@@ -26,13 +26,12 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_macos_podfile_setup
 
-# git2dart_binaries libcrypto fixup (defect #3) is handled at the .app bundle
-# level by the "Fix git2dart libcrypto" Run Script build phase on the Runner
-# target (macos/scripts/fix_git2dart_libcrypto.sh), NOT here. Doing it in the
-# Podfile mutated the shared pub-cache on every `pod install`, which broke the
-# pure-Dart libgit2 FFI tests until `flutter pub get` restored the cache. The
-# build phase touches only the embedded dylibs inside the built app, leaving
-# the pub-cache pristine so tests and the macOS build stay green together.
+# NOTE: this Podfile must never mutate the shared pub-cache (an earlier
+# git2dart_binaries libcrypto fixup here did, breaking the pure-Dart libgit2
+# FFI tests until `flutter pub get` restored the cache). That whole workaround
+# is gone as of git2dart_binaries ≥1.12.1: upstream ships a self-contained
+# libgit2.dylib (libssh2/OpenSSL statically linked), so nothing needs fixing
+# up. History in CLAUDE.md "Known third-party defects".
 
 target 'Runner' do
   use_frameworks!
