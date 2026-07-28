@@ -250,6 +250,13 @@ dylibs for macOS, so the x86_64 portion can't load `libgit2`. Effect:
   Cloud sync.
 - **Intel Macs**: app launches, but the Subsurface sync feature
   crashes when it tries to load libgit2.
+- **macOS version floor for sync**: `git2dart_binaries` 1.12.1's
+  `libgit2.dylib` is built with `minos 26.0` (upstream builds on the
+  latest SDK without a deployment target), so on macOS < 26 dyld
+  refuses to load it — the app runs, but Subsurface sync errors out.
+  Earlier binaries were minos 15.0. Worth reporting upstream: if their
+  CI sets a `MACOSX_DEPLOYMENT_TARGET`, a future binaries bump restores
+  older-macOS sync support automatically.
 
 For TestFlight + first release this is fine — most Mac buyers in
 the last three years are on Apple Silicon. If Intel support becomes

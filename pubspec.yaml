@@ -67,11 +67,13 @@ dependencies:
   # MuPDF on desktop). Used by the in-app PDF viewer so attached PDFs
   # open inline instead of dropping the user into a share sheet.
   pdfx: ^2.6.0
-  git2dart: ^0.4.0
-  # 1.10.4 ships the upstream fix for the macOS packaging defects
-  # (DartGit-dev/git2dart_binaries#14) — drops the local pub-cache
-  # workaround. Capped <1.11.0 by git2dart 0.4.0.
-  git2dart_binaries: ^1.10.4
+  git2dart: ^0.5.4
+  # 1.12.1 fixes the Windows OpenSSL bundling (DartGit-dev/
+  # git2dart_binaries#20) — ships libcrypto-3/libssl-3 DLLs with a
+  # correct bundled-libraries manifest — and ships a self-contained
+  # macOS libgit2.dylib (libssh2/OpenSSL statically linked), which
+  # obsoleted our vendored-libcrypto build phase (see #74).
+  git2dart_binaries: ^1.12.1
   flutter_secure_storage: ^10.1.0
 
   # Crash + unhandled-exception reporting for release / beta builds.
