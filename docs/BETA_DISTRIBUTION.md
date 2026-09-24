@@ -68,6 +68,20 @@ created. **Record this fingerprint** — Play Console asks for it the
 first time you upload, and any future deployment that doesn't match
 will be rejected.
 
+### 1d. Build JDK — no override needed
+
+Flutter runs Gradle on Android Studio's bundled JDK (JBR). Check which
+one with `flutter doctor -v` → "Java binary at". The Gradle wrapper
+(`android/gradle/wrapper/gradle-wrapper.properties`, currently 9.3.1)
+supports JDK 17 through 25. Leave `flutter config --jdk-dir` **unset**.
+
+If an Android Studio update ships a newer JBR, the Gradle build fails
+within seconds and the only error text is the JDK version (for example
+`What went wrong: 25.0.2`). Fix it by bumping the Gradle wrapper, plus
+AGP and Kotlin if their compatibility tables require it, and don't pin
+an older JDK. CLAUDE.md → "Known third-party defects" has the version
+coupling (issue #80).
+
 ---
 
 ## 2. Android — Google Play Internal Testing
