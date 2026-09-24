@@ -4,7 +4,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
+    // No id("kotlin-android") here (#83). Flutter's Gradle plugin applies KGP
+    // itself to modules that don't, and warns about modules that do.
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -69,6 +70,7 @@ android {
 
 // KGP 2.3 made the old `android { kotlinOptions { } }` block a compile
 // error; this is the replacement DSL (same form as Flutter's app template).
+// The `kotlin` extension comes from the KGP that the Flutter plugin applies.
 kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_17
