@@ -17,6 +17,26 @@ Every statement must be safe to run twice:
 `./supabase/lint_migrations.sh` (no DB) fails the build if any migration breaks
 this. It also runs in CI.
 
+## The Data API grant rule (also enforced by `lint_migrations.sh`)
+
+Supabase no longer auto-grants new `public` tables to `anon` / `authenticated`
+/ `service_role`. New projects haven't since 2026-05-30, existing projects
+stop on 2026-10-30, and 0016 opts this project in early. Every app write goes
+through PostgREST as `authenticated` (PowerSync upload connector,
+UsageTracker, CloudDataWiper). A table with no grant is unreachable, and
+uploads to it fail with `permission denied`. So the migration that creates a
+table must also grant access, one statement per line:
+
+```sql
+grant select, insert, update, delete on table public.<t> to authenticated, service_role;
+```
+
+Grant only what the client uses (e.g. `usage_events` is insert-only), and
+never grant `anon`, since no code path runs signed-out. For a table that must
+stay off the Data API, write the explicit opt-out
+(`revoke all on table public.<t> from anon, authenticated;`). The lint accepts
+either form, but a table with neither fails CI (issue #76).
+
 ## DATABASE_URL
 
 Use the **direct/session** connection string (NOT the pooler) — DDL +

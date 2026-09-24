@@ -49,4 +49,28 @@ if [ "$fail" -ne 0 ]; then
   echo "FAIL: non-idempotent migration statements found (issue #20)." >&2
   exit 1
 fi
-echo "OK: all migrations are idempotent."
+
+# Rule 7 (cross-file): every created table needs an explicit Data API
+# decision for `authenticated`, either a `grant ... to authenticated` or a
+# `revoke ... from authenticated`, in some migration. Supabase no longer
+# auto-grants new public tables (issue #76), so a missing grant = a table
+# the app can't reach. Grant/revoke statements must be single-line.
+all_sql="$(cat "${sqls[@]}" | { grep -vE '^[[:space:]]*--' || true; } | tr '[:upper:]' '[:lower:]')"
+created="$(printf '%s\n' "$all_sql" \
+  | sed -nE 's/^[[:space:]]*create table if not exists[[:space:]]+(public\.)?([a-z0-9_]+).*/\2/p' \
+  | sort -u)"
+# Object list between ` on [table] ` and ` to|from `, split on commas.
+decided="$(printf '%s\n' "$all_sql" \
+  | { grep -E '^[[:space:]]*(grant[[:space:]].*[[:space:]]to|revoke[[:space:]].*[[:space:]]from)[[:space:]].*authenticated' || true; } \
+  | sed -E 's/.*[[:space:]]on[[:space:]]+(table[[:space:]]+)?(.*)[[:space:]]+(to|from)[[:space:]].*/\2/' \
+  | tr ',' '\n' | sed -E 's/^[[:space:]]*(public\.)?//; s/[[:space:]]*$//' \
+  | sort -u)"
+missing="$(comm -23 <(printf '%s\n' "$created") <(printf '%s\n' "$decided"))"
+if [ -n "$missing" ]; then
+  echo "$missing" | sed 's/^/  no grant\/revoke to authenticated: /'
+  echo ""
+  echo "FAIL: tables without an explicit Data API grant (issue #76). Add e.g." >&2
+  echo "  grant select, insert, update, delete on table public.<t> to authenticated, service_role;" >&2
+  exit 1
+fi
+echo "OK: all migrations are idempotent and every table has explicit Data API grants."
