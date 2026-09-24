@@ -476,6 +476,83 @@ void main() {
     expect(find.textContaining('#705'), findsOneWidget);
     expect(find.textContaining('cylinder'), findsOneWidget);
   });
+
+  testWidgets('Push button re-reads lastSyncedAt so the status row updates '
+      'after a push', (tester) async {
+    final creds = _InMemoryCredentials()
+      ..email = 'e@x'
+      ..password = 'p';
+    final fixedNow = DateTime(2026, 5, 8, 10, 0, 0);
+    final twoHoursAgo =
+        fixedNow.subtract(const Duration(hours: 2)).millisecondsSinceEpoch ~/
+            1000;
+    final nowSeconds = fixedNow.millisecondsSinceEpoch ~/ 1000;
+    // Mirrors the orchestrator: the push stamps subsurface_uploaded_at,
+    // so MAX(subsurface_uploaded_at) moves forward once onSync returns.
+    int? stamped = twoHoursAgo;
+    var readerCalls = 0;
+
+    await tester.pumpWidget(_harness(
+      creds: creds,
+      now: () => fixedNow,
+      lastSyncedAt: () async {
+        readerCalls++;
+        return stamped;
+      },
+      onSync: () async {
+        stamped = nowSeconds;
+        return _ok(divesPushed: 24);
+      },
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Last synced: 2 hours ago'), findsOneWidget);
+    final callsBeforePush = readerCalls;
+
+    await tester.tap(find.text('Push to Subsurface'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pushed 24 dives'), findsOneWidget);
+    expect(readerCalls, greaterThan(callsBeforePush));
+    expect(find.text('Last synced: just now'), findsOneWidget);
+    expect(find.text('Last synced: 2 hours ago'), findsNothing);
+  });
+
+  testWidgets('Push button re-reads lastSyncedAt even when the push throws',
+      (tester) async {
+    final creds = _InMemoryCredentials()
+      ..email = 'e@x'
+      ..password = 'p';
+    final fixedNow = DateTime(2026, 5, 8, 10, 0, 0);
+    final nowSeconds = fixedNow.millisecondsSinceEpoch ~/ 1000;
+    // The orchestrator may stamp some dives before throwing.
+    int? stamped;
+    var readerCalls = 0;
+
+    await tester.pumpWidget(_harness(
+      creds: creds,
+      now: () => fixedNow,
+      lastSyncedAt: () async {
+        readerCalls++;
+        return stamped;
+      },
+      onSync: () async {
+        stamped = nowSeconds;
+        throw SubsurfaceSyncException('push rejected');
+      },
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Last synced: never'), findsOneWidget);
+    final callsBeforePush = readerCalls;
+
+    await tester.tap(find.text('Push to Subsurface'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sync failed: push rejected'), findsOneWidget);
+    expect(readerCalls, greaterThan(callsBeforePush));
+    expect(find.text('Last synced: just now'), findsOneWidget);
+  });
 }
 
 // ── Test helpers ──────────────────────────────────────────────────────
