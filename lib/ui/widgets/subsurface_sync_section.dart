@@ -361,6 +361,9 @@ class _SubsurfaceSyncSectionState extends State<SubsurfaceSyncSection> {
       if (!mounted) return;
       setState(() => _syncError = e.toString());
     } finally {
+      // Always re-read the timestamp — even on error the orchestrator
+      // may have stamped some dives before throwing.
+      await _refreshLastSynced();
       if (mounted) setState(() => _syncing = false);
     }
   }
