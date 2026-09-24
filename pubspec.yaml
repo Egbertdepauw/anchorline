@@ -59,7 +59,7 @@ dependencies:
   # opening external URLs, and the http client that talks to the
   # signing Worker + R2 presigned URLs.
   http: ^1.2.0
-  file_picker: ^8.1.0
+  file_picker: ^11.0.3
   image_picker: ^1.1.0
   url_launcher: ^6.3.0
   mime: ^1.0.5

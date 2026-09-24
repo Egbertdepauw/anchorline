@@ -59,7 +59,7 @@ Future<List<PickedAttachmentFile>?> pickAttachments(BuildContext context) async 
         _addIfFits(File(s.path), picked, oversize, originalName: s.name);
       }
     case _PickSource.file:
-      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+      final result = await FilePicker.pickFiles(allowMultiple: true);
       if (result == null) return null;
       for (final f in result.files) {
         final path = f.path;
