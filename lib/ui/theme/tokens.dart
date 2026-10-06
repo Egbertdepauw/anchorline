@@ -11,9 +11,8 @@ import 'anchorline_colors.dart';
 
 // ── Palette ──────────────────────────────────────────────────────────
 
-/// A complete colour palette. Wraps the Wreck dark palette today; future
-/// light-mode tropical palettes are added as additional constants.
-class ThemePalette {
+/// A complete colour palette, carried in ThemeData as a theme extension. Read it in widgets with context.palette.
+class ThemePalette extends ThemeExtension<ThemePalette> {
   const ThemePalette({
     required this.surfaceBg,
     required this.surfaceCard,
@@ -53,6 +52,76 @@ class ThemePalette {
   final Color chartTracePpo2;
   final Color chartTraceSetpoint;
   final Color chartTraceGf99;
+
+  @override
+  ThemePalette copyWith({
+    Color? surfaceBg,
+    Color? surfaceCard,
+    Color? surfaceRaised,
+    Color? surfaceBezel,
+    Color? textPrimary,
+    Color? textSecondary,
+    Color? textMuted,
+    Color? textInverse,
+    Color? accentPrimary,
+    Color? accentMuted,
+    Color? cell1,
+    Color? cell2,
+    Color? cell3,
+    Color? chartGrid,
+    Color? chartTraceDepth,
+    Color? chartTracePpo2,
+    Color? chartTraceSetpoint,
+    Color? chartTraceGf99,
+  }) {
+    return ThemePalette(
+      surfaceBg: surfaceBg ?? this.surfaceBg,
+      surfaceCard: surfaceCard ?? this.surfaceCard,
+      surfaceRaised: surfaceRaised ?? this.surfaceRaised,
+      surfaceBezel: surfaceBezel ?? this.surfaceBezel,
+      textPrimary: textPrimary ?? this.textPrimary,
+      textSecondary: textSecondary ?? this.textSecondary,
+      textMuted: textMuted ?? this.textMuted,
+      textInverse: textInverse ?? this.textInverse,
+      accentPrimary: accentPrimary ?? this.accentPrimary,
+      accentMuted: accentMuted ?? this.accentMuted,
+      cell1: cell1 ?? this.cell1,
+      cell2: cell2 ?? this.cell2,
+      cell3: cell3 ?? this.cell3,
+      chartGrid: chartGrid ?? this.chartGrid,
+      chartTraceDepth: chartTraceDepth ?? this.chartTraceDepth,
+      chartTracePpo2: chartTracePpo2 ?? this.chartTracePpo2,
+      chartTraceSetpoint: chartTraceSetpoint ?? this.chartTraceSetpoint,
+      chartTraceGf99: chartTraceGf99 ?? this.chartTraceGf99,
+    );
+  }
+
+  /// Used by Flutter to cross-fade between two themes.
+  @override
+  ThemePalette lerp(covariant ThemeExtension<ThemePalette>? other, double t) {
+    if (other is! ThemePalette) return this;
+    Color mix(Color a, Color b) => Color.lerp(a, b, t)!;
+    return ThemePalette(
+      surfaceBg: mix(surfaceBg, other.surfaceBg),
+      surfaceCard: mix(surfaceCard, other.surfaceCard),
+      surfaceRaised: mix(surfaceRaised, other.surfaceRaised),
+      surfaceBezel: mix(surfaceBezel, other.surfaceBezel),
+      textPrimary: mix(textPrimary, other.textPrimary),
+      textSecondary: mix(textSecondary, other.textSecondary),
+      textMuted: mix(textMuted, other.textMuted),
+      textInverse: mix(textInverse, other.textInverse),
+      accentPrimary: mix(accentPrimary, other.accentPrimary),
+      accentMuted: mix(accentMuted, other.accentMuted),
+      cell1: mix(cell1, other.cell1),
+      cell2: mix(cell2, other.cell2),
+      cell3: mix(cell3, other.cell3),
+      chartGrid: mix(chartGrid, other.chartGrid),
+      chartTraceDepth: mix(chartTraceDepth, other.chartTraceDepth),
+      chartTracePpo2: mix(chartTracePpo2, other.chartTracePpo2),
+      chartTraceSetpoint: mix(chartTraceSetpoint, other.chartTraceSetpoint),
+      chartTraceGf99: mix(chartTraceGf99, other.chartTraceGf99),
+    );
+  }
 }
 
 class AppColors {
@@ -83,6 +152,14 @@ class AppColors {
     chartTraceSetpoint: Color(0xFFA0AEB6),
     chartTraceGf99: Color(0xFFF472B6),
   );
+}
+
+/// The active [ThemePalette]. Falls back to Wreck when the surrounding
+/// theme carries none, so a widget built outside the app theme (a test
+/// harness, a nested Theme) still gets a complete palette.
+extension PaletteContext on BuildContext {
+  ThemePalette get palette =>
+      Theme.of(this).extension<ThemePalette>() ?? AppColors.wreck;
 }
 
 // ── Typography ───────────────────────────────────────────────────────

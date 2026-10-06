@@ -6,8 +6,11 @@ import 'tokens.dart';
 class AppTheme {
   AppTheme._();
 
-  static ThemeData dark() {
-    const palette = AppColors.wreck;
+  /// The default theme (Wreck).
+  static ThemeData dark() => build(AppColors.wreck);
+
+  /// Builds the app's ThemeData from [palette]. Every theme is dark.
+  static ThemeData build(ThemePalette palette) {
 
     final colorScheme = ColorScheme(
       brightness: Brightness.dark,
@@ -44,6 +47,7 @@ class AppTheme {
 
     return ThemeData(
       useMaterial3: true,
+      extensions: [palette],
       colorScheme: colorScheme,
       textTheme: textTheme,
       scaffoldBackgroundColor: palette.surfaceBg,
