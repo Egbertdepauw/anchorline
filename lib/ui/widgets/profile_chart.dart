@@ -453,6 +453,7 @@ class ProfileChartPainter extends CustomPainter {
     required this.samples,
     required this.visibleTraces,
     required this.crosshairIndex,
+    required this.palette,
     this.cellCalibration,
     this.useSpeedColoredGraph = true,
     this.gasMixes,
@@ -461,7 +462,6 @@ class ProfileChartPainter extends CustomPainter {
     this.decoReplay,
     this.viewStart = 0.0,
     this.viewEnd = 1.0,
-    this.palette = AppColors.wreck, // palette-fallback
   });
 
   // ── shouldRepaint ──────────────────────────────────────────────

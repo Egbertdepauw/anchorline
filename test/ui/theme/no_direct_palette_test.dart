@@ -18,10 +18,7 @@ void main() {
       if (_allowed(path)) continue;
       final lines = entity.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
-        // A painter has no BuildContext, so it may default to Wreck on a line
-        // marked `// palette-fallback`.
-        if (lines[i].contains('AppColors.wreck') &&
-            !lines[i].contains('// palette-fallback')) {
+        if (lines[i].contains('AppColors.wreck')) {
           offenders.add('$path:${i + 1}: ${lines[i].trim()}');
         }
       }

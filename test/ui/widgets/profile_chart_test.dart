@@ -375,19 +375,23 @@ void main() {
     final p1 = ProfileChartPainter(
         samples: samples,
         visibleTraces: {TraceType.ppo2},
-        crosshairIndex: null);
+        crosshairIndex: null,
+        palette: AppColors.wreck);
     final p2 = ProfileChartPainter(
         samples: samples,
         visibleTraces: {TraceType.ppo2, TraceType.cells},
-        crosshairIndex: null);
+        crosshairIndex: null,
+        palette: AppColors.wreck);
     final p3 = ProfileChartPainter(
         samples: samples,
         visibleTraces: {TraceType.ppo2},
-        crosshairIndex: 10);
+        crosshairIndex: 10,
+        palette: AppColors.wreck);
     final p4 = ProfileChartPainter(
         samples: samples,
         visibleTraces: {TraceType.ppo2},
         crosshairIndex: null,
+        palette: AppColors.wreck,
         useSpeedColoredGraph: false);
     expect(p1.shouldRepaint(p2), isTrue);
     expect(p1.shouldRepaint(p3), isTrue);
@@ -400,13 +404,13 @@ void main() {
     final wreck = ProfileChartPainter(
         samples: samples,
         visibleTraces: {TraceType.ppo2},
-        crosshairIndex: null);
+        crosshairIndex: null,
+        palette: AppColors.wreck);
     final catppuccin = ProfileChartPainter(
         samples: samples,
         visibleTraces: {TraceType.ppo2},
         crosshairIndex: null,
         palette: AppThemes.byId('catppuccin').palette);
-    expect(wreck.palette, same(AppColors.wreck));
     expect(wreck.shouldRepaint(catppuccin), isTrue);
     expect(catppuccin.shouldRepaint(catppuccin), isFalse);
   });

@@ -112,6 +112,7 @@ class _CellMvChartState extends State<CellMvChart> {
                               painter: _ChartPainter(
                                 _series,
                                 theme,
+                                context.palette,
                                 _selectedIndex,
                                 _baseline,
                                 _recent,
@@ -319,18 +320,18 @@ typedef _Ref = ({double mv, Color color, String label, bool dashed});
 class _ChartPainter extends CustomPainter {
   final List<({DateTime date, double mv, String diveId})> series;
   final ThemeData theme;
+  final ThemePalette palette;
   final int? selectedIndex;
   final double? baseline;
   final double? recent;
 
   _ChartPainter(
-      this.series, this.theme, this.selectedIndex, this.baseline, this.recent);
+      this.series, this.theme, this.palette, this.selectedIndex, this.baseline,
+      this.recent);
 
-  ThemePalette get _palette =>
-      theme.extension<ThemePalette>() ?? AppColors.wreck; // palette-fallback
-  Color get _gridColor => _palette.chartGrid;
-  Color get _axisLabel => _palette.textSecondary;
-  Color get _pillBg => _palette.surfaceBg.withValues(alpha: 0.8);
+  Color get _gridColor => palette.chartGrid;
+  Color get _axisLabel => palette.textSecondary;
+  Color get _pillBg => palette.surfaceBg.withValues(alpha: 0.8);
   static const _healthyColor = SafetyColors.success;
   static const _watchColor = SafetyColors.warning;
   static const _replaceColor = SafetyColors.danger;
@@ -564,6 +565,7 @@ class _ChartPainter extends CustomPainter {
   bool shouldRepaint(covariant _ChartPainter old) =>
       old.series != series ||
       old.theme != theme ||
+      !identical(old.palette, palette) ||
       old.selectedIndex != selectedIndex ||
       old.baseline != baseline ||
       old.recent != recent;
