@@ -544,4 +544,70 @@ void main() {
       expect(n2.vpmbConservatism, 3);
     });
   });
+
+  group('theme id', () {
+    test('defaults to wreck when nothing is stored', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.themeId, 'wreck');
+    });
+
+    test('reads a stored id on load', () async {
+      SharedPreferences.setMockInitialValues({'app_theme': 'catppuccin'});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.themeId, 'catppuccin');
+    });
+
+    test('an unknown stored id resolves to wreck', () async {
+      SharedPreferences.setMockInitialValues({'app_theme': 'solarized'});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.themeId, 'wreck');
+    });
+
+    test('a stored value of the wrong type resolves to wreck, no throw',
+        () async {
+      SharedPreferences.setMockInitialValues({'app_theme': 42});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.themeId, 'wreck');
+    });
+
+    test('setThemeId persists across a reload and notifies', () async {
+      SharedPreferences.setMockInitialValues({});
+      final n1 = SettingsNotifier();
+      await n1.load();
+      var notified = 0;
+      n1.addListener(() => notified++);
+      await n1.setThemeId('hackerman');
+      expect(n1.themeId, 'hackerman');
+      expect(notified, 1);
+
+      final n2 = SettingsNotifier();
+      await n2.load();
+      expect(n2.themeId, 'hackerman');
+    });
+
+    test('setThemeId with the current id does not notify', () async {
+      SharedPreferences.setMockInitialValues({'app_theme': 'miasma'});
+      final n = SettingsNotifier();
+      await n.load();
+      var notified = 0;
+      n.addListener(() => notified++);
+      await n.setThemeId('miasma');
+      expect(notified, 0);
+    });
+
+    test('setThemeId with an unknown id stores wreck', () async {
+      SharedPreferences.setMockInitialValues({'app_theme': 'ethereal'});
+      final n = SettingsNotifier();
+      await n.load();
+      await n.setThemeId('no-such-theme');
+      expect(n.themeId, 'wreck');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('app_theme'), 'wreck');
+    });
+  });
 }

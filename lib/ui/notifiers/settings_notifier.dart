@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../theme/app_themes.dart';
 import '../widgets/map_tile_sources.dart' show MapLayerStyle;
 import '../widgets/trace_segmented_bar.dart' show TraceType;
 
 class SettingsNotifier extends ChangeNotifier {
+  static const _kThemeId = 'app_theme';
   static const _kSpeedColored = 'use_speed_colored_graph';
   static const _kVisibleTraces = 'visible_traces';
   static const _kMapLayerStyle = 'map_layer_style';
@@ -47,6 +49,7 @@ class SettingsNotifier extends ChangeNotifier {
     TraceType.gasChanges,
   };
 
+  String _themeId = AppThemes.defaultId;
   bool _useSpeedColoredGraph = true;
   Set<TraceType> _visibleTraces = {..._defaultVisibleTraces};
   MapLayerStyle _mapLayerStyle = MapLayerStyle.normal;
@@ -97,6 +100,9 @@ class SettingsNotifier extends ChangeNotifier {
   // settles to the target on cooldown.
   double _blendFillTempC = 18;
   double _blendSettledTempC = 18;
+
+  /// Id of the selected theme. Always a registered id.
+  String get themeId => _themeId;
 
   bool get useSpeedColoredGraph => _useSpeedColoredGraph;
   Set<TraceType> get visibleTraces => Set.unmodifiable(_visibleTraces);
@@ -240,7 +246,21 @@ class SettingsNotifier extends ChangeNotifier {
     final bSettled = prefs.getDouble(_kBlendSettledTempC);
     if (bSettled != null) _blendSettledTempC = bSettled.clamp(-20.0, 80.0);
 
+    // `get` rather than `getString`: a value of the wrong type must fall
+    // back to the default, not throw before the first frame.
+    final storedTheme = prefs.get(_kThemeId);
+    _themeId = AppThemes.byId(storedTheme is String ? storedTheme : null).id;
+
     notifyListeners();
+  }
+
+  Future<void> setThemeId(String id) async {
+    final resolved = AppThemes.byId(id).id;
+    if (_themeId == resolved) return;
+    _themeId = resolved;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kThemeId, resolved);
   }
 
   Future<void> setUseSpeedColoredGraph(bool v) async {
