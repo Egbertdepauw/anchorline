@@ -10,6 +10,7 @@ import '../components/numeric_readout.dart';
 import '../components/section_header.dart';
 import '../components/stat_tile.dart';
 import '../components/status_dot.dart';
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 
 class WidgetbookScreen extends StatelessWidget {
@@ -27,9 +28,9 @@ class WidgetbookScreen extends StatelessWidget {
           _swatchRow(context, 'surface.card', AppColors.wreck.surfaceCard),
           _swatchRow(context, 'surface.raised', AppColors.wreck.surfaceRaised),
           _swatchRow(context, 'accent.primary', AppColors.wreck.accentPrimary),
-          _swatchRow(context, 'status.success', AppColors.wreck.statusSuccess),
-          _swatchRow(context, 'status.warning', AppColors.wreck.statusWarning),
-          _swatchRow(context, 'status.danger', AppColors.wreck.statusDanger),
+          _swatchRow(context, 'status.success', SafetyColors.success),
+          _swatchRow(context, 'status.warning', SafetyColors.warning),
+          _swatchRow(context, 'status.danger', SafetyColors.danger),
           _swatchRow(context, 'cell.1', AppColors.wreck.cell1),
           _swatchRow(context, 'cell.2', AppColors.wreck.cell2),
           _swatchRow(context, 'cell.3', AppColors.wreck.cell3),
@@ -102,17 +103,17 @@ class WidgetbookScreen extends StatelessWidget {
               IconChip(label: 'Deep', icon: Icons.south, onTap: () {}),
               const IconChip(label: 'WIP'),
               Row(mainAxisSize: MainAxisSize.min, children: [
-                StatusDot(color: AppColors.wreck.statusSuccess),
+                StatusDot(color: SafetyColors.success),
                 const SizedBox(width: Spacing.xs),
                 const Text('online'),
               ]),
               Row(mainAxisSize: MainAxisSize.min, children: [
-                StatusDot(color: AppColors.wreck.statusWarning),
+                StatusDot(color: SafetyColors.warning),
                 const SizedBox(width: Spacing.xs),
                 const Text('skipped'),
               ]),
               Row(mainAxisSize: MainAxisSize.min, children: [
-                StatusDot(color: AppColors.wreck.statusDanger),
+                StatusDot(color: SafetyColors.danger),
                 const SizedBox(width: Spacing.xs),
                 const Text('failed'),
               ]),

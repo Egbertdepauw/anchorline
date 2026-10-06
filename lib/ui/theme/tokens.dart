@@ -25,10 +25,6 @@ class ThemePalette {
     required this.textInverse,
     required this.accentPrimary,
     required this.accentMuted,
-    required this.statusSuccess,
-    required this.statusWarning,
-    required this.statusDanger,
-    required this.statusInfo,
     required this.cell1,
     required this.cell2,
     required this.cell3,
@@ -49,10 +45,6 @@ class ThemePalette {
   final Color textInverse;
   final Color accentPrimary;
   final Color accentMuted;
-  final Color statusSuccess;
-  final Color statusWarning;
-  final Color statusDanger;
-  final Color statusInfo;
   final Color cell1;
   final Color cell2;
   final Color cell3;
@@ -82,10 +74,6 @@ class AppColors {
     // ThemeData wiring in app_theme.dart.
     accentPrimary: AnchorlineColors.reelOrange,
     accentMuted: Color(0xFF806633),
-    statusSuccess: Color(0xFF4ADE80),
-    statusWarning: Color(0xFFF39C12),
-    statusDanger: Color(0xFFE74C3C),
-    statusInfo: Color(0xFF60A5FA),
     cell1: Color(0xFF4ADE80),
     cell2: Color(0xFF60A5FA),
     cell3: Color(0xFFF472B6),

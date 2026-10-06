@@ -1,4 +1,5 @@
 import 'package:ccrlogger/ui/theme/app_theme.dart';
+import 'package:ccrlogger/ui/theme/safety_colors.dart';
 import 'package:ccrlogger/ui/theme/tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,7 +9,7 @@ void main() {
     final t = AppTheme.dark();
     expect(t.colorScheme.surface, AppColors.wreck.surfaceBg);
     expect(t.colorScheme.primary, AppColors.wreck.accentPrimary);
-    expect(t.colorScheme.error, AppColors.wreck.statusDanger);
+    expect(t.colorScheme.error, SafetyColors.danger);
     expect(t.scaffoldBackgroundColor, AppColors.wreck.surfaceBg);
   });
 

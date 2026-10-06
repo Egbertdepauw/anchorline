@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'safety_colors.dart';
 import 'tokens.dart';
 
 class AppTheme {
@@ -14,7 +15,7 @@ class AppTheme {
       onPrimary: palette.textInverse,
       secondary: palette.accentMuted,
       onSecondary: palette.textPrimary,
-      error: palette.statusDanger,
+      error: SafetyColors.danger,
       onError: palette.textPrimary,
       surface: palette.surfaceBg,
       onSurface: palette.textPrimary,

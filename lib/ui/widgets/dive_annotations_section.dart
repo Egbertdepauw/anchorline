@@ -8,6 +8,7 @@ import '../notifiers/dive_annotations_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import '../screens/map_picker_screen.dart';
 import '../screens/sites_map_screen.dart';
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import 'chip_input.dart';
 import 'site_form_view.dart';
@@ -191,7 +192,7 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
             autocompleteOptions: _buddyOptions,
             onChanged: _n.setBuddies,
             // Cool blue — identity / people taxonomy.
-            accentColor: AppColors.wreck.statusInfo,
+            accentColor: SafetyColors.info,
           ),
 
           const SizedBox(height: 16),

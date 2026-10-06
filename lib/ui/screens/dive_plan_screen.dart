@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import '../../analysis/bailout/ascent_simulator.dart' show AscentStop;
 import '../notifiers/dive_plan_notifier.dart';
 import '../notifiers/settings_notifier.dart';
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../widgets/bailout_section.dart';
 import '../widgets/dive_profile_chart.dart';
@@ -229,7 +230,7 @@ class _PlanNameField extends StatelessWidget {
         if (notifier.isDirty)
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: _DirtyPip(color: AppColors.wreck.statusWarning),
+            child: _DirtyPip(color: SafetyColors.warning),
           ),
         Expanded(
           child: TextField(
@@ -362,7 +363,7 @@ class _PlanTab extends StatelessWidget {
         children: [
           // ── INPUTS ────────────────────────────────────────────────
           _SectionCard(
-            accent: AppColors.wreck.statusInfo,
+            accent: SafetyColors.info,
             label: 'SETTINGS',
             // Settings panel renders its own header so suppress the
             // card-level title to avoid double-labelling.
@@ -470,7 +471,7 @@ class _BailoutTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _SectionCard(
-            accent: AppColors.wreck.statusWarning,
+            accent: SafetyColors.warning,
             label: 'BAILOUT BOTTLES',
             suppressLabel: true,
             child: PlanBailoutBottlesEditor(

@@ -16,6 +16,7 @@ import '../../data/db/database.dart';
 import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
 import '../../data/models/sample_set.dart';
 import 'trace_segmented_bar.dart' show TraceType;
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../util/tank_labels.dart';
 
@@ -67,14 +68,14 @@ const double _bottomPad = 24.0;
 final Color _depthColor = AppColors.wreck.chartTraceDepth;
 final Color _ppo2Color = AppColors.wreck.chartTracePpo2;
 final Color _setpointColor = AppColors.wreck.chartTraceSetpoint;
-final Color _decoColor = AppColors.wreck.statusWarning;
+const Color _decoColor = SafetyColors.warning;
 final Color _cell0Color = AppColors.wreck.cell1;
 final Color _cell1Color = AppColors.wreck.cell2;
 final Color _cell2Color = AppColors.wreck.cell3;
 const Color _crosshairColor = Color(0x80FFFFFF);
 final Color _gridColor = AppColors.wreck.chartGrid;
-final Color _gasChangeColor = AppColors.wreck.statusInfo;
-final Color _bailoutColor = AppColors.wreck.statusDanger;
+const Color _gasChangeColor = SafetyColors.info;
+const Color _bailoutColor = SafetyColors.danger;
 // Water temperature trace — must match the swatch in
 // `trace_segmented_bar.dart` so the dot in the legend agrees with the
 // trace on the chart.

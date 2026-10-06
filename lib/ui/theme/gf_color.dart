@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'safety_colors.dart';
+
 /// Colour for a gradient-factor readout, banded by severity. Shared by the
 /// dive-detail stat tiles and the profile crosshair so GF readouts speak one
 /// colour language from one definition.
@@ -8,7 +10,7 @@ import 'package:flutter/material.dart';
 /// match the long-standing dive-detail behaviour: `gf == gfHigh` is still
 /// green, `gf == 100` is still amber.
 Color gfBandColor(double gf, {double gfHigh = 85}) {
-  if (gf > 100) return const Color(0xFFDC2626); // red — supersaturated
-  if (gf > gfHigh) return const Color(0xFFF59E0B); // amber — over GF-high
-  return const Color(0xFF4ADE80); // green — within limits
+  if (gf > 100) return SafetyColors.gfOverLimit; // red — supersaturated
+  if (gf > gfHigh) return SafetyColors.gfOverHigh; // amber — over GF-high
+  return SafetyColors.gfWithinLimits; // green — within limits
 }

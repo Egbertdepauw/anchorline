@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../../analysis/blending/gas_blender.dart';
 import '../notifiers/blend_notifier.dart';
 import '../notifiers/settings_notifier.dart';
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 
 class BlendScreen extends StatefulWidget {
@@ -55,7 +56,7 @@ class _BlendScreenState extends State<BlendScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _Card(
-                accent: AppColors.wreck.statusInfo,
+                accent: SafetyColors.info,
                 label: 'CURRENT CYLINDER',
                 child: _CylinderInputs(
                   o2: widget.notifier.currentOxygenPercent,
@@ -391,10 +392,10 @@ class _BlendOutput extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.all(Spacing.sm + 2),
         decoration: BoxDecoration(
-          color: AppColors.wreck.statusDanger.withValues(alpha: 0.12),
+          color: SafetyColors.danger.withValues(alpha: 0.12),
           borderRadius: Radii.cardBr,
           border: Border(
-            left: BorderSide(color: AppColors.wreck.statusDanger, width: 3),
+            left: BorderSide(color: SafetyColors.danger, width: 3),
           ),
         ),
         child: Text(
@@ -412,11 +413,11 @@ class _BlendOutput extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(Spacing.sm),
               decoration: BoxDecoration(
-                color: AppColors.wreck.statusWarning.withValues(alpha: 0.12),
+                color: SafetyColors.warning.withValues(alpha: 0.12),
                 borderRadius: Radii.cardBr,
                 border: Border(
                   left: BorderSide(
-                      color: AppColors.wreck.statusWarning, width: 3),
+                      color: SafetyColors.warning, width: 3),
                 ),
               ),
               child: Text(
@@ -466,10 +467,10 @@ class _BlendOutput extends StatelessWidget {
             padding: const EdgeInsets.symmetric(
                 horizontal: Spacing.sm, vertical: Spacing.xs),
             decoration: BoxDecoration(
-              color: AppColors.wreck.statusInfo.withValues(alpha: 0.12),
+              color: SafetyColors.info.withValues(alpha: 0.12),
               borderRadius: Radii.cardBr,
               border: Border(
-                left: BorderSide(color: AppColors.wreck.statusInfo, width: 3),
+                left: BorderSide(color: SafetyColors.info, width: 3),
               ),
             ),
             child: Text(
@@ -526,11 +527,11 @@ class _BlendOutput extends StatelessWidget {
   Color _colorForStep(BlendStep s) {
     switch (s.kind) {
       case BlendStepKind.drain:
-        return AppColors.wreck.statusWarning;
+        return SafetyColors.warning;
       case BlendStepKind.addHe:
         return AppColors.wreck.cell2;
       case BlendStepKind.addO2:
-        return AppColors.wreck.statusSuccess;
+        return SafetyColors.success;
       case BlendStepKind.addTopoff:
         return AppColors.wreck.textSecondary;
     }
