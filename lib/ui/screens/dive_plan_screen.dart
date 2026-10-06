@@ -237,16 +237,16 @@ class _PlanNameField extends StatelessWidget {
             controller: controller,
             onChanged: notifier.setPlanName,
             style: AppTypography.title.copyWith(
-              color: AppColors.wreck.textPrimary,
+              color: context.palette.textPrimary,
             ),
-            cursorColor: AppColors.wreck.accentPrimary,
+            cursorColor: context.palette.accentPrimary,
             decoration: InputDecoration(
               isCollapsed: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 12),
               border: InputBorder.none,
               hintText: 'Name this plan…',
               hintStyle: AppTypography.title.copyWith(
-                color: AppColors.wreck.textMuted,
+                color: context.palette.textMuted,
               ),
             ),
           ),
@@ -305,7 +305,7 @@ class _SaveButton extends StatelessWidget {
     final label = overwrite ? 'Overwrite' : 'Save';
     final iconData =
         overwrite ? Icons.save_alt_outlined : Icons.save_outlined;
-    final fg = AppColors.wreck.textPrimary;
+    final fg = context.palette.textPrimary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
       child: dirty
@@ -327,7 +327,7 @@ class _SaveButton extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: fg,
                 padding: const EdgeInsets.symmetric(horizontal: 10),
-                side: BorderSide(color: AppColors.wreck.surfaceBezel),
+                side: BorderSide(color: context.palette.surfaceBezel),
               ),
             ),
     );
@@ -378,7 +378,7 @@ class _PlanTab extends StatelessWidget {
           ),
           const SizedBox(height: Spacing.sm),
           _SectionCard(
-            accent: AppColors.wreck.cell2, // blue — input
+            accent: context.palette.cell2, // blue — input
             label: 'GASES',
             // Gases editor renders its own GASES header; suppress here.
             suppressLabel: true,
@@ -392,7 +392,7 @@ class _PlanTab extends StatelessWidget {
           ),
           const SizedBox(height: Spacing.sm),
           _SectionCard(
-            accent: AppColors.wreck.cell1, // green — segments are the
+            accent: context.palette.cell1, // green — segments are the
                                             // diver's actual dive shape
             label: 'SEGMENTS',
             suppressLabel: true,
@@ -409,7 +409,7 @@ class _PlanTab extends StatelessWidget {
           const SizedBox(height: Spacing.md),
           // ── OUTPUTS ───────────────────────────────────────────────
           _SectionCard(
-            accent: AppColors.wreck.accentPrimary, // amber — output
+            accent: context.palette.accentPrimary, // amber — output
             label: 'OUTPUT',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -484,7 +484,7 @@ class _BailoutTab extends StatelessWidget {
           ),
           const SizedBox(height: Spacing.md),
           _SectionCard(
-            accent: AppColors.wreck.accentPrimary,
+            accent: context.palette.accentPrimary,
             label: 'BAILOUT PROFILE',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -550,7 +550,7 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.wreck.surfaceCard,
+        color: context.palette.surfaceCard,
         borderRadius: Radii.cardBr,
         border: Border(
           left: BorderSide(color: accent, width: 3),

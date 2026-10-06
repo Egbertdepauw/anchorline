@@ -71,7 +71,7 @@ class _BlendScreenState extends State<BlendScreen> {
               ),
               const SizedBox(height: Spacing.sm),
               _Card(
-                accent: AppColors.wreck.cell1,
+                accent: context.palette.cell1,
                 label: 'TARGET',
                 child: _CylinderInputs(
                   o2: widget.notifier.targetOxygenPercent,
@@ -86,7 +86,7 @@ class _BlendScreenState extends State<BlendScreen> {
               ),
               const SizedBox(height: Spacing.sm),
               _Card(
-                accent: AppColors.wreck.cell2,
+                accent: context.palette.cell2,
                 label: 'TOP-OFF',
                 child: _TopoffControls(
                   o2: widget.notifier.topoffOxygenPercent,
@@ -104,7 +104,7 @@ class _BlendScreenState extends State<BlendScreen> {
               ),
               const SizedBox(height: Spacing.md),
               _Card(
-                accent: AppColors.wreck.accentPrimary,
+                accent: context.palette.accentPrimary,
                 label: 'FILL PLAN',
                 child: _BlendOutput(result: widget.notifier.result),
               ),
@@ -356,12 +356,12 @@ class _TopoffChip extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: Radii.chipBr,
           color: selected
-              ? AppColors.wreck.accentPrimary.withValues(alpha: 0.18)
-              : AppColors.wreck.surfaceRaised,
+              ? context.palette.accentPrimary.withValues(alpha: 0.18)
+              : context.palette.surfaceRaised,
           border: Border.all(
             color: selected
-                ? AppColors.wreck.accentPrimary
-                : AppColors.wreck.surfaceBezel,
+                ? context.palette.accentPrimary
+                : context.palette.surfaceBezel,
           ),
         ),
         child: Text(label, style: AppTypography.caption),
@@ -439,7 +439,7 @@ class _BlendOutput extends StatelessWidget {
                   child: Text(
                     _verbForStep(step),
                     style: AppTypography.label.copyWith(
-                      color: _colorForStep(step),
+                      color: _colorForStep(step, context.palette),
                     ),
                   ),
                 ),
@@ -452,7 +452,7 @@ class _BlendOutput extends StatelessWidget {
                 Text(
                   '→ ${step.cumulativePressureBar.toStringAsFixed(0)} bar',
                   style: AppTypography.readoutSm.copyWith(
-                    color: AppColors.wreck.textSecondary,
+                    color: context.palette.textSecondary,
                   ),
                 ),
               ],
@@ -524,16 +524,16 @@ class _BlendOutput extends StatelessWidget {
     }
   }
 
-  Color _colorForStep(BlendStep s) {
+  Color _colorForStep(BlendStep s, ThemePalette palette) {
     switch (s.kind) {
       case BlendStepKind.drain:
         return SafetyColors.warning;
       case BlendStepKind.addHe:
-        return AppColors.wreck.cell2;
+        return palette.cell2;
       case BlendStepKind.addO2:
         return SafetyColors.success;
       case BlendStepKind.addTopoff:
-        return AppColors.wreck.textSecondary;
+        return palette.textSecondary;
     }
   }
 
@@ -617,7 +617,7 @@ class _IntFieldState extends State<_IntField> {
         decoration: InputDecoration(
           isDense: true,
           filled: true,
-          fillColor: AppColors.wreck.surfaceRaised,
+          fillColor: context.palette.surfaceRaised,
           labelText: widget.label,
           suffixText: widget.suffix,
           contentPadding:
@@ -688,7 +688,7 @@ class _DoubleFieldState extends State<_DoubleField> {
         decoration: InputDecoration(
           isDense: true,
           filled: true,
-          fillColor: AppColors.wreck.surfaceRaised,
+          fillColor: context.palette.surfaceRaised,
           labelText: widget.label,
           suffixText: widget.suffix,
           contentPadding:
@@ -718,7 +718,7 @@ class _Card extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.wreck.surfaceCard,
+        color: context.palette.surfaceCard,
         borderRadius: Radii.cardBr,
         border: Border(left: BorderSide(color: accent, width: 3)),
       ),

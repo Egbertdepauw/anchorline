@@ -203,7 +203,7 @@ class _DiveAnnotationsSectionState extends State<DiveAnnotationsSection> {
             autocompleteOptions: _tagOptions,
             onChanged: _n.setTags,
             // Warm sodium-vapor amber — active classification / labels.
-            accentColor: AppColors.wreck.accentPrimary,
+            accentColor: context.palette.accentPrimary,
           ),
 
           const SizedBox(height: 16),
