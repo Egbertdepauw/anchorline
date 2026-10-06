@@ -7,6 +7,8 @@ import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
 import 'package:ccrlogger/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/ui/widgets/trace_segmented_bar.dart' show TraceType;
+import 'package:ccrlogger/ui/theme/app_themes.dart';
+import 'package:ccrlogger/ui/theme/tokens.dart';
 import 'package:ccrlogger/ui/util/tank_labels.dart';
 import 'package:ccrlogger/ui/widgets/profile_chart.dart';
 import 'package:flutter/material.dart';
@@ -391,5 +393,47 @@ void main() {
     expect(p1.shouldRepaint(p3), isTrue);
     expect(p1.shouldRepaint(p4), isTrue);
     expect(p1.shouldRepaint(p1), isFalse);
+  });
+
+  test('shouldRepaint detects a palette change', () {
+    final samples = _loadSamples();
+    final wreck = ProfileChartPainter(
+        samples: samples,
+        visibleTraces: {TraceType.ppo2},
+        crosshairIndex: null);
+    final catppuccin = ProfileChartPainter(
+        samples: samples,
+        visibleTraces: {TraceType.ppo2},
+        crosshairIndex: null,
+        palette: AppThemes.byId('catppuccin').palette);
+    expect(wreck.palette, same(AppColors.wreck));
+    expect(wreck.shouldRepaint(catppuccin), isTrue);
+    expect(catppuccin.shouldRepaint(catppuccin), isFalse);
+  });
+
+  testWidgets('ProfileChart hands the active palette to its painter',
+      (tester) async {
+    final samples = _loadSamples();
+    final theme = AppThemes.byId('ethereal');
+    await tester.pumpWidget(MaterialApp(
+        theme: theme.themeData,
+        home: Scaffold(
+            body: SizedBox(
+                width: 400,
+                height: 300,
+                child: ProfileChart(
+                    samples: samples,
+                    visibleTraces: {TraceType.ppo2},
+                    crosshairIndex: null)))));
+
+    final painters = tester
+        .widgetList<CustomPaint>(find.descendant(
+            of: find.byType(ProfileChart), matching: find.byType(CustomPaint)))
+        .map((c) => c.painter)
+        .whereType<ProfileChartPainter>()
+        .toList();
+    expect(painters, hasLength(1));
+    expect(painters.single.palette, same(theme.palette));
+    expect(tester.takeException(), isNull);
   });
 }

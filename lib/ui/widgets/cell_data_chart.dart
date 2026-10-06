@@ -65,11 +65,12 @@ class CellDataChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cell0 = AppColors.wreck.cell1;
-    final cell1 = AppColors.wreck.cell2;
-    final cell2 = AppColors.wreck.cell3;
-    final ppo2Color = AppColors.wreck.chartTracePpo2;
-    final setpointColor = AppColors.wreck.chartTraceSetpoint;
+    final palette = context.palette;
+    final cell0 = palette.cell1;
+    final cell1 = palette.cell2;
+    final cell2 = palette.cell3;
+    final ppo2Color = palette.chartTracePpo2;
+    final setpointColor = palette.chartTraceSetpoint;
 
     final hasCells = _hasNonZero(samples.cellMv0) ||
         _hasNonZero(samples.cellMv1) ||
@@ -107,7 +108,7 @@ class CellDataChart extends StatelessWidget {
               cell2Color: cell2,
               ppo2Color: ppo2Color,
               setpointColor: setpointColor,
-              gridColor: AppColors.wreck.chartGrid,
+              gridColor: palette.chartGrid,
               hasCells: hasCells,
               hasPpo2: hasPpo2,
               hasSetpoint: hasSetpoint,
@@ -241,7 +242,13 @@ class _CellDataPainter extends CustomPainter {
       !identical(old.samples, samples) ||
       old.cal0 != cal0 ||
       old.cal1 != cal1 ||
-      old.cal2 != cal2;
+      old.cal2 != cal2 ||
+      old.cell0Color != cell0Color ||
+      old.cell1Color != cell1Color ||
+      old.cell2Color != cell2Color ||
+      old.ppo2Color != ppo2Color ||
+      old.setpointColor != setpointColor ||
+      old.gridColor != gridColor;
 }
 
 class _Legend extends StatelessWidget {
