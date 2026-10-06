@@ -597,11 +597,12 @@ class ProfileChartPainter extends CustomPainter {
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round;
         final mpmPerSample = 60000.0 / samples.sampleIntervalMs;
+        final anchors = _vSpeedAnchorsFor(palette.chartTraceDepth);
         for (int i = 1; i < n; i++) {
           final rate =
               (samples.depthMeters[i] - samples.depthMeters[i - 1]) *
                   mpmPerSample;
-          segPaint.color = _colorForRate(rate);
+          segPaint.color = _colorForRate(rate, anchors);
           canvas.drawLine(
             Offset(xOf(i - 1), yDepth(samples.depthMeters[i - 1])),
             Offset(xOf(i), yDepth(samples.depthMeters[i])),
@@ -1002,8 +1003,8 @@ class ProfileChartPainter extends CustomPainter {
 
   // ── Trace helpers ──────────────────────────────────────────────
 
-  Color _colorForRate(double mPerMin) {
-    final anchors = _vSpeedAnchorsFor(palette.chartTraceDepth);
+  Color _colorForRate(
+      double mPerMin, List<({double speed, Color color})> anchors) {
     if (mPerMin <= anchors.first.speed) {
       return anchors.first.color;
     }
