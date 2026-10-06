@@ -4,7 +4,9 @@ import 'omarchy_colors.dart';
 
 /// Omarchy "Hackerman" — themes/hackerman/colors.toml, read 2026-10-06.
 /// Its "red", "yellow" and "orange" are all greens, and blue and magenta
-/// are nearly identical, so cells keep the Wreck colours.
+/// are nearly identical, so cells keep the Wreck colours. Its "yellow" is a
+/// teal too close to the cell 1 green, so the PPO2 trace keeps the Wreck
+/// colour.
 const OmarchyColors hackermanColors = OmarchyColors(
   accent: Color(0xFF82FB9C),
   selection: Color(0xFF1F253A),
@@ -32,5 +34,5 @@ const OmarchyColors hackermanColors = OmarchyColors(
   brightBlue: Color(0xFFC4D2ED),
   brightMagenta: Color(0xFFCDDBF4),
   useOwnCellColors: false,
-  useOwnPpo2Color: true,
+  useOwnPpo2Color: false,
 );

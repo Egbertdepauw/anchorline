@@ -6,7 +6,8 @@ import 'tokens.dart';
 class AppTheme {
   AppTheme._();
 
-  /// The default theme (Wreck).
+  /// The default theme (Wreck). Builds a fresh `ThemeData` on each call and
+  /// is kept for tests; app code should use `AppThemes.byId(...).themeData`.
   static ThemeData dark() => build(AppColors.wreck);
 
   /// Builds the app's ThemeData from [palette]. Every theme is dark.

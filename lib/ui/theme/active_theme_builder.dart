@@ -13,9 +13,14 @@ class ActiveThemeBuilder extends StatelessWidget {
     required this.settings,
     required this.builder,
     this.child,
+    this.enabled = kThemingEnabled,
   });
 
   final SettingsNotifier settings;
+
+  /// When false the default theme is used whatever is stored; the stored
+  /// value is left untouched.
+  final bool enabled;
   final Widget Function(BuildContext context, ThemeData theme, Widget? child)
       builder;
   final Widget? child;
@@ -27,7 +32,7 @@ class ActiveThemeBuilder extends StatelessWidget {
       child: child,
       builder: (context, child) => builder(
         context,
-        AppThemes.byId(settings.themeId).themeData,
+        AppThemes.byId(enabled ? settings.themeId : null).themeData,
         child,
       ),
     );

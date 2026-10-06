@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -23,6 +22,7 @@ import '../../sync/subsurface_git/credentials.dart';
 import '../../sync/subsurface_git/sync_orchestrator.dart';
 import '../dev/widgetbook_screen.dart';
 import '../notifiers/settings_notifier.dart';
+import '../theme/app_themes.dart';
 import '../theme/tokens.dart';
 import '../widgets/subsurface_sync_section.dart';
 import '../widgets/theme_picker.dart';
@@ -58,9 +58,9 @@ class SettingsScreen extends StatefulWidget {
   /// instantiates this alongside the orchestrator at app boot.
   final SubsurfaceBootstrapImporter? subsurfaceBootstrapImporter;
 
-  /// Whether to show the theme picker. Debug builds only for now: until
-  /// the loose colour literals are swept (stage 2), non-default themes
-  /// look half-applied.
+  /// Whether to show the theme picker. Follows [kThemingEnabled] (debug
+  /// builds only for now): until the loose colour literals are swept
+  /// (stage 2), non-default themes look half-applied.
   final bool showThemePicker;
 
   const SettingsScreen({
@@ -76,7 +76,7 @@ class SettingsScreen extends StatefulWidget {
     this.subsurfaceCredentials,
     this.diveDao,
     this.subsurfaceBootstrapImporter,
-    this.showThemePicker = kDebugMode,
+    this.showThemePicker = kThemingEnabled,
   });
 
   @override

@@ -4,14 +4,15 @@ import 'anchorline_colors.dart';
 
 /// Single source of truth for every visual decision in CCRLog.
 ///
-/// Widgets should read theme values via `Theme.of(context)` once we've
-/// built the `ThemeData` from these tokens. Direct references to this
-/// file are appropriate inside theme construction and inside the
-/// chart layers where there's no `BuildContext`.
+/// Widgets read colours with `context.palette`. Painters, which have no
+/// `BuildContext`, receive the palette from the widget that owns them.
+/// Only the theme layer itself names `AppColors.wreck` (a test enforces
+/// this).
 
 // ── Palette ──────────────────────────────────────────────────────────
 
-/// A complete colour palette, carried in ThemeData as a theme extension. Read it in widgets with context.palette.
+/// A complete colour palette, carried in ThemeData as a theme extension.
+/// Read it in widgets with context.palette.
 class ThemePalette extends ThemeExtension<ThemePalette> {
   const ThemePalette({
     required this.surfaceBg,

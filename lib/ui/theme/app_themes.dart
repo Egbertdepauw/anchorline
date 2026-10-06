@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
@@ -8,6 +9,12 @@ import 'omarchy/miasma.dart';
 import 'omarchy/omarchy_mapping.dart';
 import 'omarchy/retro_82.dart';
 import 'tokens.dart';
+
+/// Whether the user can pick a theme, and whether a stored choice is
+/// applied. Debug builds only until the remaining loose colour literals
+/// are swept (stage 2): until then a non-default theme looks half-applied.
+/// Stage 2 turns this on for everyone by changing this one constant.
+const bool kThemingEnabled = kDebugMode;
 
 /// One selectable theme.
 class AppThemeDef {

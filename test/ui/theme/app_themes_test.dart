@@ -104,7 +104,7 @@ void main() {
             reason: '${t.id} cells');
         expect(
             ppo2ColorPasses(p.chartTracePpo2, p.chartTraceDepth,
-                p.chartTraceSetpoint, p.surfaceCard),
+                p.chartTraceSetpoint, p.surfaceCard, [p.cell1, p.cell2, p.cell3]),
             isTrue,
             reason: '${t.id} ppo2');
       }

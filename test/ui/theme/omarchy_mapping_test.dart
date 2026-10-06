@@ -139,6 +139,7 @@ void main() {
             p.chartTraceDepth,
             p.chartTraceSetpoint,
             card,
+            [p.cell1, p.cell2, p.cell3],
           ),
           reason: '$name useOwnPpo2Color',
         );
@@ -151,9 +152,11 @@ void main() {
       expect(retro82Colors.useOwnCellColors, isFalse);
       expect(hackermanColors.useOwnCellColors, isFalse);
       expect(miasmaColors.useOwnCellColors, isFalse);
-      for (final o in _sources.values) {
-        expect(o.useOwnPpo2Color, isTrue);
-      }
+      expect(etherealColors.useOwnPpo2Color, isTrue);
+      expect(retro82Colors.useOwnPpo2Color, isTrue);
+      expect(catppuccinColors.useOwnPpo2Color, isTrue);
+      expect(miasmaColors.useOwnPpo2Color, isTrue);
+      expect(hackermanColors.useOwnPpo2Color, isFalse);
     });
 
     test('own cell colours are used when stated, Wreck defaults otherwise', () {
@@ -168,7 +171,9 @@ void main() {
       expect(hack.cell2, AppColors.wreck.cell2);
       expect(hack.cell3, AppColors.wreck.cell3);
       expect(hack.chartTraceGf99, AppColors.wreck.chartTraceGf99);
-      expect(hack.chartTracePpo2, hackermanColors.yellow);
+      expect(hack.chartTracePpo2, AppColors.wreck.chartTracePpo2);
+      expect(paletteFromOmarchy(retro82Colors).chartTracePpo2,
+          retro82Colors.yellow);
     });
   });
 }

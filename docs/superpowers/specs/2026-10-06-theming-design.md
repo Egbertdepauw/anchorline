@@ -168,8 +168,9 @@ independently per theme:
   `#60A5FA`, `#F472B6`).
 - **PPO2** (`chartTracePpo2`). The theme uses its own `yellow` only if it
   is at least 3:1 against `surfaceCard` and has a CIEDE2000 difference of
-  at least 15 from both `chartTraceDepth` and `chartTraceSetpoint`.
-  Otherwise it takes Wreck's `#FFCC66`.
+  at least 15 from both `chartTraceDepth` and `chartTraceSetpoint`, and
+  from each of the theme's three final cell colours (they share the PPO2
+  axis). Otherwise it takes Wreck's `#FFCC66`.
 
 Each theme's source file states both choices explicitly, and a test
 verifies that the stated choices satisfy the rules and that whatever a
@@ -181,8 +182,11 @@ theme ends up with (own or default) also passes them. Computed outcome
 | Ethereal | own (closest pair 21.4) | own (17.4 / 18.8 from depth / setpoint) |
 | Retro 82 | default (blue = magenta) | own (27.6 / 38.9) |
 | Catppuccin | own (closest pair 28.0) | own (30.7 / 31.1) |
-| Hackerman | default (blue vs magenta 3.2) | own (22.4 / 27.9) |
+| Hackerman | default (blue vs magenta 3.2) | default (own is 14.7 from cell 1) |
 | Miasma | default (green vs blue 9.5) | own (30.6 / 23.0) |
+
+The cell check was added after the stage 1 code review: Hackerman's own
+PPO2 teal passed the depth/setpoint check but sat too close to cell 1.
 
 Why two groups and a lower PPO2 threshold: Ethereal and Retro 82 have
 cream foregrounds, so Wreck's default PPO2 yellow sits too close to their

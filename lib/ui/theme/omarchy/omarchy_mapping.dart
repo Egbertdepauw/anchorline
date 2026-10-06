@@ -23,8 +23,8 @@ const double kMinTraceContrast = 3.0;
 /// Minimum CIEDE2000 difference between any two cell colours.
 const double kMinCellDeltaE = 20;
 
-/// Minimum CIEDE2000 difference between the PPO2 trace and the depth and
-/// setpoint traces.
+/// Minimum CIEDE2000 difference between the PPO2 trace and the depth trace,
+/// the setpoint trace, and each cell colour.
 const double kMinPpo2DeltaE = 15;
 
 /// Returns [color] if it has at least [minRatio] contrast against every
@@ -58,13 +58,24 @@ bool cellColorsPass(Color c1, Color c2, Color c3, Color card) {
       deltaE2000(c2, c3) >= kMinCellDeltaE;
 }
 
-/// Whether [ppo2] can serve as the PPO2 trace on [card] next to the
-/// [depth] and [setpoint] traces.
-bool ppo2ColorPasses(Color ppo2, Color depth, Color setpoint, Color card) =>
+/// Whether [ppo2] can serve as the PPO2 trace on [card]: readable on the
+/// card, and clearly different from the [depth] and [setpoint] traces and
+/// from each of the three [cells], which share its axis.
+bool ppo2ColorPasses(
+  Color ppo2,
+  Color depth,
+  Color setpoint,
+  Color card,
+  List<Color> cells,
+) =>
     contrastRatio(ppo2, card) >= kMinTraceContrast &&
     deltaE2000(ppo2, depth) >= kMinPpo2DeltaE &&
-    deltaE2000(ppo2, setpoint) >= kMinPpo2DeltaE;
+    deltaE2000(ppo2, setpoint) >= kMinPpo2DeltaE &&
+    cells.every((c) => deltaE2000(ppo2, c) >= kMinPpo2DeltaE);
 
+/// Maps one Omarchy theme onto the app's tokens, lifting text colours to the
+/// contrast floors and using the Wreck cell / PPO2 colours where the theme's
+/// flags say its own are not distinct enough.
 ThemePalette paletteFromOmarchy(OmarchyColors o) {
   const wreck = AppColors.wreck;
   final surfaces = [o.background, o.lighterBackground];
