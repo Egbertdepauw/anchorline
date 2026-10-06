@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:git2dart/git2dart.dart' show PlatformSpecific;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart';
@@ -22,6 +21,7 @@ import 'sync/cloud/dives_powersync_migrator.dart';
 import 'sync/cloud/drift_crud_quarantine.dart';
 import 'sync/cloud/powersync_database.dart';
 import 'sync/cloud/usage_tracker.dart';
+import 'sync/subsurface_git/ssl_certs.dart';
 import 'ui/app_shell.dart';
 import 'ui/notifiers/settings_notifier.dart';
 import 'ui/theme/app_theme.dart';
@@ -29,14 +29,15 @@ import 'ui/theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Android: libgit2 (used by the Subsurface Cloud sync feature) ships
-  // without a CA bundle and Android's system trust store is at a path
-  // libgit2 can't read. git2dart includes a helper that extracts a
-  // bundled cacert.pem into the app's cache dir and points libgit2 at
-  // it. Without this call, every clone over HTTPS fails with
-  // "GIT_ERROR_SSL: the SSL certificate is invalid". No-op on
-  // non-Android platforms.
-  await PlatformSpecific.androidInitialize();
+  // Point libgit2 (Subsurface Cloud sync) at a CA bundle on the platforms
+  // that need it — Android and macOS. Without it every HTTPS git operation
+  // fails with "GIT_ERROR_SSL: the SSL certificate is invalid". Non-fatal:
+  // a failure here breaks git sync, but must never block app launch.
+  try {
+    await configureGitSslCerts();
+  } catch (e, st) {
+    debugPrint('configureGitSslCerts failed: $e\n$st');
+  }
 
   await Supabase.initialize(
     url: CloudConfig.supabaseUrl,
