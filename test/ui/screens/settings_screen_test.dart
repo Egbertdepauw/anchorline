@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:ccrlogger/sync/cloud/auth_service.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/settings_screen.dart';
+import 'package:ccrlogger/ui/widgets/theme_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -121,5 +122,35 @@ void main() {
     expect(find.text('Last synced: never'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Sign out'), findsOneWidget);
     expect(find.text('Sign in to enable cloud sync'), findsNothing);
+  });
+
+  testWidgets('shows the Appearance section when showThemePicker is true',
+      (tester) async {
+    final h = await _build(signedIn: false);
+    addTearDown(() {
+      h.auth.dispose();
+      h.client.dispose();
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: SettingsScreen(
+          notifier: h.settings, authService: h.auth, showThemePicker: true),
+    ));
+    expect(find.text('Appearance'), findsOneWidget);
+    expect(find.byType(ThemePicker), findsOneWidget);
+  });
+
+  testWidgets('hides the Appearance section when showThemePicker is false',
+      (tester) async {
+    final h = await _build(signedIn: false);
+    addTearDown(() {
+      h.auth.dispose();
+      h.client.dispose();
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: SettingsScreen(
+          notifier: h.settings, authService: h.auth, showThemePicker: false),
+    ));
+    expect(find.text('Appearance'), findsNothing);
+    expect(find.byType(ThemePicker), findsNothing);
   });
 }

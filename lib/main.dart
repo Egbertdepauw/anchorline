@@ -24,7 +24,7 @@ import 'sync/cloud/usage_tracker.dart';
 import 'sync/subsurface_git/ssl_certs.dart';
 import 'ui/app_shell.dart';
 import 'ui/notifiers/settings_notifier.dart';
-import 'ui/theme/app_theme.dart';
+import 'ui/theme/active_theme_builder.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -184,10 +184,9 @@ class CCRLogApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Anchorline',
-      theme: AppTheme.dark(),
-      home: AppShell(
+    return ActiveThemeBuilder(
+      settings: settings,
+      child: AppShell(
         db: db,
         powerSyncDb: powerSyncDb,
         settingsNotifier: settings,
@@ -196,7 +195,12 @@ class CCRLogApp extends StatelessWidget {
         cloudDataWiper: cloudDataWiper,
         usageTracker: usageTracker,
       ),
-      debugShowCheckedModeBanner: false,
+      builder: (context, theme, home) => MaterialApp(
+        title: 'Anchorline',
+        theme: theme,
+        home: home,
+        debugShowCheckedModeBanner: false,
+      ),
     );
   }
 }

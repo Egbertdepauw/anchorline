@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import '../../analysis/bailout/ascent_simulator.dart' show AscentStop;
 import '../notifiers/dive_plan_notifier.dart';
 import '../notifiers/settings_notifier.dart';
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../widgets/bailout_section.dart';
 import '../widgets/dive_profile_chart.dart';
@@ -229,23 +230,23 @@ class _PlanNameField extends StatelessWidget {
         if (notifier.isDirty)
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: _DirtyPip(color: AppColors.wreck.statusWarning),
+            child: _DirtyPip(color: SafetyColors.warning),
           ),
         Expanded(
           child: TextField(
             controller: controller,
             onChanged: notifier.setPlanName,
             style: AppTypography.title.copyWith(
-              color: AppColors.wreck.textPrimary,
+              color: context.palette.textPrimary,
             ),
-            cursorColor: AppColors.wreck.accentPrimary,
+            cursorColor: context.palette.accentPrimary,
             decoration: InputDecoration(
               isCollapsed: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 12),
               border: InputBorder.none,
               hintText: 'Name this plan…',
               hintStyle: AppTypography.title.copyWith(
-                color: AppColors.wreck.textMuted,
+                color: context.palette.textMuted,
               ),
             ),
           ),
@@ -304,7 +305,7 @@ class _SaveButton extends StatelessWidget {
     final label = overwrite ? 'Overwrite' : 'Save';
     final iconData =
         overwrite ? Icons.save_alt_outlined : Icons.save_outlined;
-    final fg = AppColors.wreck.textPrimary;
+    final fg = context.palette.textPrimary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
       child: dirty
@@ -326,7 +327,7 @@ class _SaveButton extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: fg,
                 padding: const EdgeInsets.symmetric(horizontal: 10),
-                side: BorderSide(color: AppColors.wreck.surfaceBezel),
+                side: BorderSide(color: context.palette.surfaceBezel),
               ),
             ),
     );
@@ -362,7 +363,7 @@ class _PlanTab extends StatelessWidget {
         children: [
           // ── INPUTS ────────────────────────────────────────────────
           _SectionCard(
-            accent: AppColors.wreck.statusInfo,
+            accent: SafetyColors.info,
             label: 'SETTINGS',
             // Settings panel renders its own header so suppress the
             // card-level title to avoid double-labelling.
@@ -377,7 +378,7 @@ class _PlanTab extends StatelessWidget {
           ),
           const SizedBox(height: Spacing.sm),
           _SectionCard(
-            accent: AppColors.wreck.cell2, // blue — input
+            accent: context.palette.cell2, // blue — input
             label: 'GASES',
             // Gases editor renders its own GASES header; suppress here.
             suppressLabel: true,
@@ -391,7 +392,7 @@ class _PlanTab extends StatelessWidget {
           ),
           const SizedBox(height: Spacing.sm),
           _SectionCard(
-            accent: AppColors.wreck.cell1, // green — segments are the
+            accent: context.palette.cell1, // green — segments are the
                                             // diver's actual dive shape
             label: 'SEGMENTS',
             suppressLabel: true,
@@ -408,7 +409,7 @@ class _PlanTab extends StatelessWidget {
           const SizedBox(height: Spacing.md),
           // ── OUTPUTS ───────────────────────────────────────────────
           _SectionCard(
-            accent: AppColors.wreck.accentPrimary, // amber — output
+            accent: context.palette.accentPrimary, // amber — output
             label: 'OUTPUT',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -470,7 +471,7 @@ class _BailoutTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _SectionCard(
-            accent: AppColors.wreck.statusWarning,
+            accent: SafetyColors.warning,
             label: 'BAILOUT BOTTLES',
             suppressLabel: true,
             child: PlanBailoutBottlesEditor(
@@ -483,7 +484,7 @@ class _BailoutTab extends StatelessWidget {
           ),
           const SizedBox(height: Spacing.md),
           _SectionCard(
-            accent: AppColors.wreck.accentPrimary,
+            accent: context.palette.accentPrimary,
             label: 'BAILOUT PROFILE',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -549,7 +550,7 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.wreck.surfaceCard,
+        color: context.palette.surfaceCard,
         borderRadius: Radii.cardBr,
         border: Border(
           left: BorderSide(color: accent, width: 3),

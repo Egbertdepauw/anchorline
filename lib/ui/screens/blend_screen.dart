@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../../analysis/blending/gas_blender.dart';
 import '../notifiers/blend_notifier.dart';
 import '../notifiers/settings_notifier.dart';
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 
 class BlendScreen extends StatefulWidget {
@@ -55,7 +56,7 @@ class _BlendScreenState extends State<BlendScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _Card(
-                accent: AppColors.wreck.statusInfo,
+                accent: SafetyColors.info,
                 label: 'CURRENT CYLINDER',
                 child: _CylinderInputs(
                   o2: widget.notifier.currentOxygenPercent,
@@ -70,7 +71,7 @@ class _BlendScreenState extends State<BlendScreen> {
               ),
               const SizedBox(height: Spacing.sm),
               _Card(
-                accent: AppColors.wreck.cell1,
+                accent: context.palette.cell1,
                 label: 'TARGET',
                 child: _CylinderInputs(
                   o2: widget.notifier.targetOxygenPercent,
@@ -85,7 +86,7 @@ class _BlendScreenState extends State<BlendScreen> {
               ),
               const SizedBox(height: Spacing.sm),
               _Card(
-                accent: AppColors.wreck.cell2,
+                accent: context.palette.cell2,
                 label: 'TOP-OFF',
                 child: _TopoffControls(
                   o2: widget.notifier.topoffOxygenPercent,
@@ -103,7 +104,7 @@ class _BlendScreenState extends State<BlendScreen> {
               ),
               const SizedBox(height: Spacing.md),
               _Card(
-                accent: AppColors.wreck.accentPrimary,
+                accent: context.palette.accentPrimary,
                 label: 'FILL PLAN',
                 child: _BlendOutput(result: widget.notifier.result),
               ),
@@ -355,12 +356,12 @@ class _TopoffChip extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: Radii.chipBr,
           color: selected
-              ? AppColors.wreck.accentPrimary.withValues(alpha: 0.18)
-              : AppColors.wreck.surfaceRaised,
+              ? context.palette.accentPrimary.withValues(alpha: 0.18)
+              : context.palette.surfaceRaised,
           border: Border.all(
             color: selected
-                ? AppColors.wreck.accentPrimary
-                : AppColors.wreck.surfaceBezel,
+                ? context.palette.accentPrimary
+                : context.palette.surfaceBezel,
           ),
         ),
         child: Text(label, style: AppTypography.caption),
@@ -391,10 +392,10 @@ class _BlendOutput extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.all(Spacing.sm + 2),
         decoration: BoxDecoration(
-          color: AppColors.wreck.statusDanger.withValues(alpha: 0.12),
+          color: SafetyColors.danger.withValues(alpha: 0.12),
           borderRadius: Radii.cardBr,
           border: Border(
-            left: BorderSide(color: AppColors.wreck.statusDanger, width: 3),
+            left: BorderSide(color: SafetyColors.danger, width: 3),
           ),
         ),
         child: Text(
@@ -412,11 +413,11 @@ class _BlendOutput extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(Spacing.sm),
               decoration: BoxDecoration(
-                color: AppColors.wreck.statusWarning.withValues(alpha: 0.12),
+                color: SafetyColors.warning.withValues(alpha: 0.12),
                 borderRadius: Radii.cardBr,
                 border: Border(
                   left: BorderSide(
-                      color: AppColors.wreck.statusWarning, width: 3),
+                      color: SafetyColors.warning, width: 3),
                 ),
               ),
               child: Text(
@@ -438,7 +439,7 @@ class _BlendOutput extends StatelessWidget {
                   child: Text(
                     _verbForStep(step),
                     style: AppTypography.label.copyWith(
-                      color: _colorForStep(step),
+                      color: _colorForStep(step, context.palette),
                     ),
                   ),
                 ),
@@ -451,7 +452,7 @@ class _BlendOutput extends StatelessWidget {
                 Text(
                   '→ ${step.cumulativePressureBar.toStringAsFixed(0)} bar',
                   style: AppTypography.readoutSm.copyWith(
-                    color: AppColors.wreck.textSecondary,
+                    color: context.palette.textSecondary,
                   ),
                 ),
               ],
@@ -466,10 +467,10 @@ class _BlendOutput extends StatelessWidget {
             padding: const EdgeInsets.symmetric(
                 horizontal: Spacing.sm, vertical: Spacing.xs),
             decoration: BoxDecoration(
-              color: AppColors.wreck.statusInfo.withValues(alpha: 0.12),
+              color: SafetyColors.info.withValues(alpha: 0.12),
               borderRadius: Radii.cardBr,
               border: Border(
-                left: BorderSide(color: AppColors.wreck.statusInfo, width: 3),
+                left: BorderSide(color: SafetyColors.info, width: 3),
               ),
             ),
             child: Text(
@@ -523,16 +524,16 @@ class _BlendOutput extends StatelessWidget {
     }
   }
 
-  Color _colorForStep(BlendStep s) {
+  Color _colorForStep(BlendStep s, ThemePalette palette) {
     switch (s.kind) {
       case BlendStepKind.drain:
-        return AppColors.wreck.statusWarning;
+        return SafetyColors.warning;
       case BlendStepKind.addHe:
-        return AppColors.wreck.cell2;
+        return palette.cell2;
       case BlendStepKind.addO2:
-        return AppColors.wreck.statusSuccess;
+        return SafetyColors.success;
       case BlendStepKind.addTopoff:
-        return AppColors.wreck.textSecondary;
+        return palette.textSecondary;
     }
   }
 
@@ -616,7 +617,7 @@ class _IntFieldState extends State<_IntField> {
         decoration: InputDecoration(
           isDense: true,
           filled: true,
-          fillColor: AppColors.wreck.surfaceRaised,
+          fillColor: context.palette.surfaceRaised,
           labelText: widget.label,
           suffixText: widget.suffix,
           contentPadding:
@@ -687,7 +688,7 @@ class _DoubleFieldState extends State<_DoubleField> {
         decoration: InputDecoration(
           isDense: true,
           filled: true,
-          fillColor: AppColors.wreck.surfaceRaised,
+          fillColor: context.palette.surfaceRaised,
           labelText: widget.label,
           suffixText: widget.suffix,
           contentPadding:
@@ -717,7 +718,7 @@ class _Card extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.wreck.surfaceCard,
+        color: context.palette.surfaceCard,
         borderRadius: Radii.cardBr,
         border: Border(left: BorderSide(color: accent, width: 3)),
       ),

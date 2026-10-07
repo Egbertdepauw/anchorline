@@ -246,7 +246,7 @@ class StopLadderTable extends StatelessWidget {
       fontSize: 10,
     );
     final cellStyle = AppTypography.readoutSm.copyWith(
-      color: AppColors.wreck.textPrimary,
+      color: context.palette.textPrimary,
     );
 
     // Cumulative runtime starts at the dive time already elapsed before

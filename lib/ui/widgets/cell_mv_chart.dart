@@ -2,6 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../theme/safety_colors.dart';
+import '../theme/tokens.dart';
+
 /// Which mV metric the chart is showing.
 enum CellMvMetric { surface, peak }
 
@@ -109,6 +112,7 @@ class _CellMvChartState extends State<CellMvChart> {
                               painter: _ChartPainter(
                                 _series,
                                 theme,
+                                context.palette,
                                 _selectedIndex,
                                 _baseline,
                                 _recent,
@@ -316,21 +320,23 @@ typedef _Ref = ({double mv, Color color, String label, bool dashed});
 class _ChartPainter extends CustomPainter {
   final List<({DateTime date, double mv, String diveId})> series;
   final ThemeData theme;
+  final ThemePalette palette;
   final int? selectedIndex;
   final double? baseline;
   final double? recent;
 
   _ChartPainter(
-      this.series, this.theme, this.selectedIndex, this.baseline, this.recent);
+      this.series, this.theme, this.palette, this.selectedIndex, this.baseline,
+      this.recent);
 
-  static const _gridColor = Color(0xFF1A2832); // AppColors.wreck.chartGrid
-  static const _axisLabel = Color(0xFFA0AEB6); // AppColors.wreck.textSecondary
-  static const _healthyColor = Color(0xFF4ADE80); // AppColors.wreck.statusSuccess
-  static const _watchColor = Color(0xFFF39C12); // AppColors.wreck.statusWarning
-  static const _replaceColor = Color(0xFFE74C3C); // AppColors.wreck.statusDanger
-  static const _pillBg = Color(0xCC0A1518); // AppColors.wreck.surfaceBg @ ~80%
+  Color get _gridColor => palette.chartGrid;
+  Color get _axisLabel => palette.textSecondary;
+  Color get _pillBg => palette.surfaceBg.withValues(alpha: 0.8);
+  static const _healthyColor = SafetyColors.success;
+  static const _watchColor = SafetyColors.warning;
+  static const _replaceColor = SafetyColors.danger;
 
-  static const _labelStyle = TextStyle(
+  TextStyle get _labelStyle => TextStyle(
     fontFamily: 'JetBrainsMono',
     fontSize: 11,
     color: _axisLabel,
@@ -379,7 +385,7 @@ class _ChartPainter extends CustomPainter {
 
     // ── "mV" axis title, rotated up the left gutter ──────────────────
     final titleTp = TextPainter(
-      text: const TextSpan(text: 'mV', style: _labelStyle),
+      text: TextSpan(text: 'mV', style: _labelStyle),
       textDirection: TextDirection.ltr,
     )..layout();
     canvas.save();
@@ -559,6 +565,7 @@ class _ChartPainter extends CustomPainter {
   bool shouldRepaint(covariant _ChartPainter old) =>
       old.series != series ||
       old.theme != theme ||
+      !identical(old.palette, palette) ||
       old.selectedIndex != selectedIndex ||
       old.baseline != baseline ||
       old.recent != recent;

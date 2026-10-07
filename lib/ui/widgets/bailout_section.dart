@@ -148,7 +148,7 @@ class BailoutSection extends StatelessWidget {
             child: Text(
               _scenarioBanner(),
               style: AppTypography.caption.copyWith(
-                color: AppColors.wreck.textSecondary,
+                color: context.palette.textSecondary,
               ),
             ),
           ),
@@ -263,7 +263,7 @@ class BailoutSection extends StatelessWidget {
                 Text(
                   line,
                   style: AppTypography.caption.copyWith(
-                    color: AppColors.wreck.textPrimary,
+                    color: context.palette.textPrimary,
                   ),
                 ),
             ],
@@ -310,7 +310,7 @@ class BailoutSection extends StatelessWidget {
               Text(
                 'Team of ${teamCarry.length} — suggested per-diver carry',
                 style: AppTypography.caption.copyWith(
-                  color: AppColors.wreck.textSecondary,
+                  color: context.palette.textSecondary,
                 ),
               ),
               const SizedBox(height: 4),
@@ -318,7 +318,7 @@ class BailoutSection extends StatelessWidget {
                 Text(
                   'Diver ${diver.diverIndex}',
                   style: AppTypography.caption.copyWith(
-                    color: AppColors.wreck.textPrimary,
+                    color: context.palette.textPrimary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -328,7 +328,7 @@ class BailoutSection extends StatelessWidget {
                     child: Text(
                       _formatStage(s),
                       style: AppTypography.caption.copyWith(
-                        color: AppColors.wreck.textPrimary,
+                        color: context.palette.textPrimary,
                       ),
                     ),
                   ),
@@ -349,7 +349,7 @@ class BailoutSection extends StatelessWidget {
               'Suggestion: add $suggestion to one diver\'s carry to '
               'shrink the helium gradient at the bottom-mix switch.',
               style: AppTypography.caption.copyWith(
-                color: AppColors.wreck.textPrimary,
+                color: context.palette.textPrimary,
               ),
             ),
           ),
@@ -400,7 +400,7 @@ class _IcdBanner extends StatelessWidget {
           Text(
             header,
             style: AppTypography.caption.copyWith(
-              color: AppColors.wreck.textPrimary,
+              color: context.palette.textPrimary,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -409,7 +409,7 @@ class _IcdBanner extends StatelessWidget {
             Text(
               _formatRisk(risk),
               style: AppTypography.caption.copyWith(
-                color: AppColors.wreck.textSecondary,
+                color: context.palette.textSecondary,
               ),
             ),
           const SizedBox(height: 4),
@@ -417,7 +417,7 @@ class _IcdBanner extends StatelessWidget {
             'Doolette/Mitchell: ΔO₂ should not exceed |ΔHe|/5. Inserting an '
             'intermediate trimix reduces the helium gradient at each switch.',
             style: AppTypography.caption.copyWith(
-              color: AppColors.wreck.textSecondary,
+              color: context.palette.textSecondary,
               fontStyle: FontStyle.italic,
             ),
           ),
@@ -483,7 +483,7 @@ class _SummaryTile extends StatelessWidget {
         vertical: Spacing.xs,
       ),
       decoration: BoxDecoration(
-        color: AppColors.wreck.surfaceRaised,
+        color: context.palette.surfaceRaised,
         borderRadius: Radii.cardBr,
       ),
       child: Column(
@@ -501,7 +501,7 @@ class _SummaryTile extends StatelessWidget {
           Text(
             value,
             style: AppTypography.readoutSm.copyWith(
-              color: AppColors.wreck.textPrimary,
+              color: context.palette.textPrimary,
             ),
           ),
         ],

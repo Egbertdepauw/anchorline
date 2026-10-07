@@ -404,7 +404,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         children: [
                   // Header — dive summary readout
                   Builder(builder: (context) {
-                    const palette = AppColors.wreck;
+                    final palette = context.palette;
                     final siteName = _annotationsNotifier.siteName;
                     final hasSite =
                         siteName != null && siteName.isNotEmpty;
@@ -1657,7 +1657,7 @@ class _ModeBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const palette = AppColors.wreck;
+    final palette = context.palette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
@@ -1709,7 +1709,7 @@ class _HeroStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const palette = AppColors.wreck;
+    final palette = context.palette;
     return Column(
       crossAxisAlignment:
           centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,

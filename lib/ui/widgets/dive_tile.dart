@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../data/db/database.dart';
 import '../../data/models/annotation.dart' as dom;
 import '../components/numeric_readout.dart';
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../util/dive_mode_color.dart';
 import '../util/format.dart';
@@ -117,7 +118,7 @@ class DiveTile extends StatelessWidget {
                       child: Text(
                         annotationLine,
                         style: AppTypography.caption.copyWith(
-                          color: AppColors.wreck.statusInfo,
+                          color: SafetyColors.info,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

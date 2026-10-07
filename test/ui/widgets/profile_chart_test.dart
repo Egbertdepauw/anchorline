@@ -6,11 +6,16 @@ import 'package:ccrlogger/data/models/sample_set.dart';
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
 import 'package:ccrlogger/shearwater/parser/hardware.dart';
+import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/widgets/trace_segmented_bar.dart' show TraceType;
+import 'package:ccrlogger/ui/theme/active_theme_builder.dart';
+import 'package:ccrlogger/ui/theme/app_themes.dart';
+import 'package:ccrlogger/ui/theme/tokens.dart';
 import 'package:ccrlogger/ui/util/tank_labels.dart';
 import 'package:ccrlogger/ui/widgets/profile_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 SampleSet _loadSamples() {
   final data = File('test/fixtures/dives/dive_718.bin').readAsBytesSync();
@@ -25,6 +30,51 @@ SampleSet _loadSamples() {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('an open ProfileChart repaints in the new palette on a theme switch',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final settings = SettingsNotifier();
+    await settings.load();
+    final samples = _loadSamples();
+
+    ProfileChartPainter painter() => tester
+        .widgetList<CustomPaint>(find.descendant(
+            of: find.byType(ProfileChart), matching: find.byType(CustomPaint)))
+        .map((c) => c.painter)
+        .whereType<ProfileChartPainter>()
+        .single;
+
+    await tester.pumpWidget(ActiveThemeBuilder(
+      settings: settings,
+      enabled: true,
+      child: Scaffold(
+          body: SizedBox(
+              width: 400,
+              height: 300,
+              child: ProfileChart(
+                  samples: samples,
+                  visibleTraces: {TraceType.ppo2},
+                  crosshairIndex: null))),
+      builder: (context, theme, child) =>
+          MaterialApp(theme: theme, home: child),
+    ));
+    final before = painter();
+    expect(before.palette, same(AppColors.wreck));
+
+    await settings.setThemeId('catppuccin');
+    await tester.pumpAndSettle();
+
+    final after = painter();
+    expect(after.palette.surfaceBg,
+        AppThemes.byId('catppuccin').palette.surfaceBg);
+    expect(after.palette.chartTracePpo2,
+        AppThemes.byId('catppuccin').palette.chartTracePpo2);
+    expect(before.shouldRepaint(after) || after.shouldRepaint(before), isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('ProfileChart renders with real dive data', (tester) async {
     final samples = _loadSamples();
     await tester.pumpWidget(MaterialApp(
@@ -373,23 +423,69 @@ void main() {
     final p1 = ProfileChartPainter(
         samples: samples,
         visibleTraces: {TraceType.ppo2},
-        crosshairIndex: null);
+        crosshairIndex: null,
+        palette: AppColors.wreck);
     final p2 = ProfileChartPainter(
         samples: samples,
         visibleTraces: {TraceType.ppo2, TraceType.cells},
-        crosshairIndex: null);
+        crosshairIndex: null,
+        palette: AppColors.wreck);
     final p3 = ProfileChartPainter(
         samples: samples,
         visibleTraces: {TraceType.ppo2},
-        crosshairIndex: 10);
+        crosshairIndex: 10,
+        palette: AppColors.wreck);
     final p4 = ProfileChartPainter(
         samples: samples,
         visibleTraces: {TraceType.ppo2},
         crosshairIndex: null,
+        palette: AppColors.wreck,
         useSpeedColoredGraph: false);
     expect(p1.shouldRepaint(p2), isTrue);
     expect(p1.shouldRepaint(p3), isTrue);
     expect(p1.shouldRepaint(p4), isTrue);
     expect(p1.shouldRepaint(p1), isFalse);
+  });
+
+  test('shouldRepaint detects a palette change', () {
+    final samples = _loadSamples();
+    final wreck = ProfileChartPainter(
+        samples: samples,
+        visibleTraces: {TraceType.ppo2},
+        crosshairIndex: null,
+        palette: AppColors.wreck);
+    final catppuccin = ProfileChartPainter(
+        samples: samples,
+        visibleTraces: {TraceType.ppo2},
+        crosshairIndex: null,
+        palette: AppThemes.byId('catppuccin').palette);
+    expect(wreck.shouldRepaint(catppuccin), isTrue);
+    expect(catppuccin.shouldRepaint(catppuccin), isFalse);
+  });
+
+  testWidgets('ProfileChart hands the active palette to its painter',
+      (tester) async {
+    final samples = _loadSamples();
+    final theme = AppThemes.byId('ethereal');
+    await tester.pumpWidget(MaterialApp(
+        theme: theme.themeData,
+        home: Scaffold(
+            body: SizedBox(
+                width: 400,
+                height: 300,
+                child: ProfileChart(
+                    samples: samples,
+                    visibleTraces: {TraceType.ppo2},
+                    crosshairIndex: null)))));
+
+    final painters = tester
+        .widgetList<CustomPaint>(find.descendant(
+            of: find.byType(ProfileChart), matching: find.byType(CustomPaint)))
+        .map((c) => c.painter)
+        .whereType<ProfileChartPainter>()
+        .toList();
+    expect(painters, hasLength(1));
+    expect(painters.single.palette, same(theme.palette));
+    expect(tester.takeException(), isNull);
   });
 }

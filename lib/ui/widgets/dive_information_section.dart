@@ -233,9 +233,9 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
     }
     final scheme = Theme.of(context).colorScheme;
     final cellColors = [
-      AppColors.wreck.cell1,
-      AppColors.wreck.cell2,
-      AppColors.wreck.cell3,
+      context.palette.cell1,
+      context.palette.cell2,
+      context.palette.cell3,
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: Spacing.xs),

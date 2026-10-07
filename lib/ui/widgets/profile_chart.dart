@@ -16,6 +16,7 @@ import '../../data/db/database.dart';
 import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
 import '../../data/models/sample_set.dart';
 import 'trace_segmented_bar.dart' show TraceType;
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../util/tank_labels.dart';
 
@@ -60,21 +61,13 @@ const double _bottomPad = 24.0;
 
 // ── Trace colours ───────────────────────────────────────────────
 //
-// Sourced from `AppColors.wreck` so the chart stays in sync with the
-// rest of the design system. Cell colours are locked across the app:
-// Cell 1 green / Cell 2 blue / Cell 3 pink (`AppColors.wreck.cell1/2/3`).
+// Themed trace colours (depth, PPO2, setpoint, cells, grid) come from the
+// active `ThemePalette`, passed into the painter.
 
-final Color _depthColor = AppColors.wreck.chartTraceDepth;
-final Color _ppo2Color = AppColors.wreck.chartTracePpo2;
-final Color _setpointColor = AppColors.wreck.chartTraceSetpoint;
-final Color _decoColor = AppColors.wreck.statusWarning;
-final Color _cell0Color = AppColors.wreck.cell1;
-final Color _cell1Color = AppColors.wreck.cell2;
-final Color _cell2Color = AppColors.wreck.cell3;
+const Color _decoColor = SafetyColors.warning;
 const Color _crosshairColor = Color(0x80FFFFFF);
-final Color _gridColor = AppColors.wreck.chartGrid;
-final Color _gasChangeColor = AppColors.wreck.statusInfo;
-final Color _bailoutColor = AppColors.wreck.statusDanger;
+const Color _gasChangeColor = SafetyColors.info;
+const Color _bailoutColor = SafetyColors.danger;
 // Water temperature trace — must match the swatch in
 // `trace_segmented_bar.dart` so the dot in the legend agrees with the
 // trace on the chart.
@@ -105,7 +98,6 @@ const double _tankBarMax = 300.0;
 // Speed convention: signed m/min. Negative = ascent (depth decreasing),
 // positive = descent (depth increasing). STABLE keeps the existing depth
 // blue so a calm dive looks the way it always has.
-final Color _vSpeedStableColor = _depthColor;            // light blue
 const Color _vSpeedSlowColor = Color(0xFFA8D957);        // lime
 const Color _vSpeedModerateColor = Color(0xFFE5C73F);    // amber
 const Color _vSpeedFastColor = Color(0xFFEC8A3D);        // orange
@@ -113,19 +105,21 @@ const Color _vSpeedCrazyColor = Color(0xFFE65656);       // red
 
 // Anchor table sorted by speed ascending. _colorForRate finds the bracket
 // containing the segment's signed rate and lerps between the two anchors.
-final List<({double speed, Color color})> _vSpeedAnchors = [
-  (speed: -30.0, color: _vSpeedCrazyColor),
-  (speed: -18.2, color: _vSpeedCrazyColor),
-  (speed: -9.1, color: _vSpeedFastColor),
-  (speed: -4.6, color: _vSpeedModerateColor),
-  (speed: -1.5, color: _vSpeedSlowColor),
-  (speed: 0.0, color: _vSpeedStableColor),
-  (speed: 1.5, color: _vSpeedSlowColor),
-  (speed: 9.1, color: _vSpeedModerateColor),
-  (speed: 18.2, color: _vSpeedFastColor),
-  (speed: 30.4, color: _vSpeedCrazyColor),
-  (speed: 60.0, color: _vSpeedCrazyColor),
-];
+// [stable] is the theme's depth-trace colour, so a calm dive looks like a
+// plain depth trace.
+List<({double speed, Color color})> _vSpeedAnchorsFor(Color stable) => [
+      (speed: -30.0, color: _vSpeedCrazyColor),
+      (speed: -18.2, color: _vSpeedCrazyColor),
+      (speed: -9.1, color: _vSpeedFastColor),
+      (speed: -4.6, color: _vSpeedModerateColor),
+      (speed: -1.5, color: _vSpeedSlowColor),
+      (speed: 0.0, color: stable),
+      (speed: 1.5, color: _vSpeedSlowColor),
+      (speed: 9.1, color: _vSpeedModerateColor),
+      (speed: 18.2, color: _vSpeedFastColor),
+      (speed: 30.4, color: _vSpeedCrazyColor),
+      (speed: 60.0, color: _vSpeedCrazyColor),
+    ];
 
 const double _ppo2Max = 2.0;
 
@@ -193,7 +187,7 @@ class ProfileChart extends StatelessWidget {
 
   /// When true, the depth trace is drawn as per-segment line pieces
   /// coloured by local vertical speed. When false, the trace is drawn
-  /// as a single solid stroke in [_depthColor] with no overlay.
+  /// as a single solid stroke in the theme's depth-trace colour with no overlay.
   final bool useSpeedColoredGraph;
 
   /// Active tanks for the dive (compacted list, one entry per active
@@ -305,6 +299,7 @@ class ProfileChart extends StatelessWidget {
           decoReplay: decoReplay,
           viewStart: viewStart,
           viewEnd: viewEnd,
+          palette: context.palette,
         ),
         child: const SizedBox.expand(),
       ),
@@ -383,7 +378,8 @@ class _CellLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = [_cell0Color, _cell1Color, _cell2Color];
+    final palette = context.palette;
+    final colors = [palette.cell1, palette.cell2, palette.cell3];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
@@ -450,10 +446,14 @@ class ProfileChartPainter extends CustomPainter {
   final double viewStart;
   final double viewEnd;
 
+  /// Colours for the themed traces and grid.
+  final ThemePalette palette;
+
   const ProfileChartPainter({
     required this.samples,
     required this.visibleTraces,
     required this.crosshairIndex,
+    required this.palette,
     this.cellCalibration,
     this.useSpeedColoredGraph = true,
     this.gasMixes,
@@ -468,7 +468,8 @@ class ProfileChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(ProfileChartPainter old) {
-    return old.crosshairIndex != crosshairIndex ||
+    return !identical(old.palette, palette) ||
+        old.crosshairIndex != crosshairIndex ||
         !_setEquals(old.visibleTraces, visibleTraces) ||
         old.useSpeedColoredGraph != useSpeedColoredGraph ||
         !identical(old.samples, samples) ||
@@ -530,7 +531,7 @@ class ProfileChartPainter extends CustomPainter {
 
     // ── Grid lines ─────────────────────────────────────────────────
     final gridPaint = Paint()
-      ..color = _gridColor
+      ..color = palette.chartGrid
       ..strokeWidth = 1.0;
 
     // Depth grid: every 5m (but skip if too many lines on small charts).
@@ -575,7 +576,7 @@ class ProfileChartPainter extends CustomPainter {
     // ── Depth fill + trace ─────────────────────────────────────────
     {
       final fillPaint = Paint()
-        ..color = _depthColor.withValues(alpha: 0.10)
+        ..color = palette.chartTraceDepth.withValues(alpha: 0.10)
         ..style = PaintingStyle.fill;
 
       final fillPath = Path();
@@ -596,11 +597,12 @@ class ProfileChartPainter extends CustomPainter {
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round;
         final mpmPerSample = 60000.0 / samples.sampleIntervalMs;
+        final anchors = _vSpeedAnchorsFor(palette.chartTraceDepth);
         for (int i = 1; i < n; i++) {
           final rate =
               (samples.depthMeters[i] - samples.depthMeters[i - 1]) *
                   mpmPerSample;
-          segPaint.color = _colorForRate(rate);
+          segPaint.color = _colorForRate(rate, anchors);
           canvas.drawLine(
             Offset(xOf(i - 1), yDepth(samples.depthMeters[i - 1])),
             Offset(xOf(i), yDepth(samples.depthMeters[i])),
@@ -609,7 +611,7 @@ class ProfileChartPainter extends CustomPainter {
         }
       } else {
         final strokePaint = Paint()
-          ..color = _depthColor
+          ..color = palette.chartTraceDepth
           ..strokeWidth = 2.0
           ..style = PaintingStyle.stroke
           ..strokeCap = StrokeCap.round
@@ -631,7 +633,7 @@ class ProfileChartPainter extends CustomPainter {
         n,
         xOf,
         yPpo2,
-        _ppo2Color,
+        palette.chartTracePpo2,
         1.5,
       );
     }
@@ -644,7 +646,7 @@ class ProfileChartPainter extends CustomPainter {
         n,
         xOf,
         yPpo2,
-        _setpointColor,
+        palette.chartTraceSetpoint,
         1.0,
       );
     }
@@ -771,11 +773,11 @@ class ProfileChartPainter extends CustomPainter {
       final c1 = calOf(1);
       final c2 = calOf(2);
       _drawSolidTrace(canvas, samples.cellMv0, n, xOf,
-          (mv) => yPpo2(mv * c0), _cell0Color, 1.0);
+          (mv) => yPpo2(mv * c0), palette.cell1, 1.0);
       _drawSolidTrace(canvas, samples.cellMv1, n, xOf,
-          (mv) => yPpo2(mv * c1), _cell1Color, 1.0);
+          (mv) => yPpo2(mv * c1), palette.cell2, 1.0);
       _drawSolidTrace(canvas, samples.cellMv2, n, xOf,
-          (mv) => yPpo2(mv * c2), _cell2Color, 1.0);
+          (mv) => yPpo2(mv * c2), palette.cell3, 1.0);
     }
 
     // ── Gas-change markers ─────────────────────────────────────────
@@ -1001,22 +1003,23 @@ class ProfileChartPainter extends CustomPainter {
 
   // ── Trace helpers ──────────────────────────────────────────────
 
-  Color _colorForRate(double mPerMin) {
-    if (mPerMin <= _vSpeedAnchors.first.speed) {
-      return _vSpeedAnchors.first.color;
+  Color _colorForRate(
+      double mPerMin, List<({double speed, Color color})> anchors) {
+    if (mPerMin <= anchors.first.speed) {
+      return anchors.first.color;
     }
-    if (mPerMin >= _vSpeedAnchors.last.speed) {
-      return _vSpeedAnchors.last.color;
+    if (mPerMin >= anchors.last.speed) {
+      return anchors.last.color;
     }
-    for (var i = 0; i < _vSpeedAnchors.length - 1; i++) {
-      final a = _vSpeedAnchors[i];
-      final b = _vSpeedAnchors[i + 1];
+    for (var i = 0; i < anchors.length - 1; i++) {
+      final a = anchors[i];
+      final b = anchors[i + 1];
       if (mPerMin >= a.speed && mPerMin <= b.speed) {
         final t = (mPerMin - a.speed) / (b.speed - a.speed);
         return Color.lerp(a.color, b.color, t)!;
       }
     }
-    return _vSpeedStableColor;
+    return palette.chartTraceDepth;
   }
 
   void _drawSolidTrace(
