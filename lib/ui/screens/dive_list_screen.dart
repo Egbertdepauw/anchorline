@@ -16,6 +16,7 @@ import '../notifiers/settings_notifier.dart';
 import '../util/dive_mode_color.dart';
 import '../util/dive_search.dart';
 import '../util/format.dart';
+import '../theme/safety_colors.dart';
 import '../widgets/dive_filter_sheet.dart';
 import '../widgets/dive_tile.dart';
 import 'dive_detail_pager.dart';
@@ -440,9 +441,9 @@ class _DiveTileWithSparkline extends StatelessWidget {
           direction: DismissDirection.endToStart,
           background: Container(
             alignment: Alignment.centerRight,
-            color: Colors.red.shade700,
+            color: SafetyColors.danger,
             padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: const Icon(Icons.delete_outline, color: Colors.white),
+            child: const Icon(Icons.delete_outline, color: SafetyColors.onAlert),
           ),
           confirmDismiss: (_) async {
             return await showDialog<bool>(

@@ -32,6 +32,8 @@ import '../../sync/subsurface_git/bootstrap_importer.dart';
 import '../../sync/subsurface_git/credentials.dart';
 import '../../sync/subsurface_git/sync_orchestrator.dart';
 import '../../sync/subsurface_git/sync_planner.dart' show AbortedDive, AbortReason;
+import '../theme/safety_colors.dart';
+import '../theme/tokens.dart';
 
 /// Public type alias for the sync callback the section invokes when the
 /// user taps "Sync now". Returning a [SubsurfaceSyncResult] is what
@@ -383,15 +385,15 @@ class _SubsurfaceSyncSectionState extends State<SubsurfaceSyncSection> {
             Text(
               'Skipped ${r.abortedDives.length} '
               '${r.abortedDives.length == 1 ? 'dive' : 'dives'}',
-              style: const TextStyle(color: Color(0xFFE65100)),
+              style: const TextStyle(color: SafetyColors.warning),
             ),
             for (final ab in r.abortedDives)
               Padding(
                 padding: const EdgeInsets.only(left: 12, top: 2),
                 child: Text(
                   '• #${ab.dive.dcDiveNumber} — ${_reasonText(ab)}',
-                  style: const TextStyle(
-                      fontSize: 12, color: Color(0xFFB0BEC5)),
+                  style: TextStyle(
+                      fontSize: 12, color: context.palette.textSecondary),
                 ),
               ),
           ],
@@ -442,7 +444,7 @@ class _SubsurfaceSyncSectionState extends State<SubsurfaceSyncSection> {
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(
                           'Sync failed: $_syncError',
-                          style: const TextStyle(color: Color(0xFFE53935)),
+                          style: const TextStyle(color: SafetyColors.danger),
                         ),
                       ),
                   ],

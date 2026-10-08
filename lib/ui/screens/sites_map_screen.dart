@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../data/db/dive_annotations_dao.dart';
 import '../notifiers/settings_notifier.dart';
+import '../theme/data_colors.dart';
 import '../theme/tokens.dart';
 import '../widgets/map_layer_toggle.dart';
 import '../widgets/map_tile_sources.dart';
@@ -218,7 +219,7 @@ class _SitesMapScreenState extends State<SitesMapScreen> {
                         // Muted brick red — visibly recedes against the
                         // saturated accent of the current dive's pin
                         // while staying legible on OSM's mixed terrain.
-                        color: Color(0xFF8B3A3A), size: 28),
+                        color: DataColors.mapPinMuted, size: 28),
               ),
             ),
         ]),

@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/models/dive_attachment.dart';
+import '../theme/media_colors.dart';
 import '../widgets/background_watermark.dart' show SuppressWatermark;
 
 class ImageViewerScreen extends StatelessWidget {
@@ -84,10 +85,10 @@ class ImageViewerScreen extends StatelessWidget {
     // composite a visible tint over the full-screen photo.
     return SuppressWatermark(
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: MediaColors.viewerBackground,
         appBar: AppBar(
-          backgroundColor: Colors.black.withValues(alpha: 0.6),
-          foregroundColor: Colors.white,
+          backgroundColor: MediaColors.scrim(0.6),
+          foregroundColor: MediaColors.viewerForeground,
           title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
           actions: [
             IconButton(
