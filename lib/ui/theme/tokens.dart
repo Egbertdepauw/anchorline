@@ -32,7 +32,6 @@ class ThemePalette extends ThemeExtension<ThemePalette> {
     required this.chartTraceDepth,
     required this.chartTracePpo2,
     required this.chartTraceSetpoint,
-    required this.chartTraceGf99,
   });
 
   final Color surfaceBg;
@@ -52,7 +51,6 @@ class ThemePalette extends ThemeExtension<ThemePalette> {
   final Color chartTraceDepth;
   final Color chartTracePpo2;
   final Color chartTraceSetpoint;
-  final Color chartTraceGf99;
 
   @override
   ThemePalette copyWith({
@@ -73,7 +71,6 @@ class ThemePalette extends ThemeExtension<ThemePalette> {
     Color? chartTraceDepth,
     Color? chartTracePpo2,
     Color? chartTraceSetpoint,
-    Color? chartTraceGf99,
   }) {
     return ThemePalette(
       surfaceBg: surfaceBg ?? this.surfaceBg,
@@ -93,7 +90,6 @@ class ThemePalette extends ThemeExtension<ThemePalette> {
       chartTraceDepth: chartTraceDepth ?? this.chartTraceDepth,
       chartTracePpo2: chartTracePpo2 ?? this.chartTracePpo2,
       chartTraceSetpoint: chartTraceSetpoint ?? this.chartTraceSetpoint,
-      chartTraceGf99: chartTraceGf99 ?? this.chartTraceGf99,
     );
   }
 
@@ -120,7 +116,6 @@ class ThemePalette extends ThemeExtension<ThemePalette> {
       chartTraceDepth: mix(chartTraceDepth, other.chartTraceDepth),
       chartTracePpo2: mix(chartTracePpo2, other.chartTracePpo2),
       chartTraceSetpoint: mix(chartTraceSetpoint, other.chartTraceSetpoint),
-      chartTraceGf99: mix(chartTraceGf99, other.chartTraceGf99),
     );
   }
 }
@@ -151,7 +146,6 @@ class AppColors {
     chartTraceDepth: Color(0xFFE0E8EC),
     chartTracePpo2: Color(0xFFFFCC66),
     chartTraceSetpoint: Color(0xFFA0AEB6),
-    chartTraceGf99: Color(0xFFF472B6),
   );
 }
 

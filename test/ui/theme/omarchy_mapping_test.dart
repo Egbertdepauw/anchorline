@@ -164,13 +164,11 @@ void main() {
       expect(cat.cell1, catppuccinColors.green);
       expect(cat.cell2, catppuccinColors.blue);
       expect(cat.cell3, catppuccinColors.magenta);
-      expect(cat.chartTraceGf99, cat.cell3);
 
       final hack = paletteFromOmarchy(hackermanColors);
       expect(hack.cell1, AppColors.wreck.cell1);
       expect(hack.cell2, AppColors.wreck.cell2);
       expect(hack.cell3, AppColors.wreck.cell3);
-      expect(hack.chartTraceGf99, AppColors.wreck.chartTraceGf99);
       expect(hack.chartTracePpo2, AppColors.wreck.chartTracePpo2);
       expect(paletteFromOmarchy(retro82Colors).chartTracePpo2,
           retro82Colors.yellow);
