@@ -40,6 +40,7 @@ Stage 2 unifies stray literals with the colour they were meant to be. These smal
 | Crosshair tooltip label and sub-label text | `#778899`, `#9FB0C0` | `palette.textMuted`, `palette.textSecondary` |
 | White text in chart legends and tooltips | `Colors.white` | `palette.textPrimary` |
 | Density and END legend swatches | `#E3E6EB` | `palette.textPrimary` |
+| Tanks legend swatch | `#60A5FA` (info blue) | `DataColors.tanks.first`, the colour of the first tank trace |
 | Map pins in the map picker and the site mini map | Material red, Material red-accent | one `DataColors.mapPin` |
 
 ## Review Focus
