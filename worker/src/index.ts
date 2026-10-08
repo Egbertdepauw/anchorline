@@ -14,6 +14,7 @@
 // PowerSync on the Flutter side. The Worker owns R2 and only R2.
 
 import { handlePreflight, withCors } from "./cors";
+import { keepAlive } from "./keepalive";
 import { extractBearerToken, JwtError, verifySupabaseJwt } from "./jwt";
 import { buildObjectKey, presignDownload, presignUpload } from "./r2";
 import {
@@ -47,6 +48,12 @@ export default {
       response = jsonError(500, "internal_error");
     }
     return withCors(response, request, allowed);
+  },
+
+  // Daily cron (see wrangler.toml, issue #98): temporary free-tier
+  // keep-alive so Supabase doesn't pause the project.
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(keepAlive(env));
   },
 } satisfies ExportedHandler<Env>;
 
