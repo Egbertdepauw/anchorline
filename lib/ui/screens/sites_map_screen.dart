@@ -213,8 +213,8 @@ class _SitesMapScreenState extends State<SitesMapScreen> {
               child: GestureDetector(
                 onTap: () => _showSiteCard(s),
                 child: _isCurrent(s.lat, s.lon)
-                    ? Icon(Icons.location_pin,
-                        color: context.palette.accentPrimary, size: 44)
+                    ? const Icon(Icons.location_pin,
+                        color: DataColors.mapPinCurrent, size: 44)
                     : const Icon(Icons.location_pin,
                         // Muted brick red — visibly recedes against the
                         // saturated accent of the current dive's pin

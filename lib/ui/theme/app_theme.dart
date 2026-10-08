@@ -20,7 +20,7 @@ class AppTheme {
       secondary: palette.accentMuted,
       onSecondary: palette.textPrimary,
       error: SafetyColors.danger,
-      onError: palette.textPrimary,
+      onError: SafetyColors.onAlert,
       surface: palette.surfaceBg,
       onSurface: palette.textPrimary,
       surfaceContainer: palette.surfaceCard,
@@ -143,6 +143,7 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: palette.surfaceRaised,
+        actionTextColor: palette.accentPrimary,
         contentTextStyle:
             AppTypography.body.copyWith(color: palette.textPrimary),
         shape: const RoundedRectangleBorder(borderRadius: Radii.cardBr),

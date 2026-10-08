@@ -42,6 +42,10 @@ Stage 2 unifies stray literals with the colour they were meant to be. These smal
 | Density and END legend swatches | `#E3E6EB` | `palette.textPrimary` |
 | Tanks legend swatch | `#60A5FA` (info blue) | `DataColors.tanks.first`, the colour of the first tank trace |
 | Map pins in the map picker and the site mini map | Material red, Material red-accent | one `DataColors.mapPin` |
+| Crosshair line on the profile chart | white at 50% | `palette.textPrimary` at 50% |
+| Fullscreen icon over the profile chart | white at 70% | `palette.textSecondary` |
+| Text on error-coloured surfaces (upload-failure banners, the "Reset everything" button, badges) | `palette.textPrimary` | `SafetyColors.onAlert` (white) |
+| Snackbar action labels such as UNDO | a near-invisible fallback colour | `palette.accentPrimary` |
 
 ## Review Focus
 

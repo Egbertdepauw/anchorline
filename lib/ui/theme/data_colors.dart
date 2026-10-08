@@ -52,6 +52,9 @@ class DataColors {
   static const Color mapPin = Color(0xFFF44336);
   static const Color mapPinMuted = Color(0xFF8B3A3A);
 
+  /// The pin for the site currently being viewed, on the sites map.
+  static const Color mapPinCurrent = Color(0xFFC97B3A);
+
   /// The data colours drawn as thin lines on a chart card, by name. Used
   /// by tests to check each stays readable on every theme's card.
   static const Map<String, Color> lineColors = {

@@ -894,13 +894,13 @@ class ProfileChartPainter extends CustomPainter {
     }
     if (transitions.isEmpty) return;
 
-    final labelStyleNormal = TextStyle(
-      color: palette.textPrimary,
+    const labelStyleNormal = TextStyle(
+      color: SafetyColors.onAlert,
       fontSize: 9,
       fontWeight: FontWeight.w500,
     );
-    final labelStyleBailout = TextStyle(
-      color: palette.textPrimary,
+    const labelStyleBailout = TextStyle(
+      color: SafetyColors.onAlert,
       fontSize: 9,
       fontWeight: FontWeight.bold,
     );

@@ -52,6 +52,14 @@ void main() {
     expect(DataColors.mapPinMuted, const Color(0xFF8B3A3A));
   });
 
+  test('line colours for tanks are the tank palette', () {
+    expect(DataColors.tanks.length, 6);
+    for (var i = 0; i < 6; i++) {
+      expect(DataColors.lineColors['tank$i'], DataColors.tanks[i],
+          reason: 'tank$i');
+    }
+  });
+
   test('safety additions', () {
     expect(SafetyColors.bandSafe, SafetyColors.gfWithinLimits);
     expect(SafetyColors.bandCaution, SafetyColors.gfOverHigh);
