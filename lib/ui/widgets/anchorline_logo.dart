@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../theme/anchorline_colors.dart';
+import '../theme/tokens.dart';
+
 /// Which of the Anchorline brand marks to render. Each value maps to
 /// one of the SVGs under `assets/brand/`.
 ///
@@ -13,7 +16,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 ///                       Anchor in orange, transparent background,
 ///                       sits cleanly on light OR dark.
 ///   - [wordmarkDark]  — horizontal lockup; use on dark surfaces
-///                       (anchor body is white).
+///                       (anchor body is white). Transparent; the
+///                       cut-outs inside the anchor and letters take
+///                       the active theme's background colour.
 ///   - [wordmarkLight] — horizontal lockup; use on light surfaces
 ///                       (anchor body is dark).
 enum AnchorlineMark { full, icon, inline, wordmarkDark, wordmarkLight }
@@ -57,8 +62,13 @@ class AnchorlineLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SvgPicture.asset(
-      _assetFor(mark),
+    return SvgPicture(
+      SvgAssetLoader(
+        _assetFor(mark),
+        colorMapper: mark == AnchorlineMark.wordmarkDark
+            ? HullCutoutMapper(context.palette.surfaceBg)
+            : null,
+      ),
       height: size,
       semanticsLabel: semanticLabel ?? 'Anchorline',
     );
@@ -73,4 +83,39 @@ class AnchorlineLogo extends StatelessWidget {
         AnchorlineMark.wordmarkLight =>
           'assets/brand/anchorline-wordmark-light.svg',
       };
+}
+
+/// Recolours the hull-black shapes of a brand SVG to [surface].
+///
+/// The dark wordmark draws the gaps inside the anchor ring and letters
+/// as hull-black shapes on top of the light ones, which only looks like
+/// a hole on a hull-black surface. Mapping them to the surface the mark
+/// sits on makes them read as holes on any theme (issue #95). The light
+/// and orange brand colours are left as authored.
+@immutable
+class HullCutoutMapper extends ColorMapper {
+  const HullCutoutMapper(this.surface);
+
+  /// The colour of the surface behind the mark.
+  final Color surface;
+
+  @override
+  Color substitute(
+    String? id,
+    String elementName,
+    String attributeName,
+    Color color,
+  ) =>
+      color.toARGB32() == AnchorlineColors.hullBlack.toARGB32()
+          ? surface
+          : color;
+
+  // Equality matters: flutter_svg caches parsed pictures by mapper.
+  @override
+  bool operator ==(Object other) =>
+      other is HullCutoutMapper &&
+      other.surface.toARGB32() == surface.toARGB32();
+
+  @override
+  int get hashCode => surface.toARGB32().hashCode;
 }
