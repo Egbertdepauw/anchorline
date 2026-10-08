@@ -337,7 +337,8 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
     // row matches that width so the polarity labels align under the
     // first and last star.
     const starBlockWidth = 220.0;
-    const captionStyle = TextStyle(fontSize: 11, color: Color(0xFF78909C));
+    final captionStyle =
+        TextStyle(fontSize: 11, color: context.palette.textMuted);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
@@ -347,8 +348,8 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
             SizedBox(
               width: 130,
               child: Text(label,
-                  style:
-                      const TextStyle(fontSize: 13, color: Color(0xFFB0BEC5))),
+                  style: TextStyle(
+                      fontSize: 13, color: context.palette.textSecondary)),
             ),
             StarRating(value: value, onChanged: onChanged),
           ]),

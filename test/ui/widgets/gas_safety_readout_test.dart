@@ -1,11 +1,14 @@
 import 'package:ccrlogger/data/models/dive_plan.dart';
+import 'package:ccrlogger/ui/theme/app_themes.dart';
 import 'package:ccrlogger/ui/widgets/gas_safety_readout.dart';
+import 'package:ccrlogger/ui/widgets/plan_gases_editor.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _statusSuccess = Color(0xFF4ADE80);
 const _statusWarning = Color(0xFFF39C12);
 const _statusDanger = Color(0xFFE74C3C);
+const _idle = Color(0xFFA0AEB6);
 
 void main() {
   group('computeGasSafetyReadout', () {
@@ -16,7 +19,7 @@ void main() {
       // though fO₂ is hypoxic.
       const gas = DivePlanGas(
           oxygenPercent: 15, heliumPercent: 55, isDiluent: true);
-      final r = computeGasSafetyReadout(gas, 60);
+      final r = computeGasSafetyReadout(gas, 60, idleColor: _idle);
       expect(r, isNotNull);
       expect(r!.color, equals(_statusSuccess));
       expect(r.isUnsafe, isFalse);
@@ -27,7 +30,7 @@ void main() {
       // EAN 32 at 30 m: PPO₂ = 0.32 × 4.013 ≈ 1.28 → AMBER.
       const gas = DivePlanGas(
           oxygenPercent: 32, heliumPercent: 0, isDiluent: true);
-      final r = computeGasSafetyReadout(gas, 30);
+      final r = computeGasSafetyReadout(gas, 30, idleColor: _idle);
       expect(r!.color, equals(_statusWarning));
       expect(r.isWarning, isTrue);
       expect(r.isUnsafe, isFalse);
@@ -37,7 +40,7 @@ void main() {
       // EAN 32 at 50 m: PPO₂ ≈ 1.92 → RED, unsafe flag set.
       const gas = DivePlanGas(
           oxygenPercent: 32, heliumPercent: 0, isDiluent: true);
-      final r = computeGasSafetyReadout(gas, 50);
+      final r = computeGasSafetyReadout(gas, 50, idleColor: _idle);
       expect(r!.color, equals(_statusDanger));
       expect(r.isUnsafe, isTrue);
     });
@@ -55,7 +58,7 @@ void main() {
       // logic treats no-He mix's END = depth.
       const gas = DivePlanGas(
           oxygenPercent: 21, heliumPercent: 0, isDiluent: true);
-      final r = computeGasSafetyReadout(gas, 40);
+      final r = computeGasSafetyReadout(gas, 40, idleColor: _idle);
       expect(r!.isWarning, isTrue);
       expect(r.color, equals(_statusWarning));
     });
@@ -77,5 +80,27 @@ void main() {
       // PPO2 at 60 m = 0.18 × 7.013 ≈ 1.26 → selectable.
       expect(isGasSelectableAt(tx18_45, 60), isTrue);
     });
+  });
+
+  testWidgets('idle readout text follows the theme textSecondary',
+      (tester) async {
+    final theme = AppThemes.byId('miasma');
+    await tester.pumpWidget(MaterialApp(
+      theme: theme.themeData,
+      home: Scaffold(
+        body: PlanGasesEditor(
+          gases: const [
+            DivePlanGas(oxygenPercent: 10, heliumPercent: 80, isDiluent: true),
+          ],
+          onAdd: (_) {},
+          onRemove: (_) {},
+          onReplace: (_, _) {},
+        ),
+      ),
+    ));
+    // No segments use the gas and END at its MOD is under 30 m, so the
+    // readout is idle (neither warning nor safe).
+    final text = tester.widget<Text>(find.textContaining('MOD '));
+    expect(text.style!.color, theme.palette.textSecondary);
   });
 }

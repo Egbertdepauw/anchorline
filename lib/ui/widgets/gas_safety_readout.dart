@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/dive.dart' show DiveGasMix;
 import '../../data/models/dive_plan.dart' show DivePlanGas;
+import '../theme/safety_colors.dart';
 
 const double _kSurfaceAtm = 1.013;
 
@@ -41,11 +42,6 @@ class GasSafetyReadout {
   /// or END > 30 m).
   final bool isWarning;
 }
-
-const _statusSuccess = Color(0xFF4ADE80);
-const _statusWarning = Color(0xFFF39C12);
-const _statusDanger = Color(0xFFE74C3C);
-const _textSecondary = Color(0xFFA0AEB6);
 
 /// OC PPO₂ of [gas] at [depthMeters]. Independent of CCR setpoint — the
 /// safety logic is about "if you breathed this open-circuit at this
@@ -78,8 +74,12 @@ bool isGasSelectableAt(DivePlanGas gas, double depthMeters) =>
 /// depth [evaluatedDepth] (or null when the gas isn't bound to any
 /// time>0 segment yet — then the readout shows MOD / END at MOD but
 /// no PPO₂ figure or per-segment classification).
+///
+/// [idleColor] is the colour used when the gas isn't bound to a segment
+/// yet; callers pass `context.palette.textSecondary`.
 GasSafetyReadout? computeGasSafetyReadout(
-    DivePlanGas gas, double? evaluatedDepth) {
+    DivePlanGas gas, double? evaluatedDepth,
+    {required Color idleColor}) {
   final fO2 = gas.oxygenPercent / 100.0;
   final fHe = gas.heliumPercent / 100.0;
   if (fO2 <= 0) return null;
@@ -137,15 +137,15 @@ GasSafetyReadout? computeGasSafetyReadout(
 
   Color color;
   if (isUnsafe) {
-    color = _statusDanger;
+    color = SafetyColors.danger;
   } else if (isWarning) {
-    color = _statusWarning;
+    color = SafetyColors.warning;
   } else if (evaluatedDepth != null) {
     // Active in the plan AND safe at that depth → green, even if the
     // mix is hypoxic (deep trimix diluent used only at depth).
-    color = _statusSuccess;
+    color = SafetyColors.success;
   } else {
-    color = _textSecondary;
+    color = idleColor;
   }
 
   return GasSafetyReadout(

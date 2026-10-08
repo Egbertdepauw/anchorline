@@ -167,8 +167,9 @@ class _GasRowState extends State<_GasRow> {
 
   @override
   Widget build(BuildContext context) {
-    final safety =
-        computeGasSafetyReadout(widget.gas, widget.usageDeepestDepth);
+    final safety = computeGasSafetyReadout(
+        widget.gas, widget.usageDeepestDepth,
+        idleColor: context.palette.textSecondary);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(

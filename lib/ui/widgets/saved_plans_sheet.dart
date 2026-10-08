@@ -2,6 +2,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../theme/safety_colors.dart';
+
 import '../../data/db/dive_plans_dao.dart' show SavedDivePlan;
 
 class SavedPlansSheet extends StatelessWidget {
@@ -31,7 +33,7 @@ class SavedPlansSheet extends StatelessWidget {
         final p = plans[i];
         return Dismissible(
           key: ValueKey(p.id),
-          background: Container(color: Colors.red),
+          background: Container(color: SafetyColors.danger),
           onDismissed: (_) => onDelete(p.id),
           child: ListTile(
             title: Text(p.name),

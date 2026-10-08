@@ -17,6 +17,7 @@ import '../../analysis/bailout/team_bailout.dart'
     show TeamCarry, TeamGasStage;
 import '../../data/models/dive.dart' show DiveGasMix;
 import '../components/section_header.dart';
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import 'stop_ladder_table.dart';
 
@@ -50,20 +51,16 @@ class BailoutSection extends StatelessWidget {
 
   // ── Colour helpers ──────────────────────────────────────────────────
 
-  static const _blue = Color(0xFF60A5FA); // statusInfo
-  static const _amber = Color(0xFFF39C12); // statusWarning
-  static const _green = Color(0xFF4ADE80); // statusSuccess
-  static const _red = Color(0xFFE74C3C); // statusDanger
-
-  Color get _scenarioAccent =>
-      result?.scenario == BailoutScenario.tanksDefined ? _blue : _amber;
+  Color get _scenarioAccent => result?.scenario == BailoutScenario.tanksDefined
+      ? SafetyColors.info
+      : SafetyColors.warning;
 
   Color get _verdictAccent {
     return switch (result?.verdict) {
-      BailoutVerdict.sufficient => _green,
-      BailoutVerdict.partialShortfall => _amber,
-      BailoutVerdict.insufficient => _red,
-      null => _amber,
+      BailoutVerdict.sufficient => SafetyColors.success,
+      BailoutVerdict.partialShortfall => SafetyColors.warning,
+      BailoutVerdict.insufficient => SafetyColors.danger,
+      null => SafetyColors.warning,
     };
   }
 
@@ -303,7 +300,7 @@ class BailoutSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Banner(
-          accent: _blue,
+          accent: SafetyColors.info,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -344,7 +341,7 @@ class BailoutSection extends StatelessWidget {
         if (suggestion != null) ...[
           const SizedBox(height: Spacing.sm),
           _Banner(
-            accent: _amber,
+            accent: SafetyColors.warning,
             child: Text(
               'Suggestion: add $suggestion to one diver\'s carry to '
               'shrink the helium gradient at the bottom-mix switch.',
@@ -381,8 +378,8 @@ class _IcdBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final anySevere = risks.any((r) => r.severity == IcdSeverity.severe);
     final accent = anySevere
-        ? BailoutSection._red
-        : BailoutSection._amber;
+        ? SafetyColors.danger
+        : SafetyColors.warning;
     final header = anySevere
         ? 'ICD risk — severe gas switch(es) detected'
         : 'ICD risk — switch breaks the 5:1 rule';
