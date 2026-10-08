@@ -16,6 +16,9 @@ export interface Env {
   // `${SUPABASE_URL}/auth/v1`.
   SUPABASE_URL: string;
 
+  // Supabase anon key (public by design). Used by the scheduled keep-alive.
+  SUPABASE_ANON_KEY: string;
+
   // R2 S3-compatible credentials. These are scoped per-bucket via the
   // CF dashboard (R2 → Manage R2 API Tokens).
   R2_ACCESS_KEY_ID: string;

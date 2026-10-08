@@ -21,3 +21,12 @@ bucket_name = "ccrlogger-attachments"
 # is set with `wrangler secret put` — see README.
 [vars]
 SUPABASE_URL = "https://pnbtiwgflfkpdqnfsoaj.supabase.co"
+# Public by design (the same anon key ships in the Flutter app). Used only
+# by the scheduled keep-alive; never put a service-role key here.
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBuYnRpd2dmbGZrcGRxbmZzb2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MjY2MjUsImV4cCI6MjA5NDAwMjYyNX0.Wag2WwI4hjRXnJDMk9ARB0zFjTcFzxapX_p6EV3PC38"
+
+# TEMPORARY (issue #98): Supabase pauses free-tier projects with too little
+# database activity over 7 days. One tiny read a day prevents that. Remove
+# this trigger (and src/keepalive.ts) when the project moves to a paid plan.
+[triggers]
+crons = ["23 4 * * *"]
