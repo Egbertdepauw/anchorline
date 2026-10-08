@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 
 import '../../analysis/bailout/ascent_simulator.dart' show AscentStop;
 import '../../data/models/dive.dart' show DiveGasMix;
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import 'stop_ladder_table.dart' show StopLadderTable;
 
@@ -61,7 +62,8 @@ class DiveProfileChart extends StatelessWidget {
         SizedBox(
           height: height,
           child: CustomPaint(
-            painter: _DiveProfilePainter(legs: usable),
+            painter: _DiveProfilePainter(
+                legs: usable, palette: context.palette),
           ),
         ),
       ],
@@ -70,17 +72,19 @@ class DiveProfileChart extends StatelessWidget {
 }
 
 class _DiveProfilePainter extends CustomPainter {
-  _DiveProfilePainter({required this.legs});
+  _DiveProfilePainter({required this.legs, required this.palette});
 
   final List<AscentStop> legs;
 
-  // Wreck-palette colours pulled in directly — the painter has no
-  // BuildContext so it can't go through Theme.of.
-  static const _gridColor = Color(0xFF1A2832);
-  static const _axisLabel = Color(0xFFA0AEB6);
-  static const _profileLine = Color(0xFFE0E8EC);
-  static const _profileFill = Color(0x331F2E38); // surfaceRaised @ 20%
-  static const _switchMarker = Color(0xFF60A5FA);
+  /// The active theme palette; the painter has no BuildContext, so the
+  /// widget passes it in.
+  final ThemePalette palette;
+
+  Color get _gridColor => palette.chartGrid;
+  Color get _axisLabel => palette.textSecondary;
+  Color get _profileLine => palette.chartTraceDepth;
+  Color get _profileFill => palette.surfaceRaised.withValues(alpha: 0.2);
+  static const _switchMarker = SafetyColors.info;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -133,7 +137,7 @@ class _DiveProfilePainter extends CustomPainter {
     final gridPaint = Paint()
       ..color = _gridColor
       ..strokeWidth = 1;
-    final labelStyle = const TextStyle(
+    final labelStyle = TextStyle(
       fontFamily: 'JetBrainsMono',
       fontSize: 9,
       color: _axisLabel,
@@ -172,7 +176,7 @@ class _DiveProfilePainter extends CustomPainter {
     }
     // "min" suffix beneath the right edge.
     final unitTp = TextPainter(
-      text: const TextSpan(
+      text: TextSpan(
         text: 'min',
         style: TextStyle(
           fontFamily: 'Inter',
@@ -349,7 +353,7 @@ class _DiveProfilePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DiveProfilePainter old) =>
-      !_legsEqual(old.legs, legs);
+      !_legsEqual(old.legs, legs) || !identical(old.palette, palette);
 
   bool _legsEqual(List<AscentStop> a, List<AscentStop> b) {
     if (identical(a, b)) return true;

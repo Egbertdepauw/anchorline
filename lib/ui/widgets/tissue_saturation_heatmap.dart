@@ -20,21 +20,14 @@ import 'package:flutter/material.dart';
 
 import '../../analysis/deco/replay_result.dart';
 import '../../analysis/deco/tissue_model.dart';
+import '../theme/data_colors.dart';
 
 /// Anchor stops for the continuous saturation gradient. Each pair is
 /// `(percent, colour)`; values between stops are linearly interpolated.
 /// The ramp is biased so the green→yellow→orange transition lives
 /// around the 95–100% M-value warning band where the diver's attention
 /// should land.
-const List<(double, Color)> _gradientStops = [
-  (0.0, Color(0xFF1E3A8A)),   // deep blue
-  (40.0, Color(0xFF3B82F6)),  // blue
-  (70.0, Color(0xFF06B6D4)),  // cyan
-  (85.0, Color(0xFF22C55E)),  // green
-  (95.0, Color(0xFFFACC15)),  // yellow
-  (100.0, Color(0xFFF97316)), // orange
-  (115.0, Color(0xFFDC2626)), // red
-];
+const List<(double, Color)> _gradientStops = DataColors.tissueRamp;
 
 /// Colour for a saturation value (% of M-value), interpolated across
 /// [_gradientStops].

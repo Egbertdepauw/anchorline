@@ -5,6 +5,7 @@ import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
 import '../../data/models/sample_set.dart';
 import 'trace_segmented_bar.dart' show TraceType;
 import '../theme/gf_color.dart';
+import '../theme/tokens.dart';
 import '../util/tank_labels.dart';
 import 'profile_chart.dart' show cellTraceLabelForSlot;
 
@@ -45,9 +46,6 @@ class CrosshairTooltip extends StatelessWidget {
 
   /// Below this chart width we switch to the compact two-tier readout.
   static const double _compactBelow = 520;
-  static const Color _labelColor = Color(0xFF778899);
-  static const Color _subColor = Color(0xFF9FB0C0);
-  static const Color _boxColor = Color(0xE0152238);
 
   String _cellLabelOrFallback(int slot, String fallback) {
     if (cellsBySlot == null || cellsBySlot!.isEmpty) return fallback;
@@ -93,7 +91,9 @@ class CrosshairTooltip extends StatelessWidget {
   Widget build(BuildContext context) {
     final i = sampleIndex.clamp(0, samples.sampleCount - 1);
     final onRightSide = chartX > chartWidth / 2;
-    final child = chartWidth < _compactBelow ? _buildCompact(i) : _buildList(i);
+    final p = context.palette;
+    final child =
+        chartWidth < _compactBelow ? _buildCompact(i, p) : _buildList(i, p);
     return Align(
       alignment: onRightSide ? Alignment.centerRight : Alignment.centerLeft,
       child: child,
@@ -101,7 +101,7 @@ class CrosshairTooltip extends StatelessWidget {
   }
 
   // ── Wide layout: vertical label:value list ────────────────────────────
-  Widget _buildList(int i) {
+  Widget _buildList(int i, ThemePalette p) {
     final rows = <_Row>[
       _Row('Time', _timeAt(i)),
       _Row('Depth', '${samples.depthMeters[i].toStringAsFixed(1)}m'),
@@ -192,7 +192,8 @@ class CrosshairTooltip extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 8),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-            color: _boxColor, borderRadius: BorderRadius.circular(8)),
+            color: p.surfaceCard.withValues(alpha: 0.88),
+            borderRadius: BorderRadius.circular(8)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,7 +203,7 @@ class CrosshairTooltip extends StatelessWidget {
                 Container(
                   height: 1,
                   margin: const EdgeInsets.symmetric(vertical: 4),
-                  color: _labelColor.withValues(alpha: 0.25),
+                  color: p.textMuted.withValues(alpha: 0.25),
                 )
               else
                 Padding(
@@ -214,12 +215,12 @@ class CrosshairTooltip extends StatelessWidget {
                         child: Text(row.label,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                color: _labelColor, fontSize: 10))),
+                            style: TextStyle(
+                                color: p.textMuted, fontSize: 10))),
                     const SizedBox(width: 6),
                     Text(row.value,
                         style: TextStyle(
-                            color: row.valueColor ?? Colors.white,
+                            color: row.valueColor ?? p.textPrimary,
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
                             fontFeatures: const [FontFeature.tabularFigures()])),
@@ -232,8 +233,8 @@ class CrosshairTooltip extends StatelessWidget {
   }
 
   // ── Narrow layout: compact two-tier readout ───────────────────────────
-  Widget _buildCompact(int i) {
-    final chips = _compactChips(i);
+  Widget _buildCompact(int i, ThemePalette p) {
+    final chips = _compactChips(i, p);
     // Bounded so the chip Wrap reflows (typically 2 per row) and the box stays
     // short. Scales gently with the chart but never spans it.
     final maxW = (chartWidth * 0.62).clamp(170.0, 250.0);
@@ -244,17 +245,18 @@ class CrosshairTooltip extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-            color: _boxColor, borderRadius: BorderRadius.circular(10)),
+            color: p.surfaceCard.withValues(alpha: 0.88),
+            borderRadius: BorderRadius.circular(10)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _compactHeader(i),
+            _compactHeader(i, p),
             if (chips.isNotEmpty) ...[
               Container(
                 height: 1,
                 margin: const EdgeInsets.symmetric(vertical: 7),
-                color: _labelColor.withValues(alpha: 0.25),
+                color: p.textMuted.withValues(alpha: 0.25),
               ),
               Wrap(spacing: 12, runSpacing: 5, children: chips),
             ],
@@ -265,7 +267,7 @@ class CrosshairTooltip extends StatelessWidget {
   }
 
   /// Tier 1: prominent depth, with time + vertical rate stacked beside it.
-  Widget _compactHeader(int i) {
+  Widget _compactHeader(int i, ThemePalette p) {
     final depthFinite = samples.depthMeters[i].isFinite;
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -276,17 +278,17 @@ class CrosshairTooltip extends StatelessWidget {
               text: depthFinite
                   ? samples.depthMeters[i].toStringAsFixed(1)
                   : '—',
-              style: const TextStyle(
-                  color: Colors.white,
+              style: TextStyle(
+                  color: p.textPrimary,
                   fontSize: 21,
                   fontWeight: FontWeight.w600,
                   height: 1.0,
-                  fontFeatures: [FontFeature.tabularFigures()])),
+                  fontFeatures: const [FontFeature.tabularFigures()])),
           if (depthFinite)
-            const TextSpan(
+            TextSpan(
                 text: ' m',
                 style: TextStyle(
-                    color: _subColor,
+                    color: p.textSecondary,
                     fontSize: 11,
                     fontWeight: FontWeight.w500)),
         ])),
@@ -301,18 +303,18 @@ class CrosshairTooltip extends StatelessWidget {
               Text(_timeAt(i),
                   softWrap: false,
                   overflow: TextOverflow.clip,
-                  style: const TextStyle(
-                      color: Colors.white,
+                  style: TextStyle(
+                      color: p.textPrimary,
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
                       height: 1.25,
-                      fontFeatures: [FontFeature.tabularFigures()])),
+                      fontFeatures: const [FontFeature.tabularFigures()])),
               Text(_verticalRateAt(i),
                   softWrap: false,
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
-                  style: const TextStyle(
-                      color: _subColor, fontSize: 10, height: 1.25)),
+                  style: TextStyle(
+                      color: p.textSecondary, fontSize: 10, height: 1.25)),
             ],
           ),
         ),
@@ -321,15 +323,16 @@ class CrosshairTooltip extends StatelessWidget {
   }
 
   /// One compact chip: dim label + bright value, sharing a baseline.
-  Widget _chip(String label, String value, {Color? valueColor}) {
+  Widget _chipFor(ThemePalette p, String label, String value,
+      {Color? valueColor}) {
     return Text.rich(TextSpan(children: [
       TextSpan(
           text: '$label ',
-          style: const TextStyle(color: _labelColor, fontSize: 9, height: 1.1)),
+          style: TextStyle(color: p.textMuted, fontSize: 9, height: 1.1)),
       TextSpan(
           text: value,
           style: TextStyle(
-              color: valueColor ?? Colors.white,
+              color: valueColor ?? p.textPrimary,
               fontSize: 10.5,
               fontWeight: FontWeight.w500,
               height: 1.1,
@@ -339,7 +342,11 @@ class CrosshairTooltip extends StatelessWidget {
 
   /// Tier 2 chips, each gated on its trace so the readout mirrors the visible
   /// traces. NaN/Infinity guarded everywhere a value is rounded.
-  List<Widget> _compactChips(int i) {
+  List<Widget> _compactChips(int i, ThemePalette p) {
+    // Binds the palette once so the chip call sites below stay short.
+    // ignore: no_leading_underscores_for_local_identifiers
+    Widget _chip(String label, String value, {Color? valueColor}) =>
+        _chipFor(p, label, value, valueColor: valueColor);
     final chips = <Widget>[];
     if (visibleTraces.contains(TraceType.ppo2)) {
       chips.add(_chip('PPO2', samples.ppo2Bar[i].toStringAsFixed(2)));

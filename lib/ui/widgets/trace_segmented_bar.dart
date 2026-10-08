@@ -4,6 +4,8 @@ library;
 import 'package:flutter/material.dart';
 
 import '../components/status_dot.dart';
+import '../theme/data_colors.dart';
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 
 /// The set of data traces that can be toggled on/off in the profile chart.
@@ -21,22 +23,35 @@ enum TraceType {
   waterTemp,
 }
 
-const _segmentData = <TraceType, ({String label, Color color})>{
-  TraceType.ppo2: (label: 'PPO2', color: Color(0xFFFFCC66)),
-  TraceType.setpoint: (label: 'Setpoint', color: Color(0xFFA0AEB6)),
-  TraceType.cells: (label: 'Cells', color: Color(0xFF4ADE80)),
-  TraceType.deco: (label: 'Deco', color: Color(0xFFF39C12)),
-  TraceType.tanks: (label: 'Tanks', color: Color(0xFF60A5FA)),
-  TraceType.gasChanges: (label: 'Gas', color: Color(0xFF60A5FA)),
-  TraceType.density: (label: 'Density', color: Color(0xFFE3E6EB)),
-  TraceType.end: (label: 'END', color: Color(0xFFE3E6EB)),
-  TraceType.gf99: (label: 'GF99', color: Color(0xFF9333EA)),
-  TraceType.ceiling: (label: 'Ceiling', color: Color(0xFFEAB308)),
-  // Water temperature trace — cyan, evocative of cold water and
-  // visually distinct from the existing depth (blue) and tank
-  // (light-blue) traces.
-  TraceType.waterTemp: (label: 'Temp', color: Color(0xFF4DD0E1)),
+const _segmentLabels = <TraceType, String>{
+  TraceType.ppo2: 'PPO2',
+  TraceType.setpoint: 'Setpoint',
+  TraceType.cells: 'Cells',
+  TraceType.deco: 'Deco',
+  TraceType.tanks: 'Tanks',
+  TraceType.gasChanges: 'Gas',
+  TraceType.density: 'Density',
+  TraceType.end: 'END',
+  TraceType.gf99: 'GF99',
+  TraceType.ceiling: 'Ceiling',
+  TraceType.waterTemp: 'Temp',
 };
+
+/// The legend swatch colour for [type]: the colour the profile chart
+/// draws that trace in.
+Color traceLegendColor(TraceType type, ThemePalette palette) => switch (type) {
+      TraceType.ppo2 => palette.chartTracePpo2,
+      TraceType.setpoint => palette.chartTraceSetpoint,
+      TraceType.cells => palette.cell1,
+      TraceType.deco => SafetyColors.warning,
+      TraceType.tanks => DataColors.tanks.first,
+      TraceType.gasChanges => SafetyColors.info,
+      TraceType.density => palette.textPrimary,
+      TraceType.end => palette.textPrimary,
+      TraceType.gf99 => DataColors.gf99,
+      TraceType.ceiling => DataColors.ceiling,
+      TraceType.waterTemp => DataColors.waterTemp,
+    };
 
 /// Connected segmented control of [TraceType] toggles. Ten segments share
 /// a single rounded outline with 1-px dividers; selected segments tint
@@ -68,15 +83,15 @@ class TraceSegmentedBar extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            for (final entry in _segmentData.entries) ...[
+            for (final entry in _segmentLabels.entries) ...[
               _Segment(
-                label: entry.value.label,
-                dotColor: entry.value.color,
+                label: entry.value,
+                dotColor: traceLegendColor(entry.key, context.palette),
                 selected: visibleTraces.contains(entry.key),
                 onTap: () => onToggle(entry.key),
                 scheme: scheme,
               ),
-              if (entry.key != _segmentData.keys.last)
+              if (entry.key != _segmentLabels.keys.last)
                 Container(width: 1, color: scheme.outline),
             ],
           ],
