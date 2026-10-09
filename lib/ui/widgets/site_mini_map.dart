@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../theme/data_colors.dart';
 import 'map_tile_sources.dart';
 
 class SiteMiniMap extends StatelessWidget {
@@ -73,7 +74,7 @@ class SiteMiniMap extends StatelessWidget {
                 child: Icon(
                   Icons.place,
                   size: pin,
-                  color: Colors.redAccent,
+                  color: DataColors.mapPin,
                 ),
               ),
             ]),

@@ -16,6 +16,7 @@ import '../../data/db/database.dart';
 import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
 import '../../data/models/sample_set.dart';
 import 'trace_segmented_bar.dart' show TraceType;
+import '../theme/data_colors.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../util/tank_labels.dart';
@@ -65,24 +66,8 @@ const double _bottomPad = 24.0;
 // active `ThemePalette`, passed into the painter.
 
 const Color _decoColor = SafetyColors.warning;
-const Color _crosshairColor = Color(0x80FFFFFF);
 const Color _gasChangeColor = SafetyColors.info;
 const Color _bailoutColor = SafetyColors.danger;
-// Water temperature trace — must match the swatch in
-// `trace_segmented_bar.dart` so the dot in the legend agrees with the
-// trace on the chart.
-const Color _waterTempColor = Color(0xFF4DD0E1);
-
-// Tank-trace palette per tank slot. Picked to be distinct from the
-// existing depth/cell/setpoint colours.
-const List<Color> _tankColors = [
-  Color(0xFF80DEEA), // cyan-ish
-  Color(0xFFFFAB91), // peach
-  Color(0xFFCE93D8), // lilac
-  Color(0xFFB0BEC5), // blue grey
-  Color(0xFFA5D6A7), // pale green
-  Color(0xFFFFE082), // pale amber
-];
 
 /// Implicit y-axis range for tank traces, in bar.
 const double _tankBarMax = 300.0;
@@ -96,48 +81,39 @@ const double _tankBarMax = 300.0;
 // as a continuous gradient rather than five sharp colour bands.
 //
 // Speed convention: signed m/min. Negative = ascent (depth decreasing),
-// positive = descent (depth increasing). STABLE keeps the existing depth
-// blue so a calm dive looks the way it always has.
-const Color _vSpeedSlowColor = Color(0xFFA8D957);        // lime
-const Color _vSpeedModerateColor = Color(0xFFE5C73F);    // amber
-const Color _vSpeedFastColor = Color(0xFFEC8A3D);        // orange
-const Color _vSpeedCrazyColor = Color(0xFFE65656);       // red
+// positive = descent (depth increasing). The colours are fixed data
+// colours (`DataColors`), the same in every theme.
 
 // Anchor table sorted by speed ascending. _colorForRate finds the bracket
 // containing the segment's signed rate and lerps between the two anchors.
-// [stable] is the theme's depth-trace colour, so a calm dive looks like a
-// plain depth trace.
-List<({double speed, Color color})> _vSpeedAnchorsFor(Color stable) => [
-      (speed: -30.0, color: _vSpeedCrazyColor),
-      (speed: -18.2, color: _vSpeedCrazyColor),
-      (speed: -9.1, color: _vSpeedFastColor),
-      (speed: -4.6, color: _vSpeedModerateColor),
-      (speed: -1.5, color: _vSpeedSlowColor),
-      (speed: 0.0, color: stable),
-      (speed: 1.5, color: _vSpeedSlowColor),
-      (speed: 9.1, color: _vSpeedModerateColor),
-      (speed: 18.2, color: _vSpeedFastColor),
-      (speed: 30.4, color: _vSpeedCrazyColor),
-      (speed: 60.0, color: _vSpeedCrazyColor),
-    ];
+const List<({double speed, Color color})> _vSpeedAnchors = [
+  (speed: -30.0, color: DataColors.speedExtreme),
+  (speed: -18.2, color: DataColors.speedExtreme),
+  (speed: -9.1, color: DataColors.speedFast),
+  (speed: -4.6, color: DataColors.speedModerate),
+  (speed: -1.5, color: DataColors.speedSlow),
+  (speed: 0.0, color: DataColors.speedCalm),
+  (speed: 1.5, color: DataColors.speedSlow),
+  (speed: 9.1, color: DataColors.speedModerate),
+  (speed: 18.2, color: DataColors.speedFast),
+  (speed: 30.4, color: DataColors.speedExtreme),
+  (speed: 60.0, color: DataColors.speedExtreme),
+];
 
 const double _ppo2Max = 2.0;
 
 // ── Density + END band colours ───────────────────────────────────
-const Color _bandGreen = Color(0xFF4ADE80);
-const Color _bandOrange = Color(0xFFF59E0B);
-const Color _bandRed = Color(0xFFDC2626);
 
 Color _colorForDensityBand(DensityBand b) => switch (b) {
-      DensityBand.green => _bandGreen,
-      DensityBand.orange => _bandOrange,
-      DensityBand.red => _bandRed,
+      DensityBand.green => SafetyColors.bandSafe,
+      DensityBand.orange => SafetyColors.bandCaution,
+      DensityBand.red => SafetyColors.bandOver,
     };
 
 Color _colorForEndBand(EndBand b) => switch (b) {
-      EndBand.green => _bandGreen,
-      EndBand.orange => _bandOrange,
-      EndBand.red => _bandRed,
+      EndBand.green => SafetyColors.bandSafe,
+      EndBand.orange => SafetyColors.bandCaution,
+      EndBand.red => SafetyColors.bandOver,
     };
 
 /// Implicit max g/L for the density y-axis scale. Sized to fit air at
@@ -328,10 +304,11 @@ class _TankLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xC0152238),
+        color: palette.surfaceCard.withValues(alpha: 0.75),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Column(
@@ -346,13 +323,13 @@ class _TankLegend extends StatelessWidget {
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
-                        color: _tankColors[i % _tankColors.length],
+                        color: DataColors.tanks[i % DataColors.tanks.length],
                         borderRadius: BorderRadius.circular(2))),
                 const SizedBox(width: 4),
                 Text(
                   labelForTank(tanks[i], mappedCylinders),
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: palette.textPrimary,
                     fontSize: 10,
                   ),
                 ),
@@ -383,7 +360,7 @@ class _CellLegend extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xC0152238),
+        color: palette.surfaceCard.withValues(alpha: 0.75),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Column(
@@ -403,8 +380,8 @@ class _CellLegend extends StatelessWidget {
                 const SizedBox(width: 4),
                 Text(
                   cellTraceLabelForSlot(cellsBySlot, slot),
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: palette.textPrimary,
                     fontSize: 10,
                   ),
                 ),
@@ -597,7 +574,7 @@ class ProfileChartPainter extends CustomPainter {
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round;
         final mpmPerSample = 60000.0 / samples.sampleIntervalMs;
-        final anchors = _vSpeedAnchorsFor(palette.chartTraceDepth);
+        const anchors = _vSpeedAnchors;
         for (int i = 1; i < n; i++) {
           final rate =
               (samples.depthMeters[i] - samples.depthMeters[i - 1]) *
@@ -688,7 +665,7 @@ class ProfileChartPainter extends CustomPainter {
           n,
           xOf,
           yTemp,
-          _waterTempColor,
+          DataColors.waterTemp,
           1.5,
         );
         // Annotate min + max temps so the chart is readable without
@@ -698,7 +675,7 @@ class ProfileChartPainter extends CustomPainter {
         // each other.
         if ((tMax - tMin) >= 0.5) {
           final labelStyle = TextStyle(
-            color: _waterTempColor,
+            color: DataColors.waterTemp,
             fontSize: 9,
             fontFeatures: const [FontFeature.tabularFigures()],
           );
@@ -752,7 +729,7 @@ class ProfileChartPainter extends CustomPainter {
           n,
           xOf,
           yTank,
-          _tankColors[t % _tankColors.length],
+          DataColors.tanks[t % DataColors.tanks.length],
           1.5,
         );
       }
@@ -844,7 +821,7 @@ class ProfileChartPainter extends CustomPainter {
     if (decoReplay != null && visibleTraces.contains(TraceType.gf99)) {
       final s = decoReplay!.gf99Series;
       final gfPaint = Paint()
-        ..color = const Color(0xFF9333EA)
+        ..color = DataColors.gf99
         ..strokeWidth = 1.6
         ..style = PaintingStyle.stroke;
       for (var i = 1; i < s.length && i < n; i++) {
@@ -865,7 +842,7 @@ class ProfileChartPainter extends CustomPainter {
     if (decoReplay != null && visibleTraces.contains(TraceType.ceiling)) {
       final s = decoReplay!.ceilingMeters;
       final ceilPaint = Paint()
-        ..color = const Color(0xFFEAB308)
+        ..color = DataColors.ceiling
         ..strokeWidth = 1.6
         ..style = PaintingStyle.stroke;
       for (var i = 1; i < s.length && i < n; i++) {
@@ -883,7 +860,7 @@ class ProfileChartPainter extends CustomPainter {
       final ci = crosshairIndex!.clamp(0, n - 1);
       final x = xOf(ci);
       final crossPaint = Paint()
-        ..color = _crosshairColor
+        ..color = palette.textPrimary.withValues(alpha: 0.5)
         ..strokeWidth = 1.0;
       canvas.drawLine(Offset(x, chartTop), Offset(x, chartBottom), crossPaint);
     }
@@ -917,13 +894,13 @@ class ProfileChartPainter extends CustomPainter {
     }
     if (transitions.isEmpty) return;
 
-    final labelStyleNormal = const TextStyle(
-      color: Colors.white,
+    const labelStyleNormal = TextStyle(
+      color: SafetyColors.onAlert,
       fontSize: 9,
       fontWeight: FontWeight.w500,
     );
-    final labelStyleBailout = const TextStyle(
-      color: Colors.white,
+    const labelStyleBailout = TextStyle(
+      color: SafetyColors.onAlert,
       fontSize: 9,
       fontWeight: FontWeight.bold,
     );
@@ -1019,7 +996,7 @@ class ProfileChartPainter extends CustomPainter {
         return Color.lerp(a.color, b.color, t)!;
       }
     }
-    return palette.chartTraceDepth;
+    return DataColors.speedCalm;
   }
 
   void _drawSolidTrace(
@@ -1095,8 +1072,8 @@ class ProfileChartPainter extends CustomPainter {
     double depthMax,
     double depthStep,
   ) {
-    final style = const TextStyle(
-      color: Color(0xFF90A4AE),
+    final style = TextStyle(
+      color: palette.textSecondary,
       fontSize: 9,
       fontFeatures: [FontFeature.tabularFigures()],
     );
@@ -1150,8 +1127,8 @@ class ProfileChartPainter extends CustomPainter {
         !visibleTraces.contains(TraceType.cells)) {
       return;
     }
-    final style = const TextStyle(
-      color: Color(0xFF90A4AE),
+    final style = TextStyle(
+      color: palette.textSecondary,
       fontSize: 9,
       fontFeatures: [FontFeature.tabularFigures()],
     );
@@ -1174,8 +1151,8 @@ class ProfileChartPainter extends CustomPainter {
     int n,
     int intervalMs,
   ) {
-    final style = const TextStyle(
-      color: Color(0xFF90A4AE),
+    final style = TextStyle(
+      color: palette.textSecondary,
       fontSize: 9,
       fontFeatures: [FontFeature.tabularFigures()],
     );

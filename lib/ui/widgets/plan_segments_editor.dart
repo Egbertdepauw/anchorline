@@ -6,6 +6,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../data/models/dive_plan.dart';
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import 'gas_safety_readout.dart';
 
@@ -202,7 +203,8 @@ class _SegmentRowState extends State<_SegmentRow> {
             : null;
     final safety = selectedGas == null
         ? null
-        : computeGasSafetyReadout(selectedGas, segDepth);
+        : computeGasSafetyReadout(selectedGas, segDepth,
+            idleColor: context.palette.textSecondary);
 
     // Items: only safe-at-this-depth gases, except always include the
     // currently-selected one so DropdownButton doesn't assert.
@@ -217,7 +219,7 @@ class _SegmentRowState extends State<_SegmentRow> {
           child: Text(
             PlanSegmentsEditor.gasLabel(widget.gases[gi]),
             style: AppTypography.readoutSm.copyWith(
-              color: isSafe ? null : const Color(0xFFE74C3C),
+              color: isSafe ? null : SafetyColors.danger,
             ),
           ),
         ),

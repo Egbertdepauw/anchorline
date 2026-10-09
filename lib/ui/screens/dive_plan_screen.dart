@@ -417,9 +417,9 @@ class _PlanTab extends StatelessWidget {
                 if (legs.isNotEmpty) ...[
                   DiveProfileChart(legs: legs),
                   const SizedBox(height: Spacing.sm),
-                  const Divider(
+                  Divider(
                     height: 1,
-                    color: Color(0xFF2A3A45),
+                    color: context.palette.surfaceBezel,
                   ),
                   const SizedBox(height: Spacing.sm),
                 ],
@@ -492,7 +492,7 @@ class _BailoutTab extends StatelessWidget {
                 if (bailoutLegs.isNotEmpty) ...[
                   DiveProfileChart(legs: bailoutLegs),
                   const SizedBox(height: Spacing.sm),
-                  const Divider(height: 1, color: Color(0xFF2A3A45)),
+                  Divider(height: 1, color: context.palette.surfaceBezel),
                   const SizedBox(height: Spacing.sm),
                 ],
                 if (result != null)

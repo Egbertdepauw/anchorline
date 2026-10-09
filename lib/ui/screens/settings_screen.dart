@@ -58,9 +58,8 @@ class SettingsScreen extends StatefulWidget {
   /// instantiates this alongside the orchestrator at app boot.
   final SubsurfaceBootstrapImporter? subsurfaceBootstrapImporter;
 
-  /// Whether to show the theme picker. Follows [kThemingEnabled] (debug
-  /// builds only for now): until the loose colour literals are swept
-  /// (stage 2), non-default themes look half-applied.
+  /// Whether to show the theme picker. Follows [kThemingEnabled], which is
+  /// on in every build; kept as a parameter so tests can hide the section.
   final bool showThemePicker;
 
   const SettingsScreen({

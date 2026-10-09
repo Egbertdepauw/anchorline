@@ -1,4 +1,5 @@
 import 'package:ccrlogger/shearwater/parser/constants.dart';
+import 'package:ccrlogger/ui/theme/data_colors.dart';
 import 'package:ccrlogger/ui/util/dive_mode_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,6 +22,17 @@ void main() {
   });
   test('CC2 returns same as CC', () {
     expect(diveModeColor(DiveMode.cc2.value), equals(diveModeColor(DiveMode.cc.value)));
+  });
+  test('every mode maps to its DataColors constant', () {
+    expect(diveModeColor(DiveMode.cc.value), DataColors.modeClosedCircuit);
+    expect(diveModeColor(DiveMode.cc2.value), DataColors.modeClosedCircuit);
+    expect(diveModeColor(DiveMode.ocTec.value), DataColors.modeOpenCircuit);
+    expect(diveModeColor(DiveMode.ocRec.value), DataColors.modeOpenCircuit);
+    expect(diveModeColor(DiveMode.avelo.value), DataColors.modeOpenCircuit);
+    expect(diveModeColor(DiveMode.sc.value), DataColors.modeSemiClosed);
+    expect(diveModeColor(DiveMode.gauge.value), DataColors.modeGauge);
+    expect(diveModeColor(DiveMode.ppo2.value), DataColors.modeGauge);
+    expect(diveModeColor(DiveMode.freedive.value), DataColors.modeFreedive);
   });
   test('diveModeLabel returns correct labels', () {
     expect(diveModeLabel(DiveMode.cc.value), equals('CC'));

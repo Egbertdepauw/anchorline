@@ -1,20 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../shearwater/parser/constants.dart';
-
-const _ccColor = Color(0xFF4FC3F7);
-const _ocColor = Color(0xFFFF9800);
-const _scColor = Color(0xFFAB47BC);
-const _gaugeColor = Color(0xFF78909C);
-const _freediveColor = Color(0xFF26A69A);
+import '../theme/data_colors.dart';
 
 Color diveModeColor(int diveModeValue) {
   final mode = DiveMode.fromValue(diveModeValue);
   return switch (mode) {
-    DiveMode.cc || DiveMode.cc2 => _ccColor,
-    DiveMode.ocTec || DiveMode.ocRec || DiveMode.avelo => _ocColor,
-    DiveMode.sc => _scColor,
-    DiveMode.gauge || DiveMode.ppo2 => _gaugeColor,
-    DiveMode.freedive => _freediveColor,
+    DiveMode.cc || DiveMode.cc2 => DataColors.modeClosedCircuit,
+    DiveMode.ocTec || DiveMode.ocRec || DiveMode.avelo =>
+      DataColors.modeOpenCircuit,
+    DiveMode.sc => DataColors.modeSemiClosed,
+    DiveMode.gauge || DiveMode.ppo2 => DataColors.modeGauge,
+    DiveMode.freedive => DataColors.modeFreedive,
   };
 }
 

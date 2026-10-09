@@ -12,6 +12,7 @@ import '../../analysis/bailout/icd.dart'
     show IcdSeverity, icdSeverityBetween;
 import '../../analysis/gas_density.dart' show mixDensityAt1Atm;
 import '../../data/models/dive.dart' show DiveGasMix;
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 
 /// Per-stop ascent table. Adjacent minute-steps with the same gas and
@@ -22,9 +23,9 @@ class StopLadderTable extends StatelessWidget {
     required this.stops,
     required this.scheme,
     this.startingRuntime = Duration.zero,
-    this.icdRedAccent = const Color(0xFFE74C3C),
-    this.icdAmberAccent = const Color(0xFFF39C12),
-    this.gasSwitchAccent = const Color(0xFF60A5FA),
+    this.icdRedAccent = SafetyColors.danger,
+    this.icdAmberAccent = SafetyColors.warning,
+    this.gasSwitchAccent = SafetyColors.info,
   });
 
   final List<AscentStop> stops;
@@ -302,7 +303,7 @@ class StopLadderTable extends StatelessWidget {
             ],
           ),
         ),
-        const Divider(height: 1, color: Color(0xFF2A3A45)), // surfaceBezel
+        Divider(height: 1, color: context.palette.surfaceBezel),
         for (var i = 0; i < rows.length; i++) ...[
           Builder(builder: (context) {
             final row = rows[i];
@@ -375,9 +376,9 @@ class StopLadderTable extends StatelessWidget {
               ),
             );
           }),
-          const Divider(
+          Divider(
             height: 1,
-            color: Color(0xFF1A2832), // chartGrid
+            color: context.palette.chartGrid,
           ),
         ],
       ],

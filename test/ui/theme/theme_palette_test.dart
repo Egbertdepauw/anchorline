@@ -44,7 +44,6 @@ void main() {
         chartTraceDepth: Color(0xFF00000F),
         chartTracePpo2: Color(0xFF000010),
         chartTraceSetpoint: Color(0xFF000011),
-        chartTraceGf99: Color(0xFF000012),
       );
       final r = AppColors.wreck.lerp(b, 1);
       expect(r.surfaceBg, b.surfaceBg);
@@ -64,7 +63,6 @@ void main() {
       expect(r.chartTraceDepth, b.chartTraceDepth);
       expect(r.chartTracePpo2, b.chartTracePpo2);
       expect(r.chartTraceSetpoint, b.chartTraceSetpoint);
-      expect(r.chartTraceGf99, b.chartTraceGf99);
     });
 
     test('lerp at t=0.5 is between the endpoints', () {

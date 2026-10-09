@@ -44,6 +44,7 @@ import '../widgets/star_rating.dart';
 import '../widgets/tissue_saturation_heatmap.dart';
 import '../widgets/trace_segmented_bar.dart';
 import '../components/stat_tile.dart';
+import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../theme/gf_color.dart';
 import '../../analysis/gas_density.dart';
@@ -690,8 +691,9 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                                           tooltip: 'Fullscreen',
                                           visualDensity: VisualDensity.compact,
                                           iconSize: 18,
-                                          icon: const Icon(Icons.fullscreen,
-                                              color: Colors.white70),
+                                          icon: Icon(Icons.fullscreen,
+                                              color: context
+                                                  .palette.textSecondary),
                                           onPressed: () =>
                                               _openFullscreenChart(
                                             samples: samples,
@@ -1438,14 +1440,14 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         gfBandColor(gf, gfHigh: (widget.dive.gfHigh ?? 85).toDouble());
 
     Color colourForDensityValue(double v) => switch (densityBand(v)) {
-          DensityBand.green => const Color(0xFF4ADE80),
-          DensityBand.orange => const Color(0xFFF59E0B),
-          DensityBand.red => const Color(0xFFDC2626),
+          DensityBand.green => SafetyColors.bandSafe,
+          DensityBand.orange => SafetyColors.bandCaution,
+          DensityBand.red => SafetyColors.bandOver,
         };
     Color colourForEndValue(double v) => switch (endBand(v)) {
-          EndBand.green => const Color(0xFF4ADE80),
-          EndBand.orange => const Color(0xFFF59E0B),
-          EndBand.red => const Color(0xFFDC2626),
+          EndBand.green => SafetyColors.bandSafe,
+          EndBand.orange => SafetyColors.bandCaution,
+          EndBand.red => SafetyColors.bandOver,
         };
 
     final dive = widget.dive;

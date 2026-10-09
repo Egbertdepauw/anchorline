@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../analysis/cell_health.dart';
+import '../theme/safety_colors.dart';
+import '../theme/tokens.dart';
 
 class CellHealthStrip extends StatelessWidget {
   final CellHealth health;
@@ -25,7 +27,7 @@ class CellHealthStrip extends StatelessWidget {
       children: [
         if (hasAge) _ageBar(theme),
         if (hasAge) const SizedBox(height: 8),
-        Row(children: [_mvPill(theme)]),
+        Row(children: [_mvPill(theme, context.palette)]),
       ],
     );
   }
@@ -35,11 +37,11 @@ class CellHealthStrip extends StatelessWidget {
     final fraction = (months / 12.0).clamp(0.0, 1.0);
     final Color color;
     if (months < 8) {
-      color = Colors.green;
+      color = SafetyColors.success;
     } else if (months < 12) {
-      color = Colors.amber;
+      color = SafetyColors.warning;
     } else {
-      color = Colors.redAccent;
+      color = SafetyColors.danger;
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -64,12 +66,13 @@ class CellHealthStrip extends StatelessWidget {
     );
   }
 
-  Widget _mvPill(ThemeData theme) {
+  Widget _mvPill(ThemeData theme, ThemePalette palette) {
     final (emoji, label, color) = switch (health.mvStatus) {
-      CellMvStatus.healthy => ('🟢', 'Healthy', Colors.green),
-      CellMvStatus.watch => ('🟡', 'Watch', Colors.amber),
-      CellMvStatus.replace => ('🔴', 'Replace', Colors.redAccent),
-      CellMvStatus.insufficientData => ('⚪', 'Insufficient data', Colors.grey),
+      CellMvStatus.healthy => ('🟢', 'Healthy', SafetyColors.success),
+      CellMvStatus.watch => ('🟡', 'Watch', SafetyColors.warning),
+      CellMvStatus.replace => ('🔴', 'Replace', SafetyColors.danger),
+      CellMvStatus.insufficientData =>
+        ('⚪', 'Insufficient data', palette.textMuted),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

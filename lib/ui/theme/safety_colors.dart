@@ -16,6 +16,20 @@ class SafetyColors {
   static const Color gfOverHigh = Color(0xFFF59E0B);
   static const Color gfOverLimit = Color(0xFFDC2626);
 
+  /// Limit bands for gas density and END readouts. Same colours as the
+  /// GF bands: within limits, approaching, over.
+  static const Color bandSafe = gfWithinLimits;
+  static const Color bandCaution = gfOverHigh;
+  static const Color bandOver = gfOverLimit;
+
+  /// Background of a full-width alert banner, and of a destructive
+  /// swipe action when drawn with [danger].
+  static const Color alertCriticalSurface = Color(0xFFB71C1C);
+  static const Color alertWarningSurface = Color(0xFFE65100);
+
+  /// Text and icons on an alert surface or on [danger].
+  static const Color onAlert = Color(0xFFFFFFFF);
+
   /// Every safety colour by name, for tests that check them against each
   /// theme's surfaces.
   static const Map<String, Color> all = {

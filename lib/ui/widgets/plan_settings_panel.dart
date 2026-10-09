@@ -172,8 +172,8 @@ class _PlanSettingsPanelState extends State<PlanSettingsPanel> {
                   ),
                 ),
                 if (_useVpmb)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 4, bottom: 4, left: 110),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 4, left: 110),
                     child: Text(
                       'VPM-B forward-planning is queued — falls back to '
                       'ZHL-16C + GF until that lands.',
@@ -181,7 +181,7 @@ class _PlanSettingsPanelState extends State<PlanSettingsPanel> {
                         fontFamily: 'Inter',
                         fontSize: 11,
                         fontStyle: FontStyle.italic,
-                        color: Color(0xFFA0AEB6), // textSecondary
+                        color: context.palette.textSecondary,
                       ),
                     ),
                   ),

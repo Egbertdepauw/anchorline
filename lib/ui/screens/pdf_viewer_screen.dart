@@ -19,6 +19,7 @@ import 'package:pdfx/pdfx.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/models/dive_attachment.dart';
+import '../theme/media_colors.dart';
 import '../widgets/background_watermark.dart' show SuppressWatermark;
 
 class PdfViewerScreen extends StatefulWidget {
@@ -94,10 +95,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     // composite a visible tint over the (mostly white) PDF pages.
     return SuppressWatermark(
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: MediaColors.viewerBackground,
         appBar: AppBar(
-          backgroundColor: Colors.black.withValues(alpha: 0.6),
-          foregroundColor: Colors.white,
+          backgroundColor: MediaColors.scrim(0.6),
+          foregroundColor: MediaColors.viewerForeground,
           title: Text(widget.title,
               maxLines: 1, overflow: TextOverflow.ellipsis),
           actions: [

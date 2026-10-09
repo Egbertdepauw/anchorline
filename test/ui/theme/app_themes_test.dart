@@ -67,7 +67,6 @@ void main() {
       expect(w.chartTraceDepth, const Color(0xFFE0E8EC));
       expect(w.chartTracePpo2, const Color(0xFFFFCC66));
       expect(w.chartTraceSetpoint, const Color(0xFFA0AEB6));
-      expect(w.chartTraceGf99, const Color(0xFFF472B6));
     });
 
     test('themeData carries the palette and is built once', () {

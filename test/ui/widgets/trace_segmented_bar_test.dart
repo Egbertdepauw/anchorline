@@ -1,8 +1,38 @@
+import 'package:ccrlogger/ui/theme/app_themes.dart';
+import 'package:ccrlogger/ui/theme/data_colors.dart';
+import 'package:ccrlogger/ui/theme/safety_colors.dart';
+import 'package:ccrlogger/ui/theme/tokens.dart';
 import 'package:ccrlogger/ui/widgets/trace_segmented_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('each legend swatch is the colour the chart draws that trace in', () {
+    for (final t in AppThemes.all) {
+      final p = t.palette;
+      expect(traceLegendColor(TraceType.ppo2, p), p.chartTracePpo2,
+          reason: t.id);
+      expect(traceLegendColor(TraceType.setpoint, p), p.chartTraceSetpoint,
+          reason: t.id);
+      expect(traceLegendColor(TraceType.cells, p), p.cell1, reason: t.id);
+      expect(traceLegendColor(TraceType.deco, p), SafetyColors.warning);
+      expect(traceLegendColor(TraceType.gasChanges, p), SafetyColors.info);
+      expect(traceLegendColor(TraceType.tanks, p), DataColors.tanks.first);
+      expect(traceLegendColor(TraceType.gf99, p), DataColors.gf99);
+      expect(traceLegendColor(TraceType.ceiling, p), DataColors.ceiling);
+      expect(traceLegendColor(TraceType.waterTemp, p), DataColors.waterTemp);
+      expect(traceLegendColor(TraceType.density, p), p.textPrimary,
+          reason: t.id);
+      expect(traceLegendColor(TraceType.end, p), p.textPrimary, reason: t.id);
+    }
+  });
+
+  test('every trace type has a legend colour', () {
+    for (final type in TraceType.values) {
+      expect(() => traceLegendColor(type, AppColors.wreck), returnsNormally);
+    }
+  });
+
   // `NoSplash.splashFactory` skips the ink-ripple animation, which
   // otherwise tries to load `shaders/ink_sparkle.frag` and trips a
   // Flutter 3.44 shader-version mismatch in the test harness. None of

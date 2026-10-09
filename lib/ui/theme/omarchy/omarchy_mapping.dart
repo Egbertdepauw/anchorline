@@ -112,6 +112,5 @@ ThemePalette paletteFromOmarchy(OmarchyColors o) {
     chartTraceDepth: textPrimary,
     chartTracePpo2: o.useOwnPpo2Color ? o.yellow : wreck.chartTracePpo2,
     chartTraceSetpoint: textSecondary,
-    chartTraceGf99: cell3,
   );
 }

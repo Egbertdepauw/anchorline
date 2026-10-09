@@ -3,6 +3,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../theme/data_colors.dart';
+
 /// OpenStreetMap tile server. Note: tile.openstreetmap.org's usage policy
 /// disallows production use in mobile apps; swap to a permitted provider
 /// (MapTiler / Stadia / self-hosted) before public release.
@@ -109,7 +111,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                         width: 36,
                         height: 36,
                         child: const Icon(Icons.location_pin,
-                            color: Colors.red, size: 36),
+                            color: DataColors.mapPin, size: 36),
                       ),
                     ]),
                   ],

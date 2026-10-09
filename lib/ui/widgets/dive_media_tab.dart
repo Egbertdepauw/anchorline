@@ -27,6 +27,7 @@ import '../../sync/attachments/attachment_uploader.dart';
 import '../notifiers/dive_attachments_notifier.dart';
 import '../screens/add_link_sheet.dart';
 import '../screens/edit_attachment_sheet.dart';
+import '../theme/media_colors.dart';
 
 class DiveMediaTab extends StatefulWidget {
   final DiveAttachmentsNotifier notifier;
@@ -327,7 +328,7 @@ class _FileMediaTile extends StatelessWidget {
     final overlays = <Widget>[];
     if (pending) {
       overlays.add(Container(
-        color: Colors.black.withValues(alpha: 0.35),
+        color: MediaColors.scrim(0.35),
         child: const Center(
           child: SizedBox(
             width: 28,
@@ -338,7 +339,7 @@ class _FileMediaTile extends StatelessWidget {
       ));
     } else if (failed) {
       overlays.add(Container(
-        color: Colors.black.withValues(alpha: 0.45),
+        color: MediaColors.scrim(0.45),
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -711,12 +712,12 @@ class _TileMenuButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.35),
+        color: MediaColors.scrim(0.35),
         shape: BoxShape.circle,
       ),
       child: PopupMenuButton<_MediaTileAction>(
         tooltip: 'More',
-        icon: const Icon(Icons.more_vert, size: 18, color: Colors.white),
+        icon: const Icon(Icons.more_vert, size: 18, color: MediaColors.onScrim),
         padding: EdgeInsets.zero,
         iconSize: 18,
         onSelected: (action) {
