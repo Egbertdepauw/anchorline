@@ -27,11 +27,14 @@ describe("keepAlive", () => {
     warn.mockRestore();
   });
 
-  it("calls the REST URL with both auth headers", async () => {
-    const f = vi.fn().mockResolvedValue(new Response("[]", { status: 200 }));
+  it("calls the keepalive RPC with both auth headers", async () => {
+    const f = vi.fn().mockResolvedValue(new Response("1", { status: 200 }));
     await keepAlive(env, f);
     const [url, init] = f.mock.calls[0];
-    expect(url).toBe("https://x.supabase.co/rest/v1/dives?select=id&limit=1");
+    // The anon role has no access to any table (migration 0016), so the
+    // keep-alive calls a function granted to anon instead.
+    expect(url).toBe("https://x.supabase.co/rest/v1/rpc/keepalive");
+    expect(init.method).toBe("POST");
     const h = new Headers(init.headers);
     expect(h.get("apikey")).toBe("anon-key");
     expect(h.get("Authorization")).toBe("Bearer anon-key");
