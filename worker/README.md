@@ -188,12 +188,14 @@ code change.
 Supabase pauses a free-tier project that sees too little database
 activity over 7 days. The Worker has a `scheduled` handler (cron
 `23 4 * * *`, daily, set in `wrangler.toml`) that makes one read-only
-request to `${SUPABASE_URL}/rest/v1/dives?select=id&limit=1` with the
-public anon key (`SUPABASE_ANON_KEY` in `[vars]`). With no signed-in
-user RLS returns an empty list, which counts as success. Failures are
-logged with `console.warn` and never throw. Remove `src/keepalive.ts`,
-the `scheduled` handler and the `[triggers]` block when the project
-moves to a paid plan.
+request with the public anon key (`SUPABASE_ANON_KEY` in `[vars]`): a
+call to the `keepalive()` database function at
+`${SUPABASE_URL}/rest/v1/rpc/keepalive`, which touches no data and
+returns 1 (`supabase/migrations/0018_keepalive_function.sql`). It is a
+function and not a table read because the anon role has no access to any
+table. Failures are logged with `console.warn` and never throw. Remove
+`src/keepalive.ts`, the `scheduled` handler, the `[triggers]` block and
+the `keepalive()` function when the project moves to a paid plan.
 
 ## Tests
 

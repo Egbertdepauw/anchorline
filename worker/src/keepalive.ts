@@ -2,10 +2,12 @@
 //
 // Supabase pauses a free-tier project that sees too little database
 // activity over 7 days. The scheduled handler calls this once a day: one
-// cheap read-only REST request. With the anon key and no signed-in user,
-// RLS returns an empty list, which is expected and counts as success.
-// Remove this file and the cron trigger when the project moves to a paid
-// plan.
+// call to the `keepalive()` database function (migration 0018), which
+// touches no data and returns 1. It is a function and not a table read
+// because the anon role, the only key this Worker holds, has no access to
+// any table (migration 0016).
+// Remove this file, the cron trigger and the function when the project
+// moves to a paid plan.
 
 export interface KeepAliveResult {
   ok: boolean;
@@ -17,12 +19,14 @@ export async function keepAlive(
   fetchFn: typeof fetch = fetch,
 ): Promise<KeepAliveResult> {
   try {
-    const res = await fetchFn(`${env.SUPABASE_URL}/rest/v1/dives?select=id&limit=1`, {
-      method: "GET",
+    const res = await fetchFn(`${env.SUPABASE_URL}/rest/v1/rpc/keepalive`, {
+      method: "POST",
       headers: {
         apikey: env.SUPABASE_ANON_KEY,
         Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
       },
+      body: "{}",
     });
     if (!res.ok) {
       console.warn(`keepalive: Supabase returned ${res.status}`);
