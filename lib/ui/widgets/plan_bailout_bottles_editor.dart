@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/dive_plan.dart';
 import '../theme/tokens.dart';
+import '../../analysis/gas_naming.dart';
 
 class PlanBailoutBottlesEditor extends StatelessWidget {
   const PlanBailoutBottlesEditor({
@@ -32,13 +33,8 @@ class PlanBailoutBottlesEditor extends StatelessWidget {
   final ValueChanged<int> onRemove;
   final void Function(int idx, DivePlanBailoutBottle b) onReplace;
 
-  static String mixLabel(DivePlanGas g) {
-    if (g.heliumPercent > 0) {
-      return 'Tx${g.oxygenPercent}/${g.heliumPercent}';
-    }
-    if (g.oxygenPercent == 21) return 'Air';
-    return 'EAN${g.oxygenPercent}';
-  }
+  static String mixLabel(DivePlanGas g) =>
+      gasMixName(g.oxygenPercent, g.heliumPercent);
 
   @override
   Widget build(BuildContext context) {

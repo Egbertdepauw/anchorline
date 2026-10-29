@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import '../../data/models/dive.dart' show DiveGasMix;
 import '../../data/models/dive_plan.dart' show DivePlanGas;
 import '../theme/safety_colors.dart';
+import '../../analysis/mod.dart' as mod;
 
 const double _kSurfaceAtm = 1.013;
 
@@ -86,7 +87,7 @@ GasSafetyReadout? computeGasSafetyReadout(
 
   // MOD via the conventional cap (PPO₂ 1.4 on trimix, 1.6 on nitrox).
   final modCapPpo2 = gas.heliumPercent > 0 ? 1.4 : 1.6;
-  final modMeters = ((modCapPpo2 / fO2) - 1.0) * 10.0;
+  final modMeters = mod.modMeters(fO2, modCapPpo2);
 
   // END at the evaluated depth — when unset, fall back to MOD so the
   // chip still has a number to show.

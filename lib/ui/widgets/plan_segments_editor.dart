@@ -9,6 +9,7 @@ import '../../data/models/dive_plan.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import 'gas_safety_readout.dart';
+import '../../analysis/gas_naming.dart';
 
 class PlanSegmentsEditor extends StatelessWidget {
   const PlanSegmentsEditor({
@@ -30,13 +31,8 @@ class PlanSegmentsEditor extends StatelessWidget {
   final void Function(int oldIdx, int newIdx) onReorder;
   final DivePlanMode mode;
 
-  static String gasLabel(DivePlanGas g) {
-    if (g.heliumPercent > 0) {
-      return 'Tx${g.oxygenPercent}/${g.heliumPercent}';
-    }
-    if (g.oxygenPercent == 21) return 'Air';
-    return 'EAN${g.oxygenPercent}';
-  }
+  static String gasLabel(DivePlanGas g) =>
+      gasMixName(g.oxygenPercent, g.heliumPercent);
 
   @override
   Widget build(BuildContext context) {

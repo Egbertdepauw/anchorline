@@ -22,6 +22,7 @@ import 'mix_resolver.dart' show resolveBottomMix;
 import 'standard_mixes.dart'
     show kDecoMixes, kO2, kTx2135, kTx3525, gueDecoGasesForDepth;
 import 'tank_recommender.dart' show TankSpec, recommend;
+import '../gas_naming.dart';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -405,11 +406,5 @@ List<String> _buildVerdictDetails(
 }
 
 /// Short human-readable label for a gas mix.
-String _gasLabel(DiveGasMix gas) {
-  if (gas.heliumPercent > 0) {
-    return 'TMX ${gas.oxygenPercent}/${gas.heliumPercent}';
-  }
-  if (gas.oxygenPercent == 100) return 'O2';
-  if (gas.oxygenPercent == 21) return 'Air';
-  return 'EAN ${gas.oxygenPercent}';
-}
+String _gasLabel(DiveGasMix gas) =>
+    gasMixName(gas.oxygenPercent, gas.heliumPercent);

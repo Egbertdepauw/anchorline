@@ -13,6 +13,7 @@ import '../theme/tokens.dart';
 import 'chip_input.dart';
 import 'site_form_view.dart';
 import 'site_map_view.dart';
+import '../../analysis/gas_naming.dart';
 
 class DiveAnnotationsSection extends StatefulWidget {
   final DiveAnnotationsNotifier notifier;
@@ -258,7 +259,7 @@ class GasMixRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mixLabel = '${mix.oxygenPercent}/${mix.heliumPercent}';
+    final mixLabel = gasMixName(mix.oxygenPercent, mix.heliumPercent);
     final mins = activeSeconds ~/ 60;
     // Coerce a missing-cylinder id to null for display only — handles the
     // case where a cylinder mapped to this dive was later soft-deleted from

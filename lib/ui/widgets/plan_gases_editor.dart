@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import '../../data/models/dive_plan.dart';
 import '../theme/tokens.dart';
 import 'gas_safety_readout.dart';
+import '../../analysis/gas_naming.dart';
 
 class PlanGasesEditor extends StatelessWidget {
   const PlanGasesEditor({
@@ -39,13 +40,8 @@ class PlanGasesEditor extends StatelessWidget {
   /// surface MOD violations / high PPO2 / high END inline.
   final List<DivePlanSegment> segments;
 
-  static String mixLabel(DivePlanGas g) {
-    if (g.heliumPercent > 0) {
-      return 'Tx${g.oxygenPercent}/${g.heliumPercent}';
-    }
-    if (g.oxygenPercent == 21) return 'Air';
-    return 'EAN${g.oxygenPercent}';
-  }
+  static String mixLabel(DivePlanGas g) =>
+      gasMixName(g.oxygenPercent, g.heliumPercent);
 
   /// Deepest planned depth (m) at which gas index [gasIndex] is the
   /// active gas. Returns null when the gas is never used as the active

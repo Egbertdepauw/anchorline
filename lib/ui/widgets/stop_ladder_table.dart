@@ -14,6 +14,7 @@ import '../../analysis/gas_density.dart' show mixDensityAt1Atm;
 import '../../data/models/dive.dart' show DiveGasMix;
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
+import '../../analysis/gas_naming.dart';
 
 /// Per-stop ascent table. Adjacent minute-steps with the same gas and
 /// same depth are consolidated into single rows for readability.
@@ -145,15 +146,9 @@ class StopLadderTable extends StatelessWidget {
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
-  /// Diver-friendly mix name:
-  ///   21/0 → "Air"
-  ///   other 0% He → "EAN{O2}"
-  ///   He > 0 → "Tx{O2}/{He}"
-  static String mixLabel(DiveGasMix g) {
-    if (g.heliumPercent > 0) return 'Tx${g.oxygenPercent}/${g.heliumPercent}';
-    if (g.oxygenPercent == 21) return 'Air';
-    return 'EAN${g.oxygenPercent}';
-  }
+  /// Diver-friendly mix name; see [gasMixName] for the scheme.
+  static String mixLabel(DiveGasMix g) =>
+      gasMixName(g.oxygenPercent, g.heliumPercent);
 
   /// PPO2 in bar at [depthMeters] on [gas]. When [setpointBar] is set
   /// and > 0.1 the diver is on a CCR loop, so the displayed PPO2 IS
