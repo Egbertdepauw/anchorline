@@ -41,6 +41,15 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kBlendUseRealGas = 'blend_use_real_gas';
   static const _kBlendFillTempC = 'blend_fill_temp_c';
   static const _kBlendSettledTempC = 'blend_settled_temp_c';
+  static const _kAnalyzerModPpo2s = 'analyzer_mod_ppo2s';
+
+  /// Default ppO2 limits the gas analyzer shows a MOD for. 1.1 is the
+  /// CCR diluent limit, 1.4 / 1.6 the usual OC bottom / deco limits.
+  static const defaultAnalyzerModPpo2s = <double>[1.1, 1.4, 1.6];
+
+  /// Accepted range for an analyzer MOD ppO2 (bar).
+  static const double analyzerModPpo2Min = 0.2;
+  static const double analyzerModPpo2Max = 2.0;
 
   static const _defaultVisibleTraces = <TraceType>{
     TraceType.ppo2,
@@ -100,6 +109,8 @@ class SettingsNotifier extends ChangeNotifier {
   // settles to the target on cooldown.
   double _blendFillTempC = 18;
   double _blendSettledTempC = 18;
+  // ── Gas analyzer ────────────────────────────────────────────────
+  List<double> _analyzerModPpo2s = [...defaultAnalyzerModPpo2s];
 
   /// Id of the selected theme. Always a registered id.
   String get themeId => _themeId;
@@ -138,6 +149,9 @@ class SettingsNotifier extends ChangeNotifier {
   bool get blendUseRealGas => _blendUseRealGas;
   double get blendFillTempC => _blendFillTempC;
   double get blendSettledTempC => _blendSettledTempC;
+
+  /// ppO2 limits (bar) the gas analyzer shows a MOD row for, ascending.
+  List<double> get analyzerModPpo2s => List.unmodifiable(_analyzerModPpo2s);
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -245,6 +259,12 @@ class SettingsNotifier extends ChangeNotifier {
     if (bFill != null) _blendFillTempC = bFill.clamp(-20.0, 80.0);
     final bSettled = prefs.getDouble(_kBlendSettledTempC);
     if (bSettled != null) _blendSettledTempC = bSettled.clamp(-20.0, 80.0);
+    final aMod = prefs.getStringList(_kAnalyzerModPpo2s);
+    if (aMod != null) {
+      final parsed = sanitizeAnalyzerModPpo2s(
+          aMod.map(double.tryParse).whereType<double>());
+      if (parsed.isNotEmpty) _analyzerModPpo2s = parsed;
+    }
 
     // `get` rather than `getString`: a value of the wrong type must fall
     // back to the default, not throw before the first frame.
@@ -557,5 +577,29 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_kBlendSettledTempC, clamped);
+  }
+
+  Future<void> setAnalyzerModPpo2s(Iterable<double> values) async {
+    final cleaned = sanitizeAnalyzerModPpo2s(values);
+    if (cleaned.isEmpty || listEquals(cleaned, _analyzerModPpo2s)) return;
+    _analyzerModPpo2s = cleaned;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _kAnalyzerModPpo2s,
+      cleaned.map((v) => v.toString()).toList(),
+    );
+  }
+
+  /// Drops non-finite and out-of-range values, rounds to 0.01 bar,
+  /// de-duplicates and sorts ascending. May return an empty list.
+  static List<double> sanitizeAnalyzerModPpo2s(Iterable<double> values) {
+    final set = <double>{};
+    for (final v in values) {
+      if (!v.isFinite) continue;
+      if (v < analyzerModPpo2Min || v > analyzerModPpo2Max) continue;
+      set.add((v * 100).round() / 100);
+    }
+    return set.toList()..sort();
   }
 }

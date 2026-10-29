@@ -19,6 +19,10 @@ class DataColors {
   static const Color gf99 = Color(0xFF9333EA);
   static const Color ceiling = Color(0xFFEAB308);
 
+  /// Helium readout and trace on the gas analyzer screen (O2 uses the
+  /// theme's accentPrimary).
+  static const Color helium = Color(0xFF5BC0EB);
+
   /// Tank pressure traces, by tank index (wraps).
   static const List<Color> tanks = [
     Color(0xFF80DEEA), // cyan-ish
@@ -61,6 +65,7 @@ class DataColors {
     'waterTemp': waterTemp,
     'gf99': gf99,
     'ceiling': ceiling,
+    'helium': helium,
     'speedCalm': speedCalm,
     'speedSlow': speedSlow,
     'speedModerate': speedModerate,
