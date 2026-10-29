@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anchorline Gas Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  /* Anchorline palette */
+  :root {
+    --hull-black: #0e1116;
+    --hull-2: #161b22;
+    --hull-3: #1f2630;
+    --reel-orange: #f26b1d;
+    --reel-orange-dim: rgba(242,107,29,.15);
+    --surface-white: #f4f2ee;
+    --steel: #6b8196;
+    --steel-dim: #3a4654;
+    --ok: #3ccf91;
+    --warn: #f2c21d;
+    --bad: #ff4d4d;
+    --he: #5bc0eb;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--hull-black); color: var(--surface-white); font-family: Inter, system-ui, sans-serif; }
+  body { min-height: 100vh; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .14em; font-size: 15px; }
+  .brand small { display: block; font-weight: 500; letter-spacing: .04em; color: var(--steel); font-size: 12px; }
+  .spacer { flex: 1; }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--steel); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--steel-dim); }
+  .dot.live { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+  .dot.demo { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
+
+  button { font: inherit; font-weight: 600; font-size: 14px; border-radius: 10px; border: 1px solid var(--steel-dim); background: var(--hull-3); color: var(--surface-white); padding: 10px 16px; cursor: pointer; transition: .15s; }
+  button:hover { border-color: var(--steel); }
+  button.primary { background: var(--reel-orange); border-color: var(--reel-orange); color: var(--hull-black); }
+  button.primary:hover { filter: brightness(1.08); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1.1fr; gap: 16px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } .side { grid-column: 1 / -1; } }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+
+  .card { background: var(--hull-2); border: 1px solid var(--hull-3); border-radius: var(--radius); padding: 18px; }
+  .label { font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: var(--steel); font-weight: 600; }
+  .big { font-family: "JetBrains Mono", monospace; font-weight: 600; font-size: clamp(56px, 9vw, 92px); line-height: 1; margin: 10px 0 4px; font-variant-numeric: tabular-nums; }
+  .big .u { font-size: .35em; color: var(--steel); margin-left: 4px; }
+  .o2 .big { color: var(--reel-orange); }
+  .he .big { color: var(--he); }
+  .sub { font-size: 13px; color: var(--steel); }
+
+  .mixname { grid-column: 1 / 3; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  @media (max-width: 560px) { .mixname { grid-column: auto; } }
+  .mix { font-size: clamp(30px, 5vw, 44px); font-weight: 700; letter-spacing: .02em; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; letter-spacing: .1em; background: var(--hull-3); color: var(--steel); }
+  .pill.stable { background: rgba(60,207,145,.15); color: var(--ok); }
+  .pill.settling { background: rgba(242,194,29,.12); color: var(--warn); }
+  .pill.error { background: rgba(255,77,77,.15); color: var(--bad); }
+
+  .side { grid-row: span 3; display: flex; flex-direction: column; gap: 16px; }
+  .kv { display: grid; grid-template-columns: 1fr auto; gap: 10px 12px; margin-top: 12px; font-size: 14px; }
+  .kv b { font-family: "JetBrains Mono", monospace; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  .kv span { color: var(--steel); }
+  .hint { font-size: 12px; color: var(--steel); margin-top: 10px; line-height: 1.5; }
+
+  .chart { grid-column: 1 / 3; }
+  @media (max-width: 560px) { .chart { grid-column: auto; } }
+  canvas { width: 100%; height: 220px; display: block; margin-top: 10px; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--steel); }
+  .legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+
+  .save { display: grid; gap: 10px; margin-top: 12px; }
+  input, select { font: inherit; font-size: 14px; background: var(--hull-black); color: var(--surface-white); border: 1px solid var(--steel-dim); border-radius: 10px; padding: 10px 12px; width: 100%; }
+  input:focus, select:focus { outline: none; border-color: var(--reel-orange); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .log { margin-top: 16px; }
+  .log-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .log-head h2 { font-size: 15px; margin: 0; letter-spacing: .1em; text-transform: uppercase; color: var(--steel); }
+  .tablewrap { overflow-x: auto; margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 640px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--hull-3); }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--steel); font-weight: 600; }
+  td.num { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; }
+  td .del { background: none; border: none; color: var(--steel); padding: 2px 6px; }
+  td .del:hover { color: var(--bad); }
+  .empty { color: var(--steel); font-size: 13px; padding: 18px 10px; }
+
+  details { margin-top: 16px; }
+  summary { cursor: pointer; color: var(--steel); font-size: 13px; }
+  pre { background: var(--hull-black); border: 1px solid var(--hull-3); border-radius: 10px; padding: 12px; font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--steel); height: 160px; overflow: auto; white-space: pre-wrap; margin: 10px 0 0; }
+
+  .banner { background: var(--reel-orange-dim); border: 1px solid var(--reel-orange); color: var(--surface-white); border-radius: 10px; padding: 12px 14px; font-size: 14px; margin-bottom: 16px; display: none; }
+  .banner.show { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 64 64" fill="none" stroke="#f26b1d" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="32" cy="9" r="5"/><circle cx="32" cy="9" r="1.2" fill="#f26b1d"/>
+        <line x1="32" y1="14" x2="32" y2="54"/><line x1="20" y1="22" x2="44" y2="22"/>
+        <path d="M12 40 Q14 54 32 56 Q50 54 52 40"/><path d="M8 44 L12 38 L17 43"/><path d="M56 44 L52 38 L47 43"/>
+      </svg>
+      <div>ANCHORLINE<small>Gas analyzer · Divesoft SOLO</small></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></div>
+    <button id="demoBtn">Demo</button>
+    <button id="connectBtn" class="primary">Connect analyzer</button>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="grid">
+    <div class="card o2">
+      <div class="label">Oxygen</div>
+      <div class="big" id="o2">--.-<span class="u">%</span></div>
+      <div class="sub" id="o2sub">O₂</div>
+    </div>
+    <div class="card he">
+      <div class="label">Helium</div>
+      <div class="big" id="he">--.-<span class="u">%</span></div>
+      <div class="sub" id="hesub">He</div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <div class="label">Planning</div>
+        <div class="kv">
+          <span>MOD @ ppO₂ 1.1 <em style="font-style:normal;color:var(--reel-orange)">CCR dil</em></span><b id="mod11">–</b>
+          <span>MOD @ ppO₂ 1.4</span><b id="mod14">–</b>
+          <span>MOD @ ppO₂ 1.6</span><b id="mod16">–</b>
+          <span>END @ MOD 1.4</span><b id="end">–</b>
+          <span>Min. depth (ppO₂ 0.16)</span><b id="mindepth">–</b>
+          <span>Gas temperature</span><b id="temp">–</b>
+          <span>Ambient pressure</span><b id="baro">–</b>
+        </div>
+        <div class="hint">Seawater, 10 m/bar. END treats O₂ and N₂ as narcotic. Orientation only — always plan with your own tools.</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Save measurement</div>
+        <div class="save">
+          <input id="cyl" placeholder="Cylinder ID (e.g. S80-03)">
+          <div class="row2">
+            <input id="diver" placeholder="Diver">
+            <input id="press" placeholder="Pressure (bar)" inputmode="numeric">
+          </div>
+          <button id="saveBtn" class="primary" disabled>Save current reading</button>
+          <div class="hint">Tip: wait for <b style="color:var(--ok)">STABLE</b> before saving.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mixname">
+      <div>
+        <div class="label">Mix</div>
+        <div class="mix" id="mix">—</div>
+      </div>
+      <span class="pill" id="pill">NO DATA</span>
+    </div>
+
+    <div class="card chart">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div class="label">Last 2 minutes</div>
+        <div class="legend"><span><i style="background:var(--reel-orange)"></i>O₂</span><span><i style="background:var(--he)"></i>He</span></div>
+      </div>
+      <canvas id="chart"></canvas>
+    </div>
+  </div>
+
+  <div class="card log">
+    <div class="log-head">
+      <h2>Measurement log</h2>
+      <div class="spacer"></div>
+      <button id="csvBtn">Export CSV</button>
+      <button id="clearBtn">Clear</button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time</th><th>Cylinder</th><th>Diver</th><th>Mix</th><th>O₂</th><th>He</th><th>MOD 1.4</th><th>Bar</th><th></th></tr></thead>
+        <tbody id="logBody"></tbody>
+      </table>
+    </div>
+
+    <details>
+      <summary>Raw serial data</summary>
+      <pre id="raw"></pre>
+    </details>
+  </div>
+</div>
+
+<script>
+// ---- State -------------------------------------------------------------
+const HISTORY_SECONDS = 120;
+// Stability: a reading is STABLE only when, over the last STABLE_WINDOW samples (1 Hz),
+// the spread (max - min) of both O2 and He is within STABLE_TOLERANCE and the
+// least-squares trend is flatter than STABLE_MAX_SLOPE. The galvanic O2 cell settles
+// slowly, so a short window with only a spread check flags STABLE too early.
+const STABLE_WINDOW = 20;        // samples (~20 s)
+const STABLE_TOLERANCE = 0.2;    // percent points (max - min)
+const STABLE_MAX_SLOPE = 0.01;   // percent points per second
+
+let port = null, reader = null, demoTimer = null;
+let history = [];   // { t, o2, he }
+let current = null; // latest parsed reading
+let log = loadLog();
+
+const $ = id => document.getElementById(id);
+
+// ---- Parsing -----------------------------------------------------------
+// Expected lines, e.g. "He 35.0 O2 20.9 % Ti 23.9 ~C 1004.1 hPa 2026/10/27 20:30:00"
+// Fields may be "***.*" on measurement error.
+function parseLine(line) {
+  const num = re => {
+    const m = line.match(re);
+    if (!m) return undefined;
+    return m[1].includes('*') ? NaN : parseFloat(m[1]);
+  };
+  const r = {
+    o2: num(/O2\s+([\d.*-]+)/i),
+    he: num(/He\s+([\d.*-]+)/i),
+    temp: num(/Ti\s+([\d.*-]+)/i),
+    baro: num(/([\d.*]+)\s*hPa/i),
+    raw: line
+  };
+  if (r.o2 === undefined && r.he === undefined) return null;
+  if (r.he === undefined) r.he = 0; // O2-only output
+  return r;
+}
+
+// ---- Gas maths ---------------------------------------------------------
+function mixName(o2, he) {
+  if (!isFinite(o2)) return '—';
+  const O = Math.round(o2), H = Math.round(he || 0);
+  if (H >= 1) {
+    if (O + H >= 99) return `Heliox ${O}/${H}`;
+    return `Trimix ${O}/${H}`;
+  }
+  if (O >= 99) return 'Oxygen';
+  if (o2 >= 20.5 && o2 <= 21.5) return 'Air';
+  if (O > 21) return `EAN ${O}`;
+  return `Hypoxic ${O}%`;
+}
+const mod = (fo2, ppo2) => (ppo2 / fo2 - 1) * 10;
+const endAt = (depth, fhe) => (depth + 10) * (1 - fhe) - 10;
+
+// ---- UI update ---------------------------------------------------------
+function fmt(v, d = 1) { return isFinite(v) ? v.toFixed(d) : '***.*'; }
+
+function onReading(r) {
+  current = r;
+  const now = Date.now();
+  history.push({ t: now, o2: r.o2, he: r.he });
+  history = history.filter(p => now - p.t <= HISTORY_SECONDS * 1000);
+
+  $('o2').innerHTML = `${fmt(r.o2)}<span class="u">%</span>`;
+  $('he').innerHTML = `${fmt(r.he)}<span class="u">%</span>`;
+  const n2 = 100 - (r.o2 || 0) - (r.he || 0);
+  $('o2sub').textContent = `N₂ balance ${isFinite(n2) ? n2.toFixed(1) : '–'} %`;
+  $('hesub').textContent = r.he > 0.5 ? 'Helium present' : 'No helium';
+
+  $('mix').textContent = mixName(r.o2, r.he);
+
+  const fo2 = r.o2 / 100, fhe = (r.he || 0) / 100;
+  if (isFinite(fo2) && fo2 > 0) {
+    const m11 = mod(fo2, 1.1), m14 = mod(fo2, 1.4), m16 = mod(fo2, 1.6);
+    $('mod11').textContent = m11 > 0 ? `${m11.toFixed(0)} m` : 'n/a';
+    $('mod14').textContent = m14 > 0 ? `${m14.toFixed(0)} m` : 'n/a';
+    $('mod16').textContent = m16 > 0 ? `${m16.toFixed(0)} m` : 'n/a';
+    $('end').textContent = m14 > 0 ? `${Math.max(0, endAt(m14, fhe)).toFixed(0)} m` : '–';
+    const minD = (0.16 / fo2 - 1) * 10;
+    $('mindepth').textContent = minD > 0 ? `${minD.toFixed(0)} m` : 'surface';
+  } else {
+    ['mod11','mod14','mod16','end','mindepth'].forEach(id => $(id).textContent = '–');
+  }
+  $('temp').textContent = isFinite(r.temp) ? `${r.temp.toFixed(1)} °C` : '–';
+  $('baro').textContent = isFinite(r.baro) ? `${r.baro.toFixed(0)} hPa` : '–';
+
+  // Stability
+  const pill = $('pill');
+  const win = history.slice(-STABLE_WINDOW);
+  if (!isFinite(r.o2) || !isFinite(r.he)) {
+    pill.className = 'pill error'; pill.textContent = 'SENSOR ERROR';
+  } else if (win.length >= STABLE_WINDOW &&
+      ['o2', 'he'].every(k => {
+        const v = win.map(p => p[k]);
+        return spread(v) <= STABLE_TOLERANCE && Math.abs(slope(win, k)) <= STABLE_MAX_SLOPE;
+      })) {
+    pill.className = 'pill stable'; pill.textContent = '● STABLE';
+  } else {
+    pill.className = 'pill settling'; pill.textContent = '◌ SETTLING';
+  }
+  $('saveBtn').disabled = !isFinite(r.o2);
+  drawChart();
+}
+const spread = a => Math.max(...a) - Math.min(...a);
+// Least-squares slope of p[key] against time, in percent points per second.
+function slope(pts, key) {
+  const n = pts.length, t0 = pts[0].t;
+  let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (const p of pts) {
+    const x = (p.t - t0) / 1000, y = p[key];
+    sx += x; sy += y; sxx += x * x; sxy += x * y;
+  }
+  const d = n * sxx - sx * sx;
+  return d ? (n * sxy - sx * sy) / d : 0;
+}
+
+function appendRaw(line) {
+  const el = $('raw');
+  el.textContent += line + '\n';
+  if (el.textContent.length > 20000) el.textContent = el.textContent.slice(-15000);
+  el.scrollTop = el.scrollHeight;
+}
+
+function setStatus(mode, text) {
+  $('dot').className = 'dot' + (mode ? ' ' + mode : '');
+  $('statusText').textContent = text;
+}
+function showBanner(msg) { const b = $('banner'); b.innerHTML = msg; b.classList.toggle('show', !!msg); }
+
+// ---- Chart -------------------------------------------------------------
+function drawChart() {
+  const c = $('chart'), dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const pad = { l: 34, r: 8, t: 8, b: 18 };
+  const pts = history.filter(p => isFinite(p.o2));
+  const vals = pts.flatMap(p => [p.o2, p.he]).filter(isFinite);
+  let lo = vals.length ? Math.min(...vals) : 0, hi = vals.length ? Math.max(...vals) : 100;
+  lo = Math.max(0, Math.floor(lo - 2)); hi = Math.min(100, Math.ceil(hi + 2));
+  if (hi - lo < 5) hi = lo + 5;
+
+  const now = Date.now();
+  const x = t => pad.l + (1 - (now - t) / (HISTORY_SECONDS * 1000)) * (w - pad.l - pad.r);
+  const y = v => pad.t + (1 - (v - lo) / (hi - lo)) * (h - pad.t - pad.b);
+
+  ctx.font = '11px JetBrains Mono, monospace';
+  ctx.fillStyle = '#6b8196'; ctx.strokeStyle = '#1f2630'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const v = lo + (hi - lo) * i / 4, yy = y(v);
+    ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(w - pad.r, yy); ctx.stroke();
+    ctx.fillText(v.toFixed(0), 4, yy + 4);
+  }
+  ctx.fillText('-2 min', pad.l, h - 4);
+  ctx.fillText('now', w - pad.r - 24, h - 4);
+
+  const line = (key, color) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    pts.forEach((p, i) => i ? ctx.lineTo(x(p.t), y(p[key])) : ctx.moveTo(x(p.t), y(p[key])));
+    ctx.stroke();
+  };
+  if (pts.length > 1) { line('he', '#5bc0eb'); line('o2', '#f26b1d'); }
+}
+window.addEventListener('resize', drawChart);
+
+// ---- Serial ------------------------------------------------------------
+async function connect() {
+  if (!('serial' in navigator)) {
+    showBanner('Web Serial is not available in this browser. Open this page in <b>Chrome</b> or <b>Edge</b> (via file:// or http://localhost).');
+    return;
+  }
+  stopDemo();
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200, dataBits: 8, parity: 'none', stopBits: 1 });
+    try { await port.setSignals({ dataTerminalReady: true, requestToSend: true }); } catch (_) {}
+    setStatus('live', 'Connected');
+    showBanner('');
+    $('connectBtn').textContent = 'Disconnect';
+    readLoop();
+    // Hint if nothing arrives
+    setTimeout(() => {
+      if (port && !current) showBanner('Connected, but no data yet. On the SOLO set <b>Menu → Preferences → Send data to USB</b> to a non-zero value, and make sure printer mode is off.');
+    }, 4000);
+  } catch (e) {
+    if (e.name !== 'NotFoundError') showBanner('Could not open port: ' + e.message);
+    port = null;
+  }
+}
+
+async function readLoop() {
+  const decoder = new TextDecoderStream();
+  const closed = port.readable.pipeTo(decoder.writable).catch(() => {});
+  reader = decoder.readable.getReader();
+  let buf = '';
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      let idx;
+      while ((idx = buf.search(/\r?\n/)) >= 0) {
+        const line = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + (buf[idx] === '\r' ? 2 : 1));
+        if (!line) continue;
+        appendRaw(line);
+        const r = parseLine(line);
+        if (r) { showBanner(''); onReading(r); }
+      }
+    }
+  } catch (e) {
+    showBanner('Connection lost: ' + e.message);
+  } finally {
+    reader.releaseLock();
+    await closed;
+  }
+}
+
+async function disconnect() {
+  try { if (reader) await reader.cancel(); } catch (_) {}
+  try { if (port) await port.close(); } catch (_) {}
+  port = null; reader = null;
+  setStatus('', 'Not connected');
+  $('connectBtn').textContent = 'Connect analyzer';
+}
+
+if ('serial' in navigator) {
+  navigator.serial.addEventListener('disconnect', () => { if (port) disconnect(); showBanner('Analyzer unplugged.'); });
+}
+
+// ---- Demo mode ---------------------------------------------------------
+function startDemo() {
+  if (port) disconnect();
+  setStatus('demo', 'Demo data');
+  $('demoBtn').textContent = 'Stop demo';
+  let t = 0;
+  const target = { o2: 18.2, he: 45.1 };
+  let o2 = 20.9, he = 0;
+  demoTimer = setInterval(() => {
+    t++;
+    // Gas arrives after ~3 s, settles over ~10 s
+    if (t > 3) { o2 += (target.o2 - o2) * 0.25; he += (target.he - he) * 0.22; }
+    const noise = () => (Math.random() - .5) * 0.08;
+    const d = new Date();
+    const stamp = `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${d.toTimeString().slice(0,8)}`;
+    const line = `He ${(he + noise()).toFixed(1)} O2 ${(o2 + noise()).toFixed(1)} % Ti 21.4 ~C 1013.2 hPa ${stamp}`;
+    appendRaw(line);
+    onReading(parseLine(line));
+  }, 1000);
+}
+function stopDemo() {
+  if (!demoTimer) return;
+  clearInterval(demoTimer); demoTimer = null;
+  setStatus('', 'Not connected');
+  $('demoBtn').textContent = 'Demo';
+}
+
+// ---- Log ---------------------------------------------------------------
+function loadLog() { try { return JSON.parse(localStorage.getItem('anchorline-solo-log') || '[]'); } catch (_) { return []; } }
+function persistLog() { try { localStorage.setItem('anchorline-solo-log', JSON.stringify(log)); } catch (_) {} }
+
+function renderLog() {
+  const body = $('logBody');
+  if (!log.length) { body.innerHTML = '<tr><td colspan="9" class="empty">No measurements saved yet.</td></tr>'; return; }
+  body.innerHTML = log.slice().reverse().map((e, i) => `
+    <tr>
+      <td>${new Date(e.time).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })}</td>
+      <td>${esc(e.cylinder)}</td><td>${esc(e.diver)}</td>
+      <td><b>${esc(e.mix)}</b></td>
+      <td class="num">${e.o2.toFixed(1)}</td><td class="num">${e.he.toFixed(1)}</td>
+      <td class="num">${e.mod14 > 0 ? e.mod14.toFixed(0) + ' m' : '–'}</td>
+      <td class="num">${esc(e.pressure)}</td>
+      <td><button class="del" data-i="${log.length - 1 - i}" title="Delete">✕</button></td>
+    </tr>`).join('');
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+$('saveBtn').onclick = () => {
+  if (!current || !isFinite(current.o2)) return;
+  const fo2 = current.o2 / 100;
+  log.push({
+    time: new Date().toISOString(),
+    cylinder: $('cyl').value.trim(),
+    diver: $('diver').value.trim(),
+    pressure: $('press').value.trim(),
+    o2: current.o2, he: current.he || 0,
+    mix: mixName(current.o2, current.he),
+    mod11: mod(fo2, 1.1), mod14: mod(fo2, 1.4), mod16: mod(fo2, 1.6),
+    temp: current.temp, stable: $('pill').classList.contains('stable')
+  });
+  persistLog(); renderLog();
+  $('cyl').value = ''; $('press').value = '';
+};
+$('logBody').onclick = e => {
+  const i = e.target.dataset?.i;
+  if (i !== undefined) { log.splice(+i, 1); persistLog(); renderLog(); }
+};
+$('clearBtn').onclick = () => { if (log.length && confirm('Clear all saved measurements?')) { log = []; persistLog(); renderLog(); } };
+$('csvBtn').onclick = () => {
+  const head = ['time','cylinder','diver','mix','o2','he','mod_1_1','mod_1_4','mod_1_6','pressure_bar','temp_c','stable'];
+  const rows = log.map(e => [e.time, e.cylinder, e.diver, e.mix, e.o2.toFixed(1), e.he.toFixed(1),
+    isFinite(e.mod11) ? e.mod11.toFixed(1) : '', e.mod14.toFixed(1), e.mod16.toFixed(1), e.pressure, isFinite(e.temp) ? e.temp.toFixed(1) : '', e.stable]);
+  const csv = [head, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = `gas-analysis-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+};
+
+// ---- Wire up -----------------------------------------------------------
+$('connectBtn').onclick = () => port ? disconnect() : connect();
+$('demoBtn').onclick = () => demoTimer ? stopDemo() : startDemo();
+try { $('diver').value = localStorage.getItem('anchorline-solo-diver') || ''; } catch (_) {}
+$('diver').onchange = () => { try { localStorage.setItem('anchorline-solo-diver', $('diver').value); } catch (_) {} };
+renderLog(); drawChart();
+</script>
+</body>
+</html>
