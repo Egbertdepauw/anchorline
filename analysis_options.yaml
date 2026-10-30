@@ -9,6 +9,19 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+# Skip build output and platform folders. Desktop builds copy plugin source
+# into e.g. linux/flutter/ephemeral/.plugin_symlinks/, which the analyzer
+# would otherwise lint as if it were ours.
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
