@@ -64,4 +64,37 @@ void main() {
     buf.clear();
     expect(buf.add(b('fresh\n')), ['fresh']);
   });
+
+  group('OpenBurstFilter', () {
+    test('drops the open burst, then resyncs on the next line end', () {
+      var now = Duration.zero;
+      final f = OpenBurstFilter(elapsed: () => now);
+      expect(f.filter(b('He 0.4 % O2 19.7 % stale\r\nHe 0.4')), isEmpty);
+      now = const Duration(milliseconds: 299);
+      expect(f.filter(b(' % O2 19.7 % stale\r\n')), isEmpty);
+      expect(f.synced, isFalse);
+
+      now = const Duration(milliseconds: 300);
+      // Tail of a line that started inside the window: dropped.
+      expect(f.filter(b('19.7 % live\r\nHe 0.4 %')), b('He 0.4 %'));
+      expect(f.synced, isTrue);
+      expect(f.filter(b(' O2 19.7 %\r\n')), b(' O2 19.7 %\r\n'));
+    });
+
+    test('a chunk without a line end after the window is still dropped', () {
+      final f = OpenBurstFilter(elapsed: () => const Duration(seconds: 1));
+      expect(f.filter(b('partial')), isEmpty);
+      expect(f.filter(b(' line\nnext')), b('next'));
+    });
+
+    test('with a line splitter, only whole live lines come out', () {
+      var now = Duration.zero;
+      final f = OpenBurstFilter(elapsed: () => now);
+      final buf = SerialLineBuffer();
+      expect(buf.add(f.filter(b('stale 1\r\nstale 2\r\n'))), isEmpty);
+      now = const Duration(milliseconds: 400);
+      expect(buf.add(f.filter(b('ve 1\r\nlive 2\r\nlive 3\r\n'))),
+          ['live 2', 'live 3']);
+    });
+  });
 }

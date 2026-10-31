@@ -30,18 +30,29 @@ void main() {
     expect(r.deviceTime, fixedTime);
   });
 
+  test('emits at 5 Hz by default, like the real trimix SOLO', () {
+    expect(demo().sampleInterval, const Duration(milliseconds: 200));
+  });
+
   test('reads air until the gas arrives, then settles on 18.2/45.1', () {
     final t = demo();
-    final first = [for (var i = 0; i < 3; i++) parseSoloLine(t.emitSample())!];
+    // 3 s of air at 5 Hz.
+    final first = [
+      for (var i = 0; i < 15; i++) parseSoloLine(t.emitSample())!
+    ];
     for (final r in first) {
       expect(r.o2, closeTo(20.9, 0.05));
       expect(r.he, closeTo(0, 0.05));
     }
-    final fourth = parseSoloLine(t.emitSample())!;
-    expect(fourth.o2, lessThan(20.6), reason: 'gas arrives after 3 samples');
-    expect(fourth.he, greaterThan(5));
+    // One more second of gas.
+    var after1s = first.last;
+    for (var i = 0; i < 5; i++) {
+      after1s = parseSoloLine(t.emitSample())!;
+    }
+    expect(after1s.o2, lessThan(20.6), reason: 'gas arrives after 3 s');
+    expect(after1s.he, greaterThan(5));
 
-    for (var i = 0; i < 60; i++) {
+    for (var i = 0; i < 300; i++) {
       t.emitSample();
     }
     final settled = parseSoloLine(t.emitSample())!;
@@ -49,10 +60,30 @@ void main() {
     expect(settled.he, 45.1);
   });
 
+  test('the settling curve is the same in time at 1 Hz and 5 Hz', () {
+    final fast = DemoAnalyzerTransport(
+        random: Random(1), noiseAmplitude: 0, clock: () => fixedTime);
+    final slow = DemoAnalyzerTransport(
+        random: Random(1),
+        noiseAmplitude: 0,
+        sampleInterval: const Duration(seconds: 1),
+        clock: () => fixedTime);
+    for (var second = 1; second <= 20; second++) {
+      String? fastLine;
+      for (var i = 0; i < 5; i++) {
+        fastLine = fast.emitSample();
+      }
+      final f = parseSoloLine(fastLine!)!;
+      final s = parseSoloLine(slow.emitSample())!;
+      expect(f.o2, closeTo(s.o2!, 0.1001), reason: 't = $second s');
+      expect(f.he, closeTo(s.he!, 0.1001), reason: 't = $second s');
+    }
+  });
+
   test('target mix is configurable', () {
     final t = DemoAnalyzerTransport(
         targetO2: 10, targetHe: 70, random: Random(1), clock: () => fixedTime);
-    for (var i = 0; i < 80; i++) {
+    for (var i = 0; i < 400; i++) {
       t.emitSample();
     }
     final r = parseSoloLine(t.emitSample())!;
@@ -71,11 +102,11 @@ void main() {
     await t.connect();
     expect(t.status, AnalyzerConnectionStatus.connected);
     await tester.pump(const Duration(seconds: 5));
-    expect(lines, hasLength(5));
+    expect(lines, hasLength(25));
 
     await t.disconnect();
     await tester.pump(const Duration(seconds: 5));
-    expect(lines, hasLength(5), reason: 'no lines after disconnect');
+    expect(lines, hasLength(25), reason: 'no lines after disconnect');
     expect(t.status, AnalyzerConnectionStatus.disconnected);
     expect(statuses, [
       AnalyzerConnectionStatus.connecting,

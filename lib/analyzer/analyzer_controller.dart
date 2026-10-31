@@ -6,10 +6,12 @@
 /// connected analyzer stays silent (usually "Send data to USB" is off or
 /// printer mode is on).
 ///
-/// Time base: the SOLO sends one line per second, so samples are spaced
-/// at a nominal 1 s, both for the stability detector (its default when no
-/// timestamp is passed) and for [history]. This keeps the controller free
-/// of wall-clock reads and makes it deterministic under fake timers.
+/// Time base: every parsed line is stamped with real elapsed time since
+/// [AnalyzerController.connect], read from a monotonic clock (a
+/// [Stopwatch] by default, injectable for tests). The stability detector
+/// and [AnalyzerController.history] both work on that time, so any output
+/// rate works (the SOLO trimix sends ~5 lines per second, #127). The
+/// device's own timestamps are not used: its clock can be far off.
 library;
 
 import 'dart:async';
@@ -21,7 +23,7 @@ import 'protocol/solo_line_parser.dart';
 import 'stability.dart';
 import 'transport/analyzer_transport.dart';
 
-/// One chart point. [seconds] counts samples since connect (1 Hz nominal).
+/// One chart point. [seconds] is elapsed time since connect.
 class AnalyzerHistoryPoint {
   const AnalyzerHistoryPoint({
     required this.seconds,
@@ -43,15 +45,29 @@ class AnalyzerController extends ChangeNotifier {
     this.noDataTimeout = const Duration(seconds: 4),
     this.historyWindow = const Duration(minutes: 2),
     StabilityDetector? detector,
-  }) : _detector = detector ?? StabilityDetector();
+    Duration Function()? elapsed,
+  }) : _detector = detector ?? StabilityDetector(),
+       _elapsed = elapsed ?? _stopwatchElapsed();
+
+  /// A monotonic clock: a started [Stopwatch]'s elapsed time.
+  static Duration Function() _stopwatchElapsed() {
+    final sw = Stopwatch()..start();
+    return () => sw.elapsed;
+  }
 
   /// How long a connected analyzer may stay silent before [noDataHint].
   final Duration noDataTimeout;
 
-  /// Span of [history] (at the nominal 1 Hz rate).
+  /// Span of [history], in elapsed time.
   final Duration historyWindow;
 
   final StabilityDetector _detector;
+
+  /// Monotonic time source; only differences matter.
+  final Duration Function() _elapsed;
+
+  /// [_elapsed] at the start of the current session.
+  Duration _sessionStart = Duration.zero;
 
   AnalyzerTransport? _transport;
   StreamSubscription<String>? _linesSub;
@@ -60,7 +76,7 @@ class AnalyzerController extends ChangeNotifier {
 
   AnalyzerReading? _latest;
   final List<AnalyzerHistoryPoint> _history = [];
-  int _sampleCount = 0;
+  double _nowSeconds = 0;
   bool _noDataHint = false;
   bool _disposed = false;
 
@@ -87,9 +103,8 @@ class AnalyzerController extends ChangeNotifier {
   /// Rolling history, oldest first, at most [historyWindow] long.
   List<AnalyzerHistoryPoint> get history => List.unmodifiable(_history);
 
-  /// Seconds (sample count) of the newest history point; the chart's
-  /// "now".
-  double get historyNowSeconds => _sampleCount.toDouble();
+  /// Elapsed seconds of the newest history point; the chart's "now".
+  double get historyNowSeconds => _nowSeconds;
 
   /// True while connected and no line has arrived for [noDataTimeout].
   bool get noDataHint => _noDataHint;
@@ -102,7 +117,8 @@ class AnalyzerController extends ChangeNotifier {
     _transport = transport;
     _latest = null;
     _history.clear();
-    _sampleCount = 0;
+    _nowSeconds = 0;
+    _sessionStart = _elapsed();
     _noDataHint = false;
     _detector.reset();
     _linesSub = transport.lines.listen(_onLine);
@@ -139,17 +155,21 @@ class AnalyzerController extends ChangeNotifier {
     final reading = parseSoloLine(line);
     if (reading == null) return; // banner / garbage: not data
     _latest = reading;
-    _detector.add(reading.o2, reading.he);
-    _sampleCount++;
+    final now = _elapsed() - _sessionStart;
+    _detector.add(reading.o2, reading.he, elapsed: now);
+    _nowSeconds = now.inMicroseconds / Duration.microsecondsPerSecond;
     _history.add(AnalyzerHistoryPoint(
-      seconds: _sampleCount.toDouble(),
+      seconds: _nowSeconds,
       o2: reading.o2 ?? double.nan,
       he: reading.he ?? double.nan,
     ));
-    final keepFrom = _sampleCount - historyWindow.inSeconds;
-    while (_history.isNotEmpty && _history.first.seconds <= keepFrom) {
-      _history.removeAt(0);
+    final keepFrom = _nowSeconds -
+        historyWindow.inMicroseconds / Duration.microsecondsPerSecond;
+    var drop = 0;
+    while (drop < _history.length && _history[drop].seconds < keepFrom) {
+      drop++;
     }
+    if (drop > 0) _history.removeRange(0, drop);
     _noDataHint = false;
     _armWatchdog();
     _notify();

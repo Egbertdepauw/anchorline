@@ -10,7 +10,9 @@
 /// analyzer screen only offers it on desktop).
 ///
 /// Receive-only, because the SOLO only talks: 115200 baud, 8N1, no flow
-/// control, DTR raised. Reads block for at most [kSerialReadTimeoutMs], so
+/// control, DTR raised. The input buffer is flushed right after opening, so
+/// lines the analyzer queued before the port was opened are dropped
+/// (#127). Reads block for at most [kSerialReadTimeoutMs], so
 /// a reader loop can check a stop flag between reads. Meant to run on a
 /// background isolate (see `desktop_serial_transport.dart`).
 library;
@@ -99,6 +101,7 @@ class _PosixAbi {
         clocal = 0x8000,
         crtscts = 0x30000,
         tiocmbis = 0x8004746c,
+        tciflush = 1,
         errnoSymbol = '__error';
 
   const _PosixAbi.linux()
@@ -118,6 +121,7 @@ class _PosixAbi {
         clocal = 0x800,
         crtscts = 0x80000000,
         tiocmbis = 0x5416,
+        tciflush = 0,
         errnoSymbol = '__errno_location';
 
   final int cflagOffset;
@@ -136,6 +140,9 @@ class _PosixAbi {
   final int clocal;
   final int crtscts;
   final int tiocmbis;
+
+  /// `tcflush()` queue selector for "received but not read".
+  final int tciflush;
   final String errnoSymbol;
 
   static const int oRdwr = 2;
@@ -152,6 +159,8 @@ typedef _OpenC = Int Function(Pointer<Utf8>, Int);
 typedef _OpenD = int Function(Pointer<Utf8>, int);
 typedef _FdC = Int Function(Int);
 typedef _FdD = int Function(int);
+typedef _TcFlushC = Int Function(Int, Int);
+typedef _TcFlushD = int Function(int, int);
 typedef _TcGetAttrC = Int Function(Int, Pointer<Uint8>);
 typedef _TcGetAttrD = int Function(int, Pointer<Uint8>);
 typedef _TcSetAttrC = Int Function(Int, Int, Pointer<Uint8>);
@@ -177,6 +186,7 @@ class _Libc {
     tcgetattr = _lib.lookupFunction<_TcGetAttrC, _TcGetAttrD>('tcgetattr');
     tcsetattr = _lib.lookupFunction<_TcSetAttrC, _TcSetAttrD>('tcsetattr');
     cfmakeraw = _lib.lookupFunction<_CfMakeRawC, _CfMakeRawD>('cfmakeraw');
+    tcflush = _lib.lookupFunction<_TcFlushC, _TcFlushD>('tcflush');
     if (Platform.isMacOS) {
       cfsetispeed =
           _lib.lookupFunction<_CfSetSpeedMacC, _CfSetSpeedD>('cfsetispeed');
@@ -201,6 +211,7 @@ class _Libc {
   late final _TcGetAttrD tcgetattr;
   late final _TcSetAttrD tcsetattr;
   late final _CfMakeRawD cfmakeraw;
+  late final _TcFlushD tcflush;
   late final _CfSetSpeedD cfsetispeed;
   late final _CfSetSpeedD cfsetospeed;
   late final _FcntlD fcntl;
@@ -275,6 +286,8 @@ class _PosixSerialPort implements NativeSerialPort {
       // Raise DTR. Not fatal: some drivers do not implement it.
       modem.value = _PosixAbi.tiocmDtr;
       libc.ioctl(fd, abi.tiocmbis, modem);
+      // Drop lines queued before we opened the port (#127). Not fatal.
+      libc.tcflush(fd, abi.tciflush);
 
       final port = _PosixSerialPort._(libc, path, fd);
       fd = -1; // Owned by the port now.
@@ -384,6 +397,7 @@ class _WindowsSerialPort implements NativeSerialPort {
   static const int _openExisting = 3;
   static const int _invalidHandle = -1;
   static const int _setDtr = 5;
+  static const int _purgeRxClear = 0x0008;
   static const int _maxDword = 0xFFFFFFFF;
   static const int _bufferSize = 4096;
 
@@ -414,6 +428,8 @@ class _WindowsSerialPort implements NativeSerialPort {
         k32.lookupFunction<_HandleBufC, _HandleBufD>('SetCommTimeouts');
     final escapeCommFunction =
         k32.lookupFunction<_HandleU32C, _HandleU32D>('EscapeCommFunction');
+    final purgeComm =
+        k32.lookupFunction<_HandleU32C, _HandleU32D>('PurgeComm');
     final readFile = k32.lookupFunction<_ReadFileC, _ReadFileD>('ReadFile');
     final closeHandle = k32.lookupFunction<_HandleC, _HandleD>('CloseHandle');
     final getLastError =
@@ -457,6 +473,8 @@ class _WindowsSerialPort implements NativeSerialPort {
             '(Windows error ${getLastError()}).');
       }
       escapeCommFunction(handle, _setDtr);
+      // Drop lines queued before we opened the port (#127). Not fatal.
+      purgeComm(handle, _purgeRxClear);
 
       final port = _WindowsSerialPort._(
           name, handle, readFile, closeHandle, getLastError);

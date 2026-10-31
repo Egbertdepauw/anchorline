@@ -7,6 +7,8 @@ import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
 import 'package:ccrlogger/analyzer/transport/demo_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../_helpers/fake_elapsed.dart';
+
 /// Transport driven by hand: the test pushes lines with [send].
 class FakeTransport implements AnalyzerTransport {
   final _lines = StreamController<String>.broadcast();
@@ -58,7 +60,7 @@ const _errorLine =
 void main() {
   testWidgets('demo gas settles from SETTLING to STABLE on 18.2/45.1',
       (tester) async {
-    final c = AnalyzerController();
+    final c = AnalyzerController(elapsed: fakeElapsed(tester));
     expect(c.stability, ReadingStability.noData);
     await c.connect(DemoAnalyzerTransport(random: Random(3)));
     expect(c.isConnected, isTrue);
@@ -67,6 +69,10 @@ void main() {
     for (var i = 0; i < 90; i++) {
       await tester.pump(const Duration(seconds: 1));
       seen.add(c.stability);
+      if (i < 20) {
+        expect(c.stability, isNot(ReadingStability.stable),
+            reason: 'needs 20 s of data at 5 Hz too (t = ${i + 1} s)');
+      }
     }
     expect(seen, contains(ReadingStability.settling));
     expect(c.stability, ReadingStability.stable);
@@ -79,13 +85,51 @@ void main() {
     c.dispose();
   });
 
-  testWidgets('history keeps two minutes at 1 Hz', (tester) async {
-    final c = AnalyzerController();
+  testWidgets('history keeps two minutes of elapsed time at 5 Hz',
+      (tester) async {
+    final c = AnalyzerController(elapsed: fakeElapsed(tester));
     await c.connect(DemoAnalyzerTransport(random: Random(3)));
     await tester.pump(const Duration(seconds: 150));
-    expect(c.history, hasLength(120));
+    expect(c.historyNowSeconds, closeTo(150, 1e-6));
     expect(c.history.last.seconds, c.historyNowSeconds);
-    expect(c.history.first.seconds, c.historyNowSeconds - 119);
+    expect(c.history.first.seconds, closeTo(30, 1e-6));
+    // 30 s … 150 s inclusive at 200 ms spacing.
+    expect(c.history, hasLength(601));
+    await c.disconnect();
+    c.dispose();
+  });
+
+  testWidgets('history and stability use real time at 1 Hz too',
+      (tester) async {
+    final c = AnalyzerController(elapsed: fakeElapsed(tester));
+    await c.connect(DemoAnalyzerTransport(
+      random: Random(3),
+      sampleInterval: const Duration(seconds: 1),
+    ));
+    await tester.pump(const Duration(seconds: 150));
+    expect(c.history.first.seconds, closeTo(30, 1e-6));
+    expect(c.history, hasLength(121));
+    expect(c.stability, ReadingStability.stable);
+    await c.disconnect();
+    c.dispose();
+  });
+
+  testWidgets('samples are timed by arrival, not by count', (tester) async {
+    final c = AnalyzerController(elapsed: fakeElapsed(tester));
+    final t = FakeTransport();
+    await c.connect(t);
+    // A burst of 15 lines at once, then one 2 s later.
+    for (var i = 0; i < 15; i++) {
+      t.send(_airLine);
+    }
+    await tester.pump(const Duration(seconds: 2));
+    t.send(_airLine);
+    await tester.pump();
+    expect(c.history, hasLength(16));
+    expect(c.history.first.seconds, 0);
+    expect(c.history[14].seconds, 0);
+    expect(c.historyNowSeconds, closeTo(2, 1e-6));
+    expect(c.stability, ReadingStability.settling);
     await c.disconnect();
     c.dispose();
   });

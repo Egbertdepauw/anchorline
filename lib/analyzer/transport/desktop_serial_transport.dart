@@ -1,8 +1,8 @@
 /// USB serial transport for the gas analyzer on macOS, Windows and Linux.
 ///
 /// The Divesoft SOLO is a native USB CDC-ACM device: 115200 baud, 8N1, no
-/// flow control, DTR raised, one text line per second while "Send data to
-/// USB" is on. The port is opened with [NativeSerialPort] (dart:ffi, no
+/// flow control, DTR raised, ~5 text lines per second (trimix model) while
+/// "Send data to USB" is on. The port is opened with [NativeSerialPort] (dart:ffi, no
 /// plugin) on a background isolate that loops on short blocking reads and
 /// posts the raw chunks back; this isolate splits them into lines with
 /// [SerialLineBuffer].
@@ -202,7 +202,8 @@ class DesktopSerialTransport implements AnalyzerTransport {
 /// Reader isolate entry point: `[SendPort out, String path, int stopFlag]`.
 ///
 /// Posts `['opened']` once the port is configured, then every non-empty
-/// chunk as a [Uint8List], and `['failed', message]` if opening or reading
+/// chunk as a [Uint8List] (minus the stale burst the analyzer sends on
+/// open, see [OpenBurstFilter]), and `['failed', message]` if opening or reading
 /// fails. Returns (closing the port) when the stop flag becomes non-zero.
 void _readerMain(List<Object?> args) {
   final out = args[0] as SendPort;
@@ -217,10 +218,11 @@ void _readerMain(List<Object?> args) {
     return;
   }
   out.send(['opened']);
+  final burst = OpenBurstFilter();
   try {
     while (stop.value == 0) {
-      final chunk = port.read();
-      if (chunk.isNotEmpty) out.send(chunk);
+      final chunk = burst.filter(port.read());
+      if (chunk.isNotEmpty) out.send(Uint8List.fromList(chunk));
     }
   } catch (e) {
     out.send(['failed', '$e']);

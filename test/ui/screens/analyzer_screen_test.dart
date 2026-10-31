@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../_helpers/fake_elapsed.dart';
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -29,6 +31,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: AnalyzerScreen(
         settings: settings,
+        controller: fakeClockAnalyzerController(tester),
         transportOptions: [
           AnalyzerTransportOption(
             label: 'Demo',

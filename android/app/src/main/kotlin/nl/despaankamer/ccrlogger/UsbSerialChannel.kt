@@ -32,6 +32,9 @@ import io.flutter.plugin.common.MethodChannel
  *  - requestPermission(deviceName) -> Boolean: asks the user for access.
  *  - open(deviceName, baudRate) -> null: claims the CDC interfaces, sets
  *    the line coding to baudRate 8N1 and raises DTR, then starts reading.
+ *    The first [STALE_DRAIN_MS] of input, up to the next line end, is
+ *    discarded: the SOLO flushes lines it queued before the port was
+ *    opened, and those are seconds old (#127).
  *  - close() -> null.
  *
  * Event channel [EVENT_CHANNEL]: a ByteArray per received chunk, or a map
@@ -57,6 +60,9 @@ class UsbSerialChannel(
 
         private const val CONTROL_TIMEOUT_MS = 1000
         private const val READ_TIMEOUT_MS = 200
+        private const val STALE_DRAIN_MS = 300L
+        private const val DRAIN_READ_TIMEOUT_MS = 50
+        private const val LF: Byte = 0x0A
     }
 
     private val usbManager =
@@ -284,14 +290,28 @@ class UsbSerialChannel(
         reading = true
         readThread = Thread({
             val buffer = ByteArray(maxOf(endpoint.maxPacketSize, 64))
+            // Discard the stale burst the analyzer sends on open (#127):
+            // everything for STALE_DRAIN_MS, then up to the next line end
+            // so the Dart side starts on a whole line.
+            val drainUntil = System.nanoTime() + STALE_DRAIN_MS * 1_000_000L
+            while (reading && System.nanoTime() < drainUntil) {
+                conn.bulkTransfer(endpoint, buffer, buffer.size, DRAIN_READ_TIMEOUT_MS)
+            }
+            var synced = false
             while (reading) {
                 // Returns -1 on timeout as well as on errors; detach is
                 // reported by the broadcast receiver, not from here.
                 val n = conn.bulkTransfer(endpoint, buffer, buffer.size, READ_TIMEOUT_MS)
-                if (n > 0) {
-                    val chunk = buffer.copyOf(n)
-                    mainHandler.post { if (reading) sink?.success(chunk) }
+                if (n <= 0) continue
+                var from = 0
+                if (!synced) {
+                    val lf = (0 until n).firstOrNull { buffer[it] == LF } ?: continue
+                    synced = true
+                    from = lf + 1
+                    if (from >= n) continue
                 }
+                val chunk = buffer.copyOfRange(from, n)
+                mainHandler.post { if (reading) sink?.success(chunk) }
             }
         }, "anchorline-usb-serial-read").apply {
             isDaemon = true
