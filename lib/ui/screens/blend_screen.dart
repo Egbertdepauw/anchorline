@@ -12,6 +12,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../analysis/blending/gas_blender.dart';
+import '../../data/db/gas_analyses_dao.dart';
 import '../notifiers/blend_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import 'analyzer_screen.dart';
@@ -24,10 +25,14 @@ class BlendScreen extends StatefulWidget {
     super.key,
     required this.notifier,
     required this.settings,
+    this.analysesDao,
   });
 
   final BlendNotifier notifier;
   final SettingsNotifier settings;
+
+  /// Cylinder analysis log (#111), handed to the analyzer screen.
+  final GasAnalysesDaoLike? analysesDao;
 
   @override
   State<BlendScreen> createState() => _BlendScreenState();
@@ -50,7 +55,10 @@ class _BlendScreenState extends State<BlendScreen> {
               label: const Text('Analyze gas'),
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => AnalyzerScreen(settings: widget.settings),
+                  builder: (_) => AnalyzerScreen(
+                    settings: widget.settings,
+                    analysesDao: widget.analysesDao,
+                  ),
                 ),
               ),
             ),

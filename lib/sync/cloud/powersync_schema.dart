@@ -106,6 +106,29 @@ const appSchema = Schema([
     Column.integer('version'),
     Column.integer('sync_status'),
   ]),
+  // Cylinder analysis log (gas analyzer, issue #111). cylinder_id is a soft
+  // reference to cylinders.id (no FK, nullable). mod_ppo2s is a JSON array
+  // of the ppO2 limits (bar) the MODs were shown for; the mix label and MOD
+  // depths are derived from o2/he, never stored. stable is 0/1.
+  Table('gas_analyses', [
+    Column.text('owner_id'),
+    Column.text('cylinder_id'),
+    Column.text('analysed_by'),
+    Column.integer('analysed_at'),
+    Column.real('o2_percent'),
+    Column.real('he_percent'),
+    Column.real('fill_pressure_bar'),
+    Column.real('temp_c'),
+    Column.real('baro_hpa'),
+    Column.text('mod_ppo2s'),
+    Column.integer('stable'),
+    Column.text('notes'),
+    Column.integer('created_at'),
+    Column.integer('updated_at'),
+    Column.integer('deleted_at'),
+    Column.integer('version'),
+    Column.integer('sync_status'),
+  ]),
   Table('oxygen_cells', [
     Column.text('owner_id'),
     Column.integer('slot'),

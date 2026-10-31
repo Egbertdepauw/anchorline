@@ -23,11 +23,14 @@ import '../../analyzer/protocol/analyzer_reading.dart';
 import '../../analyzer/stability.dart';
 import '../../analyzer/transport/analyzer_transport.dart';
 import '../../analyzer/transport/demo_transport.dart';
+import '../../data/db/gas_analyses_dao.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/data_colors.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
+import '../widgets/analysis_save_card.dart';
 import '../widgets/analyzer_live_chart.dart';
+import 'gas_analysis_log_screen.dart';
 
 /// Width from which the screen switches to the two-column grid.
 const double kAnalyzerWideBreakpoint = 840;
@@ -64,9 +67,14 @@ class AnalyzerScreen extends StatefulWidget {
     required this.settings,
     this.controller,
     this.transportOptions,
+    this.analysesDao,
   });
 
   final SettingsNotifier settings;
+
+  /// Cylinder analysis log (#111). When null the save card and the log
+  /// action are hidden.
+  final GasAnalysesDaoLike? analysesDao;
 
   /// Injected for tests. When null the screen owns its own controller.
   final AnalyzerController? controller;
@@ -112,6 +120,16 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
       appBar: AppBar(
         title: const Text('Gas analyzer'),
         actions: [
+          if (widget.analysesDao != null)
+            IconButton(
+              key: const ValueKey('analyzer-open-log'),
+              tooltip: 'Analysis log',
+              icon: const Icon(Icons.history),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) =>
+                    GasAnalysisLogScreen(dao: widget.analysesDao!),
+              )),
+            ),
           ListenableBuilder(
             listenable: _controller,
             builder: (context, _) => _StatusIndicator(controller: _controller),
@@ -202,8 +220,25 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         _PlanningCard(reading: r, settings: widget.settings),
         const SizedBox(height: Spacing.md),
         _ChartCard(controller: _controller),
+        ..._saveCard(),
       ],
     );
+  }
+
+  /// The "Save analysis" card (#111), preceded by a gap; empty without a
+  /// DAO.
+  List<Widget> _saveCard() {
+    final dao = widget.analysesDao;
+    if (dao == null) return const [];
+    return [
+      const SizedBox(height: Spacing.md),
+      AnalysisSaveCard(
+        dao: dao,
+        reading: _controller.latest,
+        stability: _controller.stability,
+        modPpo2s: widget.settings.analyzerModPpo2s,
+      ),
+    ];
   }
 
   Widget _wideLayout() {
@@ -244,7 +279,13 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
             const SizedBox(width: Spacing.lg),
             Expanded(
               flex: 11,
-              child: _PlanningCard(reading: r, settings: widget.settings),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _PlanningCard(reading: r, settings: widget.settings),
+                  ..._saveCard(),
+                ],
+              ),
             ),
           ],
         ),

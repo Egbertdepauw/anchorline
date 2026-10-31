@@ -24,6 +24,8 @@ void main() {
         'dive_plans',
         // Merge dives: reversible stored grouping.
         'dive_merge_links',
+        // Gas analyzer: cylinder analysis log.
+        'gas_analyses',
       });
     });
 

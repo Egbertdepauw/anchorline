@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../data/db/dive_annotations_dao.dart';
 import '../../../data/db/dive_dao.dart';
 import '../../../data/db/equipment_dao.dart';
+import '../../../data/db/gas_analyses_dao.dart';
 import '../../notifiers/settings_notifier.dart';
 import 'cells_list_screen.dart';
 import 'cylinders_list_screen.dart';
@@ -15,12 +16,16 @@ class EquipmentLandingScreen extends StatefulWidget {
   final DiveAnnotationsDao annotationsDao;
   final SettingsNotifier settingsNotifier;
 
+  /// Cylinder analysis log (#111); null hides the per-cylinder entry.
+  final GasAnalysesDaoLike? analysesDao;
+
   const EquipmentLandingScreen({
     super.key,
     required this.dao,
     required this.diveDao,
     required this.annotationsDao,
     required this.settingsNotifier,
+    this.analysesDao,
   });
 
   @override
@@ -107,7 +112,10 @@ class _EquipmentLandingScreenState extends State<EquipmentLandingScreen> {
             icon: Icons.propane_tank_outlined,
             onTap: () async {
               await Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => CylindersListScreen(dao: widget.dao),
+                builder: (_) => CylindersListScreen(
+                  dao: widget.dao,
+                  analysesDao: widget.analysesDao,
+                ),
               ));
               await _refresh();
             },

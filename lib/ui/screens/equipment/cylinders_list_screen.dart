@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/db/database.dart';
 import '../../../data/db/equipment_dao.dart';
+import '../../../data/db/gas_analyses_dao.dart';
 import '../../../data/models/equipment.dart';
 import '../../notifiers/equipment_notifiers.dart';
 import 'cylinder_detail_screen.dart';
@@ -9,7 +10,10 @@ import 'cylinder_detail_screen.dart';
 class CylindersListScreen extends StatefulWidget {
   final EquipmentDao dao;
 
-  const CylindersListScreen({super.key, required this.dao});
+  /// Cylinder analysis log (#111), passed through to the detail screen.
+  final GasAnalysesDaoLike? analysesDao;
+
+  const CylindersListScreen({super.key, required this.dao, this.analysesDao});
 
   @override
   State<CylindersListScreen> createState() => _CylindersListScreenState();
@@ -99,7 +103,11 @@ class _CylindersListScreenState extends State<CylindersListScreen> {
               '${c.volumeLiters}L @ ${c.workingPressureBar} bar'),
           onTap: () async {
             await Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => CylinderDetailScreen(dao: widget.dao, id: c.id),
+              builder: (_) => CylinderDetailScreen(
+                dao: widget.dao,
+                id: c.id,
+                analysesDao: widget.analysesDao,
+              ),
             ));
             await _n.load();
           },
