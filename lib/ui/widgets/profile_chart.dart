@@ -20,6 +20,7 @@ import '../theme/data_colors.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../util/tank_labels.dart';
+import '../../analysis/gas_naming.dart';
 
 /// Builds a polyline [Path] over the first [n] samples of [data], starting a
 /// fresh subpath after any NaN sample. A NaN coordinate makes Skia reject the
@@ -969,14 +970,8 @@ class ProfileChartPainter extends CustomPainter {
     }
   }
 
-  static String _gasMixLabel(DiveGasMix mix) {
-    if (mix.heliumPercent > 0) {
-      return '${mix.oxygenPercent}/${mix.heliumPercent}';
-    }
-    if (mix.oxygenPercent == 21) return 'Air';
-    if (mix.oxygenPercent == 100) return 'O₂';
-    return 'EAN${mix.oxygenPercent}';
-  }
+  static String _gasMixLabel(DiveGasMix mix) =>
+      gasMixName(mix.oxygenPercent, mix.heliumPercent);
 
   // ── Trace helpers ──────────────────────────────────────────────
 

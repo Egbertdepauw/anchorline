@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import '../../analysis/gas_naming.dart';
 
 String formatDepth(int depthMm) {
   final meters = depthMm / 1000.0;
@@ -34,13 +35,9 @@ String formatGf(int? low, int? high) {
   return 'GF $low/$high';
 }
 
-/// Format a gas mix for display: "21/35" for trimix, "EAN32" for nitrox, "Air" for air.
-String formatGasMix(int o2, int he) {
-  if (he > 0) return '$o2/$he';
-  if (o2 == 21) return 'Air';
-  if (o2 == 100) return 'O2';
-  return 'EAN$o2';
-}
+/// Format a gas mix for display; delegates to [gasMixName] so the whole
+/// app shares one naming scheme ("Tx21/35", "EAN32", "Air", "O2", ...).
+String formatGasMix(int o2, int he) => gasMixName(o2, he);
 
 /// Format scrubber stack remaining as "H:MM" (e.g. 23777 → "6:36").
 /// Truncates to whole minutes — half a minute is noise on a multi-hour total.

@@ -8,6 +8,7 @@ import '../theme/gf_color.dart';
 import '../theme/tokens.dart';
 import '../util/tank_labels.dart';
 import 'profile_chart.dart' show cellTraceLabelForSlot;
+import '../../analysis/gas_naming.dart';
 
 /// Readout panel shown at the profile crosshair.
 ///
@@ -52,14 +53,8 @@ class CrosshairTooltip extends StatelessWidget {
     return cellTraceLabelForSlot(cellsBySlot, slot);
   }
 
-  static String _gasMixLabel(DiveGasMix mix) {
-    if (mix.heliumPercent > 0) {
-      return '${mix.oxygenPercent}/${mix.heliumPercent}';
-    }
-    if (mix.oxygenPercent == 21) return 'Air';
-    if (mix.oxygenPercent == 100) return 'O₂';
-    return 'EAN${mix.oxygenPercent}';
-  }
+  static String _gasMixLabel(DiveGasMix mix) =>
+      gasMixName(mix.oxygenPercent, mix.heliumPercent);
 
   /// Instantaneous vertical-speed at [i], computed from the previous
   /// sample. Returns "—" for the very first sample or a non-finite rate

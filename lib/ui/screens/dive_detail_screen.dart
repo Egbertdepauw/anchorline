@@ -56,6 +56,7 @@ import '../../analysis/bailout/bailout_planner.dart';
 import '../../analysis/bailout/tank_recommender.dart';
 import '../../analysis/bailout/team_bailout.dart' show distributeForTeam;
 import '../widgets/bailout_section.dart';
+import '../../analysis/gas_naming.dart';
 
 class DiveDetailScreen extends StatefulWidget {
   final Dive dive;
@@ -1334,7 +1335,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       return bSec.compareTo(aSec);
     });
     final winner = diluentEntries.first.value;
-    return '${winner.oxygenPercent}/${winner.heliumPercent}';
+    return gasMixName(winner.oxygenPercent, winner.heliumPercent);
   }
 
   Widget _buildStatsRow(ThemeData theme) {

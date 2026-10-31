@@ -16,6 +16,7 @@ import '../notifiers/blend_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
+import '../../analysis/gas_naming.dart';
 
 class BlendScreen extends StatefulWidget {
   const BlendScreen({
@@ -543,14 +544,11 @@ class _BlendOutput extends StatelessWidget {
       return '$bar bar to vent';
     }
     final src = s.source;
+    // Pure helium is a blending source, not a breathing gas, so it keeps
+    // its own label; everything else uses the shared naming scheme.
     final mixLabel = src.heliumPercent == 100
         ? 'He'
-        : src.oxygenPercent == 100
-            ? 'O₂'
-            : src.oxygenPercent == 21 && src.heliumPercent == 0
-                ? 'Air'
-                : '${src.oxygenPercent.toStringAsFixed(0)}/'
-                    '${src.heliumPercent.toStringAsFixed(0)}';
+        : gasMixName(src.oxygenPercent, src.heliumPercent);
     return '$bar bar of $mixLabel';
   }
 }
