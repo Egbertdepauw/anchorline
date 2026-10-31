@@ -43,4 +43,18 @@ void main() {
     expect(notifier.targetPressureBar, 210,
         reason: 'typing into the target pressure field must update the notifier');
   });
+
+  testWidgets('labelled "Analyze gas" button opens the gas analyzer',
+      (tester) async {
+    final settings = SettingsNotifier();
+    await settings.load();
+    final notifier = BlendNotifier(settings: settings);
+    await tester.pumpWidget(MaterialApp(
+      home: BlendScreen(notifier: notifier, settings: settings),
+    ));
+    expect(find.text('Analyze gas'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('blend-open-analyzer')));
+    await tester.pumpAndSettle();
+    expect(find.text('Gas analyzer'), findsOneWidget);
+  });
 }
