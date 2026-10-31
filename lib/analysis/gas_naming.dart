@@ -14,6 +14,12 @@
 /// | He > 0 otherwise                       | `Tx{o2}/{he}`    |
 /// | He = 0 and O2 > 21.5                   | `EAN{o2}`        |
 /// | He = 0 and O2 < 20.5                   | `Hypoxic {o2}`   |
+///
+/// "He = 0" means below [kHeliumNoiseFloorPercent] (1.0 %) in the measured
+/// value, before any rounding: helium sensors read a small offset on gases
+/// without helium (a real SOLO reports 0.4 % on air, #128), and no real
+/// trimix has less than 1 % He. Only the label uses this floor; the
+/// measured He value is shown and stored unchanged.
 library;
 
 /// Lower edge of the Air band (O2 %, inclusive).
@@ -28,6 +34,9 @@ const double kOxygenMinPercent = 99.5;
 /// O2 + He % at or above which a helium mix is heliox rather than trimix.
 const double kHelioxMinO2HePercent = 99.0;
 
+/// He % below which a mix is named as helium-free (sensor offset, #128).
+const double kHeliumNoiseFloorPercent = 1.0;
+
 /// Diver-facing name for a mix, with percentages rounded to whole numbers
 /// (half away from zero, Dart's `round()`): `Air`, `O2`, `EAN32`,
 /// `Tx21/35`, `Hx10/90`, `Hypoxic 18`.
@@ -37,11 +46,12 @@ const double kHelioxMinO2HePercent = 99.0;
 /// 21.3/34.2 → `Tx21/34`.
 String gasMixName(num o2Percent, num hePercent) {
   final o2 = _nonNegative(o2Percent).round();
-  final he = _nonNegative(hePercent).round();
+  final rawHe = _nonNegative(hePercent);
+  final he = rawHe.round();
   return _name(
     o2: o2.toDouble(),
     he: he.toDouble(),
-    heIsZero: he == 0,
+    heIsZero: rawHe < kHeliumNoiseFloorPercent,
     o2Text: '$o2',
     heText: '$he',
   );
@@ -52,9 +62,9 @@ String gasMixName(num o2Percent, num hePercent) {
 /// `Hx10.1/89.6`, `Hypoxic 18.2`. Air and O2 are classified from the raw
 /// values with the same bands as [gasMixName] and shown without numbers.
 ///
-/// He counts as zero when it displays as zero at [decimals] places, so a
-/// 0.02 % He sensor wobble on an air fill still reads `Air`, never
-/// `Tx20.9/0.0`. Negative sensor noise is clamped to 0.
+/// He below [kHeliumNoiseFloorPercent] counts as zero, so a helium sensor
+/// offset on an air fill reads `Air`, never `Tx20.9/0.4`. Negative sensor
+/// noise is clamped to 0.
 String gasMixNameDecimal(double o2Percent, double hePercent,
     {int decimals = 1}) {
   final o2 = _nonNegative(o2Percent).toDouble();
@@ -63,7 +73,7 @@ String gasMixNameDecimal(double o2Percent, double hePercent,
   return _name(
     o2: o2,
     he: he,
-    heIsZero: double.parse(heText) == 0,
+    heIsZero: he < kHeliumNoiseFloorPercent,
     o2Text: o2.toStringAsFixed(decimals),
     heText: heText,
   );

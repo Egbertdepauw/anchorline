@@ -53,6 +53,14 @@ void main() {
       expect(gasMixName(20.9, 0.4), 'Air');
     });
 
+    test('helium below the 1 % noise floor is ignored before rounding', () {
+      // 0.6 would round up to 1 and read "Tx21/1" without the floor.
+      expect(gasMixName(20.9, 0.6), 'Air');
+      expect(gasMixName(32, 0.9), 'EAN32');
+      expect(gasMixName(18, 0.99), 'Hypoxic 18');
+      expect(gasMixName(21, 1.0), 'Tx21/1');
+    });
+
     test('accepts int and double', () {
       expect(gasMixName(32, 0), gasMixName(32.0, 0.0));
     });
@@ -79,6 +87,14 @@ void main() {
     test('helium noise below display resolution counts as zero', () {
       expect(gasMixNameDecimal(20.9, 0.02), 'Air');
       expect(gasMixNameDecimal(20.9, -0.1), 'Air');
+    });
+
+    test('helium sensor offset below 1 % counts as zero (#128)', () {
+      // A real SOLO reports He 0.4 % on air.
+      expect(gasMixNameDecimal(20.9, 0.4), 'Air');
+      expect(gasMixNameDecimal(32.1, 0.9), 'EAN32.1');
+      expect(gasMixNameDecimal(19.7, 0.4), 'Hypoxic 19.7');
+      expect(gasMixNameDecimal(21.0, 1.0), 'Tx21.0/1.0');
     });
 
     test('custom decimals', () {
