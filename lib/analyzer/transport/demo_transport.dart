@@ -2,11 +2,14 @@
 ///
 /// Mirrors `startDemo()` in `docs/prototypes/solo-live.html`: the analyzer
 /// first reads air, gas starts flowing after [DemoAnalyzerTransport.
-/// gasArrivesAfterSamples] samples, and the readings then settle
-/// exponentially onto the target mix (18.2 % O2 / 45.1 % He by default)
-/// with a little sensor noise. One line per [DemoAnalyzerTransport.
-/// sampleInterval], in the real SOLO trimix line format, so every line goes
-/// through `parseSoloLine` exactly like hardware output.
+/// gasArrivesAfter], and the readings then settle exponentially onto the
+/// target mix (18.2 % O2 / 45.1 % He by default) with a little sensor
+/// noise. One line per [DemoAnalyzerTransport.sampleInterval] (200 ms by
+/// default: the real trimix SOLO sends ~5 lines per second, #127), in the
+/// real SOLO trimix line format, so every line goes through
+/// `parseSoloLine` exactly like hardware output. The settling curve is
+/// defined per second of simulated time, so it looks the same at any
+/// interval.
 ///
 /// Pure Dart. Timing runs on a [Timer], so inside `testWidgets` the
 /// simulation is driven deterministically with `tester.pump(duration)`.
@@ -22,8 +25,8 @@ class DemoAnalyzerTransport implements AnalyzerTransport {
   DemoAnalyzerTransport({
     this.targetO2 = 18.2,
     this.targetHe = 45.1,
-    this.gasArrivesAfterSamples = 3,
-    this.sampleInterval = const Duration(seconds: 1),
+    this.gasArrivesAfter = const Duration(seconds: 3),
+    this.sampleInterval = defaultSampleInterval,
     this.noiseAmplitude = 0.04,
     this.temperatureC = 21.4,
     this.pressureHpa = 1013.2,
@@ -38,10 +41,13 @@ class DemoAnalyzerTransport implements AnalyzerTransport {
   /// He % the readings settle on.
   final double targetHe;
 
-  /// Samples of plain air before the gas reaches the sensor (~3 s at 1 Hz).
-  final int gasArrivesAfterSamples;
+  /// The real trimix SOLO's output rate: ~5 lines per second.
+  static const Duration defaultSampleInterval = Duration(milliseconds: 200);
 
-  /// Time between lines (the SOLO sends one per second).
+  /// Simulated time of plain air before the gas reaches the sensor.
+  final Duration gasArrivesAfter;
+
+  /// Time between lines.
   final Duration sampleInterval;
 
   /// Maximum noise added to each value, in percentage points (±).
@@ -53,10 +59,19 @@ class DemoAnalyzerTransport implements AnalyzerTransport {
   final Random _random;
   final DateTime Function() _clock;
 
-  /// Per-sample approach factors, as in the prototype (settles over ~10 s
-  /// for O2, a little slower for He).
-  static const double _o2Approach = 0.25;
-  static const double _heApproach = 0.22;
+  /// Approach factors per second of simulated time, as in the prototype
+  /// (settles over ~10 s for O2, a little slower for He). Scaled to
+  /// [sampleInterval] in [emitSample].
+  static const double _o2ApproachPerSecond = 0.25;
+  static const double _heApproachPerSecond = 0.22;
+
+  double get _intervalSeconds =>
+      sampleInterval.inMicroseconds / Duration.microsecondsPerSecond;
+
+  /// Fraction of the remaining distance covered in one [sampleInterval],
+  /// for a per-second approach factor [perSecond].
+  double _approach(double perSecond) =>
+      1 - pow(1 - perSecond, _intervalSeconds).toDouble();
 
   final StreamController<String> _lines = StreamController.broadcast();
   final StreamController<AnalyzerConnectionStatus> _status =
@@ -116,9 +131,11 @@ class DemoAnalyzerTransport implements AnalyzerTransport {
   /// the timer while connected; tests may call it directly.
   String emitSample() {
     _sample++;
-    if (_sample > gasArrivesAfterSamples) {
-      _o2 += (targetO2 - _o2) * _o2Approach;
-      _he += (targetHe - _he) * _heApproach;
+    // Simulated time of this sample; the first one is at one interval.
+    final elapsed = sampleInterval * _sample;
+    if (elapsed > gasArrivesAfter) {
+      _o2 += (targetO2 - _o2) * _approach(_o2ApproachPerSecond);
+      _he += (targetHe - _he) * _approach(_heApproachPerSecond);
     }
     final line = formatLine(
       o2: _o2 + _noise(),

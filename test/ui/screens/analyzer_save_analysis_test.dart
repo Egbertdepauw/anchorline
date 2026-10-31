@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../_helpers/fake_elapsed.dart';
 import '../../_helpers/fake_gas_analyses_dao.dart';
 
 void main() {
@@ -33,6 +34,7 @@ void main() {
       home: AnalyzerScreen(
         settings: settings,
         analysesDao: dao,
+        controller: fakeClockAnalyzerController(tester),
         transportOptions: [
           AnalyzerTransportOption(
             label: 'Demo',

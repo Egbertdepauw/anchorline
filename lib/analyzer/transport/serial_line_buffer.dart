@@ -54,3 +54,48 @@ class SerialLineBuffer {
   /// Drops any partial line (on reconnect).
   void clear() => _pending.clear();
 }
+
+/// Drops the stale burst a SOLO sends right after its port is opened.
+///
+/// The analyzer buffers lines while no host is listening and flushes them
+/// the moment the port opens (a real capture showed ~15 lines about 20 s
+/// old, #127). Flushing the OS input buffer on open catches what is
+/// already queued; this catches what arrives just after. Every byte in the
+/// first [window] after construction is dropped, then everything up to and
+/// including the next `\n`, so the line splitter starts on a whole line
+/// and never sees the cut-off tail of one.
+///
+/// Pure Dart. The time source is injectable for tests.
+class OpenBurstFilter {
+  OpenBurstFilter({
+    this.window = defaultWindow,
+    Duration Function()? elapsed,
+  }) : _elapsed = elapsed ?? _stopwatchElapsed();
+
+  /// How long after opening incoming bytes are treated as stale.
+  static const Duration defaultWindow = Duration(milliseconds: 300);
+
+  final Duration window;
+  final Duration Function() _elapsed;
+  bool _synced = false;
+
+  static Duration Function() _stopwatchElapsed() {
+    final sw = Stopwatch()..start();
+    return () => sw.elapsed;
+  }
+
+  /// True once the window has passed and a line boundary has been seen;
+  /// from then on [filter] passes every chunk through unchanged.
+  bool get synced => _synced;
+
+  /// Returns the part of [chunk] that should reach the line splitter
+  /// (possibly empty).
+  List<int> filter(List<int> chunk) {
+    if (_synced) return chunk;
+    if (_elapsed() < window) return const [];
+    final lf = chunk.indexOf(0x0A);
+    if (lf < 0) return const [];
+    _synced = true;
+    return chunk.sublist(lf + 1);
+  }
+}
