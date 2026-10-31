@@ -40,12 +40,18 @@ class _BlendScreenState extends State<BlendScreen> {
       appBar: AppBar(
         title: const Text('Blend'),
         actions: [
-          IconButton(
-            tooltip: 'Gas analyzer',
-            icon: const Icon(Icons.sensors),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => AnalyzerScreen(settings: widget.settings),
+          // Labelled, not icon-only: a bare icon didn't read as
+          // "open the gas analyzer" to testers.
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              key: const Key('blend-open-analyzer'),
+              icon: const Icon(Icons.science_outlined),
+              label: const Text('Analyze gas'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => AnalyzerScreen(settings: widget.settings),
+                ),
               ),
             ),
           ),
