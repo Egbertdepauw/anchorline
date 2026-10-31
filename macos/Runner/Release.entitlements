@@ -6,6 +6,13 @@
 	<true/>
 	<key>com.apple.security.device.bluetooth</key>
 	<true/>
+	<!-- Gas analyzer over USB (#108): lets the sandboxed app open serial
+	     TTYs such as /dev/cu.usbmodem101 (Divesoft SOLO, CDC-ACM). Granted
+	     by the "com.apple.security.device.serial" rule in
+	     /System/Library/Sandbox/Profiles/application.sb; documented in
+	     Apple's legacy Entitlement Key Reference. -->
+	<key>com.apple.security.device.serial</key>
+	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
 	<key>com.apple.security.personal-information.location</key>

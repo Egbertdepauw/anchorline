@@ -3,8 +3,8 @@
 /// Big O2 / He readouts, the mix name, a stability pill, a planning card
 /// (MOD per configured ppO2, END, min depth, density, temperature,
 /// ambient pressure) and a two-minute chart. Works with any
-/// [AnalyzerTransport]; for now only the demo simulator is offered.
-/// Desktop serial and Android USB transports plug in as extra
+/// [AnalyzerTransport]: desktop USB serial, Android USB and the demo simulator.
+/// Further transports (the BLE bridge, #113) plug in as extra
 /// [AnalyzerTransportOption]s in [defaultAnalyzerTransportOptions].
 ///
 /// Layout: one column on phones; from [kAnalyzerWideBreakpoint] up, a
@@ -14,7 +14,7 @@ library;
 
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../analysis/end.dart';
@@ -27,6 +27,8 @@ import '../../analyzer/stability.dart';
 import '../../analyzer/transport/analyzer_transport.dart';
 import '../../analyzer/transport/android_usb_transport.dart';
 import '../../analyzer/transport/demo_transport.dart';
+import '../../analyzer/transport/desktop_serial_transport.dart';
+import '../../analyzer/transport/serial_port_selection.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/data_colors.dart';
@@ -34,6 +36,7 @@ import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../widgets/analysis_save_card.dart';
 import '../widgets/analyzer_live_chart.dart';
+import '../widgets/serial_port_picker_dialog.dart';
 import 'gas_analysis_log_screen.dart';
 
 /// Width from which the screen switches to the two-column grid.
@@ -51,6 +54,7 @@ class AnalyzerTransportOption {
     required this.label,
     required this.create,
     this.note,
+    this.choose,
   });
 
   final String label;
@@ -62,11 +66,46 @@ class AnalyzerTransportOption {
   /// Builds a fresh transport for one session. The controller owns and
   /// disposes it.
   final AnalyzerTransport Function() create;
+
+  /// Optional interactive variant of [create] (e.g. a port picker), used
+  /// by the Connect button when set. Returns null when the diver cancels.
+  final Future<AnalyzerTransport?> Function(BuildContext context)? choose;
 }
 
-/// The transports available on this platform: the demo simulator
-/// everywhere, USB OTG on Android (#109). Desktop serial (#108) goes here.
+/// Port picked in the last desktop USB session, preselected next time.
+String? _lastSerialPort;
+
+/// Desktop USB serial (#108). Only offered on macOS/Windows/Linux, so
+/// mobile and web never touch the dart:ffi serial code.
+bool get _hasDesktopSerial =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux);
+
+/// The transports available on this platform: desktop USB serial (#108)
+/// on macOS/Windows/Linux, USB OTG on Android (#109), and the demo
+/// simulator everywhere.
 List<AnalyzerTransportOption> defaultAnalyzerTransportOptions() => [
+      if (_hasDesktopSerial)
+        AnalyzerTransportOption(
+          label: 'USB',
+          create: () => DesktopSerialTransport(
+            portPath: _lastSerialPort ??
+                preselectSerialPort(listDesktopSerialPorts()) ??
+                '',
+          ),
+          choose: (context) async {
+            final port = await showSerialPortPicker(
+              context,
+              listPorts: listDesktopSerialPorts,
+              previous: _lastSerialPort,
+            );
+            if (port == null) return null;
+            _lastSerialPort = port;
+            return DesktopSerialTransport(portPath: port);
+          },
+        ),
       AnalyzerTransportOption(
         label: 'Demo',
         create: () => DemoAnalyzerTransport(),
@@ -128,7 +167,16 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
     if (_controller.isBusy) {
       await _controller.disconnect();
     } else {
-      await _controller.connect(_options[_selected].create());
+      final option = _options[_selected];
+      final choose = option.choose;
+      final transport =
+          choose != null ? await choose(context) : option.create();
+      if (transport == null) return;
+      if (!mounted) {
+        await transport.dispose();
+        return;
+      }
+      await _controller.connect(transport);
     }
   }
 

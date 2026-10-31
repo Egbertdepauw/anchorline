@@ -75,6 +75,10 @@ dependencies:
   # obsoleted our vendored-libcrypto build phase (see #74).
   git2dart_binaries: ^1.12.1
   flutter_secure_storage: ^10.1.0
+  # malloc/calloc and UTF-8/16 strings for the desktop gas-analyzer serial
+  # port (lib/analyzer/transport/native_serial_port.dart). Pure Dart, no
+  # native build; already in the lock as a transitive dependency.
+  ffi: 2.2.0
 
   # Crash + unhandled-exception reporting for release / beta builds.
   # Gated by kReleaseMode AND --dart-define=SENTRY_DSN=... at build time
