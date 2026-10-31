@@ -2,23 +2,16 @@
 /// preselect.
 ///
 /// The Divesoft SOLO is a native USB CDC-ACM device (not FTDI), so it shows
-/// up as `/dev/cu.usbmodem*` on macOS (`/dev/cu.usbmodem101` on the unit we
-/// tested), `/dev/ttyACM*` on Linux and a `COMn` port on Windows.
+/// up as `/dev/cu.usbmodem*` on macOS (`/dev/cu.usbmodem2101` on the unit we
+/// tested; the number changes with the USB port), `/dev/ttyACM*` on Linux
+/// and a `COMn` port on Windows.
 ///
 /// Pure Dart, no I/O: the lists come from `listDesktopSerialPorts`, these
-/// functions only filter and rank them.
+/// functions only filter and rank them. The SOLO's VID/PID are in
+/// `solo_usb_ids.dart`; desktop preselection still goes by device name.
 library;
 
-/// USB vendor id of the Divesoft SOLO.
-///
-/// TODO(#104): record it with `system_profiler SPUSBDataType` on a real
-/// unit. Until then port preselection goes by device name only. Once known,
-/// it can be matched on Windows (registry `USB\VID_xxxx&PID_yyyy`) and
-/// Linux (`/sys/class/tty/ttyACM*/device/../idVendor`).
-const int? kSoloUsbVendorId = null;
-
-/// USB product id of the Divesoft SOLO. See [kSoloUsbVendorId].
-const int? kSoloUsbProductId = null;
+export 'solo_usb_ids.dart';
 
 /// Whether [path] is a serial device worth offering in the port picker.
 ///
