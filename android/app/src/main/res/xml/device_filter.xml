@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  USB devices for which Android offers to open Anchorline when they are
+  plugged in (USB_DEVICE_ATTACHED, see AndroidManifest.xml). Accepting
+  that prompt also grants USB permission for the device.
+
+  The Divesoft SOLO gas analyzer is a USB CDC-ACM serial device. Its
+  VID/PID are not recorded yet (#104), so for now this matches by class:
+  class 2 is USB CDC (Communications). Android checks the device class
+  and every interface class against this filter, so it matches CDC
+  serial devices only, not every USB device.
+
+  TODO(#104): once the SOLO VID/PID are known, replace the class filter
+  with <usb-device vendor-id="..." product-id="..." /> (decimal values)
+  so Anchorline is offered only for the analyzer. Keep it in sync with
+  kSoloUsbVendorId / kSoloUsbProductId in
+  lib/analyzer/transport/usb_device_selection.dart.
+-->
+<resources>
+    <usb-device class="2" />
+</resources>
