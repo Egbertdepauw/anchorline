@@ -2,13 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../../../data/db/database.dart';
 import '../../../data/db/equipment_dao.dart';
+import '../../../data/db/gas_analyses_dao.dart';
 import '../../../data/models/equipment.dart';
+import '../gas_analysis_log_screen.dart';
 
 class CylinderDetailScreen extends StatefulWidget {
   final EquipmentDao dao;
   final String? id; // null = create-new draft
 
-  const CylinderDetailScreen({super.key, required this.dao, this.id});
+  /// Cylinder analysis log (#111); null hides the "Gas analyses" entry.
+  final GasAnalysesDaoLike? analysesDao;
+
+  const CylinderDetailScreen(
+      {super.key, required this.dao, this.id, this.analysesDao});
 
   @override
   State<CylinderDetailScreen> createState() => _CylinderDetailScreenState();
@@ -189,6 +195,25 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
                   decoration: const InputDecoration(labelText: 'Notes'),
                   maxLines: 3,
                 ),
+                if (!_isDraft && widget.analysesDao != null) ...[
+                  const SizedBox(height: 16),
+                  ListTile(
+                    key: const ValueKey('cylinder-analyses'),
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.science_outlined),
+                    title: const Text('Gas analyses'),
+                    subtitle:
+                        const Text('Analyzer readings saved for this cylinder'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => GasAnalysisLogScreen(
+                        dao: widget.analysesDao!,
+                        cylinderId: widget.id,
+                        cylinderLabel: _c?.label,
+                      ),
+                    )),
+                  ),
+                ],
               ],
             ),
     );

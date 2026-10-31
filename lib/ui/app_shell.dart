@@ -16,6 +16,7 @@ import '../data/db/dive_dao.dart';
 import '../data/db/dive_derived_stats_dao.dart';
 import '../data/db/dive_merge_dao.dart';
 import '../data/db/dive_plans_dao.dart';
+import '../data/db/gas_analyses_dao.dart';
 import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
 import '../sync/attachments/attachment_cache.dart';
@@ -103,6 +104,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final DiveDerivedStatsDao _diveDerivedStatsDao;
   late final DiveListNotifier _diveListNotifier;
   late final DivePlansDao _divePlansDao;
+  late final GasAnalysesDao _gasAnalysesDao;
   late final DivePlanNotifier _divePlanNotifier;
   late final BlendNotifier _blendNotifier;
   late final ImportNotifier _importNotifier;
@@ -172,6 +174,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _diveDerivedStatsDao = DiveDerivedStatsDao(widget.db);
     _diveListNotifier = DiveListNotifier(_diveDao, _diveAnnotationsDao, _diveMergeDao);
     _divePlansDao = DivePlansDao(
+      widget.powerSyncDb,
+      SupabaseAuthSessionSource(Supabase.instance.client),
+    );
+    _gasAnalysesDao = GasAnalysesDao(
       widget.powerSyncDb,
       SupabaseAuthSessionSource(Supabase.instance.client),
     );
@@ -521,6 +527,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                         BlendScreen(
                           notifier: _blendNotifier,
                           settings: widget.settingsNotifier,
+                          analysesDao: _gasAnalysesDao,
                         ),
                         ImportScreen(
                           notifier: _importNotifier,
@@ -531,6 +538,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           diveDao: _diveDao,
                           annotationsDao: _diveAnnotationsDao,
                           settingsNotifier: widget.settingsNotifier,
+                          analysesDao: _gasAnalysesDao,
                         ),
                         SettingsScreen(
                           notifier: widget.settingsNotifier,

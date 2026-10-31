@@ -37,6 +37,9 @@ const cloudSyncTables = <String>[
   // reconnect and "Reset Everything" wouldn't actually wipe dives.
   'dive_samples',
   'dives',
+  // Gas analyses soft-reference cylinders (no FK); listed before them
+  // anyway so a future FK can't break the wipe.
+  'gas_analyses',
   // Equipment / device parents.
   'cylinders',
   'oxygen_cells',
