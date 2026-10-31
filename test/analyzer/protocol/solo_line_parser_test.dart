@@ -1,10 +1,9 @@
 import 'package:ccrlogger/analyzer/protocol/solo_line_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// TODO(#104): add real hardware captures from the trimix SOLO (10+ lines,
-// including an error line) under test/fixtures/analyzer/ and test them
-// here. The trimix lines below are synthetic, modelled on the prototype's
-// demo generator (docs/prototypes/solo-live.html, startDemo).
+// The trimix lines below are synthetic, modelled on the prototype's demo
+// generator (docs/prototypes/solo-live.html, startDemo). Real captures
+// from a trimix SOLO are tested in solo_fixture_test.dart.
 
 void main() {
   group('parseSoloLine', () {

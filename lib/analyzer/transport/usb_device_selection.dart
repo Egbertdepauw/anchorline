@@ -3,16 +3,9 @@
 /// Pure Dart so the choice is unit-testable without hardware.
 library;
 
-/// USB vendor ID of the Divesoft SOLO, once known.
-///
-/// TODO(#104): record the SOLO VID/PID (`system_profiler SPUSBDataType`
-/// on macOS) and fill these in, together with
-/// `android/app/src/main/res/xml/device_filter.xml`. Until then the first
-/// CDC serial device is used.
-const int? kSoloUsbVendorId = null;
+import 'solo_usb_ids.dart';
 
-/// USB product ID of the Divesoft SOLO, once known. See [kSoloUsbVendorId].
-const int? kSoloUsbProductId = null;
+export 'solo_usb_ids.dart';
 
 /// USB class code for CDC Communications (the CDC-ACM control interface).
 const int kUsbClassCdcComm = 0x02;
@@ -81,8 +74,8 @@ class UsbDeviceInfo {
 /// Picks the device to open as the analyzer, or null when none fits.
 ///
 /// An exact [vendorId]/[productId] match wins. Otherwise the first CDC
-/// serial device is used, so the transport works before #104 records the
-/// SOLO IDs. Non-CDC devices (keyboards, flash drives, FTDI adapters) are
+/// serial device is used, so other CDC analyzers or a SOLO with different
+/// firmware IDs still work. Non-CDC devices (keyboards, flash drives, FTDI adapters) are
 /// never picked.
 UsbDeviceInfo? selectAnalyzerDevice(
   List<UsbDeviceInfo> devices, {

@@ -65,9 +65,20 @@ void main() {
 
   test('VID-only match when no product ID is configured', () {
     expect(
-      selectAnalyzerDevice([cdcComposite, cdcDeviceClass], vendorId: 0x2345),
+      selectAnalyzerDevice([cdcComposite, cdcDeviceClass],
+          vendorId: 0x2345, productId: null),
       same(cdcDeviceClass),
     );
+  });
+
+  test('defaults pick the real SOLO (VID 0xA600 / PID 0xE212) first', () {
+    const solo = UsbDeviceInfo(
+      deviceName: '/dev/bus/usb/002/009',
+      vendorId: 0xA600,
+      productId: 0xE212,
+      interfaceClasses: [kUsbClassCdcComm, kUsbClassCdcData],
+    );
+    expect(selectAnalyzerDevice([cdcComposite, solo]), same(solo));
   });
 
   test('fromMap decodes the platform channel payload', () {
