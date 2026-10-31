@@ -111,6 +111,26 @@ Float32List computeEndSeries({
   return out;
 }
 
+/// END (m) of a single static gas at [depthMeters], for readouts that
+/// show one number rather than a per-sample series (e.g. the gas
+/// analyzer's "END @ MOD 1.4"). Same formulas as [computeEndSeries]:
+/// [countsOxygen] selects formula A (`true`) or B (`false`).
+/// Fractions are 0.0–1.0, not percentages. Clamped at 0.
+double endMeters({
+  required double depthMeters,
+  required double o2Fraction,
+  required double heFraction,
+  required bool countsOxygen,
+}) {
+  final factor = _narcoticFactor(
+    o2: o2Fraction,
+    he: heFraction,
+    countsOxygen: countsOxygen,
+  );
+  final end = (depthMeters + 10.0) * factor - 10.0;
+  return end < 0 ? 0.0 : end;
+}
+
 double _narcoticFactor({
   required double o2,
   required double he,

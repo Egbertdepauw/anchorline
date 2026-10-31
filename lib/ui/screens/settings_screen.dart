@@ -483,6 +483,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+          const Divider(height: 32),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Text(
+              'Gas analyzer',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+          ListenableBuilder(
+            listenable: widget.notifier,
+            builder: (context, _) => ListTile(
+              title: const Text('MOD ppO₂ limits'),
+              subtitle: Text(
+                  '${widget.notifier.analyzerModPpo2s.map((v) => v.toStringAsFixed(2)).join(', ')} bar — '
+                  'one MOD row per limit on the analyzer screen (1.1 = CCR diluent)'),
+              trailing: SizedBox(
+                width: 140,
+                child: TextFormField(
+                  key: const ValueKey('settings-analyzer-mod-ppo2s'),
+                  initialValue: widget.notifier.analyzerModPpo2s
+                      .map((v) => v.toString())
+                      .join(', '),
+                  keyboardType: TextInputType.text,
+                  textAlign: TextAlign.end,
+                  onChanged: (s) {
+                    final parts = s
+                        .split(RegExp(r'[,;\s]+'))
+                        .where((p) => p.isNotEmpty)
+                        .map(double.tryParse)
+                        .toList();
+                    if (parts.isEmpty || parts.contains(null)) return;
+                    widget.notifier
+                        .setAnalyzerModPpo2s(parts.whereType<double>());
+                  },
+                ),
+              ),
+            ),
+          ),
           if (widget.subsurfaceOrchestrator != null &&
               widget.subsurfaceCredentials != null &&
               widget.diveDao != null) ...[

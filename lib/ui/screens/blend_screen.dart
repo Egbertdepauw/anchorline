@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../../analysis/blending/gas_blender.dart';
 import '../notifiers/blend_notifier.dart';
 import '../notifiers/settings_notifier.dart';
+import 'analyzer_screen.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../../analysis/gas_naming.dart';
@@ -36,7 +37,20 @@ class _BlendScreenState extends State<BlendScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Blend')),
+      appBar: AppBar(
+        title: const Text('Blend'),
+        actions: [
+          IconButton(
+            tooltip: 'Gas analyzer',
+            icon: const Icon(Icons.sensors),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => AnalyzerScreen(settings: widget.settings),
+              ),
+            ),
+          ),
+        ],
+      ),
       // Tap anywhere outside an input field to dismiss the keyboard.
       // iOS's numeric keyboard has no Return key, so without this the
       // user can't get the keyboard out of the way to reach the bottom
