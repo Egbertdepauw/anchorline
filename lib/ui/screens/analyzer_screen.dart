@@ -12,6 +12,9 @@
 /// the left, planning on the right).
 library;
 
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../analysis/end.dart';
@@ -22,6 +25,7 @@ import '../../analyzer/analyzer_controller.dart';
 import '../../analyzer/protocol/analyzer_reading.dart';
 import '../../analyzer/stability.dart';
 import '../../analyzer/transport/analyzer_transport.dart';
+import '../../analyzer/transport/android_usb_transport.dart';
 import '../../analyzer/transport/demo_transport.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../notifiers/settings_notifier.dart';
@@ -43,22 +47,36 @@ const double kAnalyzerCcrDiluentPpo2 = 1.1;
 
 /// A transport the diver can pick on the analyzer screen.
 class AnalyzerTransportOption {
-  const AnalyzerTransportOption({required this.label, required this.create});
+  const AnalyzerTransportOption({
+    required this.label,
+    required this.create,
+    this.note,
+  });
 
   final String label;
+
+  /// One short line shown under the source picker while this option is
+  /// selected, or null.
+  final String? note;
 
   /// Builds a fresh transport for one session. The controller owns and
   /// disposes it.
   final AnalyzerTransport Function() create;
 }
 
-/// The transports available on this platform. Only the demo simulator
-/// exists today; desktop serial (#108) and Android USB (#109) go here.
+/// The transports available on this platform: the demo simulator
+/// everywhere, USB OTG on Android (#109). Desktop serial (#108) goes here.
 List<AnalyzerTransportOption> defaultAnalyzerTransportOptions() => [
       AnalyzerTransportOption(
         label: 'Demo',
         create: () => DemoAnalyzerTransport(),
       ),
+      if (!kIsWeb && Platform.isAndroid)
+        AnalyzerTransportOption(
+          label: 'USB (Android)',
+          create: () => AndroidUsbTransport(),
+          note: 'The phone powers the analyzer over the USB OTG cable.',
+        ),
     ];
 
 class AnalyzerScreen extends StatefulWidget {
@@ -184,6 +202,14 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
 
   List<Widget> _banners() {
     final out = <Widget>[];
+    final note = _options[_selected].note;
+    if (note != null) {
+      out.add(Text(
+        note,
+        key: const ValueKey('analyzer-transport-note'),
+        style: AppTypography.caption.copyWith(color: context.palette.textMuted),
+      ));
+    }
     if (_controller.status == AnalyzerConnectionStatus.error) {
       out.add(_Banner(
         key: const ValueKey('analyzer-error-banner'),
