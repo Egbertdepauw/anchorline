@@ -64,6 +64,12 @@ class FoundLabelPrinter {
 abstract class LabelPrinterScanner {
   /// Emits the growing list of printers found until [timeout] passes or
   /// [stop] is called.
+  ///
+  /// A scan that can't run (Bluetooth is off, or it fails to start) ends
+  /// with an error event on the stream, not an exception from this call:
+  /// a [LabelPrinterException] whose message is fit to show the user
+  /// ('Bluetooth is off' or 'Bluetooth scan failed'). Listeners must handle
+  /// `onError`, or the error goes to the zone as unhandled.
   Stream<List<FoundLabelPrinter>> scan({
     Duration timeout = const Duration(seconds: 10),
   });
