@@ -249,7 +249,12 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
   }
 
   /// Saves [a] to the log and says so. Returns it as saved, or null when
-  /// the save failed (a SnackBar says why).
+  /// the save failed (a SnackBar says why, and the diver's choices stay).
+  ///
+  /// Each result replaces the SnackBar that is up. A print failure from
+  /// the previous analysis stays until dismissed (it has a Retry), so a new
+  /// bar would queue behind it: a failed save would go unseen, and the old
+  /// Retry would still be offered.
   Future<GasAnalysis?> _add(
     NewGasAnalysis a,
     ScaffoldMessengerState messenger,
@@ -258,16 +263,24 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     try {
       id = await widget.dao.add(a);
     } catch (e) {
+      messenger.hideCurrentSnackBar();
       messenger.showSnackBar(SnackBar(content: Text('Save failed: $e')));
       return null;
     }
     final saved = GasAnalysis.fromNew(id, a,
         cylinderLabel: _cylinder(a.cylinderId)?.label);
     if (!mounted) return saved;
-    // Keep cylinder, diver, mix and role for the next fill; clear the
-    // per-fill fields.
+    // Keep cylinder and diver for the next fill. The per-fill fields clear,
+    // and the desired mix and role start over: up to a red match the label
+    // prints the desired name, so a mix left picked would label the next
+    // cylinder with it. A print still uses [saved], the snapshot.
+    setState(() {
+      _desired = null;
+      _role = gasRoleForCylinderRole(_cylinder(_cylinderId)?.role);
+    });
     _pressure.clear();
     _notes.clear();
+    messenger.hideCurrentSnackBar();
     messenger.showSnackBar(SnackBar(
       content: Text('Saved ${gasMixName(a.o2Percent, a.hePercent)} to the '
           'analysis log${a.stable ? '' : ' (not stable)'}.'),

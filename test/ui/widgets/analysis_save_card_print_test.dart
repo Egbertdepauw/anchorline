@@ -57,6 +57,19 @@ LabelPrintService _service(
   );
 }
 
+/// A [FakeGasAnalysesDao] whose [add] throws while [fail] is set.
+class _FlakyDao extends FakeGasAnalysesDao {
+  _FlakyDao({super.cylinders});
+
+  bool fail = false;
+
+  @override
+  Future<String> add(NewGasAnalysis a) async {
+    if (fail) throw Exception('disk full');
+    return super.add(a);
+  }
+}
+
 /// An analysis already in the log, with the desired mix [o2]/[he].
 GasAnalysis _logged(String id, DateTime at, int o2, int he) => GasAnalysis(
       id: id,
@@ -129,6 +142,10 @@ Set<GasRole> _role(WidgetTester tester) => tester
     .widget<SegmentedButton<GasRole>>(_key('analysis-gas-role'))
     .selected;
 
+Iterable<ChoiceChip> _pickedChips(WidgetTester tester) => tester
+    .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+    .where((c) => c.selected);
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -149,12 +166,7 @@ void main() {
           .map((t) => t.data)
           .toList();
       expect(labels, ['Tx21/35', 'EAN32', 'Other…']);
-      expect(
-        tester
-            .widgetList<ChoiceChip>(find.byType(ChoiceChip))
-            .where((c) => c.selected),
-        isEmpty,
-      );
+      expect(_pickedChips(tester), isEmpty);
       expect(find.text('Mix (optional)'), findsOneWidget);
     });
   });
@@ -512,6 +524,99 @@ void main() {
       expect(find.text('Mix does not conform to analysis'), findsNothing);
       expect(dao.added.single.desiredMix, const DesiredMix(50, 0));
       expect(printer.printed, isEmpty);
+    });
+  });
+
+  group('after a save', () {
+    testWidgets('a successful save starts the next analysis fresh',
+        (tester) async {
+      final dao = FakeGasAnalysesDao(cylinders: const [_dil]);
+      await _pump(tester, dao: dao, blendTarget: const DesiredMix(21, 35));
+      await _pickCylinder(tester, 'Dil 3L');
+      await _tapAndSettle(tester, find.text('Bailout/deco'));
+      await _tapAndSettle(tester, _key('desired-mix-21-35'));
+      expect(find.byType(MixMatchIndicator), findsOneWidget);
+
+      await _tapAndSettle(tester, _key('analysis-save'));
+      expect(dao.added.single.desiredMix, const DesiredMix(21, 35));
+      expect(dao.added.single.gasRole, GasRole.bailout);
+      // A mix left picked would print its name on the next cylinder.
+      expect(_pickedChips(tester), isEmpty);
+      expect(find.byType(MixMatchIndicator), findsNothing);
+      expect(_role(tester), {GasRole.diluent},
+          reason: 'back to the Dil cylinder\'s default');
+    });
+
+    testWidgets('Save & print prints the choices it saved, then starts fresh',
+        (tester) async {
+      final dao = FakeGasAnalysesDao(cylinders: const [_dil]);
+      final rendered = <CylinderLabel>[];
+      await _pump(
+        tester,
+        dao: dao,
+        blendTarget: const DesiredMix(21, 35),
+        labelPrinting: _service([FakeLabelPrinter()], rendered: rendered),
+      );
+      await _pickCylinder(tester, 'Dil 3L');
+      await _tapAndSettle(tester, find.text('Bailout/deco'));
+      await _tapAndSettle(tester, _key('desired-mix-21-35'));
+
+      await _tapAndSettle(tester, _key('analysis-save-print'));
+      // The desired name (the analysed gas is Tx21/34) and the flipped role.
+      expect(rendered.single.mixName, 'Tx21/35');
+      expect(rendered.single.kind, CylinderLabelKind.bailout);
+      expect(_pickedChips(tester), isEmpty);
+      expect(_role(tester), {GasRole.diluent});
+    });
+
+    testWidgets(
+        'a failed save keeps the choices, prints nothing, and is not hidden '
+        'by an old print failure', (tester) async {
+      final dao = _FlakyDao(cylinders: const [_dil]);
+      final off = FakeLabelPrinter(failOnConnect: Exception('Bluetooth off'));
+      final on = FakeLabelPrinter();
+      await _pump(
+        tester,
+        dao: dao,
+        blendTarget: const DesiredMix(21, 35),
+        labelPrinting: _service([off, on]),
+      );
+      await _tapAndSettle(tester, _key('analysis-save-print'));
+      expect(find.text('Printer not found'), findsOneWidget);
+
+      // The next cylinder, whose save fails.
+      dao.fail = true;
+      await _pickCylinder(tester, 'Dil 3L');
+      await _tapAndSettle(tester, find.text('Bailout/deco'));
+      await _tapAndSettle(tester, _key('desired-mix-21-35'));
+      await _tapAndSettle(tester, _key('analysis-save-print'));
+
+      expect(find.text('Save failed: Exception: disk full'), findsOneWidget);
+      expect(find.text('Printer not found'), findsNothing);
+      expect(find.text('Retry'), findsNothing);
+      expect(dao.added, hasLength(1));
+      expect(on.connects, 0);
+      expect(
+        tester.widget<ChoiceChip>(_key('desired-mix-21-35')).selected,
+        isTrue,
+      );
+      expect(find.byType(MixMatchIndicator), findsOneWidget);
+      expect(_role(tester), {GasRole.bailout});
+    });
+
+    testWidgets('after a failed print, a plain save shows "Saved …" and '
+        'the old Retry is gone', (tester) async {
+      final dao = FakeGasAnalysesDao();
+      final off = FakeLabelPrinter(failOnConnect: Exception('Bluetooth off'));
+      await _pump(tester, dao: dao, labelPrinting: _service([off]));
+      await _tapAndSettle(tester, _key('analysis-save-print'));
+      expect(find.text('Printer not found'), findsOneWidget);
+
+      await _tapAndSettle(tester, _key('analysis-save'));
+      expect(dao.added, hasLength(2));
+      expect(find.text('Saved Tx21/34 to the analysis log.'), findsOneWidget);
+      expect(find.text('Printer not found'), findsNothing);
+      expect(find.text('Retry'), findsNothing);
     });
   });
 
