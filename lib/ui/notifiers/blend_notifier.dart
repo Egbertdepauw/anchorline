@@ -2,24 +2,46 @@
 ///
 /// Holds the editable current-cylinder / target-cylinder / top-off
 /// inputs and the latest [BlendResult]. Every edit triggers a
-/// synchronous recompute; there's no debounced persistence yet because
-/// blend drafts are session-scoped (we don't save them across app
-/// restarts in v1).
+/// synchronous recompute.
+///
+/// Blend drafts are session-scoped (we don't save them across app
+/// restarts), with one exception: the target mix and pressure are kept on
+/// the device (SharedPreferences, never synced). A diver blends a cylinder
+/// and analyses it later, often after restarting the app, and the gas
+/// analyzer offers the target they just blended to as the desired mix of
+/// that analysis (see [BlendNotifier.recentTarget], #114).
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../analysis/blending/gas_blender.dart';
+import '../../data/models/gas_analysis.dart';
 import 'settings_notifier.dart';
 
 class BlendNotifier extends ChangeNotifier {
-  BlendNotifier({required this.settings}) {
+  /// [now] is the clock [recentTarget] measures its 24 h window against;
+  /// tests inject their own.
+  BlendNotifier({required this.settings, DateTime Function()? now})
+      : _now = now ?? DateTime.now {
     settings.addListener(_onSettingsChanged);
     _syncDefaultsFromSettings();
     _recompute();
   }
 
+  static const _kTargetO2 = 'blend_target_o2';
+  static const _kTargetHe = 'blend_target_he';
+  static const _kTargetPressureBar = 'blend_target_pressure_bar';
+  static const _kTargetEditedAt = 'blend_target_edited_at';
+
+  /// How long after the diver last edited the target it still counts as
+  /// "the mix they are blending" for [recentTarget].
+  static const _recentTargetWindow = Duration(hours: 24);
+
   final SettingsNotifier settings;
+  final DateTime Function() _now;
 
   // Current cylinder.
   int _currentOxygenPercent = 21;
@@ -31,6 +53,15 @@ class BlendNotifier extends ChangeNotifier {
   int _targetOxygenPercent = 18;
   int _targetHeliumPercent = 45;
   double _targetPressureBar = 230;
+  // When the diver last edited the target; null until they have (a fresh
+  // install has a default target nobody chose). loadTarget restores it as
+  // stored and never resets it.
+  DateTime? _targetEditedAt;
+  // Whether the diver edited the mix / the pressure in this session. A
+  // loadTarget that finishes after that must not overwrite their edit.
+  bool _mixEditedThisSession = false;
+  bool _pressureEditedThisSession = false;
+  bool _disposed = false;
 
   // Top-off.
   int _topoffOxygenPercent = 21;
@@ -90,13 +121,23 @@ class BlendNotifier extends ChangeNotifier {
     if (_targetOxygenPercent == o2 && _targetHeliumPercent == he) return;
     _targetOxygenPercent = o2.clamp(1, 100);
     _targetHeliumPercent = he.clamp(0, 99);
+    _mixEditedThisSession = true;
+    final editedAt = _targetEditedAt = _now();
     _markDirty();
+    unawaited(_storeTargetMix(
+      _targetOxygenPercent,
+      _targetHeliumPercent,
+      editedAt,
+    ));
   }
 
   void setTargetPressure(double bar) {
     if (_targetPressureBar == bar) return;
     _targetPressureBar = bar.clamp(0, 400);
+    _pressureEditedThisSession = true;
+    final editedAt = _targetEditedAt = _now();
     _markDirty();
+    unawaited(_storeTargetPressure(_targetPressureBar, editedAt));
   }
 
   void setTopoff(int o2, int he) {
@@ -132,7 +173,59 @@ class BlendNotifier extends ChangeNotifier {
     _markDirty();
   }
 
+  /// The target mix, if the diver edited the target (mix or pressure) in the
+  /// last 24 h; null otherwise. A target nobody has edited, like the default
+  /// one on a fresh install, is never returned.
+  DesiredMix? recentTarget() {
+    final editedAt = _targetEditedAt;
+    if (editedAt == null) return null;
+    if (_now().difference(editedAt) >= _recentTargetWindow) return null;
+    return DesiredMix(_targetOxygenPercent, _targetHeliumPercent);
+  }
+
+  /// Restores the target saved on this device. Call it once at startup; it
+  /// needn't be awaited. Anything the diver changed before it finishes is
+  /// kept. The edit time is restored as stored, not reset to now.
+  Future<void> loadTarget() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_disposed) return;
+
+    final o2 = prefs.getInt(_kTargetO2);
+    final he = prefs.getInt(_kTargetHe);
+    if (!_mixEditedThisSession && o2 != null) {
+      _targetOxygenPercent = o2.clamp(1, 100);
+      _targetHeliumPercent = (he ?? 0).clamp(0, 99);
+    }
+    final pressure = prefs.getDouble(_kTargetPressureBar);
+    if (!_pressureEditedThisSession && pressure != null) {
+      _targetPressureBar = pressure.clamp(0, 400);
+    }
+    final editedAtMs = prefs.getInt(_kTargetEditedAt);
+    if (!_mixEditedThisSession &&
+        !_pressureEditedThisSession &&
+        editedAtMs != null) {
+      _targetEditedAt = DateTime.fromMillisecondsSinceEpoch(editedAtMs);
+    }
+    _markDirty();
+  }
+
   // ── Internals ─────────────────────────────────────────────────────
+  // Fire-and-forget from the setters, like SettingsNotifier's. Each setter
+  // writes only the fields it changed, so a mix edit can't clobber a stored
+  // pressure that loadTarget hasn't read yet.
+  Future<void> _storeTargetMix(int o2, int he, DateTime editedAt) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kTargetO2, o2);
+    await prefs.setInt(_kTargetHe, he);
+    await prefs.setInt(_kTargetEditedAt, editedAt.millisecondsSinceEpoch);
+  }
+
+  Future<void> _storeTargetPressure(double bar, DateTime editedAt) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kTargetPressureBar, bar);
+    await prefs.setInt(_kTargetEditedAt, editedAt.millisecondsSinceEpoch);
+  }
+
   void _markDirty() {
     _recompute();
     notifyListeners();
@@ -194,6 +287,7 @@ class BlendNotifier extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     settings.removeListener(_onSettingsChanged);
     super.dispose();
   }
