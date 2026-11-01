@@ -94,6 +94,18 @@ const List<int> kPhomemoQueryPaper = [0x1F, 0x11, 0x11];
 const List<int> kPhomemoQueryCover = [0x1F, 0x11, 0x12];
 const List<int> kPhomemoQueryBattery = [0x1F, 0x11, 0x08];
 
+/// Whether `PhomemoBlePrinter.printLabel` (`ble/phomemo_ble_printer.dart`)
+/// sends the three status queries above before each job. On, an empty roll
+/// or an open cover is reported before any raster is sent.
+///
+/// Unverified risk, for the bench session (Task 15, Step 3): the queries
+/// start with `1F 11`, the opcode of the media-type command
+/// [kPhomemoMediaCommand] (`1F 11 <media>`). An M110 may take `1F 11 11`,
+/// `1F 11 12` or `1F 11 08` as a media type, or feed a label to calibrate
+/// the gap, before every job. If it does, set this to false. Paper and
+/// cover faults then only arrive as notifications during the job.
+const bool kPhomemoPrePrintStatusQuery = true;
+
 // --- Pacing --------------------------------------------------------------
 //
 // Follows phomymo's pacing, with SpoolmanScale's 20 ms gap between chunks.

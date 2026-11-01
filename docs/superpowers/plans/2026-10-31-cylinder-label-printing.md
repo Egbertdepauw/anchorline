@@ -960,6 +960,8 @@ This task needs the physical printer. If it isn't available, stop here and repor
   - Does it send `01 xx` per chunk? If it does, consider pacing on the ack instead of the 20 ms timer.
   - Which `1A 03 xx` value means overheated? Map it to `PhomemoEvent`, adding `overheated`.
   - What do the battery bytes look like at low charge?
+  - Do the pre-print status queries `1F 11 11`, `1F 11 12` and `1F 11 08` change the media type or feed a label? They start with `1F 11`, the opcode of the media-type command `1F 11 <media>`. Print a few single labels in a row and watch for a calibration feed, a skipped label, or a label printed across the gap. If they do, set `kPhomemoPrePrintStatusQuery` (in `phomemo_encoder.dart`) to `false`. No labels and cover open are then only seen as notifications during the job; check that they still show.
+  - Does the M110 drop the link after a job without sending `1A 0F 0C`? If it does, the "Printer connection lost" check at the end of the done-wait in `PhomemoBlePrinter.printLabel` reports a good print as failed, and its Retry prints the label again. Fix that check before release.
 
   Update `parsePhomemoNotification` and its tests, and check that each UI message shows.
 - [ ] **Step 4: Reconnect by stored id.** Restart the app and print without scanning first, on each platform. If iOS or macOS can't connect via `BluetoothDevice.fromId` without a prior scan, add a 5 s scan filtered to that id inside `PhomemoBlePrinter.connect()`.

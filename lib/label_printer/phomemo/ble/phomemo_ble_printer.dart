@@ -217,9 +217,10 @@ class PhomemoBlePrinter implements LabelPrinter {
 
   /// Prints [copies] (clamped to 1-[kPhomemoMaxCopies]) of [bitmap].
   ///
-  /// Asks the printer for paper, cover and battery first, and throws
-  /// before sending any raster when it reports no labels or an open cover.
-  /// A fatal fault later stops the writes and throws too. Returns the
+  /// Asks the printer for paper, cover and battery first (while
+  /// [kPhomemoPrePrintStatusQuery] is on), and throws before sending any
+  /// raster when it reports no labels or an open cover. A fatal fault
+  /// later stops the writes and throws too. Returns the
   /// warnings (low battery) seen. Throws `'Printer connection lost'` when
   /// writes keep failing or the link goes down.
   @override
@@ -245,17 +246,21 @@ class PhomemoBlePrinter implements LabelPrinter {
     final sub = _events.stream.listen(job.onEvent, onDone: job.onClosed);
     try {
       // 1. Pre-print check. No answer is fine: the printer may not answer.
-      const queries = [
-        kPhomemoQueryPaper,
-        kPhomemoQueryCover,
-        kPhomemoQueryBattery,
-      ];
-      for (var i = 0; i < queries.length; i++) {
-        await _send(write, queries[i], session, job);
-        await Future<void>.delayed(
-          i < queries.length - 1 ? _kQueryGap : _kQueryAnswerWait,
-        );
-        job.throwIfFatal();
+      // The bench may turn it off: the queries share the media-type opcode
+      // (see kPhomemoPrePrintStatusQuery).
+      if (kPhomemoPrePrintStatusQuery) {
+        const queries = [
+          kPhomemoQueryPaper,
+          kPhomemoQueryCover,
+          kPhomemoQueryBattery,
+        ];
+        for (var i = 0; i < queries.length; i++) {
+          await _send(write, queries[i], session, job);
+          await Future<void>.delayed(
+            i < queries.length - 1 ? _kQueryGap : _kQueryAnswerWait,
+          );
+          job.throwIfFatal();
+        }
       }
 
       // 2. The label(s), paced as the plan says.
