@@ -44,6 +44,25 @@ LabelPrintService _service(
       use14ForDeeperMixes: () => false,
     );
 
+/// A [LabelPrintService] whose jobs take the next printer in [printers]
+/// each, so a test can make the first print fail and its Retry work.
+LabelPrintService _serviceOn(
+  List<FakeLabelPrinter> printers, {
+  List<CylinderLabel>? rendered,
+}) {
+  var next = 0;
+  return LabelPrintService(
+    render: (label) async {
+      rendered?.add(label);
+      return LabelBitmap.blank(384, 240);
+    },
+    printerFor: (_) => printers[next++],
+    scanner: FakeLabelPrinterScanner(),
+    printerId: () => 'dev-1',
+    use14ForDeeperMixes: () => false,
+  );
+}
+
 /// A [FakeGasAnalysesDao] where an analysis is deleted (on another device,
 /// say) as soon as it is edited.
 class _DeletedOnEditDao extends FakeGasAnalysesDao {
@@ -490,6 +509,175 @@ void main() {
       expect(
           tester.widget<IconButton>(_key('analysis-print-tx')).onPressed,
           isNotNull);
+    });
+
+    // The entry can change (here, or through sync) while a reprint waits on
+    // the diver: during the copies prompt, or between a failed print and
+    // its Retry. A label must never show what the entry no longer says.
+    group('an entry that changes', () {
+      const deleted = 'This analysis was deleted.';
+      const changed = 'This analysis changed. Print it again from the log.';
+
+      /// [tx] with the stated fields replaced, as an edit stores them.
+      GasAnalysisEdit txEdit({
+        DesiredMix? mix = const DesiredMix(21, 35),
+        GasRole role = GasRole.diluent,
+        String? by = 'Egbert',
+      }) =>
+          GasAnalysisEdit(
+              desiredMix: mix, gasRole: role, analysedBy: by, notes: null);
+
+      /// Reprints 2 copies of `tx` on a printer that fails. Its Retry
+      /// prints on [on].
+      Future<FakeGasAnalysesDao> failReprint(
+          WidgetTester tester, FakeLabelPrinter on,
+          {List<CylinderLabel>? rendered}) async {
+        final dao = FakeGasAnalysesDao(analyses: [tx(), plain()]);
+        final off = FakeLabelPrinter(failOnConnect: Exception('no link'));
+        await pump(
+            tester,
+            GasAnalysisLogScreen(
+                dao: dao,
+                labelPrinting: _serviceOn([off, on], rendered: rendered)));
+        await reprint(tester, 'tx', copies: 2);
+        expect(find.text('Printer not found'), findsOneWidget);
+        return dao;
+      }
+
+      testWidgets('Retry prints the entry as stored now', (tester) async {
+        final on = FakeLabelPrinter();
+        final rendered = <CylinderLabel>[];
+        final dao = await failReprint(tester, on, rendered: rendered);
+        // Edited elsewhere, but not the mix or the role.
+        await dao.update('tx', txEdit(by: 'EdP'));
+        await tester.pumpAndSettle();
+
+        await tapAndSettle(tester, find.text('Retry'));
+        expect(on.printed.single.$2, 2);
+        expect(rendered.last.analysedBy, 'EdP');
+        expect(rendered.last.mixName, 'Tx21/35');
+        expect(find.text('Printed 2 labels.'), findsOneWidget);
+      });
+
+      testWidgets('Retry does not print an entry whose mix changed since',
+          (tester) async {
+        final on = FakeLabelPrinter();
+        final dao = await failReprint(tester, on);
+        await dao.update('tx', txEdit(mix: const DesiredMix(23, 34)));
+        await tester.pumpAndSettle();
+
+        await tapAndSettle(tester, find.text('Retry'));
+        expect(on.connects, 0);
+        expect(find.text(changed), findsOneWidget);
+        expect(find.text('Retry'), findsNothing);
+      });
+
+      testWidgets('Retry does not print an entry whose role changed since',
+          (tester) async {
+        final on = FakeLabelPrinter();
+        final dao = await failReprint(tester, on);
+        await dao.update('tx', txEdit(role: GasRole.bailout));
+        await tester.pumpAndSettle();
+
+        await tapAndSettle(tester, find.text('Retry'));
+        expect(on.connects, 0);
+        expect(find.text(changed), findsOneWidget);
+      });
+
+      testWidgets('Retry does not print an entry deleted since',
+          (tester) async {
+        final on = FakeLabelPrinter();
+        final dao = await failReprint(tester, on);
+        // Deleted on another device: the list drops it, the bar stays.
+        await dao.softDelete('tx');
+        await tester.pumpAndSettle();
+        expect(_key('analysis-tx'), findsNothing);
+
+        await tapAndSettle(tester, find.text('Retry'));
+        expect(on.connects, 0);
+        expect(find.text(deleted), findsOneWidget);
+        expect(find.text('Retry'), findsNothing);
+      });
+
+      testWidgets('saving an edit hides an old print failure',
+          (tester) async {
+        final on = FakeLabelPrinter();
+        await failReprint(tester, on);
+        await tapAndSettle(tester, find.text('Tx23/34'));
+        await tester.enterText(_key('analysis-edit-notes'), 'Topped up');
+        await tapAndSettle(tester, _key('analysis-edit-save'));
+
+        expect(find.text('Printer not found'), findsNothing);
+        expect(find.text('Retry'), findsNothing);
+        expect(on.connects, 0);
+      });
+
+      testWidgets('a cancelled edit leaves the print failure up',
+          (tester) async {
+        final on = FakeLabelPrinter();
+        await failReprint(tester, on);
+        await tapAndSettle(tester, find.text('Tx23/34'));
+        await tapAndSettle(tester, _key('analysis-edit-cancel'));
+
+        expect(find.text('Printer not found'), findsOneWidget);
+        expect(find.text('Retry'), findsOneWidget);
+      });
+
+      testWidgets('swiping an entry away hides an old print failure',
+          (tester) async {
+        final on = FakeLabelPrinter();
+        await failReprint(tester, on);
+        await tester.drag(find.text('Tx23/34'), const Offset(-600, 0));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Deleted Tx23/34 analysis.'), findsOneWidget);
+        expect(find.text('Printer not found'), findsNothing);
+        expect(find.text('Retry'), findsNothing);
+      });
+
+      testWidgets('an edit made while the copies prompt is up is printed '
+          'as stored, mismatch check included', (tester) async {
+        final printer = FakeLabelPrinter();
+        final rendered = <CylinderLabel>[];
+        final dao = FakeGasAnalysesDao(analyses: [tx()]);
+        await pump(
+            tester,
+            GasAnalysisLogScreen(
+                dao: dao,
+                labelPrinting: _service(printer, rendered: rendered)));
+        await tapAndSettle(tester, _key('analysis-print-tx'));
+        expect(_key('copies-dialog-print'), findsOneWidget);
+
+        // Changed through sync meanwhile: desired EAN50 (a hard mismatch
+        // with the analysed Tx23/34) and bailout.
+        await dao.update(
+            'tx', txEdit(mix: const DesiredMix(50, 0), role: GasRole.bailout));
+        await tester.pumpAndSettle();
+        await tapAndSettle(tester, _key('copies-dialog-print'));
+
+        expect(find.text(mismatchTitle), findsOneWidget);
+        expect(printer.printed, isEmpty);
+        await tapAndSettle(tester, find.text('Print as Tx23/34'));
+        expect(printer.printed, hasLength(1));
+        expect(rendered.single.mixName, 'Tx23/34');
+        expect(rendered.single.kind, CylinderLabelKind.bailout);
+      });
+
+      testWidgets('an entry deleted while the copies prompt is up is not '
+          'printed', (tester) async {
+        final printer = FakeLabelPrinter();
+        final dao = FakeGasAnalysesDao(analyses: [tx()]);
+        await pump(tester,
+            GasAnalysisLogScreen(dao: dao, labelPrinting: _service(printer)));
+        await tapAndSettle(tester, _key('analysis-print-tx'));
+        await dao.softDelete('tx');
+        await tester.pumpAndSettle();
+        await tapAndSettle(tester, _key('copies-dialog-print'));
+
+        expect(printer.printed, isEmpty);
+        expect(find.text(mismatchTitle), findsNothing);
+        expect(find.byType(SnackBar), findsNothing);
+      });
     });
   });
 

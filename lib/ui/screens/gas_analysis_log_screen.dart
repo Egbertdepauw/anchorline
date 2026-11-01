@@ -106,14 +106,27 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     return items;
   }
 
+  /// The entry [id] as stored now, or null when it was deleted. Refreshes
+  /// the list on the way.
+  Future<GasAnalysis?> _stored(String id) async =>
+      (await _reload()).where((x) => x.id == id).firstOrNull;
+
   /// Opens the edit sheet for [a], offering the recent desired mixes of the
   /// list. True when an edit was saved.
-  Future<bool> _openEditSheet(GasAnalysis a) => showAnalysisEditSheet(
-        context,
-        dao: widget.dao,
-        analysis: a,
-        mixOptions: recentDesiredMixes(_items ?? const []),
-      );
+  ///
+  /// A save also takes down the SnackBar that is up: a print failure's
+  /// Retry there was offered for the entry as it was before the edit.
+  Future<bool> _openEditSheet(GasAnalysis a) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final saved = await showAnalysisEditSheet(
+      context,
+      dao: widget.dao,
+      analysis: a,
+      mixOptions: recentDesiredMixes(_items ?? const []),
+    );
+    if (saved) messenger.hideCurrentSnackBar();
+    return saved;
+  }
 
   Future<void> _edit(GasAnalysis a) async {
     if (await _openEditSheet(a)) await _reload();
@@ -122,8 +135,12 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
   /// Prints the label of [a]: asks for copies, then, on a hard mismatch
   /// with the desired mix, whether to print the analysed mix. "Change
   /// desired mix" opens the edit sheet; after a save the entry is read
-  /// back as stored and checked again, with the copies already chosen. An
-  /// entry deleted in the meantime is not printed.
+  /// back as stored and checked again, with the copies already chosen.
+  ///
+  /// The entry is read back after the copies prompt too, since it can be
+  /// edited or deleted (here or through sync) while the prompt is up. The
+  /// label is always of the entry as stored; a deleted entry is not
+  /// printed. A Retry of a failed print reads it back again.
   Future<void> _reprint(GasAnalysis a) async {
     final service = widget.labelPrinting;
     // The guard goes up before the first await, so a double tap can't
@@ -133,22 +150,29 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     try {
       final copies = await showCopiesDialog(context);
       if (copies == null || !mounted) return;
-      var entry = a;
+      final current = await _stored(a.id);
+      if (current == null || !mounted) return;
+      var entry = current;
       while (entry.match?.level == MixMatchLevel.hard) {
         final choice = await showMixMismatchDialog(context, analysis: entry);
         if (!mounted || choice == MismatchChoice.cancel) return;
         if (choice == MismatchChoice.printAnalysed) break;
         if (!await _openEditSheet(entry)) return;
-        final stored =
-            (await _reload()).where((x) => x.id == entry.id).firstOrNull;
+        final stored = await _stored(entry.id);
         if (stored == null || !mounted) return;
         entry = stored;
       }
+      // The Retry may run after this screen is gone, so it reads through
+      // the DAO, not the screen.
+      final dao = widget.dao;
+      final id = entry.id;
       await printWithFeedback(
         context,
         service: service,
         analysis: entry,
         copies: copies,
+        reload: () async =>
+            (await dao.list()).where((x) => x.id == id).firstOrNull,
       );
     } finally {
       _reprinting.remove(a.id);
@@ -160,6 +184,9 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _items = [...?_items]..removeWhere((x) => x.id == a.id));
     await widget.dao.softDelete(a.id);
+    // Replaces what is up. A print failure stays until dismissed, so this
+    // would queue behind it unseen, and its Retry could be for this entry.
+    messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(content: Text('Deleted ${a.mixName} analysis.')),
     );

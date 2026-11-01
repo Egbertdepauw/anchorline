@@ -366,6 +366,86 @@ void main() {
       expect(find.text('Label printed.'), findsOneWidget);
     });
 
+    // The failure bar stays up across screens, so the diver can correct or
+    // delete the analysis in the log before tapping Retry.
+    group('Retry re-reads the saved analysis', () {
+      late FakeGasAnalysesDao dao;
+      late FakeLabelPrinter on;
+      late List<CylinderLabel> rendered;
+
+      /// "Save & print" of desired Tx21/35 on a printer that is off.
+      Future<void> saveAndFail(WidgetTester tester,
+          {AnalyzerReading? reading, DesiredMix mix = const DesiredMix(21, 35)})
+          async {
+        dao = FakeGasAnalysesDao();
+        on = FakeLabelPrinter();
+        rendered = [];
+        final off = FakeLabelPrinter(failOnConnect: Exception('Bluetooth off'));
+        await _pump(
+          tester,
+          dao: dao,
+          reading: reading,
+          blendTarget: mix,
+          labelPrinting: _service([off, on], rendered: rendered),
+        );
+        await _tapAndSettle(
+            tester, _key('desired-mix-${mix.o2Percent}-${mix.hePercent}'));
+        await _tapAndSettle(tester, _key('analysis-save-print'));
+      }
+
+      Future<void> retry(WidgetTester tester) async {
+        expect(find.text('Printer not found'), findsOneWidget);
+        await tester.tap(find.text('Retry'));
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('an analysis deleted since is not printed', (tester) async {
+        await saveAndFail(tester);
+        await dao.softDelete(dao.analyses.single.id);
+        await retry(tester);
+
+        expect(on.connects, 0);
+        expect(find.text('This analysis was deleted.'), findsOneWidget);
+        expect(find.text('Retry'), findsNothing);
+      });
+
+      testWidgets('an analysis whose mix changed since is not printed',
+          (tester) async {
+        await saveAndFail(tester);
+        await dao.update(
+          dao.analyses.single.id,
+          const GasAnalysisEdit(
+            desiredMix: DesiredMix(21, 33),
+            gasRole: GasRole.bailout,
+            analysedBy: null,
+            notes: null,
+          ),
+        );
+        await retry(tester);
+
+        expect(on.connects, 0);
+        expect(
+          find.text('This analysis changed. Print it again from the log.'),
+          findsOneWidget,
+        );
+        expect(find.text('Retry'), findsNothing);
+      });
+
+      testWidgets('a confirmed "Print as EAN32" still prints on Retry',
+          (tester) async {
+        await saveAndFail(tester,
+            reading: _reading(32.1, 0), mix: const DesiredMix(50, 0));
+        await tester.tap(_key('mix-mismatch-print'));
+        await tester.pumpAndSettle();
+        await retry(tester);
+
+        expect(find.text('Mix does not conform to analysis'), findsNothing);
+        expect(on.printed, hasLength(1));
+        expect(rendered.last.mixName, 'EAN32');
+        expect(find.text('Label printed.'), findsOneWidget);
+      });
+    });
+
     group('hard mismatch', () {
       late FakeGasAnalysesDao dao;
       late FakeLabelPrinter printer;

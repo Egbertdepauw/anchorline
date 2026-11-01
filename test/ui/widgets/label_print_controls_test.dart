@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:ccrlogger/data/models/gas_analysis.dart';
 import 'package:ccrlogger/label_printer/label_bitmap.dart';
 import 'package:ccrlogger/label_printer/label_printer.dart';
+import 'package:ccrlogger/labels/cylinder_label.dart';
 import 'package:ccrlogger/labels/label_print_service.dart';
 import 'package:ccrlogger/ui/widgets/label_print_controls.dart';
 import 'package:flutter/material.dart';
@@ -22,15 +23,38 @@ final _analysis = GasAnalysis(
   targetHePercent: 0,
 );
 
+/// [_analysis] as it might be stored later: edited, or the same.
+GasAnalysis _stored({
+  String? analysedBy,
+  int targetO2 = 32,
+  GasRole gasRole = GasRole.bailout,
+}) =>
+    GasAnalysis(
+      id: 'a1',
+      analysedBy: analysedBy,
+      analysedAt: DateTime(2026, 10, 31, 9),
+      o2Percent: 32.1,
+      hePercent: 0,
+      stable: true,
+      targetO2Percent: targetO2,
+      targetHePercent: 0,
+      gasRole: gasRole,
+    );
+
 /// A [LabelPrintService] on fakes. Each print job takes the next printer in
 /// [printers], so a test can make the first attempt fail and the next work.
 LabelPrintService _service(
   List<FakeLabelPrinter> printers, {
   LabelRenderer? render,
+  List<CylinderLabel>? rendered,
 }) {
   var next = 0;
   return LabelPrintService(
-    render: render ?? (_) async => LabelBitmap.blank(384, 240),
+    render: render ??
+        (label) async {
+          rendered?.add(label);
+          return LabelBitmap.blank(384, 240);
+        },
     printerFor: (_) => printers[next++],
     scanner: FakeLabelPrinterScanner(),
     printerId: () => 'dev-1',
@@ -59,6 +83,7 @@ Future<void> _printFrom(
   WidgetTester tester,
   LabelPrintService service, {
   int copies = 1,
+  Future<GasAnalysis?> Function()? reload,
 }) async {
   await tester.pumpWidget(
     _host(
@@ -67,6 +92,7 @@ Future<void> _printFrom(
         service: service,
         analysis: _analysis,
         copies: copies,
+        reload: reload,
       ),
     ),
   );
@@ -473,6 +499,129 @@ void main() {
       expect(working.printed, hasLength(1));
       expect(find.text('Label printed.'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  // The failure bar outlives the screen that printed, so the diver can fix
+  // the entry (or delete it) in the log before tapping its Retry. Retry
+  // must then never print what the entry no longer says.
+  group('printWithFeedback Retry with reload', () {
+    const deleted = 'This analysis was deleted.';
+    const changed = 'This analysis changed. Print it again from the log.';
+
+    /// Prints [_analysis] on a printer that fails, then a [working] one,
+    /// with [reload] as the re-read. Returns how often [reload] ran.
+    Future<int Function()> failThenRetry(
+      WidgetTester tester, {
+      required FakeLabelPrinter working,
+      required FutureOr<GasAnalysis?> Function() reload,
+      List<CylinderLabel>? rendered,
+      int copies = 1,
+    }) async {
+      var reloads = 0;
+      final failing = FakeLabelPrinter(failOnConnect: Exception('no link'));
+      await _printFrom(
+        tester,
+        _service([failing, working], rendered: rendered),
+        copies: copies,
+        reload: () async {
+          reloads++;
+          return reload();
+        },
+      );
+      expect(find.text('Printer not found'), findsOneWidget);
+      expect(reloads, 0, reason: 'the first print uses the analysis given');
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      return () => reloads;
+    }
+
+    testWidgets('prints the entry as stored now, with the same copies',
+        (tester) async {
+      final working = FakeLabelPrinter();
+      final rendered = <CylinderLabel>[];
+      final reloads = await failThenRetry(
+        tester,
+        working: working,
+        rendered: rendered,
+        copies: 2,
+        // Edited since, but not the mix or role: the initials now print.
+        reload: () => _stored(analysedBy: 'EdP'),
+      );
+
+      expect(reloads(), 1);
+      expect(working.printed.single.$2, 2);
+      expect(rendered, hasLength(2));
+      expect(rendered.first.analysedBy, isNull);
+      expect(rendered.last.analysedBy, 'EdP');
+      expect(rendered.last.mixName, 'EAN32');
+      expect(find.text('Printed 2 labels.'), findsOneWidget);
+    });
+
+    testWidgets('a deleted entry is not printed', (tester) async {
+      final working = FakeLabelPrinter();
+      await failThenRetry(tester, working: working, reload: () => null);
+
+      expect(working.connects, 0);
+      expect(find.text(deleted), findsOneWidget);
+      expect(find.text('Printer not found'), findsNothing);
+      expect(find.text('Retry'), findsNothing);
+    });
+
+    testWidgets('an entry whose desired mix changed is not printed',
+        (tester) async {
+      final working = FakeLabelPrinter();
+      await failThenRetry(
+        tester,
+        working: working,
+        reload: () => _stored(targetO2: 36),
+      );
+
+      expect(working.connects, 0);
+      expect(find.text(changed), findsOneWidget);
+      expect(find.text('Printer not found'), findsNothing);
+      expect(find.text('Retry'), findsNothing);
+    });
+
+    testWidgets('an entry whose gas role changed is not printed',
+        (tester) async {
+      final working = FakeLabelPrinter();
+      await failThenRetry(
+        tester,
+        working: working,
+        reload: () => _stored(gasRole: GasRole.diluent),
+      );
+
+      expect(working.connects, 0);
+      expect(find.text(changed), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
+    });
+
+    testWidgets('a re-read that fails prints nothing and offers Retry again',
+        (tester) async {
+      final working = FakeLabelPrinter();
+      var reads = 0;
+      final logged = await _captureDebugPrint(() async {
+        await failThenRetry(
+          tester,
+          working: working,
+          reload: () {
+            if (++reads == 1) throw StateError('log unreadable');
+            return _stored();
+          },
+        );
+      });
+
+      expect(working.connects, 0);
+      expect(find.text('Printing failed'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      expect(logged.join(), contains('log unreadable'));
+
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(working.printed, hasLength(1));
+      expect(find.text('Label printed.'), findsOneWidget);
     });
   });
 }

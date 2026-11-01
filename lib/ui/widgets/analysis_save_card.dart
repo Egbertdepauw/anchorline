@@ -246,12 +246,17 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
         _saving = false;
         _printing = true;
       });
+      // Retry reads the analysis back first: it may have been edited or
+      // deleted in the log by then, and this card may be gone.
+      final dao = widget.dao;
       // Replaces the "Saved …" SnackBar with how the print went.
       await printWithFeedback(
         context,
         service: printTo,
         analysis: saved,
         copies: copies,
+        reload: () async =>
+            (await dao.list()).where((x) => x.id == saved.id).firstOrNull,
       );
     } finally {
       if (mounted) {

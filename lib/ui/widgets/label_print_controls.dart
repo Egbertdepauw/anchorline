@@ -14,6 +14,9 @@ import '../theme/tokens.dart';
 
 const int _kMinCopies = 1;
 const String _kPrintFailed = 'Printing failed';
+const String _kDeleted = 'This analysis was deleted.';
+const String _kChanged =
+    'This analysis changed. Print it again from the log.';
 
 /// "Label printed." or "Printed 2 labels.", followed by each of the
 /// printer's [warnings] as a sentence ("Printer battery is low.").
@@ -122,34 +125,54 @@ class _CopiesDialogState extends State<_CopiesDialog> {
 /// "Printer cover is open"); any other error is logged and shown as
 /// "Printing failed". A failed print is reported, never thrown.
 ///
-/// Retry prints again with the same arguments and never saves anything: a
+/// Retry prints again with the same copies and never saves anything: a
 /// failed print leaves the saved analysis as it is. It doesn't need
 /// [context] any more, only the messenger found here, so it still works
 /// after the screen that printed is gone.
+///
+/// The failure bar outlives the screen, so the analysis can be edited or
+/// deleted before its Retry is tapped. [reload] reads the analysis as it is
+/// stored now, or null when it is gone. With it, Retry reads first and
+/// prints nothing for an analysis that was deleted ("This analysis was
+/// deleted.") or whose desired mix or gas role changed since the print
+/// that failed ("This analysis changed. Print it again from the log.").
+/// Otherwise it prints the analysis as read, so a "Print as …" the diver
+/// already confirmed still prints without asking again. Without [reload],
+/// Retry prints [analysis] as given.
 Future<void> printWithFeedback(
   BuildContext context, {
   required LabelPrintService service,
   required GasAnalysis analysis,
   required int copies,
+  Future<GasAnalysis?> Function()? reload,
 }) {
   return _printAndReport(
     ScaffoldMessenger.of(context),
-    service,
+    _PrintRequest(service, copies, reload),
     analysis,
-    copies,
   );
+}
+
+/// What a print, and each of its Retries, prints with.
+class _PrintRequest {
+  const _PrintRequest(this.service, this.copies, this.reload);
+
+  final LabelPrintService service;
+  final int copies;
+  final Future<GasAnalysis?> Function()? reload;
 }
 
 Future<void> _printAndReport(
   ScaffoldMessengerState messenger,
-  LabelPrintService service,
+  _PrintRequest request,
   GasAnalysis analysis,
-  int copies,
 ) async {
+  final copies = request.copies;
   String message;
   var failed = false;
   try {
-    final warnings = await service.printAnalysis(analysis, copies: copies);
+    final warnings =
+        await request.service.printAnalysis(analysis, copies: copies);
     message = labelPrintedMessage(copies, warnings);
   } on LabelPrinterException catch (e) {
     message = e.message;
@@ -159,6 +182,53 @@ Future<void> _printAndReport(
     message = _kPrintFailed;
     failed = true;
   }
+  _report(
+    messenger,
+    message,
+    retry: failed ? () => _retry(messenger, request, analysis) : null,
+  );
+}
+
+/// Retry of a print of [failed]: see [printWithFeedback].
+Future<void> _retry(
+  ScaffoldMessengerState messenger,
+  _PrintRequest request,
+  GasAnalysis failed,
+) async {
+  final reload = request.reload;
+  if (reload == null) return _printAndReport(messenger, request, failed);
+  final GasAnalysis? current;
+  try {
+    current = await reload();
+  } catch (e) {
+    // Printing what was read before could print a stale label.
+    debugPrint('Label printer: reading the analysis for Retry failed: $e');
+    _report(
+      messenger,
+      _kPrintFailed,
+      retry: () => _retry(messenger, request, failed),
+    );
+    return;
+  }
+  if (current == null) {
+    _report(messenger, _kDeleted);
+  } else if (current.desiredMix != failed.desiredMix ||
+      current.gasRole != failed.gasRole) {
+    // The label's name, depths and kind follow these. The diver decides
+    // again, from the log, whether to print the entry as it is now.
+    _report(messenger, _kChanged);
+  } else {
+    await _printAndReport(messenger, request, current);
+  }
+}
+
+/// Shows [message] in place of the SnackBar that is up, with a "Retry"
+/// action when [retry] is given.
+void _report(
+  ScaffoldMessengerState messenger,
+  String message, {
+  Future<void> Function()? retry,
+}) {
   // The messenger lives above the screens, so it normally outlives the one
   // that printed. Only an app that was torn down mid-print has none left.
   if (!messenger.mounted) return;
@@ -171,13 +241,11 @@ Future<void> _printAndReport(
       content: Text(message),
       // A SnackBar with an action stays until dismissed, so it needs a way
       // to be (there is no swipe on desktop).
-      showCloseIcon: failed,
-      action: failed
+      showCloseIcon: retry != null,
+      action: retry != null
           ? SnackBarAction(
               label: 'Retry',
-              onPressed: () => unawaited(
-                _printAndReport(messenger, service, analysis, copies),
-              ),
+              onPressed: () => unawaited(retry()),
             )
           : null,
     ),
