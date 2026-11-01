@@ -71,6 +71,55 @@ class _DisconnectFails extends FakeLabelPrinter {
   }
 }
 
+/// A [FakeLabelPrinter] that writes each step to a [log] shared with other
+/// printers, so a test sees the order of two jobs' steps.
+class _LoggingPrinter extends FakeLabelPrinter {
+  _LoggingPrinter(this.name, this.log, {super.failOnConnect, super.printGate});
+
+  final String name;
+  final List<String> log;
+
+  @override
+  Future<void> connect() {
+    log.add('$name connect');
+    return super.connect();
+  }
+
+  @override
+  Future<List<PrinterFault>> printLabel(
+    LabelBitmap bitmap, {
+    int copies = 1,
+  }) {
+    log.add('$name print');
+    return super.printLabel(bitmap, copies: copies);
+  }
+
+  @override
+  Future<void> disconnect() {
+    log.add('$name disconnect');
+    return super.disconnect();
+  }
+}
+
+/// A service whose jobs take the next printer in [printers] each, as the
+/// app's does (a new `PhomemoBlePrinter` per job). [render] defaults to a
+/// blank bitmap.
+LabelPrintService _serviceOn(
+  List<FakeLabelPrinter> printers, {
+  LabelRenderer? render,
+  Duration connectTimeout = const Duration(seconds: 15),
+}) {
+  var next = 0;
+  return LabelPrintService(
+    render: render ?? (_) async => LabelBitmap.blank(384, 240),
+    printerFor: (_) => printers[next++],
+    scanner: FakeLabelPrinterScanner(),
+    printerId: () => 'printer-1',
+    use14ForDeeperMixes: () => false,
+    connectTimeout: connectTimeout,
+  );
+}
+
 void main() {
   group('isConfigured', () {
     test('follows printerId()', () {
@@ -86,6 +135,139 @@ void main() {
   test('exposes the scanner it was given', () {
     final rig = _Rig();
     expect(identical(rig.service.scanner, rig.scanner), isTrue);
+  });
+
+  // The printer's own connect can take 10 s for the Bluetooth adapter plus
+  // 10 s for the link, then service discovery. A shorter wait here would
+  // cut it off and hide its more specific error.
+  test('waits 25 s for a connect by default', () {
+    final service = LabelPrintService(
+      render: (_) async => LabelBitmap.blank(384, 240),
+      printerFor: (_) => FakeLabelPrinter(),
+      scanner: FakeLabelPrinterScanner(),
+      printerId: () => 'printer-1',
+      use14ForDeeperMixes: () => false,
+    );
+    expect(service.connectTimeout, const Duration(seconds: 25));
+  });
+
+  // flutter_blue_plus keeps one link per remote id, so two jobs for the
+  // same printer share it: one job's disconnect would cut the other
+  // mid-print, and their writes would interleave.
+  group('one job at a time', () {
+    test('a second job connects only after the first has disconnected',
+        () async {
+      final log = <String>[];
+      final gate = Completer<void>();
+      final service = _serviceOn([
+        _LoggingPrinter('A', log, printGate: gate),
+        _LoggingPrinter('B', log),
+      ]);
+
+      final first = service.printAnalysis(_analysis());
+      final second = service.printAnalysis(_analysis(), copies: 2);
+      await pumpEventQueue();
+      // A is held mid-print; B hasn't touched the link.
+      expect(log, ['A connect', 'A print']);
+
+      gate.complete();
+      expect(await first, isEmpty);
+      expect(await second, isEmpty);
+      expect(log, [
+        'A connect', 'A print', 'A disconnect', //
+        'B connect', 'B print', 'B disconnect',
+      ]);
+    });
+
+    test('a test print waits for an analysis print, and the other way round',
+        () async {
+      final log = <String>[];
+      final gateA = Completer<void>();
+      final gateB = Completer<void>();
+      final service = _serviceOn([
+        _LoggingPrinter('A', log, printGate: gateA),
+        _LoggingPrinter('B', log, printGate: gateB),
+        _LoggingPrinter('C', log),
+      ]);
+
+      final analysis1 = service.printAnalysis(_analysis());
+      final testPrint = service.printTestLabel();
+      final analysis2 = service.printAnalysis(_analysis());
+      await pumpEventQueue();
+      expect(log, ['A connect', 'A print']);
+
+      gateA.complete();
+      await analysis1;
+      await pumpEventQueue();
+      expect(log, ['A connect', 'A print', 'A disconnect', 'B connect',
+          'B print']);
+
+      gateB.complete();
+      await testPrint;
+      await analysis2;
+      expect(log, [
+        'A connect', 'A print', 'A disconnect', //
+        'B connect', 'B print', 'B disconnect',
+        'C connect', 'C print', 'C disconnect',
+      ]);
+    });
+
+    test('a failing job does not fail the next one', () async {
+      final log = <String>[];
+      final service = _serviceOn([
+        _LoggingPrinter('A', log, failOnConnect: StateError('raw platform')),
+        _LoggingPrinter('B', log),
+      ]);
+
+      final first = service.printAnalysis(_analysis());
+      final second = service.printAnalysis(_analysis());
+      await expectLater(first, throwsA(_printerError('Printer not found')));
+      expect(await second, isEmpty);
+      expect(log, [
+        'A connect', 'A disconnect', //
+        'B connect', 'B print', 'B disconnect',
+      ]);
+    });
+
+    test('a render error does not fail the next job', () async {
+      var renders = 0;
+      final printer = FakeLabelPrinter();
+      final service = _serviceOn(
+        [printer],
+        render: (_) async {
+          if (++renders == 1) throw StateError('render bug');
+          return LabelBitmap.blank(384, 240);
+        },
+      );
+
+      final first = service.printAnalysis(_analysis());
+      final second = service.printTestLabel();
+      await expectLater(first, throwsA(isA<StateError>()));
+      expect(await second, isEmpty);
+      expect(printer.printed, hasLength(1));
+    });
+
+    test('a queued job\'s connect timeout starts when it reaches the front',
+        () async {
+      final gate = Completer<void>();
+      final waiting = FakeLabelPrinter();
+      final service = _serviceOn(
+        [FakeLabelPrinter(printGate: gate), waiting],
+        connectTimeout: const Duration(milliseconds: 100),
+      );
+
+      final first = service.printAnalysis(_analysis());
+      final second = service.printAnalysis(_analysis());
+      // The first job holds the printer for longer than the timeout.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(waiting.connects, 0);
+
+      gate.complete();
+      expect(await first, isEmpty);
+      expect(await second, isEmpty);
+      expect(waiting.connects, 1);
+      expect(waiting.printed, hasLength(1));
+    });
   });
 
   group('printAnalysis', () {
