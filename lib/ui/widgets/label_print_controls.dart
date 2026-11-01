@@ -1,11 +1,13 @@
 /// The pieces shared by every place that prints a cylinder label (issue
-/// #114): the copies stepper, the copies prompt, and [printWithFeedback],
-/// which prints and tells the user how it went.
+/// #114): the copies stepper, the copies prompt, [printWithFeedback],
+/// which prints and tells the user how it went, and
+/// [reportLabelPrintError] for errors that aren't the printer's.
 library;
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 
 import '../../data/models/gas_analysis.dart';
 import '../../label_printer/label_printer.dart';
@@ -17,6 +19,21 @@ const String _kPrintFailed = 'Printing failed';
 const String _kDeleted = 'This analysis was deleted.';
 const String _kChanged =
     'This analysis changed. Print it again from the log.';
+
+/// Where [reportLabelPrintError] sends an error and its stack trace:
+/// Sentry, which `main.dart` only starts in release builds. Elsewhere the
+/// capture does nothing. Tests replace it to see what is reported.
+@visibleForTesting
+Future<void> Function(Object error, StackTrace stack) labelPrintErrorSink =
+    (error, stack) => Sentry.captureException(error, stackTrace: stack);
+
+/// Logs and reports a print error that isn't the printer's, such as a
+/// render bug or a failed read of the log. The user sees "Printing
+/// failed"; this keeps the cause. [what] names the step in the log line.
+void reportLabelPrintError(String what, Object error, StackTrace stack) {
+  debugPrint('Label printer: $what failed: $error');
+  unawaited(labelPrintErrorSink(error, stack));
+}
 
 /// "Label printed." or "Printed 2 labels.", followed by each of the
 /// printer's [warnings] as a sentence ("Printer battery is low.").
@@ -122,8 +139,9 @@ class _CopiesDialogState extends State<_CopiesDialog> {
 /// SnackBar: "Label printed." / "Printed 2 labels." plus the printer's
 /// warnings, or the reason it failed with a "Retry" action. A
 /// [LabelPrinterException] gives its own message ("Printer not found",
-/// "Printer cover is open"); any other error is logged and shown as
-/// "Printing failed". A failed print is reported, never thrown.
+/// "Printer cover is open"); any other error goes to
+/// [reportLabelPrintError] and is shown as "Printing failed". A failed
+/// print is reported, never thrown.
 ///
 /// Retry prints again with the same copies and never saves anything: a
 /// failed print leaves the saved analysis as it is. It doesn't need
@@ -177,8 +195,8 @@ Future<void> _printAndReport(
   } on LabelPrinterException catch (e) {
     message = e.message;
     failed = true;
-  } catch (e) {
-    debugPrint('Label printer: print failed: $e');
+  } catch (e, st) {
+    reportLabelPrintError('print', e, st);
     message = _kPrintFailed;
     failed = true;
   }
@@ -200,9 +218,9 @@ Future<void> _retry(
   final GasAnalysis? current;
   try {
     current = await reload();
-  } catch (e) {
+  } catch (e, st) {
     // Printing what was read before could print a stale label.
-    debugPrint('Label printer: reading the analysis for Retry failed: $e');
+    reportLabelPrintError('reading the analysis for Retry', e, st);
     _report(
       messenger,
       _kPrintFailed,

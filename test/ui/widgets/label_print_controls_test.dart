@@ -100,6 +100,16 @@ Future<void> _printFrom(
   await tester.pumpAndSettle();
 }
 
+/// Collects what [reportLabelPrintError] sends on to Sentry, for the rest
+/// of the test.
+List<(Object, StackTrace)> _captureReports() {
+  final reports = <(Object, StackTrace)>[];
+  final old = labelPrintErrorSink;
+  labelPrintErrorSink = (e, st) async => reports.add((e, st));
+  addTearDown(() => labelPrintErrorSink = old);
+  return reports;
+}
+
 /// Runs [body] with `debugPrint` captured.
 Future<List<String?>> _captureDebugPrint(Future<void> Function() body) async {
   final logged = <String?>[];
@@ -424,6 +434,34 @@ void main() {
       expect(find.text('Label printed.'), findsOneWidget);
     });
 
+    testWidgets('reports an unexpected error with its stack trace',
+        (tester) async {
+      final reports = _captureReports();
+      final service = _service(
+        [FakeLabelPrinter()],
+        render: (_) async => throw StateError('render bug'),
+      );
+
+      await _printFrom(tester, service);
+
+      expect(find.text('Printing failed'), findsOneWidget);
+      final (error, stack) = reports.single;
+      expect(error, isA<StateError>());
+      // The stack of the throw, not of the place that caught it.
+      expect('$stack', contains('label_print_controls_test.dart'));
+    });
+
+    testWidgets('a printer error is shown, not reported', (tester) async {
+      final reports = _captureReports();
+      await _printFrom(
+        tester,
+        _service([FakeLabelPrinter(faultOnPrint: PrinterFault.coverOpen)]),
+      );
+
+      expect(find.text('Printer cover is open'), findsOneWidget);
+      expect(reports, isEmpty);
+    });
+
     testWidgets('survives the screen going away while the printer works',
         (tester) async {
       final gate = Completer<void>();
@@ -600,6 +638,7 @@ void main() {
     testWidgets('a re-read that fails prints nothing and offers Retry again',
         (tester) async {
       final working = FakeLabelPrinter();
+      final reports = _captureReports();
       var reads = 0;
       final logged = await _captureDebugPrint(() async {
         await failThenRetry(
@@ -617,6 +656,7 @@ void main() {
       expect(find.text('Retry'), findsOneWidget);
       expect(tester.takeException(), isNull);
       expect(logged.join(), contains('log unreadable'));
+      expect(reports.single.$1, isA<StateError>());
 
       await tester.tap(find.text('Retry'));
       await tester.pumpAndSettle();

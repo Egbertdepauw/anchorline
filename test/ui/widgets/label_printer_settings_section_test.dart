@@ -5,6 +5,7 @@ import 'package:ccrlogger/label_printer/label_printer.dart';
 import 'package:ccrlogger/labels/label_print_service.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/settings_screen.dart';
+import 'package:ccrlogger/ui/widgets/label_print_controls.dart';
 import 'package:ccrlogger/ui/widgets/label_printer_settings_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -374,6 +375,52 @@ void main() {
       expect(tester.takeException(), isNull);
       // The error is not swallowed silently.
       expect(logged.join(), contains('render bug'));
+    });
+
+    testWidgets('reports an unexpected error with its stack trace',
+        (tester) async {
+      final reports = <(Object, StackTrace)>[];
+      final oldSink = labelPrintErrorSink;
+      labelPrintErrorSink = (e, st) async => reports.add((e, st));
+      addTearDown(() => labelPrintErrorSink = oldSink);
+      final rig = await _Rig.build(
+        configured: true,
+        render: (_) async => throw StateError('render bug'),
+      );
+      await tester.pumpWidget(rig.section);
+
+      await tester.tap(_key('label-printer-test'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Printing failed'), findsOneWidget);
+      final (error, stack) = reports.single;
+      expect(error, isA<StateError>());
+      // The stack of the throw, not of the place that caught it.
+      expect('$stack', contains('label_printer_settings_section_test.dart'));
+    });
+
+    testWidgets('replaces a print failure bar that was left up',
+        (tester) async {
+      final rig = await _Rig.build(configured: true);
+      await tester.pumpWidget(rig.section);
+      // A failed label print elsewhere left its bar up. It has a Retry, so
+      // it stays until dismissed, and a new bar would queue behind it.
+      tester
+          .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+          .showSnackBar(SnackBar(
+            content: const Text('Printer not found'),
+            action: SnackBarAction(label: 'Retry', onPressed: () {}),
+          ));
+      await tester.pumpAndSettle();
+      expect(find.text('Printer not found'), findsOneWidget);
+
+      await tester.tap(_key('label-printer-test'));
+      await tester.pumpAndSettle();
+
+      expect(rig.printer.printed, hasLength(1));
+      expect(find.text('Label printed.'), findsOneWidget);
+      expect(find.text('Printer not found'), findsNothing);
+      expect(find.text('Retry'), findsNothing);
     });
 
     testWidgets('ignores a second tap while a print is in flight',

@@ -659,6 +659,22 @@ void main() {
       expect(_role(tester), {GasRole.diluent});
     });
 
+    testWidgets('Save & print prints the copies chosen, then goes back to 1',
+        (tester) async {
+      final dao = FakeGasAnalysesDao();
+      final printer = FakeLabelPrinter();
+      await _pump(tester, dao: dao, labelPrinting: _service([printer]));
+      await _tapAndSettle(tester, _key('copies-inc'));
+      await _tapAndSettle(tester, _key('copies-inc'));
+      expect(tester.widget<Text>(_key('copies-value')).data, '3');
+
+      await _tapAndSettle(tester, _key('analysis-save-print'));
+      expect(printer.printed.single.$2, 3);
+      expect(find.text('Printed 3 labels.'), findsOneWidget);
+      // Three labels for this cylinder doesn't mean three for the next.
+      expect(tester.widget<Text>(_key('copies-value')).data, '1');
+    });
+
     testWidgets(
         'a failed save keeps the choices, prints nothing, and is not hidden '
         'by an old print failure', (tester) async {

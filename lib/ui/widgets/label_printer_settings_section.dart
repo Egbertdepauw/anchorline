@@ -159,11 +159,15 @@ class _PrintTestLabelButtonState extends State<_PrintTestLabelButton> {
       message = labelPrintedMessage(1, await widget.printing.printTestLabel());
     } on LabelPrinterException catch (e) {
       message = e.message;
-    } catch (e) {
-      debugPrint('Label printer: test print failed: $e');
+    } catch (e, st) {
+      reportLabelPrintError('test print', e, st);
       message = _kPrintFailed;
     }
     if (mounted) setState(() => _printing = false);
+    if (!messenger.mounted) return;
+    // A label print's failure bar has a Retry, so it stays until dismissed,
+    // and this result would queue behind it unseen.
+    messenger.hideCurrentSnackBar();
     messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 }

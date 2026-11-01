@@ -291,12 +291,14 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
         cylinderLabel: _cylinder(a.cylinderId)?.label);
     if (!mounted) return saved;
     // Keep cylinder and diver for the next fill. The per-fill fields clear,
-    // and the desired mix and role start over: up to a red match the label
-    // prints the desired name, so a mix left picked would label the next
-    // cylinder with it. A print still uses [saved], the snapshot.
+    // and the desired mix, role and copies start over: up to a red match
+    // the label prints the desired name, so a mix left picked would label
+    // the next cylinder with it. A print still uses [saved] and the copies
+    // taken with it, the snapshot.
     setState(() {
       _desired = null;
       _role = gasRoleForCylinderRole(_cylinder(_cylinderId)?.role);
+      _copies = 1;
     });
     // Not awaited: the print needn't wait for the chips.
     unawaited(_loadMixOptions());
