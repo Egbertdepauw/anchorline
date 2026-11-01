@@ -57,16 +57,24 @@ LabelPrintService _service(
   );
 }
 
-/// A [FakeGasAnalysesDao] whose [add] throws while [fail] is set.
+/// A [FakeGasAnalysesDao] whose [add] throws while [fail] is set, and whose
+/// [list] throws while [failList] is set.
 class _FlakyDao extends FakeGasAnalysesDao {
   _FlakyDao({super.cylinders});
 
   bool fail = false;
+  bool failList = false;
 
   @override
   Future<String> add(NewGasAnalysis a) async {
     if (fail) throw Exception('disk full');
     return super.add(a);
+  }
+
+  @override
+  Future<List<GasAnalysis>> list({String? cylinderId}) async {
+    if (failList) throw Exception('log unreadable');
+    return super.list(cylinderId: cylinderId);
   }
 }
 
@@ -146,6 +154,15 @@ Iterable<ChoiceChip> _pickedChips(WidgetTester tester) => tester
     .widgetList<ChoiceChip>(find.byType(ChoiceChip))
     .where((c) => c.selected);
 
+/// The labels of the mix chips, "Other…" included, in order.
+List<String?> _chipLabels(WidgetTester tester) => tester
+    .widgetList<Text>(find.descendant(
+      of: find.byType(DesiredMixPicker),
+      matching: find.byType(Text),
+    ))
+    .map((t) => t.data)
+    .toList();
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -158,14 +175,7 @@ void main() {
       ]);
       await _pump(tester, dao: dao, blendTarget: const DesiredMix(21, 35));
 
-      final labels = tester
-          .widgetList<Text>(find.descendant(
-            of: find.byType(DesiredMixPicker),
-            matching: find.byType(Text),
-          ))
-          .map((t) => t.data)
-          .toList();
-      expect(labels, ['Tx21/35', 'EAN32', 'Other…']);
+      expect(_chipLabels(tester), ['Tx21/35', 'EAN32', 'Other…']);
       expect(_pickedChips(tester), isEmpty);
       expect(find.text('Mix (optional)'), findsOneWidget);
     });
@@ -602,6 +612,65 @@ void main() {
       );
       expect(find.byType(MixMatchIndicator), findsOneWidget);
       expect(_role(tester), {GasRole.bailout});
+    });
+
+    testWidgets('the mix just saved stays a chip for the next cylinder',
+        (tester) async {
+      final dao = FakeGasAnalysesDao();
+      await _pump(tester, dao: dao, blendTarget: const DesiredMix(21, 35));
+      expect(_key('desired-mix-25-25'), findsNothing);
+
+      await _tapAndSettle(tester, _key('desired-mix-other'));
+      await tester.enterText(_key('desired-mix-other-o2'), '25');
+      await tester.enterText(_key('desired-mix-other-he'), '25');
+      await tester.tap(_key('desired-mix-other-ok'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<ChoiceChip>(_key('desired-mix-25-25')).selected,
+        isTrue,
+      );
+
+      await _tapAndSettle(tester, _key('analysis-save'));
+      expect(dao.added.single.desiredMix, const DesiredMix(25, 25));
+      // Newest first, right after the Blend target, and not picked.
+      expect(_chipLabels(tester), ['Tx21/35', 'Tx25/25', 'Other…']);
+      expect(_pickedChips(tester), isEmpty);
+
+      await _tapAndSettle(tester, _key('desired-mix-25-25'));
+      expect(
+        tester.widget<ChoiceChip>(_key('desired-mix-25-25')).selected,
+        isTrue,
+      );
+    });
+
+    testWidgets('a failing reload of the mixes keeps the old ones',
+        (tester) async {
+      final dao = _FlakyDao();
+      final printer = FakeLabelPrinter();
+      await _pump(
+        tester,
+        dao: dao,
+        reading: _reading(32.1, 0),
+        blendTarget: const DesiredMix(21, 35),
+        labelPrinting: _service([printer]),
+      );
+      dao.failList = true;
+
+      final logged = <String?>[];
+      final old = debugPrint;
+      debugPrint = (message, {wrapWidth}) => logged.add(message);
+      try {
+        await _tapAndSettle(tester, _key('analysis-save-print'));
+      } finally {
+        debugPrint = old;
+      }
+
+      expect(tester.takeException(), isNull);
+      expect(dao.added, hasLength(1));
+      expect(printer.printed, hasLength(1));
+      expect(_chipLabels(tester), ['Tx21/35', 'Other…']);
+      // Not swallowed silently.
+      expect(logged.join(), contains('log unreadable'));
     });
 
     testWidgets('after a failed print, a plain save shows "Saved …" and '

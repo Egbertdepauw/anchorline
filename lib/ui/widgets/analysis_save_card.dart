@@ -13,6 +13,8 @@
 /// anything is saved; a print that fails leaves the analysis saved.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../analysis/gas_naming.dart';
@@ -94,18 +96,31 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
   @override
   void initState() {
     super.initState();
-    _loadChoices();
+    _loadCylinders();
+    _loadMixOptions();
   }
 
-  /// The cylinders to pick from and the desired mixes to offer.
-  Future<void> _loadChoices() async {
-    final cylinders = await widget.dao.listCylinderChoices();
-    final log = await widget.dao.list();
+  Future<void> _loadCylinders() async {
+    final list = await widget.dao.listCylinderChoices();
     if (!mounted) return;
-    setState(() {
-      _cylinders = cylinders;
-      _mixOptions = recentDesiredMixes(log, blendTarget: widget.blendTarget);
-    });
+    setState(() => _cylinders = list);
+  }
+
+  /// The desired mixes to offer: the Blend target, then the log's recent
+  /// ones. Reloaded after each save, so the mix just used (perhaps typed in
+  /// through "Other…") is one tap away for the next cylinder. A failed read
+  /// keeps the options there are.
+  Future<void> _loadMixOptions() async {
+    final List<GasAnalysis> log;
+    try {
+      log = await widget.dao.list();
+    } catch (e) {
+      debugPrint('Analysis save card: loading the recent mixes failed: $e');
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _mixOptions =
+        recentDesiredMixes(log, blendTarget: widget.blendTarget));
   }
 
   @override
@@ -278,6 +293,8 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
       _desired = null;
       _role = gasRoleForCylinderRole(_cylinder(_cylinderId)?.role);
     });
+    // Not awaited: the print needn't wait for the chips.
+    unawaited(_loadMixOptions());
     _pressure.clear();
     _notes.clear();
     messenger.hideCurrentSnackBar();
