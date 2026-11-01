@@ -68,15 +68,28 @@ class FakeLabelPrinter implements LabelPrinter {
   }
 }
 
-/// A [LabelPrinterScanner] that emits [printers] once and closes.
+/// A [LabelPrinterScanner] that behaves like the real one.
 ///
-/// With [error] set it emits that error instead, like the real scanner does
-/// when Bluetooth is off (a [LabelPrinterException]), and then closes.
+/// It emits [printers] once, and only when there are any: a scan that finds
+/// nothing emits no data event, it just closes. With [error] set it emits
+/// that error instead, like the real scanner does when Bluetooth is off (a
+/// [LabelPrinterException]), and then closes.
+///
+/// The stream closes at once, as a scan does at its timeout. With [scanGate]
+/// set it stays open until the gate completes, as a scan does while it runs,
+/// so a test can see the "searching" state and close the dialog mid-scan.
 class FakeLabelPrinterScanner implements LabelPrinterScanner {
-  FakeLabelPrinterScanner({this.printers = const [], this.error});
+  FakeLabelPrinterScanner({
+    this.printers = const [],
+    this.error,
+    this.scanGate,
+  });
 
   final List<FoundLabelPrinter> printers;
   final Object? error;
+
+  /// The stream stays open until this completes.
+  final Completer<void>? scanGate;
 
   /// How many times [stop] was called.
   int stops = 0;
@@ -87,7 +100,8 @@ class FakeLabelPrinterScanner implements LabelPrinterScanner {
   }) async* {
     final e = error;
     if (e != null) throw e;
-    yield printers;
+    if (printers.isNotEmpty) yield printers;
+    await scanGate?.future;
   }
 
   @override

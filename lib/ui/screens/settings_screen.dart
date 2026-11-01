@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import '../../data/db/database.dart';
 import '../../data/db/dive_dao.dart';
 import '../../dev/fixture_seeder.dart';
+import '../../labels/label_print_service.dart';
 import '../../sync/attachments/attachment_object_wiper.dart';
 import '../../sync/cloud/auth_service.dart';
 import '../../shearwater/ble/ble_debug_logger.dart';
@@ -24,6 +25,7 @@ import '../dev/widgetbook_screen.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/app_themes.dart';
 import '../theme/tokens.dart';
+import '../widgets/label_printer_settings_section.dart';
 import '../widgets/subsurface_sync_section.dart';
 import '../widgets/theme_picker.dart';
 
@@ -58,6 +60,11 @@ class SettingsScreen extends StatefulWidget {
   /// instantiates this alongside the orchestrator at app boot.
   final SubsurfaceBootstrapImporter? subsurfaceBootstrapImporter;
 
+  /// Optional — when present, the "Label printer" section renders after
+  /// "Gas analyzer". Tests omit it and the section is hidden, so existing
+  /// settings-screen tests stay unchanged.
+  final LabelPrintService? labelPrinting;
+
   /// Whether to show the theme picker. Follows [kThemingEnabled], which is
   /// on in every build; kept as a parameter so tests can hide the section.
   final bool showThemePicker;
@@ -75,6 +82,7 @@ class SettingsScreen extends StatefulWidget {
     this.subsurfaceCredentials,
     this.diveDao,
     this.subsurfaceBootstrapImporter,
+    this.labelPrinting,
     this.showThemePicker = kThemingEnabled,
   });
 
@@ -521,6 +529,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+          if (widget.labelPrinting != null) ...[
+            const Divider(height: 32),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(
+                'Label printer',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+            LabelPrinterSettingsSection(
+              settings: widget.notifier,
+              printing: widget.labelPrinting!,
+            ),
+          ],
           if (widget.subsurfaceOrchestrator != null &&
               widget.subsurfaceCredentials != null &&
               widget.diveDao != null) ...[

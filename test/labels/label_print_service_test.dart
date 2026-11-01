@@ -1,3 +1,4 @@
+import 'dart:async';
 
 import 'package:ccrlogger/data/models/gas_analysis.dart';
 import 'package:ccrlogger/label_printer/label_bitmap.dart';
@@ -303,6 +304,24 @@ void main() {
       final lists = await scanner.scan().toList();
       expect(lists, hasLength(1));
       expect(lists.single.single.id, 'a');
+    });
+
+    test('emits nothing, then closes, when it finds nothing', () async {
+      final lists = await FakeLabelPrinterScanner().scan().toList();
+      expect(lists, isEmpty);
+    });
+
+    test('stays open until its gate completes', () async {
+      final gate = Completer<void>();
+      var closed = false;
+      FakeLabelPrinterScanner(scanGate: gate)
+          .scan()
+          .listen((_) {}, onDone: () => closed = true);
+      await pumpEventQueue();
+      expect(closed, isFalse);
+      gate.complete();
+      await pumpEventQueue();
+      expect(closed, isTrue);
     });
 
     test('emits the given error on the stream, like a scan failure', () async {
