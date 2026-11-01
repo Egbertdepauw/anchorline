@@ -101,8 +101,9 @@ void main() {
     expect(rowText(tester, 'analyzer-mod-1.4'), contains('MOD @ ppO₂ 1.4'));
     expect(rowText(tester, 'analyzer-mod-1.6'), contains('MOD @ ppO₂ 1.6'));
     expect(rowText(tester, 'analyzer-mod-1.4'), isNot(contains('CCR dil')));
-    // (1.4 / 0.182 − 1) × 10 = 66.9 m
-    expect(rowText(tester, 'analyzer-mod-1.4'), contains('67 m'));
+    // (1.4 / 0.182 − 1) × 10 = 66.9 m, floored (not rounded to 67) so the
+    // screen agrees with the cylinder label.
+    expect(rowText(tester, 'analyzer-mod-1.4'), contains('66 m'));
     expect(rowText(tester, 'analyzer-temp'), contains('21.4 °C'));
     expect(rowText(tester, 'analyzer-baro'), contains('1013 hPa'));
 
@@ -112,6 +113,13 @@ void main() {
     expect(find.text('Connect'), findsOneWidget);
     // Last reading stays visible after disconnecting.
     expect(textOf(tester, 'analyzer-mix'), 'Tx18.2/45.1');
+  });
+
+  test('exactly one built-in transport option is the demo source', () {
+    final demo =
+        defaultAnalyzerTransportOptions().where((o) => o.isDemo).toList();
+    expect(demo, hasLength(1));
+    expect(demo.single.label, 'Demo');
   });
 
   testWidgets('hypoxic mix shows a minimum depth instead of surface',

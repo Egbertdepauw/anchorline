@@ -25,6 +25,7 @@ void main() {
     WidgetTester tester,
     FakeGasAnalysesDao? dao, {
     Size size = const Size(400, 3200),
+    bool isDemo = false,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -38,6 +39,7 @@ void main() {
         transportOptions: [
           AnalyzerTransportOption(
             label: 'Demo',
+            isDemo: isDemo,
             create: () => DemoAnalyzerTransport(
               targetO2: 18.2,
               targetHe: 45.1,
@@ -157,6 +159,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(GasAnalysisLogScreen), findsOneWidget);
     expect(find.textContaining('No analyses saved yet'), findsOneWidget);
+  });
+
+  testWidgets('demo source: no save card, so demo readings never reach the log',
+      (tester) async {
+    await pumpScreen(tester, FakeGasAnalysesDao(), isDemo: true);
+    expect(find.byKey(const ValueKey('analysis-save-card')), findsNothing);
+    await connect(tester);
+    await seconds(tester, 5);
+    expect(find.byKey(const ValueKey('analysis-save-card')), findsNothing);
+    await disconnect(tester);
   });
 
   testWidgets('wide layout also shows the save card', (tester) async {

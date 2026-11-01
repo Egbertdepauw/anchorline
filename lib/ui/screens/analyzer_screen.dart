@@ -55,9 +55,14 @@ class AnalyzerTransportOption {
     required this.create,
     this.note,
     this.choose,
+    this.isDemo = false,
   });
 
   final String label;
+
+  /// True for the built-in simulator. Its readings are made up, so the
+  /// screen offers no way to save them to the gas analysis log.
+  final bool isDemo;
 
   /// One short line shown under the source picker while this option is
   /// selected, or null.
@@ -108,6 +113,7 @@ List<AnalyzerTransportOption> defaultAnalyzerTransportOptions() => [
         ),
       AnalyzerTransportOption(
         label: 'Demo',
+        isDemo: true,
         create: () => DemoAnalyzerTransport(),
       ),
       if (!kIsWeb && Platform.isAndroid)
@@ -300,10 +306,11 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   }
 
   /// The "Save analysis" card (#111), preceded by a gap; empty without a
-  /// DAO.
+  /// DAO, and for the demo source (its readings are made up). The source
+  /// can't be changed while connected, so this matches the live transport.
   List<Widget> _saveCard() {
     final dao = widget.analysesDao;
-    if (dao == null) return const [];
+    if (dao == null || _options[_selected].isDemo) return const [];
     return [
       const SizedBox(height: Spacing.md),
       AnalysisSaveCard(
@@ -677,7 +684,9 @@ class _PlanningCard extends StatelessWidget {
       String value = '–';
       if (f != null) {
         final m = modMeters(f.fo2, p);
-        value = m.isFinite && m > 0 ? '${m.toStringAsFixed(0)} m' : 'n/a';
+        // Floored, never rounded up: the label floors too, and a MOD that is
+        // too deep is the unsafe direction.
+        value = m.isFinite && m > 0 ? '${m.floor()} m' : 'n/a';
       }
       rows.add(_KvRow(
         key: ValueKey('analyzer-mod-${_fmtPpo2(p)}'),
