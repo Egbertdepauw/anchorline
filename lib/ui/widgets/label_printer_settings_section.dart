@@ -15,6 +15,7 @@ import '../../label_printer/label_printer.dart';
 import '../../labels/label_print_service.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/tokens.dart';
+import 'label_print_controls.dart';
 
 const String _kNoPrinter = 'No printer set up';
 const String _kScanFailed = 'Bluetooth scan failed';
@@ -155,7 +156,7 @@ class _PrintTestLabelButtonState extends State<_PrintTestLabelButton> {
     setState(() => _printing = true);
     String message;
     try {
-      message = _printedMessage(await widget.printing.printTestLabel());
+      message = labelPrintedMessage(1, await widget.printing.printTestLabel());
     } on LabelPrinterException catch (e) {
       message = e.message;
     } catch (e) {
@@ -165,16 +166,6 @@ class _PrintTestLabelButtonState extends State<_PrintTestLabelButton> {
     if (mounted) setState(() => _printing = false);
     messenger.showSnackBar(SnackBar(content: Text(message)));
   }
-}
-
-/// "Label printed.", followed by each of the printer's [warnings].
-String _printedMessage(List<PrinterFault> warnings) {
-  final parts = ['Label printed.'];
-  for (final w in warnings) {
-    final text = printerFaultMessage(w);
-    parts.add(text.endsWith('.') ? text : '$text.');
-  }
-  return parts.join(' ');
 }
 
 /// Scans for printers and pops the one the user taps.
