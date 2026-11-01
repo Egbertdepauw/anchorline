@@ -61,6 +61,15 @@ void main() {
       expect(floorDepthMeters(32.0, 1.4), 33);
     });
 
+    test('an exact whole-metre MOD is not lost to floating-point noise', () {
+      // (1.4 / 0.28 - 1) * 10 and (1.4 / 0.2 - 1) * 10 are 39.999... and
+      // 59.999... in doubles, but the true values are 40 and 60.
+      expect(floorDepthMeters(28.0, 1.4), 40);
+      expect(floorDepthMeters(20.0, 1.4), 60);
+      expect(floorDepthMeters(100.0, 1.4), 4);
+      expect(floorDepthMeters(10.0, 1.4), 130);
+    });
+
     test('is null when there is no oxygen', () {
       expect(floorDepthMeters(0, 1.6), isNull);
       expect(floorDepthMeters(-1, 1.6), isNull);

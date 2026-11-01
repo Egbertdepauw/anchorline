@@ -135,6 +135,19 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('an exact whole-metre MOD is not floored down a metre',
+      (tester) async {
+    // (1.4 / 0.2 - 1) * 10 is 59.99999999999999 in doubles; the true MOD of
+    // 20.0 % at 1.4 bar is exactly 60 m, as the label prints it.
+    await pumpScreen(tester, await loadSettings(), targetO2: 20, targetHe: 0);
+    await tester.tap(find.byKey(const ValueKey('analyzer-connect')));
+    await seconds(tester, 90);
+    expect(textOf(tester, 'analyzer-o2'), '20.0');
+    expect(rowText(tester, 'analyzer-mod-1.4'), contains('60 m'));
+    await tester.tap(find.byKey(const ValueKey('analyzer-connect')));
+    await tester.pump();
+  });
+
   testWidgets('END follows the endCountsOxygen setting', (tester) async {
     final settings = await loadSettings();
     await pumpScreen(tester, settings);

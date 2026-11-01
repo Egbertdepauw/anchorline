@@ -155,6 +155,13 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   late final List<AnalyzerTransportOption> _options;
   int _selected = 0;
 
+  /// Whether the session that produced the current reading was the demo
+  /// source, recorded when the session starts. The controller keeps the last
+  /// reading after a disconnect and the Source picker is free again, so the
+  /// selected option alone says nothing about where a frozen reading came
+  /// from. Null until a first session starts.
+  bool? _sessionIsDemo;
+
   @override
   void initState() {
     super.initState();
@@ -182,6 +189,10 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         await transport.dispose();
         return;
       }
+      // Before connecting: the controller clears the old reading as it
+      // starts, and the new session's readings can arrive during connect.
+      // If the connect fails there is no reading, so the flag isn't used.
+      setState(() => _sessionIsDemo = option.isDemo);
       await _controller.connect(transport);
     }
   }
@@ -306,11 +317,18 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   }
 
   /// The "Save analysis" card (#111), preceded by a gap; empty without a
-  /// DAO, and for the demo source (its readings are made up). The source
-  /// can't be changed while connected, so this matches the live transport.
+  /// DAO, and for readings from the demo source (they are made up). It goes
+  /// by the session the reading came from ([_sessionIsDemo]), not the
+  /// selected option, because a reading outlives its session and the diver
+  /// can switch source in between. With no reading there is no session to
+  /// ask (nothing yet, or a connect that failed), so the selected option
+  /// decides.
   List<Widget> _saveCard() {
     final dao = widget.analysesDao;
-    if (dao == null || _options[_selected].isDemo) return const [];
+    if (dao == null) return const [];
+    final readingFromDemo =
+        _controller.latest == null ? null : _sessionIsDemo;
+    if (readingFromDemo ?? _options[_selected].isDemo) return const [];
     return [
       const SizedBox(height: Spacing.md),
       AnalysisSaveCard(
@@ -684,9 +702,9 @@ class _PlanningCard extends StatelessWidget {
       String value = '–';
       if (f != null) {
         final m = modMeters(f.fo2, p);
-        // Floored, never rounded up: the label floors too, and a MOD that is
-        // too deep is the unsafe direction.
-        value = m.isFinite && m > 0 ? '${m.floor()} m' : 'n/a';
+        // Floored, never rounded up: the label floors too (with the same
+        // helper), and a MOD that is too deep is the unsafe direction.
+        value = m.isFinite && m > 0 ? '${floorDepthTolerant(m)} m' : 'n/a';
       }
       rows.add(_KvRow(
         key: ValueKey('analyzer-mod-${_fmtPpo2(p)}'),

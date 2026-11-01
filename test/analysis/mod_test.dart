@@ -27,6 +27,42 @@ void main() {
     });
   });
 
+  group('floorDepthTolerant', () {
+    test('floors, never rounds', () {
+      expect(floorDepthTolerant(66.9), 66);
+      expect(floorDepthTolerant(66.999), 66);
+      expect(floorDepthTolerant(67.0), 67);
+      expect(floorDepthTolerant(0.4), 0);
+    });
+
+    test('floating-point noise just under a whole metre does not drop one', () {
+      // (1.4 / 0.2 - 1) * 10 is 59.99999999999999 in doubles.
+      expect(modMeters(0.2, 1.4), lessThan(60));
+      expect(floorDepthTolerant(59.99999999999999), 60);
+      expect(floorDepthTolerant(modMeters(0.2, 1.4)), 60);
+    });
+
+    test('exact whole-metre MODs at 0.1 % O2 steps survive the noise', () {
+      // 28 % -> 40 m, 100 % -> 4 m, 10 % -> 130 m, all at 1.4 bar.
+      expect(floorDepthTolerant(modMeters(0.28, 1.4)), 40);
+      expect(floorDepthTolerant(modMeters(1.0, 1.4)), 4);
+      expect(floorDepthTolerant(modMeters(0.10, 1.4)), 130);
+    });
+
+    test('a genuine fraction is never lifted to the next metre', () {
+      // Every non-integer MOD at 0.1 % O2 and 0.01 bar ppO2 steps is at
+      // least 1e-3 m below the next metre, far more than the tolerance.
+      for (var p = 100; p <= 170; p++) {
+        for (var k = 1; k <= 1000; k++) {
+          // MOD = (p/100 / (k/1000) - 1) * 10 = 100 * p / k - 10
+          final m = modMeters(k / 1000.0, p / 100.0);
+          expect(floorDepthTolerant(m), (100 * p / k - 10).floor(),
+              reason: 'O2 ${k / 10} % at ${p / 100} bar');
+        }
+      }
+    });
+  });
+
   group('minDepthMeters', () {
     test('10 % needs 6 m before it is breathable', () {
       expect(minDepthMeters(0.10), closeTo(6.0, 1e-9));

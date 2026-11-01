@@ -26,6 +26,7 @@ void main() {
     FakeGasAnalysesDao? dao, {
     Size size = const Size(400, 3200),
     bool isDemo = false,
+    List<AnalyzerTransportOption>? options,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -36,7 +37,7 @@ void main() {
         settings: settings,
         analysesDao: dao,
         controller: fakeClockAnalyzerController(tester),
-        transportOptions: [
+        transportOptions: options ?? [
           AnalyzerTransportOption(
             label: 'Demo',
             isDemo: isDemo,
@@ -169,6 +170,60 @@ void main() {
     await seconds(tester, 5);
     expect(find.byKey(const ValueKey('analysis-save-card')), findsNothing);
     await disconnect(tester);
+  });
+
+  // Two sources with the same simulated signal; only the flag differs.
+  List<AnalyzerTransportOption> demoAndBench() => [
+        for (final demo in [true, false])
+          AnalyzerTransportOption(
+            label: demo ? 'Demo' : 'Bench',
+            isDemo: demo,
+            create: () => DemoAnalyzerTransport(
+              targetO2: 18.2,
+              targetHe: 45.1,
+              random: Random(11),
+            ),
+          ),
+      ];
+
+  Future<void> pickSource(WidgetTester tester, String label) async {
+    await tester.tap(find.byKey(const ValueKey('analyzer-transport')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(label).last);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('a frozen demo reading stays unsaveable after switching source',
+      (tester) async {
+    final dao = FakeGasAnalysesDao();
+    await pumpScreen(tester, dao, options: demoAndBench());
+    await connect(tester);
+    await seconds(tester, 90);
+    await disconnect(tester); // the demo reading stays on screen
+    expect(find.byKey(const ValueKey('analysis-save-card')), findsNothing);
+
+    await pickSource(tester, 'Bench');
+    expect(find.byKey(const ValueKey('analysis-save-card')), findsNothing);
+    expect(dao.added, isEmpty);
+  });
+
+  testWidgets('a frozen real reading stays saveable after switching to Demo',
+      (tester) async {
+    final dao = FakeGasAnalysesDao();
+    await pumpScreen(tester, dao, options: demoAndBench());
+    await pickSource(tester, 'Bench');
+    await connect(tester);
+    await seconds(tester, 90);
+    await disconnect(tester);
+    expect(find.byKey(const ValueKey('analysis-save-card')), findsOneWidget);
+
+    await pickSource(tester, 'Demo');
+    expect(find.byKey(const ValueKey('analysis-save-card')), findsOneWidget);
+    expect(tester.widget<ButtonStyleButton>(saveButton()).onPressed, isNotNull);
+    await tester.tap(saveButton());
+    await tester.pump();
+    expect(dao.added, hasLength(1));
+    expect(dao.added.single.o2Percent, 18.2);
   });
 
   testWidgets('wide layout also shows the save card', (tester) async {

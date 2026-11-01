@@ -54,13 +54,14 @@ const String _noDepth = '–';
 final DateFormat _dateFormat = DateFormat('d MMM yy', 'en_US');
 
 /// The floor, in whole metres, of the depth at which a gas with
-/// [o2Percent] % oxygen reaches [ppO2] bar. Null when there is no usable
-/// depth: no oxygen (not finite) or a gas that already exceeds [ppO2] at
-/// the surface (below 0).
+/// [o2Percent] % oxygen reaches [ppO2] bar, via [floorDepthTolerant] so an
+/// exact whole-metre MOD (20 % at 1.4 bar is 60 m) isn't lost to floating-
+/// point noise. Null when there is no usable depth: no oxygen (not finite)
+/// or a gas that already exceeds [ppO2] at the surface (below 0).
 int? floorDepthMeters(double o2Percent, double ppO2) {
   final m = modMeters(o2Percent / 100.0, ppO2);
   if (!m.isFinite || m < 0) return null;
-  return m.floor();
+  return floorDepthTolerant(m);
 }
 
 /// The ppO2 for the bailout/deco MOD. [o2PercentForRule] is the O2 the rule
