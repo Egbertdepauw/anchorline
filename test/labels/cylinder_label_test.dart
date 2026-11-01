@@ -223,7 +223,7 @@ void main() {
       expect(l.mixName, 'Tx21/10');
     });
 
-    test('red keeps the desired name and the desired O2 for the rule', () {
+    test('red keeps the desired name (setting off)', () {
       final a = _analysis(36.5, 0, desiredO2: 32, desiredHe: 0);
       expect(a.match?.level, MixMatchLevel.red);
       final l = _label(a);
@@ -238,6 +238,20 @@ void main() {
       final l = _label(_analysis(36.5, 0, desiredO2: 32, desiredHe: 0));
       expect(l.headlineMeters, 33);
       expect(l.o2Percent, 36.5);
+    });
+
+    test('red uses the desired O2 for the 1.4 rule, the analysed for depth',
+        () {
+      // 5.0 off is still red, so the desired 50 % decides the rule: 50 is
+      // not below 50, so 1.6 even with the setting on. The analysed 45.0 %
+      // would have given 1.4. The depth is still the analysed 45.0 %'s:
+      // (1.6 / 0.45 - 1) * 10 = 25.56 -> 25.
+      final a = _analysis(45.0, 0, desiredO2: 50, desiredHe: 0);
+      expect(a.match?.level, MixMatchLevel.red);
+      final l = _label(a, use14: true);
+      expect(l.mixName, 'EAN50');
+      expect(l.headlineCaption, 'MOD 1.6');
+      expect(l.headlineText, '25');
     });
   });
 

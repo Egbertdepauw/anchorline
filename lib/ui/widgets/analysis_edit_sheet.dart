@@ -29,8 +29,11 @@ Future<bool> showAnalysisEditSheet(
   required GasAnalysis analysis,
   required List<DesiredMix> mixOptions,
 }) async {
-  // Set by the sheet itself rather than read from the pop result, so a
-  // sheet dismissed while its save finishes still reports the save.
+  // Set by the sheet once its update has gone through, just before it
+  // closes itself. A sheet dismissed while that update is still running
+  // returns false, even if the update then succeeds: the edit is stored,
+  // and the log, which watches the DAO, still shows it, but a caller that
+  // acts on true (a reprint after "Change desired mix") stops instead.
   var saved = false;
   await showModalBottomSheet<void>(
     context: context,
