@@ -162,6 +162,10 @@ Future<void> _printAndReport(
   // The messenger lives above the screens, so it normally outlives the one
   // that printed. Only an app that was torn down mid-print has none left.
   if (!messenger.mounted) return;
+  // A failure bar has an action, so it stays until dismissed, and a new bar
+  // would queue behind it: the new result would never show, and the old
+  // Retry would still be offered. The newest result replaces what is up.
+  messenger.hideCurrentSnackBar();
   messenger.showSnackBar(
     SnackBar(
       content: Text(message),

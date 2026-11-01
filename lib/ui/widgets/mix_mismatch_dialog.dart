@@ -23,6 +23,7 @@ Future<MismatchChoice> showMixMismatchDialog(
   BuildContext context, {
   required GasAnalysis analysis,
 }) async {
+  assert(analysis.desiredMix != null, 'A mismatch needs a desired mix');
   final choice = await showDialog<MismatchChoice>(
     context: context,
     builder: (_) => _MixMismatchDialog(analysis: analysis),

@@ -336,6 +336,24 @@ void main() {
       expect(find.text('Retry'), findsNothing);
     });
 
+    testWidgets('a new print replaces a failure bar that was left up',
+        (tester) async {
+      final failing = FakeLabelPrinter(failOnConnect: Exception('no link'));
+      final working = FakeLabelPrinter();
+      await _printFrom(tester, _service([failing, working]));
+      expect(find.text('Printer not found'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+
+      // The user ignores the failure and prints again.
+      await tester.tap(_key('go'));
+      await tester.pumpAndSettle();
+
+      expect(working.printed, hasLength(1));
+      expect(find.text('Label printed.'), findsOneWidget);
+      expect(find.text('Printer not found'), findsNothing);
+      expect(find.text('Retry'), findsNothing);
+    });
+
     testWidgets('Retry that fails again offers Retry again', (tester) async {
       final first = FakeLabelPrinter(failOnConnect: Exception('no link'));
       final second = FakeLabelPrinter(faultOnPrint: PrinterFault.noLabels);
