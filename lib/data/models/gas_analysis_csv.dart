@@ -3,7 +3,8 @@
 /// Pure Dart. Columns match the analyzer prototype
 /// (`docs/prototypes/solo-live.html`):
 /// time, cylinder, diver, mix, o2, he, mod_1_1, mod_1_4, mod_1_6,
-/// pressure_bar, temp_c, stable.
+/// pressure_bar, temp_c, stable, then desired_mix (the desired mix name,
+/// empty when none was set) and gas_role (`bailout` or `diluent`).
 ///
 /// The three MOD columns are always at ppO2 1.1 / 1.4 / 1.6, whatever MOD
 /// set the diver had configured, so exports from different settings line
@@ -26,6 +27,8 @@ const gasAnalysisCsvHeader = <String>[
   'pressure_bar',
   'temp_c',
   'stable',
+  'desired_mix',
+  'gas_role',
 ];
 
 /// ppO2 limits (bar) of the mod_1_1 / mod_1_4 / mod_1_6 columns.
@@ -55,6 +58,8 @@ String gasAnalysesToCsv(List<GasAnalysis> analyses) {
         fixed1(a.fillPressureBar),
         fixed1(a.tempC),
         a.stable ? 'true' : 'false',
+        a.desiredMix?.name ?? '',
+        a.gasRole.dbValue,
       ],
   ];
   return '${rows.map((r) => r.map(_quote).join(',')).join('\n')}\n';

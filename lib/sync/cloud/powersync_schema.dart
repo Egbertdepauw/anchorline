@@ -110,6 +110,9 @@ const appSchema = Schema([
   // reference to cylinders.id (no FK, nullable). mod_ppo2s is a JSON array
   // of the ppO2 limits (bar) the MODs were shown for; the mix label and MOD
   // depths are derived from o2/he, never stored. stable is 0/1.
+  // target_o2_percent / target_he_percent are the desired mix in whole
+  // percents (null target O2 = none set); gas_role is 'diluent' or 'bailout'
+  // (null = bailout/deco). Issue #114 (cylinder labels).
   Table('gas_analyses', [
     Column.text('owner_id'),
     Column.text('cylinder_id'),
@@ -123,6 +126,9 @@ const appSchema = Schema([
     Column.text('mod_ppo2s'),
     Column.integer('stable'),
     Column.text('notes'),
+    Column.integer('target_o2_percent'),
+    Column.integer('target_he_percent'),
+    Column.text('gas_role'),
     Column.integer('created_at'),
     Column.integer('updated_at'),
     Column.integer('deleted_at'),

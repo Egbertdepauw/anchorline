@@ -90,7 +90,7 @@ void main() {
     expect(lines.first, startsWith('"time","cylinder","diver","mix"'));
     expect(lines, hasLength(3));
     expect(lines[1], contains('"AL40 deco","Egbert","Tx21/35"'));
-    expect(lines[1], endsWith('"false"'));
+    expect(lines[1], endsWith('"false","","bailout"'));
   });
 
   testWidgets('empty log: message and export disabled', (tester) async {
