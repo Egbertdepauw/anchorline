@@ -25,7 +25,7 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>This app communicates with Shearwater dive computers over Bluetooth Low Energy to download dive logs.</string>
+	<string>Anchorline uses Bluetooth to import dive logs from your Shearwater dive computer and to print cylinder labels on a Bluetooth label printer.</string>
 	<key>NSLocationUsageDescription</key>
 	<string>This app uses your location to record where each dive happened.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
