@@ -1,3 +1,4 @@
+import 'package:ccrlogger/analysis/blending/gas_blender.dart';
 import 'package:ccrlogger/data/models/gas_analysis.dart';
 import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
@@ -63,6 +64,177 @@ void main() {
       n.setTargetPressure(200);
       clock = clock.add(const Duration(hours: 20));
       expect(n.recentTarget(), const DesiredMix(21, 35));
+    });
+  });
+
+  group('recentTarget with any Blend input', () {
+    // A diver who blends their usual mix never touches the target; they
+    // only enter the residual gas and the start pressure.
+    late int staleAtMs;
+
+    setUp(() {
+      staleAtMs =
+          clock.subtract(const Duration(hours: 30)).millisecondsSinceEpoch;
+      SharedPreferences.setMockInitialValues({
+        'blend_target_o2': 21,
+        'blend_target_he': 35,
+        'blend_target_pressure_bar': 200.0,
+        'blend_target_edited_at': staleAtMs,
+      });
+    });
+
+    test('editing only the residual O2 offers the persisted target', () async {
+      final n = await newNotifier();
+      await n.loadTarget();
+      expect(n.recentTarget(), isNull, reason: 'last used 30 h ago');
+
+      n.setCurrentMix(32, 0);
+      expect(n.recentTarget(), const DesiredMix(21, 35));
+
+      // The edit time is on the device: a restart 23 h later still has it.
+      await pumpEventQueue();
+      clock = clock.add(const Duration(hours: 23));
+      final restarted = await newNotifier();
+      await restarted.loadTarget();
+      expect(restarted.recentTarget(), const DesiredMix(21, 35));
+      clock = clock.add(const Duration(hours: 1, minutes: 1));
+      expect(restarted.recentTarget(), isNull);
+    });
+
+    test('editing only the start pressure offers the persisted target',
+        () async {
+      final n = await newNotifier();
+      await n.loadTarget();
+
+      n.setCurrentPressure(50);
+      expect(n.recentTarget(), const DesiredMix(21, 35));
+    });
+
+    test('a residual edit made before a late loadTarget keeps its edit time',
+        () async {
+      final n = await newNotifier();
+      final loading = n.loadTarget();
+      n.setCurrentMix(32, 0);
+      await loading;
+
+      // The stored 30 h old time must not replace the diver's edit.
+      expect(n.recentTarget(), const DesiredMix(21, 35));
+      expect(n.currentOxygenPercent, 32);
+    });
+
+    // Each input setter: a call that changes the value counts as using the
+    // blend, a call with the value it already holds does not.
+    final inputs = <String, ({
+      void Function(BlendNotifier) change,
+      void Function(BlendNotifier) echo,
+    })>{
+      'setCurrentMix': (
+        change: (n) => n.setCurrentMix(32, 0),
+        echo: (n) => n.setCurrentMix(21, 0),
+      ),
+      'setCurrentPressure': (
+        change: (n) => n.setCurrentPressure(50),
+        echo: (n) => n.setCurrentPressure(0),
+      ),
+      'setWaterCapacity': (
+        change: (n) => n.setWaterCapacity(15),
+        echo: (n) => n.setWaterCapacity(12),
+      ),
+      'setTargetMix': (
+        change: (n) => n.setTargetMix(32, 0),
+        echo: (n) => n.setTargetMix(21, 35),
+      ),
+      'setTargetPressure': (
+        change: (n) => n.setTargetPressure(210),
+        echo: (n) => n.setTargetPressure(200),
+      ),
+      'setTopoff': (
+        change: (n) => n.setTopoff(32, 0),
+        echo: (n) => n.setTopoff(n.topoffOxygenPercent, n.topoffHeliumPercent),
+      ),
+      'setSequence': (
+        change: (n) => n.setSequence(FillSequence.values
+            .firstWhere((s) => s != n.sequence)),
+        echo: (n) => n.setSequence(n.sequence),
+      ),
+      'setUseRealGas': (
+        change: (n) => n.setUseRealGas(!n.useRealGas),
+        echo: (n) => n.setUseRealGas(n.useRealGas),
+      ),
+      'setFillTempC': (
+        change: (n) => n.setFillTempC(n.fillTempC + 5),
+        echo: (n) => n.setFillTempC(n.fillTempC),
+      ),
+      'setSettledTempC': (
+        change: (n) => n.setSettledTempC(n.settledTempC + 5),
+        echo: (n) => n.setSettledTempC(n.settledTempC),
+      ),
+    };
+
+    for (final entry in inputs.entries) {
+      test('${entry.key}: a change stamps the edit time', () async {
+        final n = await newNotifier();
+        await n.loadTarget();
+        expect(n.recentTarget(), isNull);
+
+        entry.value.change(n);
+        expect(n.recentTarget(), isNotNull);
+      });
+
+      test('${entry.key}: an echo of the held value stamps nothing',
+          () async {
+        final n = await newNotifier();
+        await n.loadTarget();
+
+        entry.value.echo(n);
+        expect(n.recentTarget(), isNull);
+      });
+    }
+
+    test('a change to the Settings blend defaults is not a Blend edit',
+        () async {
+      final settings = SettingsNotifier();
+      await settings.load();
+      final n = BlendNotifier(settings: settings, now: () => clock);
+      await n.loadTarget();
+
+      await settings.setBlendFillTempC(settings.blendFillTempC + 5);
+      expect(n.recentTarget(), isNull);
+    });
+
+    test('an echo does not write the edit time to the device', () async {
+      final n = await newNotifier();
+      await n.loadTarget();
+      n.setCurrentMix(21, 0);
+      await pumpEventQueue();
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getInt('blend_target_edited_at'), staleAtMs);
+    });
+  });
+
+  group('recentTarget with a clock that disagrees', () {
+    test('an edit time in the future (clock moved back) is expired', () async {
+      final n = await newNotifier();
+      n.setTargetMix(21, 35);
+      expect(n.recentTarget(), const DesiredMix(21, 35));
+
+      clock = clock.subtract(const Duration(hours: 1));
+      expect(n.recentTarget(), isNull);
+    });
+
+    test('a future-dated stored edit time is expired', () async {
+      SharedPreferences.setMockInitialValues({
+        'blend_target_o2': 21,
+        'blend_target_he': 35,
+        'blend_target_edited_at':
+            clock.add(const Duration(hours: 2)).millisecondsSinceEpoch,
+      });
+      final n = await newNotifier();
+      await n.loadTarget();
+
+      expect(n.targetOxygenPercent, 21);
+      expect(n.recentTarget(), isNull);
     });
   });
 
