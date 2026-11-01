@@ -5,16 +5,28 @@
 /// cylinder analysis log. A reading that isn't STABLE asks for
 /// confirmation first; it's never blocked, because a diver at the fill
 /// station sometimes has to log what they've got.
+///
+/// For cylinder labels (issue #114) the diver can also state the desired
+/// mix, graded live against the reading, and the gas role. With a label
+/// printer set up, "Save & print" saves the analysis and then prints its
+/// label. A hard mismatch with the desired mix is confirmed before
+/// anything is saved; a print that fails leaves the analysis saved.
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../analysis/gas_naming.dart';
+import '../../analysis/mix_match.dart';
 import '../../analyzer/protocol/analyzer_reading.dart';
 import '../../analyzer/stability.dart';
 import '../../data/db/gas_analyses_dao.dart';
+import '../../labels/label_print_service.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
+import 'desired_mix_picker.dart';
+import 'label_print_controls.dart';
+import 'mix_match_indicator.dart';
+import 'mix_mismatch_dialog.dart';
 
 class AnalysisSaveCard extends StatefulWidget {
   const AnalysisSaveCard({
@@ -23,6 +35,9 @@ class AnalysisSaveCard extends StatefulWidget {
     required this.reading,
     required this.stability,
     required this.modPpo2s,
+    this.blendTarget,
+    this.labelPrinting,
+    this.onSetUpPrinter,
     this.now = DateTime.now,
   });
 
@@ -35,6 +50,18 @@ class AnalysisSaveCard extends StatefulWidget {
   /// The ppO2 set the screen shows MODs for; stored with the analysis.
   final List<double> modPpo2s;
 
+  /// The Blend tab's target, when the diver used it recently; offered
+  /// first among the desired mixes.
+  final DesiredMix? blendTarget;
+
+  /// Prints the label of a saved analysis. With a printer set up the card
+  /// offers "Save & print"; without one, the "Set up label printer" link.
+  /// Null offers neither.
+  final LabelPrintService? labelPrinting;
+
+  /// Opens the label printer settings, for the "Set up label printer" link.
+  final VoidCallback? onSetUpPrinter;
+
   /// Clock, injectable for tests.
   final DateTime Function() now;
 
@@ -46,20 +73,39 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
   final _diver = TextEditingController();
   final _pressure = TextEditingController();
   final _notes = TextEditingController();
+
+  /// The desired-mix row, scrolled into view on "Change desired mix".
+  final _mixKey = GlobalKey();
   List<CylinderChoice> _cylinders = const [];
   String? _cylinderId;
+  List<DesiredMix> _mixOptions = const [];
+  DesiredMix? _desired;
+  GasRole _role = GasRole.bailout;
+  int _copies = 1;
+
+  /// A save, with its confirm dialogs, is under way.
   bool _saving = false;
+
+  /// The saved analysis is printing.
+  bool _printing = false;
+
+  bool get _busy => _saving || _printing;
 
   @override
   void initState() {
     super.initState();
-    _loadCylinders();
+    _loadChoices();
   }
 
-  Future<void> _loadCylinders() async {
-    final list = await widget.dao.listCylinderChoices();
+  /// The cylinders to pick from and the desired mixes to offer.
+  Future<void> _loadChoices() async {
+    final cylinders = await widget.dao.listCylinderChoices();
+    final log = await widget.dao.list();
     if (!mounted) return;
-    setState(() => _cylinders = list);
+    setState(() {
+      _cylinders = cylinders;
+      _mixOptions = recentDesiredMixes(log, blendTarget: widget.blendTarget);
+    });
   }
 
   @override
@@ -83,6 +129,17 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     final t = s.trim();
     if (t.isEmpty) return null;
     return double.tryParse(t.replaceAll(',', '.'));
+  }
+
+  CylinderChoice? _cylinder(String? id) =>
+      _cylinders.where((c) => c.id == id).firstOrNull;
+
+  /// A new cylinder sets the role to its default; the diver can flip it.
+  void _selectCylinder(String? id) {
+    setState(() {
+      _cylinderId = id;
+      _role = gasRoleForCylinderRole(_cylinder(id)?.role);
+    });
   }
 
   Future<bool> _confirmUnstable() async {
@@ -110,22 +167,43 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     return ok ?? false;
   }
 
-  Future<void> _save() async {
+  /// Before printing: on a hard mismatch with the desired mix the label
+  /// shows the analysed mix, so the diver confirms first. True to go on.
+  /// "Change desired mix" stops and brings the mix chips into view.
+  Future<bool> _confirmMix(NewGasAnalysis analysis) async {
+    final pending = GasAnalysis.fromNew('pending', analysis);
+    if (pending.match?.level != MixMatchLevel.hard) return true;
+    final choice = await showMixMismatchDialog(context, analysis: pending);
+    if (choice == MismatchChoice.changeMix) {
+      final mixRow = _mixKey.currentContext;
+      if (mixRow != null && mixRow.mounted) {
+        await Scrollable.ensureVisible(
+          mixRow,
+          duration: const Duration(milliseconds: 300),
+        );
+      }
+    }
+    return choice == MismatchChoice.printAnalysed;
+  }
+
+  /// "Save analysis", and with [printTo] "Save & print". Confirms an
+  /// unstable reading and, before printing, a hard mismatch with the
+  /// desired mix; then saves; then prints what was saved. A failed save
+  /// prints nothing. A failed print leaves the analysis saved, and its
+  /// Retry only prints.
+  Future<void> _save({LabelPrintService? printTo}) async {
     final gas = _usable;
-    if (gas == null || _saving) return;
-    // Snapshot before any await: the reading keeps updating at 1 Hz.
-    final reading = widget.reading!;
-    final stable = widget.stability == ReadingStability.stable;
-    final analysedAt = widget.now();
-    final messenger = ScaffoldMessenger.of(context);
-    if (!stable && !await _confirmUnstable()) return;
-    if (!mounted) return;
+    // The guard goes up before the first await, so a second tap while a
+    // dialog opens or the save runs can't save the reading twice.
+    if (gas == null || _busy) return;
     setState(() => _saving = true);
     try {
-      await widget.dao.add(NewGasAnalysis(
+      // Snapshot before any await: the reading keeps updating at 1 Hz.
+      final reading = widget.reading!;
+      final analysis = NewGasAnalysis(
         cylinderId: _cylinderId,
         analysedBy: _diver.text,
-        analysedAt: analysedAt,
+        analysedAt: widget.now(),
         o2Percent: gas.o2,
         hePercent: gas.he,
         fillPressureBar: _parseDecimal(_pressure.text),
@@ -136,34 +214,84 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
             ? reading.baroHpa
             : null,
         modPpo2s: widget.modPpo2s,
-        stable: stable,
+        stable: widget.stability == ReadingStability.stable,
         notes: _notes.text,
-      ));
+        desiredMix: _desired,
+        gasRole: _role,
+      );
+      final copies = _copies;
+      final messenger = ScaffoldMessenger.of(context);
+      if (!analysis.stable && !await _confirmUnstable()) return;
       if (!mounted) return;
-      // Keep cylinder + diver for the next fill; clear the per-fill fields.
-      _pressure.clear();
-      _notes.clear();
-      messenger.showSnackBar(SnackBar(
-        content: Text('Saved ${gasMixName(gas.o2, gas.he)} to the '
-            'analysis log${stable ? '' : ' (not stable)'}.'),
-      ));
+      if (printTo != null && !await _confirmMix(analysis)) return;
+      if (!mounted) return;
+      final saved = await _add(analysis, messenger);
+      if (saved == null || printTo == null || !mounted) return;
+      setState(() {
+        _saving = false;
+        _printing = true;
+      });
+      // Replaces the "Saved …" SnackBar with how the print went.
+      await printWithFeedback(
+        context,
+        service: printTo,
+        analysis: saved,
+        copies: copies,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _printing = false;
+        });
+      }
+    }
+  }
+
+  /// Saves [a] to the log and says so. Returns it as saved, or null when
+  /// the save failed (a SnackBar says why).
+  Future<GasAnalysis?> _add(
+    NewGasAnalysis a,
+    ScaffoldMessengerState messenger,
+  ) async {
+    final String id;
+    try {
+      id = await widget.dao.add(a);
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Save failed: $e')));
-    } finally {
-      if (mounted) setState(() => _saving = false);
+      return null;
     }
+    final saved = GasAnalysis.fromNew(id, a,
+        cylinderLabel: _cylinder(a.cylinderId)?.label);
+    if (!mounted) return saved;
+    // Keep cylinder, diver, mix and role for the next fill; clear the
+    // per-fill fields.
+    _pressure.clear();
+    _notes.clear();
+    messenger.showSnackBar(SnackBar(
+      content: Text('Saved ${gasMixName(a.o2Percent, a.hePercent)} to the '
+          'analysis log${a.stable ? '' : ' (not stable)'}.'),
+    ));
+    return saved;
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    final usable = _usable != null;
+    final gas = _usable;
+    final usable = gas != null;
     final stable = widget.stability == ReadingStability.stable;
+    final desired = _desired;
+    final printing = widget.labelPrinting;
+    final printReady = printing != null && printing.isConfigured;
     // A cylinder deleted elsewhere (sync) drops out of the list; don't
     // leave the dropdown pointing at a value it no longer has.
     final selected = _cylinders.any((c) => c.id == _cylinderId)
         ? _cylinderId
         : null;
+    final onSave = usable && !_busy ? () => _save() : null;
+    const saveIcon = Icon(Icons.save_alt);
+    const saveLabel = Text('Save analysis');
     return Container(
       key: const ValueKey('analysis-save-card'),
       padding: const EdgeInsets.all(Spacing.lg),
@@ -184,6 +312,45 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
             ),
           ),
           const SizedBox(height: Spacing.sm),
+          Column(
+            key: _mixKey,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Mix (optional)',
+                style:
+                    AppTypography.caption.copyWith(color: palette.textMuted),
+              ),
+              const SizedBox(height: Spacing.xs),
+              DesiredMixPicker(
+                options: _mixOptions,
+                selected: desired,
+                onChanged: (m) => setState(() => _desired = m),
+              ),
+              // Only for a usable reading: grading NaN throws.
+              if (desired != null && gas != null) ...[
+                const SizedBox(height: Spacing.sm),
+                MixMatchIndicator(
+                  o2Percent: gas.o2,
+                  hePercent: gas.he,
+                  desired: desired,
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: Spacing.sm),
+          SegmentedButton<GasRole>(
+            key: const ValueKey('analysis-gas-role'),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: GasRole.diluent, label: Text('Diluent')),
+              ButtonSegment(
+                  value: GasRole.bailout, label: Text('Bailout/deco')),
+            ],
+            selected: {_role},
+            onSelectionChanged: (s) => setState(() => _role = s.first),
+          ),
+          const SizedBox(height: Spacing.sm),
           DropdownButtonFormField<String?>(
             key: const ValueKey('analysis-cylinder'),
             initialValue: selected,
@@ -201,7 +368,7 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
                   child: Text(c.label, overflow: TextOverflow.ellipsis),
                 ),
             ],
-            onChanged: (v) => setState(() => _cylinderId = v),
+            onChanged: _selectCylinder,
           ),
           const SizedBox(height: Spacing.sm),
           Row(
@@ -260,12 +427,58 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
             ),
             const SizedBox(height: Spacing.sm),
           ],
-          FilledButton.icon(
-            key: const ValueKey('analysis-save'),
-            onPressed: usable && !_saving ? _save : null,
-            icon: const Icon(Icons.save_alt),
-            label: const Text('Save analysis'),
-          ),
+          if (!printReady)
+            FilledButton.icon(
+              key: const ValueKey('analysis-save'),
+              onPressed: onSave,
+              icon: saveIcon,
+              label: saveLabel,
+            )
+          else
+            // Wraps on a phone: "Save & print" and its copies stay
+            // together on the second line.
+            Wrap(
+              spacing: Spacing.sm,
+              runSpacing: Spacing.sm,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  key: const ValueKey('analysis-save'),
+                  onPressed: onSave,
+                  icon: saveIcon,
+                  label: saveLabel,
+                ),
+                Wrap(
+                  spacing: Spacing.xs,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    FilledButton.icon(
+                      key: const ValueKey('analysis-save-print'),
+                      onPressed: usable && !_busy
+                          ? () => _save(printTo: printing)
+                          : null,
+                      icon: const Icon(Icons.print_outlined),
+                      label: const Text('Save & print'),
+                    ),
+                    CopiesStepper(
+                      value: _copies,
+                      onChanged: (v) => setState(() => _copies = v),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          if (printing != null &&
+              !printReady &&
+              widget.onSetUpPrinter != null) ...[
+            const SizedBox(height: Spacing.xs),
+            TextButton.icon(
+              key: const ValueKey('analysis-setup-printer'),
+              onPressed: widget.onSetUpPrinter,
+              icon: const Icon(Icons.print_outlined),
+              label: const Text('Set up label printer'),
+            ),
+          ],
         ],
       ),
     );

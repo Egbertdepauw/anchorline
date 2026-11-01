@@ -30,12 +30,14 @@ import '../../analyzer/transport/demo_transport.dart';
 import '../../analyzer/transport/desktop_serial_transport.dart';
 import '../../analyzer/transport/serial_port_selection.dart';
 import '../../data/db/gas_analyses_dao.dart';
+import '../../labels/label_print_service.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/data_colors.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../widgets/analysis_save_card.dart';
 import '../widgets/analyzer_live_chart.dart';
+import '../widgets/label_printer_settings_section.dart';
 import '../widgets/serial_port_picker_dialog.dart';
 import 'gas_analysis_log_screen.dart';
 
@@ -131,6 +133,8 @@ class AnalyzerScreen extends StatefulWidget {
     this.controller,
     this.transportOptions,
     this.analysesDao,
+    this.blendTarget,
+    this.labelPrinting,
   });
 
   final SettingsNotifier settings;
@@ -138,6 +142,14 @@ class AnalyzerScreen extends StatefulWidget {
   /// Cylinder analysis log (#111). When null the save card and the log
   /// action are hidden.
   final GasAnalysesDaoLike? analysesDao;
+
+  /// The Blend tab's recent target (#114), offered first as the desired
+  /// mix on the save card.
+  final DesiredMix? blendTarget;
+
+  /// Cylinder label printing (#114): "Save & print" on the save card, or
+  /// its "Set up label printer" link. Null hides both.
+  final LabelPrintService? labelPrinting;
 
   /// Injected for tests. When null the screen owns its own controller.
   final AnalyzerController? controller;
@@ -329,6 +341,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
     final readingFromDemo =
         _controller.latest == null ? null : _sessionIsDemo;
     if (readingFromDemo ?? _options[_selected].isDemo) return const [];
+    final printing = widget.labelPrinting;
     return [
       const SizedBox(height: Spacing.md),
       AnalysisSaveCard(
@@ -336,6 +349,16 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         reading: _controller.latest,
         stability: _controller.stability,
         modPpo2s: widget.settings.analyzerModPpo2s,
+        blendTarget: widget.blendTarget,
+        labelPrinting: printing,
+        onSetUpPrinter: printing == null
+            ? null
+            : () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => LabelPrinterSettingsScreen(
+                    settings: widget.settings,
+                    printing: printing,
+                  ),
+                )),
       ),
     ];
   }
