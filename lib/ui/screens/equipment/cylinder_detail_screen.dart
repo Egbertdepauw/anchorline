@@ -4,6 +4,7 @@ import '../../../data/db/database.dart';
 import '../../../data/db/equipment_dao.dart';
 import '../../../data/db/gas_analyses_dao.dart';
 import '../../../data/models/equipment.dart';
+import '../../../labels/label_print_service.dart';
 import '../gas_analysis_log_screen.dart';
 
 class CylinderDetailScreen extends StatefulWidget {
@@ -13,8 +14,15 @@ class CylinderDetailScreen extends StatefulWidget {
   /// Cylinder analysis log (#111); null hides the "Gas analyses" entry.
   final GasAnalysesDaoLike? analysesDao;
 
+  /// Cylinder label printing (#114), for reprints from the log.
+  final LabelPrintService? labelPrinting;
+
   const CylinderDetailScreen(
-      {super.key, required this.dao, this.id, this.analysesDao});
+      {super.key,
+      required this.dao,
+      this.id,
+      this.analysesDao,
+      this.labelPrinting});
 
   @override
   State<CylinderDetailScreen> createState() => _CylinderDetailScreenState();
@@ -210,6 +218,7 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
                         dao: widget.analysesDao!,
                         cylinderId: widget.id,
                         cylinderLabel: _c?.label,
+                        labelPrinting: widget.labelPrinting,
                       ),
                     )),
                   ),

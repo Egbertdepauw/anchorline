@@ -221,8 +221,10 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
               tooltip: 'Analysis log',
               icon: const Icon(Icons.history),
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) =>
-                    GasAnalysisLogScreen(dao: widget.analysesDao!),
+                builder: (_) => GasAnalysisLogScreen(
+                  dao: widget.analysesDao!,
+                  labelPrinting: widget.labelPrinting,
+                ),
               )),
             ),
           ListenableBuilder(
