@@ -17,6 +17,11 @@
 /// }
 /// ```
 ///
+/// Keys this library does not know are kept, at every level (the list, an
+/// entry, a file object), and written back after the known keys in their
+/// original order. A hotfix run on an older release branch uses that branch's
+/// copy of this tool; it must not strip fields that a newer tool has added.
+///
 /// Everything here is immutable: an operation never changes the manifest it
 /// is given, it returns a new one.
 library;
@@ -43,34 +48,42 @@ const int manifestFormat = 1;
 /// One downloadable file of a release. The platform it is for is the key in
 /// [ReleaseEntry.files].
 class FileEntry {
-  const FileEntry({
+  /// [extra] is copied; later changes to the map passed in do not show up
+  /// here.
+  FileEntry({
     required this.url,
     required this.size,
     required this.sha256,
-  });
+    Map<String, Object?> extra = const {},
+  }) : extra = Map.unmodifiable(extra);
 
   final String url;
   final int size;
   final String sha256;
 
-  Map<String, Object?> _toJson() => {
-    'url': url,
-    'size': size,
-    'sha256': sha256,
-  };
+  /// The keys of the file object that this library does not know, as raw
+  /// JSON values, in the order they were read. Empty for a file that is new.
+  /// A key that is also a known key is ignored when writing.
+  final Map<String, Object?> extra;
+
+  Map<String, Object?> _toJson() =>
+      _withExtra({'url': url, 'size': size, 'sha256': sha256}, extra);
 }
 
 /// One published version: a release or a single nightly.
 class ReleaseEntry {
-  /// [files] is copied; later changes to the map passed in do not show up
-  /// here. Throws [PublishError] when [date] is not a real `YYYY-MM-DD` date.
+  /// [files] and [extra] are copied; later changes to the maps passed in do
+  /// not show up here. Throws [PublishError] when [date] is not a real
+  /// `YYYY-MM-DD` date.
   ReleaseEntry({
     required this.version,
     required this.build,
     required this.date,
     required this.notes,
     required Map<String, FileEntry> files,
-  }) : files = Map.unmodifiable(files) {
+    Map<String, Object?> extra = const {},
+  }) : files = Map.unmodifiable(files),
+       extra = Map.unmodifiable(extra) {
     _requireDate(date, 'date');
   }
 
@@ -87,21 +100,30 @@ class ReleaseEntry {
   /// Keys this library does not know about are kept as they are.
   final Map<String, FileEntry> files;
 
-  Map<String, Object?> _toJson() => {
+  /// The keys of the entry that this library does not know, as raw JSON
+  /// values, in the order they were read. Empty for an entry that is new, and
+  /// for one that replaces another.
+  final Map<String, Object?> extra;
+
+  Map<String, Object?> _toJson() => _withExtra({
     'version': version,
     'build': build,
     'date': date,
     'notes': notes,
     'files': {for (final e in files.entries) e.key: e.value._toJson()},
-  };
+  }, extra);
 }
 
 /// A download list: the newest entry and the ones before it, newest first.
 class Manifest {
-  /// [previous] is copied; later changes to the list passed in do not show up
-  /// here.
-  Manifest({this.latest, List<ReleaseEntry> previous = const []})
-    : previous = List.unmodifiable(previous);
+  /// [previous] and [extra] are copied; later changes to the collections
+  /// passed in do not show up here.
+  Manifest({
+    this.latest,
+    List<ReleaseEntry> previous = const [],
+    Map<String, Object?> extra = const {},
+  }) : previous = List.unmodifiable(previous),
+       extra = Map.unmodifiable(extra);
 
   /// A list with nothing published yet.
   static Manifest empty() => Manifest();
@@ -111,6 +133,10 @@ class Manifest {
 
   /// Earlier entries, newest first.
   final List<ReleaseEntry> previous;
+
+  /// The top-level keys of the list that this library does not know, as raw
+  /// JSON values, in the order they were read.
+  final Map<String, Object?> extra;
 
   /// Reads a list as written by [encode]. Throws [PublishError] for malformed
   /// JSON, a `format` other than 1, or a missing or wrongly typed field.
@@ -147,17 +173,23 @@ class Manifest {
         previous.add(_parseEntry(previousRaw[i], 'previous[$i]'));
       }
     }
-    return Manifest(latest: latest, previous: previous);
+    return Manifest(
+      latest: latest,
+      previous: previous,
+      extra: _extraOf(doc, _manifestKeys),
+    );
   }
 
   /// Pretty JSON, 2-space indent, trailing newline, with a fixed key order so
-  /// that publishing the same list twice writes the same bytes.
+  /// that publishing the same list twice writes the same bytes. The known keys
+  /// come first, in a fixed order; the unknown ones ([extra], at every level)
+  /// follow in the order they were read.
   String encode() {
-    final doc = <String, Object?>{
+    final doc = _withExtra({
       'format': manifestFormat,
       'latest': latest?._toJson(),
       'previous': [for (final e in previous) e._toJson()],
-    };
+    }, extra);
     return '${const JsonEncoder.withIndent('  ').convert(doc)}\n';
   }
 }
@@ -174,8 +206,10 @@ class Manifest {
 ///
 /// A version that is already in the list is refused, unless [force] is set:
 /// then that entry is replaced where it is (the latest stays the latest, a
-/// previous entry keeps its slot). Throws [PublishError] when a version is not
-/// of the form `X.Y.Z`.
+/// previous entry keeps its slot) and the replacement carries only what [e]
+/// carries. Throws [PublishError] when a version is not of the form `X.Y.Z`.
+///
+/// Every other entry, and the list's own unknown keys, stay as they are.
 Manifest addRelease(Manifest m, ReleaseEntry e, {bool force = false}) {
   PublishError already() => PublishError(
     'version ${e.version} is already published (use force to replace it)',
@@ -185,50 +219,60 @@ Manifest addRelease(Manifest m, ReleaseEntry e, {bool force = false}) {
   final latest = m.latest;
   if (latest != null && latest.version == e.version) {
     if (!force) throw already();
-    return Manifest(latest: e, previous: _newestFirst(m.previous));
+    return _rebuilt(m, latest: e, previous: _newestFirst(m.previous));
   }
 
   final i = m.previous.indexWhere((p) => p.version == e.version);
   if (i >= 0) {
     if (!force) throw already();
-    return Manifest(
+    return _rebuilt(
+      m,
       latest: latest,
       previous: _newestFirst([...m.previous]..[i] = e),
     );
   }
 
   if (latest == null || version.compareTo(_Version.parse(latest.version)) > 0) {
-    return Manifest(
+    return _rebuilt(
+      m,
       latest: e,
       previous: _newestFirst([?latest, ...m.previous]),
     );
   }
-  return Manifest(latest: latest, previous: _newestFirst([...m.previous, e]));
+  return _rebuilt(
+    m,
+    latest: latest,
+    previous: _newestFirst([...m.previous, e]),
+  );
 }
 
-/// Publishes [e] as the new latest nightly; the old latest moves to the front
-/// of `previous`. Nightlies are unique by build number, and build numbers only
-/// grow, so `previous` stays newest first. Afterwards every previous entry
-/// (the old latest included) dated before [now] (as a UTC calendar date) minus
-/// [keep] is dropped; the new entry itself is never dropped.
+/// Publishes [e] in the nightly list. Nightlies are unique by build number.
+/// The entry with the highest build number is the latest, whatever order the
+/// builds are published in: build numbers only grow as builds are made, but
+/// not per publish (a re-run of build 157 after 158 must not turn 157 into
+/// the newest). Every other entry goes to `previous`, highest build first.
+///
+/// Afterwards every previous entry dated before [now] (as a UTC calendar
+/// date) minus [keep] is dropped. The latest is never dropped, and neither is
+/// [e] itself, wherever it lands.
 Manifest addNightly(
   Manifest m,
   ReleaseEntry e, {
   required DateTime now,
   Duration keep = const Duration(days: 14),
 }) {
-  final latest = m.latest;
-  final existing = [?latest, ...m.previous];
+  final existing = [?m.latest, ...m.previous];
   if (existing.any((x) => x.build == e.build)) {
     throw PublishError('nightly build ${e.build} is already published');
   }
 
+  final byBuild = _highestBuildFirst([...existing, e]);
   final cutoff = _dateOnly(now.toUtc()).subtract(keep);
   final previous = [
-    for (final p in existing)
-      if (!_parseDate(p.date)!.isBefore(cutoff)) p,
+    for (final p in byBuild.skip(1))
+      if (identical(p, e) || !_parseDate(p.date)!.isBefore(cutoff)) p,
   ];
-  return Manifest(latest: e, previous: previous);
+  return _rebuilt(m, latest: byBuild.first, previous: previous);
 }
 
 /// Makes the earlier release [toVersion] the latest again, whatever its
@@ -244,7 +288,8 @@ Manifest rollback(Manifest m, String toVersion) {
   if (i < 0) {
     throw PublishError('version $toVersion is not in the list of releases');
   }
-  return Manifest(
+  return _rebuilt(
+    m,
     latest: m.previous[i],
     previous: _newestFirst([
       ?latest,
@@ -291,6 +336,7 @@ ReleaseEntry _parseEntry(Object? raw, String where) {
     date: date,
     notes: map['notes'] == null ? '' : _string(map, 'notes', where),
     files: _parseFiles(map['files'], '$where.files'),
+    extra: _extraOf(map, _entryKeys),
   );
 }
 
@@ -311,6 +357,7 @@ FileEntry _parseFile(Object? raw, String where) {
     url: _string(map, 'url', where),
     size: size,
     sha256: _string(map, 'sha256', where),
+    extra: _extraOf(map, _fileKeys),
   );
 }
 
@@ -331,7 +378,42 @@ int _int(Map<String, Object?> map, String key, String where) {
   throw PublishError('$where.$key is missing or not an integer');
 }
 
+// --- unknown keys -----------------------------------------------------------
+
+/// The keys this library reads at each level; everything else is `extra`.
+const Set<String> _manifestKeys = {'format', 'latest', 'previous'};
+const Set<String> _entryKeys = {'version', 'build', 'date', 'notes', 'files'};
+const Set<String> _fileKeys = {'url', 'size', 'sha256'};
+
+/// The entries of [map] whose keys are not in [known], in their original
+/// order.
+Map<String, Object?> _extraOf(Map<String, Object?> map, Set<String> known) => {
+  for (final e in map.entries)
+    if (!known.contains(e.key)) e.key: e.value,
+};
+
+/// [known] followed by the [extra] keys that are not already in it.
+Map<String, Object?> _withExtra(
+  Map<String, Object?> known,
+  Map<String, Object?> extra,
+) => {
+  ...known,
+  for (final e in extra.entries)
+    if (!known.containsKey(e.key)) e.key: e.value,
+};
+
+/// A list with [latest] and [previous] and everything else from [m], so that
+/// no operation drops the list's unknown top-level keys.
+Manifest _rebuilt(
+  Manifest m, {
+  required ReleaseEntry? latest,
+  required List<ReleaseEntry> previous,
+}) => Manifest(latest: latest, previous: previous, extra: m.extra);
+
 // --- versions ---------------------------------------------------------------
+
+/// What a version looks like: exactly `X.Y.Z`, digits only.
+final RegExp versionPattern = RegExp(r'^(\d+)\.(\d+)\.(\d+)$');
 
 /// A version `major.minor.patch`, compared numerically per component.
 class _Version implements Comparable<_Version> {
@@ -339,7 +421,7 @@ class _Version implements Comparable<_Version> {
 
   /// Throws [PublishError] for anything that is not exactly `X.Y.Z`.
   factory _Version.parse(String text) {
-    final m = _versionPattern.firstMatch(text);
+    final m = versionPattern.firstMatch(text);
     final major = int.tryParse(m?.group(1) ?? '');
     final minor = int.tryParse(m?.group(2) ?? '');
     final patch = int.tryParse(m?.group(3) ?? '');
@@ -348,8 +430,6 @@ class _Version implements Comparable<_Version> {
     }
     return _Version(major, minor, patch);
   }
-
-  static final RegExp _versionPattern = RegExp(r'^(\d+)\.(\d+)\.(\d+)$');
 
   final int major;
   final int minor;
@@ -373,6 +453,20 @@ List<ReleaseEntry> _newestFirst(Iterable<ReleaseEntry> entries) {
   ];
   decorated.sort((a, b) {
     final c = b.version.compareTo(a.version);
+    return c != 0 ? c : a.index.compareTo(b.index);
+  });
+  return [for (final d in decorated) d.entry];
+}
+
+/// [entries] sorted by build number, highest first. Entries with the same
+/// build (only possible in a hand-edited file) keep their relative order.
+List<ReleaseEntry> _highestBuildFirst(Iterable<ReleaseEntry> entries) {
+  final list = entries.toList();
+  final decorated = [
+    for (var i = 0; i < list.length; i++) (index: i, entry: list[i]),
+  ];
+  decorated.sort((a, b) {
+    final c = b.entry.build.compareTo(a.entry.build);
     return c != 0 ? c : a.index.compareTo(b.index);
   });
   return [for (final d in decorated) d.entry];

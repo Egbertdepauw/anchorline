@@ -254,6 +254,49 @@ void main() {
       expect(m.previous.map((e) => e.build), [157]);
     });
 
+    test('an older build published later never becomes latest', () {
+      var m = addNightly(
+        Manifest.empty(),
+        _nightly(158, '2026-11-20'),
+        now: now,
+      );
+      m = addNightly(m, _nightly(157, '2026-11-20'), now: now);
+      expect(m.latest!.build, 158);
+      expect(m.previous.map((e) => e.build), [157]);
+    });
+
+    test(
+      'previous is sorted by build, highest first, in any publish order',
+      () {
+        var m = Manifest.empty();
+        for (final build in [155, 160, 157, 159, 156]) {
+          m = addNightly(m, _nightly(build, '2026-11-20'), now: now);
+        }
+        expect(m.latest!.build, 160);
+        expect(m.previous.map((e) => e.build), [159, 157, 156, 155]);
+      },
+    );
+
+    test('an older build is pruned by date like any other previous entry', () {
+      final m = Manifest(
+        latest: _nightly(158, '2026-11-20'),
+        previous: [
+          _nightly(157, '2026-11-19'),
+          _nightly(150, '2026-11-05'), // 15 days back: dropped
+        ],
+      );
+      final next = addNightly(m, _nightly(156, '2026-11-20'), now: now);
+      expect(next.latest!.build, 158);
+      expect(next.previous.map((e) => e.build), [157, 156]);
+    });
+
+    test('a new entry that is not the latest is not pruned either', () {
+      final m = Manifest(latest: _nightly(158, '2026-11-20'));
+      final next = addNightly(m, _nightly(150, '2026-10-01'), now: now);
+      expect(next.latest!.build, 158);
+      expect(next.previous.map((e) => e.build), [150]);
+    });
+
     test('the same build number twice is rejected', () {
       final m = addNightly(
         Manifest.empty(),
@@ -646,7 +689,7 @@ void main() {
           date: '2026-11-03',
           notes: 'Markdown notes',
           files: {
-            'windows-x64': const FileEntry(
+            'windows-x64': FileEntry(
               url: 'https://dl.example/releases/1.2.0/a.exe',
               size: 48211200,
               sha256: 'aa',
@@ -750,6 +793,247 @@ void main() {
       expect(out.latest!.files['macos-universal']!.size, 2);
       expect(out.latest!.files['macos-universal']!.sha256, 'bb');
       expect(m.encode(), input);
+    });
+  });
+
+  group('unknown keys are kept (a newer tool may add fields)', () {
+    String pretty(Object? doc) =>
+        '${const JsonEncoder.withIndent('  ').convert(doc)}\n';
+
+    Map<String, Object?> file(String name, [Map<String, Object?>? extra]) => {
+      'url': 'https://dl.example/$name',
+      'size': 10,
+      'sha256': 'aa$name',
+      ...?extra,
+    };
+
+    Map<String, Object?> entry(
+      String version,
+      int build, {
+      Map<String, Object?>? extra,
+      Map<String, Object?>? fileExtra,
+    }) => {
+      'version': version,
+      'build': build,
+      'date': '2026-11-01',
+      'notes': 'Notes $version',
+      'files': {
+        'windows-x64': file('$version-win', fileExtra),
+        'linux-x64': file('$version-linux'),
+      },
+      ...?extra,
+    };
+
+    // Unknown keys at the top level, in two entries and in a file object,
+    // after the known keys and not in alphabetical order. Values of every
+    // JSON type, nested ones included.
+    final input = pretty({
+      'format': 1,
+      'latest': entry(
+        '1.2.0',
+        45,
+        extra: {
+          'zeta': 'last letter',
+          'channel': 'stable',
+          'minOs': [10, 0],
+        },
+        fileExtra: {
+          'signature': {'alg': 'ed25519', 'value': 'zz'},
+          'beta': null,
+        },
+      ),
+      'previous': [
+        entry('1.1.0', 41, extra: {'rolloutPercent': 50}),
+        entry('1.0.0', 30),
+      ],
+      'generator': 'publish 2',
+      'abc': true,
+      'ratio': 0.5,
+    });
+
+    test('encode(parse(x)) is byte for byte x', () {
+      expect(Manifest.parse(input).encode(), input);
+    });
+
+    test('the unknown keys are exposed, in their original order', () {
+      final m = Manifest.parse(input);
+      expect(m.extra.keys, ['generator', 'abc', 'ratio']);
+      expect(m.extra['generator'], 'publish 2');
+      expect(m.latest!.extra.keys, ['zeta', 'channel', 'minOs']);
+      expect(m.latest!.extra['minOs'], [10, 0]);
+      expect(m.latest!.files['windows-x64']!.extra.keys, ['signature', 'beta']);
+      expect(m.previous[0].extra, {'rolloutPercent': 50});
+      expect(m.previous[1].extra, isEmpty);
+      expect(m.latest!.files['linux-x64']!.extra, isEmpty);
+    });
+
+    test('known keys are written first, the unknown ones after them', () {
+      // The unknown key sits before the known ones in the input.
+      final m = Manifest.parse(
+        pretty({
+          'generator': 'x',
+          'format': 1,
+          'latest': {
+            'channel': 'stable',
+            'version': '1.2.0',
+            'build': 45,
+            'date': '2026-11-03',
+            'notes': '',
+            'files': {
+              'windows-x64': {
+                'signature': 'zz',
+                'url': 'https://dl.example/w.exe',
+                'size': 1,
+                'sha256': 'aa',
+              },
+            },
+          },
+        }),
+      );
+      final doc = jsonDecode(m.encode()) as Map<String, Object?>;
+      expect(doc.keys, ['format', 'latest', 'previous', 'generator']);
+      final latest = doc['latest'] as Map<String, Object?>;
+      expect(latest.keys, [
+        'version',
+        'build',
+        'date',
+        'notes',
+        'files',
+        'channel',
+      ]);
+      final w =
+          (latest['files'] as Map<String, Object?>)['windows-x64']
+              as Map<String, Object?>;
+      expect(w.keys, ['url', 'size', 'sha256', 'signature']);
+    });
+
+    test('the extra maps cannot be modified, and are copied', () {
+      final m = Manifest.parse(input);
+      expect(() => m.extra['x'] = 1, throwsUnsupportedError);
+      expect(() => m.latest!.extra['x'] = 1, throwsUnsupportedError);
+      expect(
+        () => m.latest!.files['windows-x64']!.extra['x'] = 1,
+        throwsUnsupportedError,
+      );
+
+      final extra = <String, Object?>{'a': 1};
+      final e = ReleaseEntry(
+        version: '1.0.0',
+        build: 1,
+        date: '2026-11-01',
+        notes: '',
+        files: const {},
+        extra: extra,
+      );
+      final f = FileEntry(url: 'u', size: 1, sha256: 'a', extra: extra);
+      final copy = Manifest(extra: extra);
+      extra['b'] = 2;
+      expect(e.extra, {'a': 1});
+      expect(f.extra, {'a': 1});
+      expect(copy.extra, {'a': 1});
+    });
+
+    /// The JSON of the entries in [m], by version, as written.
+    Map<String, String> written(Manifest m) {
+      final doc = jsonDecode(m.encode()) as Map<String, Object?>;
+      return {
+        for (final e in [doc['latest'], ...(doc['previous'] as List<Object?>)])
+          if (e != null)
+            (e as Map<String, Object?>)['version'] as String: jsonEncode(e),
+      };
+    }
+
+    Map<String, Object?> topLevel(Manifest m) =>
+        jsonDecode(m.encode()) as Map<String, Object?>;
+
+    test(
+      'addRelease of another version leaves the other entries as they were',
+      () {
+        final m = Manifest.parse(input);
+        final before = written(m);
+        final next = addRelease(m, _release('1.3.0'));
+
+        final after = written(next);
+        expect(after['1.2.0'], before['1.2.0']);
+        expect(after['1.1.0'], before['1.1.0']);
+        expect(after['1.0.0'], before['1.0.0']);
+        expect(next.latest!.version, '1.3.0');
+        expect(next.latest!.extra, isEmpty);
+        final doc = topLevel(next);
+        expect(doc['generator'], 'publish 2');
+        expect(doc['abc'], true);
+        expect(doc['ratio'], 0.5);
+        expect(doc.keys, [
+          'format',
+          'latest',
+          'previous',
+          'generator',
+          'abc',
+          'ratio',
+        ]);
+      },
+    );
+
+    test('a hotfix that goes into previous keeps every extra as well', () {
+      final m = Manifest.parse(input);
+      final before = written(m);
+      final next = addRelease(m, _release('1.1.1'));
+
+      final after = written(next);
+      expect(next.latest!.version, '1.2.0');
+      for (final v in ['1.2.0', '1.1.0', '1.0.0']) {
+        expect(after[v], before[v], reason: v);
+      }
+      expect(topLevel(next)['generator'], 'publish 2');
+    });
+
+    test('force replaces an entry with one that starts with no extras', () {
+      final m = Manifest.parse(input);
+      final before = written(m);
+      final next = addRelease(
+        m,
+        _release('1.2.0', notes: 'again'),
+        force: true,
+      );
+
+      expect(next.latest!.extra, isEmpty);
+      expect(next.latest!.files['windows-x64']!.extra, isEmpty);
+      final after = written(next);
+      expect(after['1.1.0'], before['1.1.0']);
+      expect(after['1.0.0'], before['1.0.0']);
+      expect(topLevel(next)['generator'], 'publish 2');
+
+      // A previous entry that is replaced loses its extras too.
+      final replaced = addRelease(m, _release('1.1.0'), force: true);
+      expect(replaced.previous[0].extra, isEmpty);
+      expect(written(replaced)['1.2.0'], before['1.2.0']);
+    });
+
+    test('rollback keeps the extras of every entry and of the list', () {
+      final m = Manifest.parse(input);
+      final before = written(m);
+      final next = rollback(m, '1.1.0');
+
+      expect(next.latest!.version, '1.1.0');
+      expect(written(next), before);
+      expect(topLevel(next)['generator'], 'publish 2');
+    });
+
+    test('addNightly keeps the extras of the entries it does not replace', () {
+      final m = Manifest.parse(input);
+      final before = written(m);
+      final next = addNightly(
+        m,
+        _nightly(46, '2026-11-02'),
+        now: DateTime.utc(2026, 11, 3),
+      );
+
+      expect(next.latest!.version, '1.3.0');
+      final after = written(next);
+      for (final v in ['1.2.0', '1.1.0', '1.0.0']) {
+        expect(after[v], before[v], reason: v);
+      }
+      expect(topLevel(next)['generator'], 'publish 2');
     });
   });
 
