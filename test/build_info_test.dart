@@ -85,6 +85,8 @@ void main() {
       expect(BuildInfo.isNightly, isFalse);
       expect(BuildInfo.label, 'Development build');
       expect(BuildInfo.sentryRelease, isNull);
+      // Hand-built release-mode builds keep Sentry's default environment.
+      expect(BuildInfo.sentryEnvironment, isNull);
     });
   });
 }

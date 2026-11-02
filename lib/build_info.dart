@@ -24,6 +24,8 @@ class BuildInfo {
   /// Build number, e.g. `154`. Empty for local builds.
   static const build = String.fromEnvironment('APP_BUILD');
 
+  static const _channelDefined = bool.hasEnvironment('BUILD_CHANNEL');
+
   static bool get isNightly => channel == 'nightly';
 
   /// Human-readable version line for the Settings screen.
@@ -33,6 +35,12 @@ class BuildInfo {
   /// Sentry release name, or null when this build has no version information.
   static String? get sentryRelease =>
       sentryReleaseName(version: version, build: build);
+
+  /// Sentry environment, or null when no `BUILD_CHANNEL` was passed. Sentry
+  /// only runs in release mode, so such a build is a hand-built store or
+  /// website build, not a developer's: it keeps Sentry's default environment
+  /// (`production`) instead of reporting as `dev`.
+  static String? get sentryEnvironment => _channelDefined ? channel : null;
 }
 
 /// The version line shown to the user. Only CI channels with a complete

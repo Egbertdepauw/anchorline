@@ -140,9 +140,11 @@ void main() async {
         // the free-tier quota for a small beta cohort.
         options.tracesSampleRate = 0;
         // CI builds report the channel as the environment and a release
-        // name that carries the build number. Local builds have no version
-        // define, so Sentry keeps its own default release.
-        options.environment = BuildInfo.channel;
+        // name that carries the build number. Builds made without those
+        // defines (hand-built store builds, until CI ships them) keep
+        // Sentry's own defaults.
+        final environment = BuildInfo.sentryEnvironment;
+        if (environment != null) options.environment = environment;
         final release = BuildInfo.sentryRelease;
         if (release != null) options.release = release;
         // Drop benign network noise the Supabase SDK reports while it's
