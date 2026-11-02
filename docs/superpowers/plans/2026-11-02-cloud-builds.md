@@ -385,7 +385,7 @@ git commit -m "feat(publish): releases and nightly manifest logic (format 1)"
     - `Future<String?> sha256Of(String key)`, which downloads the object and hashes it; `null` if absent.
   - `class AwsCliBucket implements Bucket`. It shells out to `aws s3 cp` and `aws s3api` with `--endpoint-url https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com`, bucket `$R2_BUCKET`, and credentials from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, which CI maps from the R2 secrets.
   - `class Publisher { Publisher(Bucket b, {required String baseUrl, required DateTime Function() now, bool dryRun = false}); Future<Manifest> publish({required Lane lane, required String version, required int build, required String notes, required Map<String, String> files /* platformKey → local path */, bool force = false}); Future<Manifest> rollback(String toVersion); }`
-  - The CLI: `dart run tool/publish/publish.dart <release|nightly|rollback> --version V [--build N] [--notes-file F] [--file windows-x64=PATH ...] [--dry-run] [--force]`. The base URL comes from `DOWNLOADS_BASE_URL`. Content types:
+  - The CLI: `dart tool/publish/publish.dart <release|nightly|rollback> --version V [--build N] [--notes-file F] [--file windows-x64=PATH ...] [--dry-run] [--force]`. The base URL comes from `DOWNLOADS_BASE_URL`. Content types:
     - `.exe` → `application/vnd.microsoft.portable-executable`
     - `.AppImage` → `application/vnd.appimage`
     - `.dmg` → `application/x-apple-diskimage`
