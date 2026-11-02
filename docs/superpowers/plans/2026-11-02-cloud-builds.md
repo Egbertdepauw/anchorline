@@ -153,7 +153,7 @@ git commit -m "feat(ci): version and release-tag rules for cloud builds"
 
 **Interfaces:**
 - Consumes: Task 1, all of it.
-- Produces: the command `dart run tool/ci/version.dart` with these flags:
+- Produces: the command `dart tool/ci/version.dart` with these flags:
   - `--event <push|schedule|workflow_dispatch>`
   - `--ref <github.ref>`
   - `--run-number <n>`
@@ -164,6 +164,8 @@ git commit -m "feat(ci): version and release-tag rules for cloud builds"
   - `[--notes-out <path>]`
 
   It prints and appends to `$GITHUB_OUTPUT` (when set) the lines `channel=release|nightly|dry-run`, `version=…`, `build_number=…`, `build=true|false`, `reason=…`. It exits 1 with a line `::error::<message>` on a `VersionRuleError`.
+
+  Run it as `dart <file>`, not `dart run <file>`: `dart run` runs the package's build hooks and writes to stdout.
 
   `--notes-out` writes the release notes:
   - for a release, the annotated tag's message (`git tag -l --format='%(contents:body)'` plus its subject), with any signature block removed;
@@ -289,7 +291,7 @@ git commit -m "feat(app): build channel, version label and Sentry environment fr
 
 **Interfaces:**
 - Produces:
-  - The environment variable `ANCHORLINE_CHANNEL=nightly`, set when running `flutter build linux|windows`, switches the identity. Unset, or any other value, means release.
+  - The environment variable `ANCHORLINE_CHANNEL=nightly`, set when running `flutter build linux|windows`, switches the identity. Unset (or empty) and `release` mean release, `nightly` means nightly, and any other value stops the configure step with an error, so a typo can't silently build the release identity.
   - Inno defines: `/DMyAppVersion=<V> /DMyAppBuild=<N> /DChannel=<release|nightly>`.
 - Values:
 
@@ -731,7 +733,7 @@ git commit -m "ci(macos): Mac App Store package and notarised Developer ID dmg"
   - `String ascJwt({required String keyId, required String issuerId, required DateTime now, required Uint8List Function(List<int> signingInput) sign})`, an ES256 JWT with `aud: appstoreconnect-v1` and `exp` 20 minutes after `now`. In the CLI, `sign` runs `openssl dgst -sha256 -sign AuthKey.p8` and passes the result through `derEcdsaToJose`;
   - `abstract class AscClient { Future<({String id, String state})?> findBuild({required String appId, required String version, required int build}); Future<void> addBuildToGroup({required String groupId, required String buildId}); }`, with `HttpAscClient` (package `http`) for `/v1/builds` and `/v1/betaGroups/{id}/relationships/builds`;
   - `Future<String> waitForProcessedBuild(AscClient c, {required String appId, required String version, required int build, required Duration timeout, required Duration interval, required Future<void> Function(Duration) sleep, required DateTime Function() now})`. It returns the build id when the state is `VALID`. It throws `StateError` naming the state when that is `INVALID` or `FAILED`, and `TimeoutException('build $version ($build) not processed within …')` on timeout;
-  - the CLI: `dart run tool/ci/testflight.dart assign --app-id … --version … --build … --group-id … [--timeout-minutes 60]`.
+  - the CLI: `dart tool/ci/testflight.dart assign --app-id … --version … --build … --group-id … [--timeout-minutes 60]`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -778,7 +780,7 @@ git commit -m "feat(ci): TestFlight build processing wait and Nightly group assi
     - Release: `track: ${{ vars.PLAY_RELEASE_TRACK }}`, `status: draft`.
     - Nightly: `track: internal`, `status: completed`.
   - **`_deliver.yml`** (`ubuntu-24.04`, `needs` the platform jobs, `if: always()` with per-step guards):
-    - **TestFlight (nightly only, iOS succeeded):** `dart run tool/ci/testflight.dart assign --app-id $ASC_APP_ID_IOS --version <V> --build <N> --group-id $TESTFLIGHT_NIGHTLY_GROUP_ID`.
+    - **TestFlight (nightly only, iOS succeeded):** `dart tool/ci/testflight.dart assign --app-id $ASC_APP_ID_IOS --version <V> --build <N> --group-id $TESTFLIGHT_NIGHTLY_GROUP_ID`.
     - **Website:**
       - release: only when both `windows-release` and `linux-release` artifacts exist, then `publish.dart release`;
       - nightly: only when `vars.DESKTOP_NIGHTLIES == 'on'`, with each desktop artifact that exists, then `publish.dart nightly`;
