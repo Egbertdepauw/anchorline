@@ -153,4 +153,26 @@ void main() {
     expect(find.text('Appearance'), findsNothing);
     expect(find.byType(ThemePicker), findsNothing);
   });
+
+  testWidgets('shows the build version as the last row', (tester) async {
+    final h = await _build(signedIn: false);
+    addTearDown(() {
+      h.auth.dispose();
+      h.client.dispose();
+    });
+    await _pump(tester, h.settings, h.auth);
+    await tester.scrollUntilVisible(
+      find.text('Version'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Version'), findsOneWidget);
+    // Tests do not pass BUILD_CHANNEL, so this is the local-build label.
+    expect(find.text('Development build'), findsOneWidget);
+    // Below the 'Anchorline' footer: the very bottom of the list.
+    expect(
+      tester.getTopLeft(find.text('Version')).dy,
+      greaterThan(tester.getTopLeft(find.text('Anchorline')).dy),
+    );
+  });
 }

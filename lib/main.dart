@@ -7,6 +7,7 @@ import 'package:powersync/powersync.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'build_info.dart';
 import 'data/app_data_folder.dart';
 import 'data/db/database.dart';
 import 'data/db/equipment_dao.dart';
@@ -138,6 +139,12 @@ void main() async {
         // tracesSampleRate: 0 keeps overhead minimal and stays inside
         // the free-tier quota for a small beta cohort.
         options.tracesSampleRate = 0;
+        // CI builds report the channel as the environment and a release
+        // name that carries the build number. Local builds have no version
+        // define, so Sentry keeps its own default release.
+        options.environment = BuildInfo.channel;
+        final release = BuildInfo.sentryRelease;
+        if (release != null) options.release = release;
         // Drop benign network noise the Supabase SDK reports while it's
         // retrying internally. AuthRetryableFetchException is the SDK's
         // own "this attempt failed, I'll retry" signal — the diver's

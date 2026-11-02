@@ -8,6 +8,7 @@ import 'package:powersync/powersync.dart' hide SyncStatus, Column;
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
+import '../../build_info.dart';
 import '../../data/db/database.dart';
 import '../../data/db/dive_dao.dart';
 import '../../dev/fixture_seeder.dart';
@@ -600,6 +601,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: Theme.of(context).textTheme.labelSmall,
               ),
             ),
+          ),
+          ListTile(
+            title: const Text('Version'),
+            subtitle: Text(BuildInfo.label),
           ),
               ],
             );
