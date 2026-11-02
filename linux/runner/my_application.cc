@@ -7,6 +7,12 @@
 
 #include "flutter/generated_plugin_registrant.h"
 
+// Window title. CMake passes the channel's name (see linux/CMakeLists.txt);
+// a build without the define is the release.
+#ifndef APP_DISPLAY_NAME
+#define APP_DISPLAY_NAME "Anchorline"
+#endif
+
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
@@ -45,11 +51,11 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "Anchorline");
+    gtk_header_bar_set_title(header_bar, APP_DISPLAY_NAME);
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "Anchorline");
+    gtk_window_set_title(window, APP_DISPLAY_NAME);
   }
 
   gtk_window_set_default_size(window, 1280, 720);

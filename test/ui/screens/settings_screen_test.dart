@@ -153,4 +153,27 @@ void main() {
     expect(find.text('Appearance'), findsNothing);
     expect(find.byType(ThemePicker), findsNothing);
   });
+
+  testWidgets('shows the build version as the last row above the footer',
+      (tester) async {
+    final h = await _build(signedIn: false);
+    addTearDown(() {
+      h.auth.dispose();
+      h.client.dispose();
+    });
+    await _pump(tester, h.settings, h.auth);
+    // The 'Anchorline' brand footer is the very last thing in the list.
+    await tester.scrollUntilVisible(
+      find.text('Anchorline'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Version'), findsOneWidget);
+    // Tests do not pass BUILD_CHANNEL, so this is the local-build label.
+    expect(find.text('Development build'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Version')).dy,
+      lessThan(tester.getTopLeft(find.text('Anchorline')).dy),
+    );
+  });
 }

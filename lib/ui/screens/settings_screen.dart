@@ -8,6 +8,7 @@ import 'package:powersync/powersync.dart' hide SyncStatus, Column;
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
+import '../../build_info.dart';
 import '../../data/db/database.dart';
 import '../../data/db/dive_dao.dart';
 import '../../dev/fixture_seeder.dart';
@@ -586,6 +587,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: const Text(
                 'Bypasses PowerSync\'s upload pump and pushes each queued CRUD op directly to Supabase. Use when the queue is stuck (ps_crud is non-empty, sync status shows uploading=false, lastSyncedAt=never). Slow — one HTTP request per op.'),
             onTap: _drainQueueManually,
+          ),
+          ListTile(
+            title: const Text('Version'),
+            subtitle: Text(BuildInfo.label),
           ),
           const Divider(height: 32),
           Padding(

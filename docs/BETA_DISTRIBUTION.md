@@ -53,8 +53,14 @@ restore both from 1Password.
 ### 1c. Verify the build is signed correctly
 
 ```bash
-flutter build appbundle --release
+flutter build appbundle --release \
+  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=play_store --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N>
 ```
+
+`<V>+<N>` is the `version:` in `pubspec.yaml`. The four defines label the
+build (Settings → Version, Sentry release); the hosted `.apk` (section 3) and
+Windows (section 4) use `DISTRIBUTION_CHANNEL=website`, iOS and the Mac App
+Store use `app_store`.
 
 Output: `build/app/outputs/bundle/release/app-release.aab`. Verify
 signing:
@@ -161,7 +167,8 @@ For testers who refuse to use Play (Huawei users, F-Droid types,
 people who hate Google), build a signed `.apk` and host it on R2:
 
 ```bash
-flutter build apk --release --target-platform android-arm64
+flutter build apk --release --target-platform android-arm64 \
+  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=website --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N>
 # Output: build/app/outputs/flutter-apk/app-release.apk
 ```
 
@@ -198,19 +205,18 @@ Prerequisites (one-time):
 Build + package:
 
 ```cmd
-:: From a `cmd` prompt, repo root
+:: From a `cmd` prompt, repo root. Replace <V> and <N> with the version
+:: and the build number from pubspec.yaml's version field (<V>+<N>).
 flutter pub get
-flutter build windows --release
+flutter build windows --release ^
+  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=website --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N>
 
-:: Pass the build number from pubspec.yaml so the installer filename
-:: matches what the landing page expects.
-:: Replace 1.0.0 with whatever's in pubspec.yaml's version field.
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ^
-  /DMyAppVersion=1.0.0 ^
+  /DMyAppVersion=<V> /DMyAppBuild=<N> /DChannel=release ^
   windows\installer\anchorline.iss
 ```
 
-Output: `windows\installer\Output\Anchorline-Setup-1.0.0.exe`. Upload
+Output: `windows\installer\Output\Anchorline-<V>-windows-x64.exe`. Upload
 to R2 as `anchorline-setup-1.0.0-beta.4.exe` (see Section 6).
 
 ### 4b. SmartScreen warning
@@ -268,7 +274,7 @@ npx wrangler r2 object put \
 # Windows .exe installer (scp it across from the Windows VM first)
 npx wrangler r2 object put \
   anchorline-downloads/anchorline-setup-1.0.0-beta.4.exe \
-  --file=./Anchorline-Setup-1.0.0.exe \
+  --file=./Anchorline-<V>-windows-x64.exe \
   --content-type=application/vnd.microsoft.portable-executable
 ```
 
@@ -355,18 +361,22 @@ Per beta build:
 - [ ] Bump `pubspec.yaml` version (e.g. `1.0.0+4 → 1.0.0+5`).
 - [ ] Update `VERSION` in `src/app/anchorline/anchorline-landing.tsx`
       on SpaankamerWeb.
-- [ ] **iOS**: `flutter build ipa --release`. Upload to TestFlight via
+- [ ] **iOS**: `flutter build ipa --release` with the release defines
+      (`DISTRIBUTION_CHANNEL=app_store`). Upload to TestFlight via
       Transporter (see `docs/TESTFLIGHT_QUICKSTART.md`).
 - [ ] **macOS App Store**: `xcodebuild archive` + `exportArchive` MAS,
       upload `.pkg` via Transporter (see `docs/MACOS_DISTRIBUTION.md`).
 - [ ] **macOS Developer ID**: `xcodebuild archive` + `exportArchive`
       Developer ID, `xcrun notarytool submit`, staple, `hdiutil` →
       upload `.dmg` to R2.
-- [ ] **Android Play**: `flutter build appbundle --release` → Play
+- [ ] **Android Play**: `flutter build appbundle --release` with the
+      release defines (`DISTRIBUTION_CHANNEL=play_store`) → Play
       Console → Internal testing → new release.
 - [ ] **Android hosted**: `flutter build apk --release --target-platform
-      android-arm64` → upload to R2.
-- [ ] **Windows**: build on VM, run ISCC, upload `.exe` to R2.
+      android-arm64` with the release defines
+      (`DISTRIBUTION_CHANNEL=website`) → upload to R2.
+- [ ] **Windows**: build on VM (release defines,
+      `DISTRIBUTION_CHANNEL=website`), run ISCC, upload `.exe` to R2.
 - [ ] Update R2 URLs in the landing page if filenames changed.
 - [ ] Commit + push (Anchorline repo + SpaankamerWeb repo).
 - [ ] Email testers with a one-liner pointing to

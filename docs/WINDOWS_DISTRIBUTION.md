@@ -48,8 +48,11 @@ disabled. Include it for any build you intend to distribute.
 ```powershell
 flutter build windows --release `
   --build-number=<N> --build-name=<x.y.z> `
-  --dart-define-from-file=dart_defines.json
+  --dart-define-from-file=dart_defines.json `
+  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=website --dart-define=APP_VERSION=<x.y.z> --dart-define=APP_BUILD=<N>
 ```
+
+The last four defines label the build (Settings → Version, Sentry release).
 
 Output: `build\windows\x64\runner\Release\` — `Anchorline.exe` plus
 runtime DLLs and the `data\` tree. **The whole folder is the app**; the
@@ -74,10 +77,17 @@ bare .exe does not run without its siblings. Sanity checks:
 
 ```powershell
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
-  /DMyAppVersion=<x.y.z> windows\installer\anchorline.iss
+  /DMyAppVersion=<x.y.z> /DMyAppBuild=<n> /DChannel=release `
+  windows\installer\anchorline.iss
 ```
 
-Output: `windows\installer\Output\Anchorline-Setup-<x.y.z>.exe` — a
+The manual recipe in this doc is release-only. Nightlies are built by CI; a
+hand-built nightly must follow the full recipe at the top of
+`windows\installer\anchorline.iss` (it needs both `ANCHORLINE_CHANNEL=nightly`
+and `--dart-define=BUILD_CHANNEL=nightly`).
+
+Output: `windows\installer\Output\Anchorline-<x.y.z>-windows-x64.exe` (release;
+the nightly is `Anchorline-Nightly-<x.y.z>-<n>-windows-x64.exe`) — a
 per-machine (admin-elevated) installer that bundles the entire
 `Release\` folder, creates Start-menu/desktop entries, and preserves
 user data on uninstall (databases, Subsurface clone and BLE log in
