@@ -8,9 +8,11 @@ set(BINARY_NAME "Anchorline")
 
 # Release and nightly builds are separate apps that install side by side.
 # `ANCHORLINE_CHANNEL=nightly flutter build windows` selects the nightly
-# identity; unset, or any other value, builds the release. The environment is
-# read when CMake configures, and `flutter build` re-configures on every run.
-# The Dart side has its own switch, `--dart-define=BUILD_CHANNEL=nightly`
+# identity; unset (or empty) and `release` build the release. Any other value
+# stops the configure step: a typo must not quietly build the release
+# identity, which a nightly would then share its state with. The environment
+# is read when CMake configures, and `flutter build` re-configures on every
+# run. The Dart side has its own switch, `--dart-define=BUILD_CHANNEL=nightly`
 # (it picks the data folder), so a nightly build needs both.
 #
 # The runner gets this as a value-less compile flag (runner/CMakeLists.txt) and
@@ -20,10 +22,13 @@ set(BINARY_NAME "Anchorline")
 # lib/data/app_data_folder.dart pins the same company and product names under
 # %LOCALAPPDATA% for the data folder. BINARY_NAME stays the same for both
 # channels: each installs into its own folder.
+set(ANCHORLINE_NIGHTLY OFF)
 if("$ENV{ANCHORLINE_CHANNEL}" STREQUAL "nightly")
   set(ANCHORLINE_NIGHTLY ON)
-else()
-  set(ANCHORLINE_NIGHTLY OFF)
+elseif(NOT "$ENV{ANCHORLINE_CHANNEL}" STREQUAL ""
+    AND NOT "$ENV{ANCHORLINE_CHANNEL}" STREQUAL "release")
+  message(FATAL_ERROR
+    "ANCHORLINE_CHANNEL must be unset, release or nightly; got '$ENV{ANCHORLINE_CHANNEL}'")
 endif()
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
