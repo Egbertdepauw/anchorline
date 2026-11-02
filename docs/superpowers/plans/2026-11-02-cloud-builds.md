@@ -50,7 +50,7 @@
 
 1. **"Re-run all jobs" after a partial delivery** re-uploads a build number Apple or Google already has. Expected: the duplicate is reported as a warning and the job passes, rather than failing the release. Pinned in Task 16, `classifyAltoolOutput`.
 2. **A tag pushed for a version that's already published** (in the releases manifest or as a GitHub Release). Expected: the run stops in prepare before building. Pinned in Task 1, `planRelease` with `publishedVersions`.
-3. **A desktop nightly's first start while the release app's data still sits in Documents.** Expected: the nightly never moves or opens the release's files. Pinned in Task 17, `shouldMigrateLegacyDocuments`.
+3. **A desktop nightly's first start while the release app's data still sits in Documents.** Expected: the nightly never moves or opens the release's files. Pinned by PR #136's tests (`appDataLocationFor(..., nightly: true)` returns `movesFromDocuments == false`) and by Task 17's machine check.
 4. **Apple processing never finishes, or ends `INVALID`.** Expected: the TestFlight step fails with a clear message within its timeout and doesn't hang. Pinned in Task 15, `waitForProcessedBuild`.
 5. **A publish interrupted after some files were uploaded.** Expected: a re-run completes. Files of an unlisted version may be overwritten, and the manifest is still written last. Pinned in Task 6, publish orchestration tests.
 
@@ -474,6 +474,7 @@ Egbert does this; an agent can't. Nothing is printed, and each secret goes in wi
 | `R2_ACCOUNT_ID`, `R2_BUCKET` (`anchorline-downloads`), `DOWNLOADS_BASE_URL` | from Step 5 |
 
 - [ ] **Step 8: Confirm the names, without values:** `gh secret list && gh variable list`. Expected: every name above is present.
+- [ ] **Step 9: Make sure nothing is billed while the repo is private.** Either keep no payment method on the GitHub account, or set an Actions budget of $0 with "stop usage when the budget is reached". GitHub then stops runs once the included amount ($12 a month on Free, $18 on Pro) is used, instead of charging.
 
 ---
 
@@ -486,6 +487,11 @@ Every platform job:
 - has a `timeout-minutes` (Apple 60, others 45).
 
 In this phase nothing is uploaded to a store or the bucket.
+
+**Mac minutes are the budget while the repo is private.** About 190 a month are included on GitHub Free, enough for roughly four full iOS+macOS dry runs.
+- Iterate on `tool/ci/apple_setup.sh`, the `xcodebuild` commands and `make_dmg.sh` on Egbert's Mac first, with a throwaway keychain. Spend runner minutes only to confirm.
+- Dry-run single platforms (`-f platforms=…`) rather than `all`.
+- Linux, Android and Windows runs cost little: about $0.35 together.
 
 When signing secrets are absent (forks, or branch dry runs after Task 20), a job builds **unsigned** and says so in its summary:
 - iOS: `--no-codesign`;
@@ -632,7 +638,7 @@ git commit -m "ci(linux): release build and AppImage packaging"
   - Leave a disabled signing step, `if: false`, with a comment pointing at spec §7.
 - [ ] **Step 2: Verify:** `gh workflow run build.yml --ref <branch> -f dry_run=true -f platforms=windows`. Expected: green, with the installer artifact. Then, on an x64 Windows VM:
   - the nightly installer installs next to a release install, as a separate Start-menu entry "Anchorline Nightly";
-  - `%APPDATA%\De Spaankamer\Anchorline Nightly` is created;
+  - the nightly's data lands in `%LOCALAPPDATA%\De Spaankamer\Anchorline Nightly` (from PR #136; before that PR merges, it still lands in Documents), and its preferences in `%APPDATA%\De Spaankamer\Anchorline Nightly`;
   - both uninstall cleanly.
 - [ ] **Step 3: Commit**
 
@@ -790,36 +796,30 @@ git add tool/ci/lib/altool_result.dart test/tool/ci/altool_result_test.dart .git
 git commit -m "ci: deliver builds to TestFlight, Google Play, the downloads bucket and GitHub Releases"
 ```
 
-### Task 17: Desktop nightly data separation and enabling desktop nightlies
+### Task 17: Use BuildInfo for the nightly data folder, then enable desktop nightlies
 
-**Depends on:** the Documents-folder PR from session "Move desktop app data out of the Documents folder" being merged. That PR moves desktop data into `appDataDirectory()` and adds `migrateLegacyDocumentsData()`. Use the names it actually landed with if they differ. Until this task is done, `DESKTOP_NIGHTLIES` stays `off`: a desktop nightly would otherwise share or migrate the release's data.
+**Depends on:** PR #136 (issue #135, "keep local data in a per-app folder, not Documents") being merged.
+- That PR makes `appDataPaths()` in `lib/data/app_data_folder.dart` the only entry point for local data paths.
+- Its pure function `appDataLocationFor({operatingSystem, environment, nightly})` already gives nightlies their own folder (`%LOCALAPPDATA%\De Spaankamer\Anchorline Nightly`, `$XDG_DATA_HOME/nl.despaankamer.ccrlogger.nightly`) with `movesFromDocuments == false`, and its tests cover that.
+- It reads the channel through its own `const String.fromEnvironment('BUILD_CHANNEL') == 'nightly'` expression.
+
+Until this task is done, `DESKTOP_NIGHTLIES` stays `off`.
 
 **Files:**
-- Modify: `lib/build_info.dart`, to add `bool shouldMigrateLegacyDocuments({required String channel})`
-- Modify: the single call site of `migrateLegacyDocumentsData()`, to wrap it in `if (shouldMigrateLegacyDocuments(channel: BuildInfo.channel))`
-- Test: `test/build_info_test.dart`
+- Modify: `lib/data/app_data_folder.dart`, replacing its `BUILD_CHANNEL` expression with `BuildInfo.isNightly` (Task 3), so the channel is read in one place.
 
-- [ ] **Step 1: Write the failing test**
-
-```dart
-expect(shouldMigrateLegacyDocuments(channel: 'nightly'), isFalse);
-expect(shouldMigrateLegacyDocuments(channel: 'release'), isTrue);
-expect(shouldMigrateLegacyDocuments(channel: 'dev'), isTrue);
-```
-
-- [ ] **Step 2: Run it and confirm it fails.** Then implement it, and run `flutter analyze && flutter test`. Expected: green.
-- [ ] **Step 3: Verify on real machines, with a nightly from `main` that contains this change.**
-  - Each of macOS, Windows and Linux:
-    - install the release, sign in, import a dive;
-    - install the nightly;
-    - the nightly starts with an empty local logbook and leaves the release's files untouched (check file timestamps in the release's folder);
-    - the release still opens its data afterwards.
-- [ ] **Step 4: Set `DESKTOP_NIGHTLIES=on`** with `gh variable set DESKTOP_NIGHTLIES --body on`, run a nightly, and confirm that `nightly/manifest.json` lists three files.
-- [ ] **Step 5: Commit and open the PR**
+- [ ] **Step 1: Make the swap.** Run `flutter analyze && flutter test`. Expected: green, and PR #136's `test/data/app_data_folder_test.dart` passes unchanged.
+- [ ] **Step 2: Verify on real machines, with a nightly from `main` that contains PR #136 and this change.** On each of macOS, Windows and Linux:
+  - install the release, sign in, import a dive;
+  - install the nightly;
+  - the nightly starts with an empty local logbook and leaves the release's files untouched (check file timestamps in the release's folder);
+  - the release still opens its data afterwards.
+- [ ] **Step 3: Set `DESKTOP_NIGHTLIES=on`** with `gh variable set DESKTOP_NIGHTLIES --body on`, run a nightly, and confirm that `nightly/manifest.json` lists three files.
+- [ ] **Step 4: Commit and open the PR**
 
 ```bash
-git add lib/build_info.dart test/build_info_test.dart <call-site file>
-git commit -m "fix(app): never migrate legacy Documents data in nightly builds"
+git add lib/data/app_data_folder.dart
+git commit -m "refactor(app): read the nightly channel from BuildInfo in the data-folder choice"
 ```
 
 ---
