@@ -5,15 +5,13 @@
 /// needs the schema declared so the SQLite views are materialised.
 library;
 
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart';
 
+import '../../data/app_data_folder.dart';
 import 'powersync_schema.dart';
 
 Future<PowerSyncDatabase> openPowerSyncDatabase() async {
-  final dir = await getApplicationDocumentsDirectory();
-  final path = p.join(dir.path, 'powersync.db');
+  final path = (await appDataPaths()).powerSyncDatabase;
   final db = PowerSyncDatabase(schema: appSchema, path: path);
   await db.initialize();
   return db;

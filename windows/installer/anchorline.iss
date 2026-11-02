@@ -93,8 +93,15 @@ Filename: "{app}\{#MyAppExeName}"; \
     Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; Anchorline keeps its local database + secrets under %LOCALAPPDATA%.
+; Anchorline keeps its user data outside {app}:
+;   %LOCALAPPDATA%\De Spaankamer\Anchorline  databases (ccrlogger.sqlite,
+;       powersync.db), subsurface_clone\, the BLE debug log and the
+;       attachments\ cache. Builds before #135 kept the first four in the
+;       user's Documents folder; the app moves them here on first start.
+;       The folder is decided in lib/data/app_data_folder.dart.
+;   %APPDATA%\De Spaankamer\Anchorline  preferences and the encrypted
+;       secure-storage file (its key lives in Windows Credential Manager).
 ; Uninstall removes the app binaries but PRESERVES user data — same
 ; convention as macOS / iOS. Testers who reinstall keep their imported
-; dives.
+; dives. "{app}\data" below is Flutter's asset folder, not user data.
 Type: filesandordirs; Name: "{app}\data"
