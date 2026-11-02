@@ -320,6 +320,18 @@ void main() {
       expect(r.stdout, contains('blocked.txt'));
     });
 
+    test('unwritable \$GITHUB_OUTPUT → ::error:: and exit 1', () async {
+      final blocked = Directory('${tmp.path}/blocked-output')..createSync();
+      final r = await runCli([
+        '--event', 'push', '--ref', 'refs/tags/v1.1.0', //
+        '--run-number', '16', '--base', '100',
+      ], outputFile: blocked.path);
+      expect(r.exitCode, 1);
+      expect(r.stdout, contains('::error::'));
+      expect(r.stdout, contains('blocked-output'));
+      expect(r.stdout, isNot(contains('channel=')));
+    });
+
     test('push of a non-tag ref → error', () async {
       final r = await runCli([
         '--event', 'push', '--ref', 'refs/heads/main', //
