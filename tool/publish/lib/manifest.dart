@@ -162,34 +162,55 @@ class Manifest {
   }
 }
 
-/// Publishes [e] as the new latest release; the old latest moves to the front
-/// of `previous`. A version that is already in the list is refused, unless
-/// [force] is set: then that entry is replaced where it is (the latest stays
-/// the latest, a previous entry keeps its position).
+/// Publishes [e] in the releases list.
+///
+/// [e] becomes `latest` only when nothing is published yet or its version is
+/// higher than the latest's (compared numerically per component, so 1.10.0 is
+/// above 1.9.0). Otherwise `latest` stays and [e] goes into `previous`: a
+/// hotfix for an older line (1.1.1 while 1.2.0 is latest) must not turn into
+/// a downgrade for everyone who opens the site. `previous` is always kept
+/// sorted by version, newest first, so the old latest lands at the front in
+/// the normal case.
+///
+/// A version that is already in the list is refused, unless [force] is set:
+/// then that entry is replaced where it is (the latest stays the latest, a
+/// previous entry keeps its slot). Throws [PublishError] when a version is not
+/// of the form `X.Y.Z`.
 Manifest addRelease(Manifest m, ReleaseEntry e, {bool force = false}) {
   PublishError already() => PublishError(
     'version ${e.version} is already published (use force to replace it)',
   );
 
+  final version = _Version.parse(e.version);
   final latest = m.latest;
   if (latest != null && latest.version == e.version) {
     if (!force) throw already();
-    return Manifest(latest: e, previous: m.previous);
+    return Manifest(latest: e, previous: _newestFirst(m.previous));
   }
 
   final i = m.previous.indexWhere((p) => p.version == e.version);
   if (i >= 0) {
     if (!force) throw already();
-    return Manifest(latest: latest, previous: [...m.previous]..[i] = e);
+    return Manifest(
+      latest: latest,
+      previous: _newestFirst([...m.previous]..[i] = e),
+    );
   }
 
-  return Manifest(latest: e, previous: [?latest, ...m.previous]);
+  if (latest == null || version.compareTo(_Version.parse(latest.version)) > 0) {
+    return Manifest(
+      latest: e,
+      previous: _newestFirst([?latest, ...m.previous]),
+    );
+  }
+  return Manifest(latest: latest, previous: _newestFirst([...m.previous, e]));
 }
 
 /// Publishes [e] as the new latest nightly; the old latest moves to the front
-/// of `previous`. Nightlies are unique by build number. Afterwards every
-/// previous entry dated before [now] (as a UTC calendar date) minus [keep] is
-/// dropped; the new entry itself is never dropped.
+/// of `previous`. Nightlies are unique by build number, and build numbers only
+/// grow, so `previous` stays newest first. Afterwards every previous entry
+/// (the old latest included) dated before [now] (as a UTC calendar date) minus
+/// [keep] is dropped; the new entry itself is never dropped.
 Manifest addNightly(
   Manifest m,
   ReleaseEntry e, {
@@ -202,7 +223,7 @@ Manifest addNightly(
     throw PublishError('nightly build ${e.build} is already published');
   }
 
-  final cutoff = _dateOnly(now.toUtc().subtract(keep));
+  final cutoff = _dateOnly(now.toUtc()).subtract(keep);
   final previous = [
     for (final p in existing)
       if (!_parseDate(p.date)!.isBefore(cutoff)) p,
@@ -210,9 +231,10 @@ Manifest addNightly(
   return Manifest(latest: e, previous: previous);
 }
 
-/// Makes the earlier release [toVersion] the latest again. The old latest
-/// goes to the front of `previous`; no entry is lost or duplicated. The
-/// version has to be in `previous`.
+/// Makes the earlier release [toVersion] the latest again, whatever its
+/// version relative to the others. Every other entry, the old latest
+/// included, goes to `previous`, sorted by version newest first; no entry is
+/// lost or duplicated. The version has to be in `previous`.
 Manifest rollback(Manifest m, String toVersion) {
   final latest = m.latest;
   if (latest != null && latest.version == toVersion) {
@@ -224,7 +246,11 @@ Manifest rollback(Manifest m, String toVersion) {
   }
   return Manifest(
     latest: m.previous[i],
-    previous: [?latest, ...m.previous.take(i), ...m.previous.skip(i + 1)],
+    previous: _newestFirst([
+      ?latest,
+      ...m.previous.take(i),
+      ...m.previous.skip(i + 1),
+    ]),
   );
 }
 
@@ -234,6 +260,7 @@ Manifest rollback(Manifest m, String toVersion) {
 /// * nightly: `nightly/<V>-<N>/Anchorline-Nightly-<V>-<N>-<platform>.<ext>`
 ///
 /// where `<N>` is [build]. A release key does not depend on [build].
+/// [extension] is given without a leading dot (`exe`, `AppImage`).
 String objectKey({
   required Lane lane,
   required String version,
@@ -254,9 +281,13 @@ ReleaseEntry _parseEntry(Object? raw, String where) {
   final map = _asObject(raw, where);
   final date = _string(map, 'date', where);
   _requireDate(date, '$where.date');
+  final build = _int(map, 'build', where);
+  if (build <= 0) {
+    throw PublishError('$where.build must be a positive integer, got $build');
+  }
   return ReleaseEntry(
     version: _string(map, 'version', where),
-    build: _int(map, 'build', where),
+    build: build,
     date: date,
     notes: map['notes'] == null ? '' : _string(map, 'notes', where),
     files: _parseFiles(map['files'], '$where.files'),
@@ -272,9 +303,13 @@ Map<String, FileEntry> _parseFiles(Object? raw, String where) {
 
 FileEntry _parseFile(Object? raw, String where) {
   final map = _asObject(raw, where);
+  final size = _int(map, 'size', where);
+  if (size < 0) {
+    throw PublishError('$where.size must not be negative, got $size');
+  }
   return FileEntry(
     url: _string(map, 'url', where),
-    size: _int(map, 'size', where),
+    size: size,
     sha256: _string(map, 'sha256', where),
   );
 }
@@ -294,6 +329,53 @@ int _int(Map<String, Object?> map, String key, String where) {
   final value = map[key];
   if (value is int) return value;
   throw PublishError('$where.$key is missing or not an integer');
+}
+
+// --- versions ---------------------------------------------------------------
+
+/// A version `major.minor.patch`, compared numerically per component.
+class _Version implements Comparable<_Version> {
+  const _Version(this.major, this.minor, this.patch);
+
+  /// Throws [PublishError] for anything that is not exactly `X.Y.Z`.
+  factory _Version.parse(String text) {
+    final m = _versionPattern.firstMatch(text);
+    final major = int.tryParse(m?.group(1) ?? '');
+    final minor = int.tryParse(m?.group(2) ?? '');
+    final patch = int.tryParse(m?.group(3) ?? '');
+    if (major == null || minor == null || patch == null) {
+      throw PublishError("version must look like 1.2.3, got '$text'");
+    }
+    return _Version(major, minor, patch);
+  }
+
+  static final RegExp _versionPattern = RegExp(r'^(\d+)\.(\d+)\.(\d+)$');
+
+  final int major;
+  final int minor;
+  final int patch;
+
+  @override
+  int compareTo(_Version other) {
+    if (major != other.major) return major.compareTo(other.major);
+    if (minor != other.minor) return minor.compareTo(other.minor);
+    return patch.compareTo(other.patch);
+  }
+}
+
+/// [entries] sorted by version, newest first. Entries with the same version
+/// (only possible in a hand-edited file) keep their relative order.
+List<ReleaseEntry> _newestFirst(Iterable<ReleaseEntry> entries) {
+  final list = entries.toList();
+  final decorated = [
+    for (var i = 0; i < list.length; i++)
+      (index: i, version: _Version.parse(list[i].version), entry: list[i]),
+  ];
+  decorated.sort((a, b) {
+    final c = b.version.compareTo(a.version);
+    return c != 0 ? c : a.index.compareTo(b.index);
+  });
+  return [for (final d in decorated) d.entry];
 }
 
 // --- dates ------------------------------------------------------------------

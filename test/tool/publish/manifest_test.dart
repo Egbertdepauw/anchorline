@@ -152,6 +152,75 @@ void main() {
       expect(_versions(next), ['1.2.0', '1.1.0']);
     });
 
+    test('a hotfix for an older line does not become latest', () {
+      var m = Manifest.empty();
+      for (final v in ['1.1.0', '1.2.0']) {
+        m = addRelease(m, _release(v));
+      }
+      expect(_versions(m), ['1.2.0', '1.1.0']);
+
+      final next = addRelease(m, _release('1.1.1'));
+      expect(next.latest!.version, '1.2.0');
+      expect(next.previous.map((e) => e.version), ['1.1.1', '1.1.0']);
+    });
+
+    test('after a rollback to 1.1.0, publishing 1.1.1 makes it latest', () {
+      var m = Manifest.empty();
+      for (final v in ['1.1.0', '1.2.0']) {
+        m = addRelease(m, _release(v));
+      }
+      m = rollback(m, '1.1.0');
+      expect(_versions(m), ['1.1.0', '1.2.0']);
+
+      final next = addRelease(m, _release('1.1.1'));
+      expect(next.latest!.version, '1.1.1');
+      expect(next.previous.map((e) => e.version), ['1.2.0', '1.1.0']);
+    });
+
+    test('previous stays sorted newest first whatever the publish order', () {
+      var m = addRelease(Manifest.empty(), _release('1.3.0'));
+      for (final v in ['1.0.0', '1.2.0', '1.1.0', '1.2.1']) {
+        m = addRelease(m, _release(v));
+      }
+      expect(_versions(m), ['1.3.0', '1.2.1', '1.2.0', '1.1.0', '1.0.0']);
+    });
+
+    test('versions compare numerically, so 1.10.0 is above 1.9.0', () {
+      var m = addRelease(Manifest.empty(), _release('1.9.0'));
+      m = addRelease(m, _release('1.10.0'));
+      expect(m.latest!.version, '1.10.0');
+      expect(m.previous.map((e) => e.version), ['1.9.0']);
+
+      // A 1.9.x hotfix is below 1.10.0 and must not take over.
+      m = addRelease(m, _release('1.9.1'));
+      expect(m.latest!.version, '1.10.0');
+      expect(m.previous.map((e) => e.version), ['1.9.1', '1.9.0']);
+
+      // And publishing in the other order gives the same list.
+      var other = addRelease(Manifest.empty(), _release('1.10.0'));
+      other = addRelease(other, _release('1.9.0'));
+      expect(_versions(other), ['1.10.0', '1.9.0']);
+    });
+
+    test('a hotfix version that is already published is still rejected', () {
+      var m = addRelease(Manifest.empty(), _release('1.2.0'));
+      m = addRelease(m, _release('1.1.1'));
+      expect(
+        () => addRelease(m, _release('1.1.1', build: 9)),
+        _publishError('already published'),
+      );
+    });
+
+    test('a version that is not X.Y.Z is rejected', () {
+      for (final v in ['1.2', 'v1.2.0', '1.2.0-beta', '']) {
+        expect(
+          () => addRelease(Manifest.empty(), _release(v)),
+          _publishError('version'),
+          reason: "'$v'",
+        );
+      }
+    });
+
     test('returns a new manifest and leaves the input untouched', () {
       final m = addRelease(Manifest.empty(), _release('1.1.0'));
       final before = m.encode();
@@ -244,16 +313,55 @@ void main() {
       }
     });
 
-    test('a non-UTC now is converted to UTC before taking the date', () {
+    test('an instant given with a UTC offset is judged by its UTC date', () {
+      // DateTime.parse turns '+05:00' into the equivalent UTC instant:
       // 2026-11-20 01:00 at +05:00 is 2026-11-19 20:00 UTC, so the cutoff is
       // 2026-11-05 and that day is still kept.
-      final local = DateTime.parse('2026-11-20T01:00:00+05:00');
+      final withOffset = DateTime.parse('2026-11-20T01:00:00+05:00');
       final m = Manifest(
         latest: _nightly(150, '2026-11-19'),
         previous: [_nightly(149, '2026-11-05'), _nightly(148, '2026-11-04')],
       );
-      final next = addNightly(m, _nightly(151, '2026-11-20'), now: local);
+      final next = addNightly(m, _nightly(151, '2026-11-20'), now: withOffset);
       expect(next.previous.map((e) => e.build), [150, 149]);
+    });
+
+    test('a local-time now is converted to UTC before taking the date', () {
+      // toLocal() gives a value whose own calendar date can differ from its
+      // UTC date. That only happens on a machine that is not on UTC, so this
+      // test discriminates (fails without .toUtc()) on such machines only;
+      // on a UTC machine it passes either way.
+      for (final instant in [
+        DateTime.utc(
+          2026,
+          11,
+          20,
+          23,
+          30,
+        ), // local date is the 21st east of UTC
+        DateTime.utc(2026, 11, 20, 0, 30), // local date is the 19th west of UTC
+      ]) {
+        final m = Manifest(
+          latest: _nightly(150, '2026-11-19'),
+          previous: [_nightly(149, '2026-11-06'), _nightly(148, '2026-11-05')],
+        );
+        final next = addNightly(
+          m,
+          _nightly(151, '2026-11-20'),
+          now: instant.toLocal(),
+        );
+        expect(next.previous.map((e) => e.build), [
+          150,
+          149,
+        ], reason: '${instant.toLocal()}');
+      }
+    });
+
+    test('the old latest is pruned too when it is older than the cutoff', () {
+      final m = Manifest(latest: _nightly(150, '2026-10-01'));
+      final next = addNightly(m, _nightly(151, '2026-11-20'), now: now);
+      expect(next.latest!.build, 151);
+      expect(next.previous, isEmpty);
     });
 
     test('keep is configurable', () {
@@ -311,6 +419,19 @@ void main() {
     test('rolling back to an older previous keeps the others in order', () {
       final m = rollback(threeReleases(), '1.0.0');
       expect(_versions(m), ['1.0.0', '1.2.0', '1.1.0']);
+    });
+
+    test('previous is newest first after a rollback, and after another', () {
+      var m = Manifest.empty();
+      for (final v in ['1.0.0', '1.1.0', '1.2.0', '1.3.0']) {
+        m = addRelease(m, _release(v));
+      }
+      m = rollback(m, '1.1.0');
+      expect(_versions(m), ['1.1.0', '1.3.0', '1.2.0', '1.0.0']);
+      m = rollback(m, '1.0.0');
+      expect(_versions(m), ['1.0.0', '1.3.0', '1.2.0', '1.1.0']);
+      m = rollback(m, '1.3.0');
+      expect(_versions(m), ['1.3.0', '1.2.0', '1.1.0', '1.0.0']);
     });
 
     test('an unknown version is rejected', () {
@@ -411,6 +532,92 @@ void main() {
           jsonEncode({'format': 1, 'latest': null, 'previous': 'x'}),
         ),
         _publishError(),
+      );
+    });
+
+    test('format given as a string is rejected', () {
+      expect(
+        () => Manifest.parse('{"format":"1","latest":null,"previous":[]}'),
+        _publishError('format'),
+      );
+    });
+
+    test('a build that is zero or negative is rejected', () {
+      String doc(int build) => jsonEncode({
+        'format': 1,
+        'latest': {
+          'version': '1.0.0',
+          'build': build,
+          'date': '2026-11-03',
+          'notes': '',
+          'files': <String, Object?>{},
+        },
+        'previous': <Object?>[],
+      });
+      expect(() => Manifest.parse(doc(1)), returnsNormally);
+      expect(() => Manifest.parse(doc(0)), _publishError('build'));
+      expect(() => Manifest.parse(doc(-3)), _publishError('build'));
+    });
+
+    test(
+      'a file with a missing url or sha256 or a negative size is rejected',
+      () {
+        String doc(Map<String, Object?> file) => jsonEncode({
+          'format': 1,
+          'latest': {
+            'version': '1.0.0',
+            'build': 1,
+            'date': '2026-11-03',
+            'notes': '',
+            'files': {'macos': file},
+          },
+          'previous': <Object?>[],
+        });
+        final good = <String, Object?>{'url': 'u', 'size': 0, 'sha256': 'x'};
+        expect(() => Manifest.parse(doc(good)), returnsNormally);
+
+        final noUrl = Map<String, Object?>.of(good)..remove('url');
+        expect(() => Manifest.parse(doc(noUrl)), _publishError('url'));
+
+        final noSha = Map<String, Object?>.of(good)..remove('sha256');
+        expect(() => Manifest.parse(doc(noSha)), _publishError('sha256'));
+
+        final noSize = Map<String, Object?>.of(good)..remove('size');
+        expect(() => Manifest.parse(doc(noSize)), _publishError('size'));
+
+        final negative = Map<String, Object?>.of(good)..['size'] = -1;
+        expect(() => Manifest.parse(doc(negative)), _publishError('size'));
+      },
+    );
+
+    test('a malformed entry inside previous is rejected and located', () {
+      final good = <String, Object?>{
+        'version': '1.0.0',
+        'build': 1,
+        'date': '2026-11-03',
+        'notes': '',
+        'files': <String, Object?>{},
+      };
+      final broken = Map<String, Object?>.of(good)..remove('version');
+      expect(
+        () => Manifest.parse(
+          jsonEncode({
+            'format': 1,
+            'latest': good,
+            'previous': [broken],
+          }),
+        ),
+        _publishError('previous[0].version'),
+      );
+      expect(
+        () => Manifest.parse(
+          jsonEncode({
+            'format': 1,
+            'latest': good,
+            'previous': [good, 'not an object'],
+          }),
+        ),
+        _publishError('previous[1]'),
       );
     });
 
@@ -543,6 +750,24 @@ void main() {
       expect(out.latest!.files['macos-universal']!.size, 2);
       expect(out.latest!.files['macos-universal']!.sha256, 'bb');
       expect(m.encode(), input);
+    });
+  });
+
+  group('ReleaseEntry', () {
+    test('the constructor rejects a date that is not YYYY-MM-DD', () {
+      for (final date in ['yesterday', '2026-02-31', '2026-1-5', '']) {
+        expect(
+          () => ReleaseEntry(
+            version: '1.0.0',
+            build: 1,
+            date: date,
+            notes: '',
+            files: const {},
+          ),
+          _publishError('date'),
+          reason: "'$date'",
+        );
+      }
     });
   });
 
