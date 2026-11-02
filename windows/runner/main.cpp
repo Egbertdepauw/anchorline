@@ -2,14 +2,9 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include "app_identity.h"
 #include "flutter_window.h"
 #include "utils.h"
-
-// Window title. CMake passes the channel's name (see windows/CMakeLists.txt);
-// a build without the define is the release.
-#ifndef APP_DISPLAY_NAME
-#define APP_DISPLAY_NAME "Anchorline"
-#endif
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {

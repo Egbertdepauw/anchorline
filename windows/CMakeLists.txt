@@ -11,15 +11,16 @@ set(BINARY_NAME "Anchorline")
 # identity; unset, or any other value, builds the release. The environment is
 # read when CMake configures, and `flutter build` re-configures on every run.
 #
-# APP_DISPLAY_NAME is the window title and the Windows product name
-# (runner/Runner.rc). The product name decides the support folder,
-# %APPDATA%\De Spaankamer\<product name>, which lib/data/app_data_folder.dart
-# pins for the data folder too. BINARY_NAME stays the same for both channels:
-# each installs into its own folder.
+# The runner gets this as a value-less compile flag (runner/CMakeLists.txt) and
+# runner/app_identity.h turns it into the display name: the window title and
+# the Windows product name (runner/Runner.rc). The product name decides the
+# support folder, %APPDATA%\De Spaankamer\<product name>, which
+# lib/data/app_data_folder.dart pins for the data folder too. BINARY_NAME stays
+# the same for both channels: each installs into its own folder.
 if("$ENV{ANCHORLINE_CHANNEL}" STREQUAL "nightly")
-  set(APP_DISPLAY_NAME "Anchorline Nightly")
+  set(ANCHORLINE_NIGHTLY ON)
 else()
-  set(APP_DISPLAY_NAME "Anchorline")
+  set(ANCHORLINE_NIGHTLY OFF)
 endif()
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent

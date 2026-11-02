@@ -206,11 +206,11 @@ flutter build windows --release
 :: matches what the landing page expects.
 :: Replace 1.0.0 with whatever's in pubspec.yaml's version field.
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ^
-  /DMyAppVersion=1.0.0 ^
+  /DMyAppVersion=<V> /DMyAppBuild=<N> /DChannel=release ^
   windows\installer\anchorline.iss
 ```
 
-Output: `windows\installer\Output\Anchorline-Setup-1.0.0.exe`. Upload
+Output: `windows\installer\Output\Anchorline-<V>-windows-x64.exe`. Upload
 to R2 as `anchorline-setup-1.0.0-beta.4.exe` (see Section 6).
 
 ### 4b. SmartScreen warning
@@ -268,7 +268,7 @@ npx wrangler r2 object put \
 # Windows .exe installer (scp it across from the Windows VM first)
 npx wrangler r2 object put \
   anchorline-downloads/anchorline-setup-1.0.0-beta.4.exe \
-  --file=./Anchorline-Setup-1.0.0.exe \
+  --file=./Anchorline-<V>-windows-x64.exe \
   --content-type=application/vnd.microsoft.portable-executable
 ```
 

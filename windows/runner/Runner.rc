@@ -2,6 +2,7 @@
 //
 #pragma code_page(65001)
 #include "resource.h"
+#include "app_identity.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
 /////////////////////////////////////////////////////////////////////////////
@@ -70,12 +71,6 @@ IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
 #define VERSION_AS_STRING FLUTTER_VERSION
 #else
 #define VERSION_AS_STRING "1.0.0"
-#endif
-
-// The channel's name, passed by CMake (see windows/CMakeLists.txt). ProductName
-// decides the Windows support folder, so the nightly must not share it.
-#if !defined(APP_DISPLAY_NAME)
-#define APP_DISPLAY_NAME "Anchorline"
 #endif
 
 VS_VERSION_INFO VERSIONINFO

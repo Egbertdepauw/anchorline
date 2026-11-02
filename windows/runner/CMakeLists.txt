@@ -27,9 +27,12 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_MINOR=${FLUTT
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_PATCH=${FLUTTER_VERSION_PATCH}")
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_BUILD=${FLUTTER_VERSION_BUILD}")
 
-# Add the preprocessor definition for the app's display name (window title in
-# main.cpp, product name in Runner.rc); see windows/CMakeLists.txt.
-target_compile_definitions(${BINARY_NAME} PRIVATE "APP_DISPLAY_NAME=\"${APP_DISPLAY_NAME}\"")
+# Add the preprocessor flag for the nightly identity (see windows/CMakeLists.txt
+# and app_identity.h). It has no value, so it passes cleanly to the C++ compiler
+# and the resource compiler alike.
+if(ANCHORLINE_NIGHTLY)
+  target_compile_definitions(${BINARY_NAME} PRIVATE "ANCHORLINE_NIGHTLY")
+endif()
 
 # Disable Windows macros that collide with C++ standard library functions.
 target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
