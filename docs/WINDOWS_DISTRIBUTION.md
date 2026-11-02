@@ -80,8 +80,17 @@ bare .exe does not run without its siblings. Sanity checks:
 Output: `windows\installer\Output\Anchorline-Setup-<x.y.z>.exe` — a
 per-machine (admin-elevated) installer that bundles the entire
 `Release\` folder, creates Start-menu/desktop entries, and preserves
-user data (`%LOCALAPPDATA%` database) on uninstall. Details and the
-AppId contract live as comments in `anchorline.iss`.
+user data on uninstall (databases, Subsurface clone and BLE log in
+`%LOCALAPPDATA%\De Spaankamer\Anchorline`, preferences and secrets in
+`%APPDATA%\De Spaankamer\Anchorline`). Details and the AppId contract
+live as comments in `anchorline.iss`.
+
+Builds before issue #135 kept `ccrlogger.sqlite`, `powersync.db`,
+`subsurface_clone\` and `ble-debug.log` loose in the user's Documents
+folder. The app moves them to `%LOCALAPPDATA%\De Spaankamer\Anchorline`
+on its first start; anything it can't move (a file held open by another
+program, for example) stays in Documents and is used from there until a
+later start succeeds. `lib/data/app_data_folder.dart` decides the folder.
 
 (Inno Setup 7: same command with `Inno Setup 7\ISCC.exe`.)
 

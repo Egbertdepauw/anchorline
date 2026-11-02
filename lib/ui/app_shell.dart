@@ -4,11 +4,10 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/material.dart' as material show Column;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart' hide SyncStatus;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/app_data_folder.dart';
 import '../data/db/database.dart';
 import '../data/db/dive_annotations_dao.dart';
 import '../data/db/dive_attachments_dao.dart';
@@ -125,8 +124,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final AttachmentObjectWiper _attachmentObjectWiper;
 
   // Subsurface git sync (Phase E). Constructed asynchronously because
-  // path_provider.getApplicationDocumentsDirectory() returns a Future
-  // and our [initState] is sync. Until [_initSubsurfaceSync] resolves,
+  // appDataPaths() returns a Future and our [initState] is sync. Until [_initSubsurfaceSync] resolves,
   // these stay null and the Settings UI hides the Subsurface card.
   // SettingsScreen already gates the section behind non-null checks.
   late final SubsurfaceCredentialsSource _subsurfaceCredentials;
@@ -240,15 +238,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _subsurfaceCredentials = SecureStorageSubsurfaceCredentials();
     // Fire-and-forget — _initSubsurfaceSync calls setState when the
     // orchestrator is ready, which re-renders SettingsScreen with the
-    // Subsurface card visible. Errors are logged but non-fatal: if
-    // path_provider fails the section just stays hidden.
+    // Subsurface card visible. Errors are logged but non-fatal: if the
+    // data folder can't be resolved the section just stays hidden.
     _initSubsurfaceSync();
   }
 
   Future<void> _initSubsurfaceSync() async {
     try {
-      final docsDir = await getApplicationDocumentsDirectory();
-      final cloneRoot = Directory(p.join(docsDir.path, 'subsurface_clone'));
+      final cloneRoot = Directory((await appDataPaths()).subsurfaceClone);
       if (!mounted) return;
       setState(() {
         _subsurfaceOrchestrator = SubsurfaceSyncOrchestrator(
