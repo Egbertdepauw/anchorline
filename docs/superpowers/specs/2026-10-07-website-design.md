@@ -151,11 +151,11 @@ publish command drops older entries from the list, but only when it
 publishes, and nightlies are only built when main has changed. So the
 list alone does not keep an old entry out, and the rule is part of the
 contract: **a reader (the site and the app) treats a nightly entry dated
-more than 14 days ago as unavailable.** When main has been quiet that
-long there is simply no nightly to download. The R2 lifecycle rule on
-the `nightly/` prefix deletes files after 15 days, one day longer, so a
-nightly that is listed and offered never points to a deleted file.
-Release files are kept.
+more than 14 days ago by UTC calendar date as unavailable.** When main
+has been quiet that long there is simply no nightly to download. The R2
+lifecycle rule on the `nightly/` prefix deletes files after 15 days, one
+day longer, so a nightly that is listed and offered never points to a
+deleted file. Release files are kept.
 
 **Sources in the Anchorline repository**
 
@@ -193,7 +193,8 @@ Each has a dry-run mode that prints what would change.
   and re-checks every five minutes.
 - The download page shows version, date, release notes and each file's
   checksum.
-- A nightly entry dated more than 14 days ago is not offered.
+- A nightly entry dated more than 14 days ago by UTC calendar date is not
+  offered.
 - Markdown is rendered to plain formatting only. Raw HTML and scripts in
   a text are not rendered.
 - Store links for iOS, macOS and Android are site settings; they do not
