@@ -2,33 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Build & development commands
-
-```bash
-# Run the app (debug, pick a device/simulator)
-flutter run
-
-# Run all tests
-flutter test
-
-# Run a single test file
-flutter test test/widget_test.dart
-
-# Static analysis (uses flutter_lints via analysis_options.yaml)
-flutter analyze
-
-# Get/update dependencies
-flutter pub get
-
-# Code generation (needed after changing Drift schemas, once Drift is added)
-dart run build_runner build --delete-conflicting-outputs
-
-# Format code
-dart format lib/ test/
-```
-
-**SDK requirement:** Dart ^3.11.5 (see pubspec.yaml `environment.sdk`).
-
 ## What this project is
 
 A mobile-first dive logging and analysis app for **technical and CCR divers**, with a deliberate focus on **Shearwater dive computers** (Petrel 1/2/3, Perdix / Perdix AI / Perdix 2, Peregrine / Peregrine TX, NERD 2). The audience is people diving JJ-CCR, SF2, X-CCR, Choptima, Liberty, and similar units that use a Petrel as the controller, plus OC tech divers using Perdix or Peregrine.
@@ -73,68 +46,6 @@ These are the load-bearing decisions. Violating them creates more pain than they
 7. **All user data syncs across signed-in devices.** Every device the user is signed in on must look at the same canonical state — dives, annotations, equipment, attachments (including the file bytes via R2), all of it. The only acceptable device-local state is (a) intentionally-not-synced raw inputs the parser can re-derive (raw BLE blobs), (b) transient transit state for in-flight operations (pending upload paths, last-imported-fingerprint per DC), and (c) caches that exist purely to avoid network round-trips (downloaded R2 bytes). Anything that affects what the user *sees* must sync. When adding a new entity, ask "if I edit this on the iPhone, will it appear on macOS without me thinking about it?" — if no, you're doing it wrong. New PowerSync-backed tables also need a corresponding line added to `infra/powersync-sync-rules.yaml` (and that file actually deployed to the PowerSync dashboard) before sync works end-to-end. They also need an explicit `grant ... to authenticated, service_role` in the migration that creates them. Supabase no longer auto-grants new tables, so without it every upload to that table fails with `permission denied` (see `supabase/README.md`; `lint_migrations.sh` enforces it).
 8. **Single commit point for dives.** Importing a dive is an atomic operation: the raw blob, the parsed dive, samples, events, and gases all commit together or not at all. Mid-import BLE disconnects must leave the database in a consistent state. This is the import-side analog of `flush()` in the existing libdc log extractor — keep it as one place in the code.
 
-## Repository layout (target)
-
-```
-lib/
-  shearwater/        # Pure-Dart Shearwater protocol parser + BLE transport
-    parser/          # Binary format parsing, no I/O dependency
-    ble/             # BLE transport, calls into parser
-    fixtures/        # (test only) known-good .bin files from dctool
-  data/
-    db/              # Drift schema + DAOs
-    models/          # Domain entities (Dive, SampleSet, Cell, etc.)
-    sample_codec/    # Columnar sample blob encode/decode
-  analysis/          # Derived computations: cell health, gas density, surfGF, etc.
-  ui/
-    screens/         # dive_list, dive_detail, import_flow, equipment, settings
-    widgets/         # profile_chart, cell_health_chart, ...
-    theme/
-  main.dart
-test/                # Unit tests; protocol parser is heavily tested against fixtures
-integration_test/    # End-to-end tests with a mocked BLE backend
-```
-
-The Shearwater parser must be **a pure Dart library with no Flutter or BLE dependencies**, so it can be unit-tested in isolation with `.bin` fixtures and so it stays portable (CLI tools, server-side reparse, etc.). The BLE transport is a thin layer that feeds bytes into the parser.
-
-## Phase 1 scope (what we are building first)
-
-1. Connect to a Shearwater DC over BLE, authenticate, read the dive list, download dives.
-2. Parse the binary into `Dive` + `SampleSet` + `Event` + `Gas` records.
-3. Persist to local SQLite via Drift.
-4. Display dive list (chronological, grouped by trip/month, color-coded by mode).
-5. Display dive detail with multi-trace profile chart (depth, PPO2 voted, setpoint, optional traces for cells, GF99, tank pressure, scrubber, solenoid fires).
-6. User-editable annotations: site, notes, buddies, conditions, rating, tags.
-7. Equipment: dive computers, unit configurations, cells, scrubber sessions, cylinders.
-8. Import flow as a guided multi-step UI with robust handling of BLE disconnects (per-dive atomic commits, resumable from where it stopped).
-9. Settings: units, default GF, default algorithm, theme (default dark), data export to Subsurface XML / UDDF, debug-mode raw blob viewer.
-
-## Explicitly NOT in Phase 1
-
-Listed so scope stays honest:
-
-- Cloud sync, accounts, multi-device — Phase 2.
-- Tissue compartment replay, bailout-from-any-point — Phase 3.
-- Cross-dive statistics dashboards — Phase 3 (the per-cell longitudinal view is Phase 1, but generalized stats are not).
-- Photos / media on dives — Phase 2 at earliest; rabbit hole.
-- Importing from non-Shearwater dive computers — Phase 4 if at all (probably via libdc FFI when we get there).
-- Public dive sharing, social features — likely never.
-- Web companion app — Phase 4 if at all.
-- Decompression planning (forward-looking, not analysis) — different app, do not merge.
-
-## Build order (recommended)
-
-This order isolates the risk and keeps something demonstrable at every step.
-
-1. **Bench-dump real binaries.** Pair a Petrel (ideally Petrel 3) and pull raw downloads with `dctool`. Verify byte-by-byte what's in the protocol. Specifically: scrubber time per-sample vs. sparse, cell mV resolution, solenoid fire encoding, voted-out semantics. An afternoon here saves weeks of design rework.
-2. **Pure-Dart binary parser, fed from `.bin` fixtures.** No BLE yet. Unit tests against known-good `dctool` output. By the time this works the protocol is well understood.
-3. **BLE transport, single dive happy path.** Connect, auth, read dive list, pull one dive, parse. No incremental sync, no resumability.
-4. **Data model + Drift schema.** Informed by what the parser actually emits, not by a priori design.
-5. **Persistence + dedup.** Stable dive identity hash, atomic import, raw blob retention.
-6. **UI in order:** dive list → dive detail (with profile) → import flow → equipment → settings. Profile chart is the hardest UI piece; don't rush it.
-7. **Multi-dive import, resumability, error recovery.** Once the happy path is solid.
-8. **Private alpha with 3–5 CCR divers.** Real dive computers, real diving. Their feedback shapes the polish phase.
-
 ## Working in this project
 
 - **Pure-Dart Shearwater parser is sacred.** No Flutter imports, no BLE imports, no I/O. It takes bytes, returns parsed structures. This is the most important architectural boundary in the project.
@@ -146,120 +57,13 @@ This order isolates the risk and keeps something demonstrable at every step.
 - **`dive_id` is `hash(serial, dc_dive_number, start_timestamp_utc)`.** Don't trust just the timestamp; Petrels have had clock issues. Don't trust just the dive number; serial is the disambiguator across multiple computers.
 - **CCR mode is the default UI assumption.** OC dives hide the CCR-specific fields; they don't restructure the layout.
 - **Dark theme is the default.** Tech divers dive in dark places and surface in dark cars.
-- **Use agents whenever possible.** This is a solo-dev project and the codebase is now large enough that doing every line of every feature in the foreground is wasteful. For any task that's a self-contained build (a new DAO + tests, a new widget + tests, a new parser, a new screen wired into existing seams), dispatch a build agent in the background. Foreground work belongs to: integration steps that touch seams the agent can't see, decisions that need user input, and anything where the agent's output needs to be vetted against running code before moving on. Parallelize agents whenever the file sets don't overlap. Keep the prompts concrete: name the files to read, the files to write, the conventions to mirror, and the verify-before-returning steps (`flutter analyze` clean, `flutter test` passing).
+- **Use agents whenever possible.** This is a solo-dev project and the codebase is now large enough that doing every line of every feature in the foreground is wasteful. For any task that's a self-contained build (a new DAO + tests, a new widget + tests, a new parser, a new screen wired into existing seams), dispatch a build agent in the background. Foreground work belongs to: integration steps that touch seams the agent can't see, decisions that need user input, and anything where the agent's output needs to be vetted against running code before moving on. Parallelize agents whenever the file sets don't overlap. Keep the prompts concrete: name the files to read, the files to write, the conventions to mirror, and the verify-before-returning steps (`flutter analyze` clean, `flutter test` passing). Pass `model: "sonnet"` for routine build agents; keep the default model for design, debugging and review work.
 
-### Known third-party defects + local workarounds
+### Where the rest lives
 
-- **`git2dart_binaries` packaging defects — RESOLVED by pinning ≥1.12.1 (issue #74).** Historical context so nobody re-introduces workarounds: versions ≤1.10.3 had four macOS packaging bugs (three fixed upstream in 1.10.4 via DartGit-dev/git2dart_binaries#14); 1.10.4 still shipped a `libssh2.1.dylib` linked against Homebrew's absolute libcrypto path, which we worked around with a committed `macos/vendored/libcrypto.3.dylib` + a `Fix git2dart libcrypto` Run Script build phase; and 1.10.4's **Windows** packaging was broken outright (bundled-libraries manifest referenced `libcrypto-1_1-x64.dll` never shipped and `libgit2-1.6.2.dll` misnamed; runtime chain needed a `libcrypto-4-x64.dll` that didn't exist → the CMake INSTALL step failed, so Windows never built).
-   - **Upstream fixed both platforms**: Windows OpenSSL bundling in #20 (1.11.4+; verified coherent in 1.12.1 — ships `libcrypto-3`/`libssl-3` DLLs, manifest globs only existing files, loader pre-loads OpenSSL before libssh2), and macOS now ships a single **self-contained `libgit2.dylib`** (libssh2/OpenSSL statically linked; links only system libz/libiconv/libSystem).
-   - **All local workarounds were deleted** when the pin moved to `git2dart ^0.5.4` + `git2dart_binaries ^1.12.1`: `macos/vendored/`, `macos/scripts/fix_git2dart_libcrypto.sh`, and build phase `D1C2071700000000000C1207` are gone. If a future `Library not loaded`/INSTALL-copy failure reappears after a binaries bump, audit the shipped files vs. the manifest in the pub archive first (`llvm-objdump -p <dll>` for import chains) rather than resurrecting the old fixups.
-
-- **Xcode 26 + Command Line Tools "MacOSX SDK shadowing" breaks iOS builds.** Symptom (release-mode `flutter build ios` or `flutter build ipa` only — debug `flutter run` is unaffected):
-  ```
-  ld: building for 'iOS', but linking in dylib
-  (/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk/usr/lib/libobjc.A.tbd)
-  built for 'macOS macCatalyst zippered(macOS/Catalyst)'
-  ```
-  Both Xcode.app's iPhoneOS SDK and CommandLineTools' MacOSX SDK ship a `usr/lib/libobjc.A.tbd`. On Xcode 26 the linker's fallback resolution finds the CLT MacOSX one first — even with `xcode-select -p`, `DEVELOPER_DIR`, `-isysroot`, and `SUPPORTS_MACCATALYST=NO` all set correctly. iPhoneOS's `libobjc.A.tbd` only carries iOS targets, CLT MacOSX's only carries macOS/maccatalyst targets, so the build fails the platform check at link time.
-  **Workaround applied locally on egbert's MBP** — CLT's SDK directory moved aside:
-  ```bash
-  sudo mv /Library/Developer/CommandLineTools/SDKs /Library/Developer/CommandLineTools/SDKs.bak
-  ```
-  Reversible if anything that relies on CLT's MacOSX SDK headers (some Homebrew formulas compiled from source, some Python native extensions) breaks — `sudo mv` it back.
-  Defensive `SUPPORTS_MACCATALYST = NO` is also set in `ios/Podfile`'s `post_install` (commit 5582556) — doesn't fix THIS issue alone but covers other future pods that might trip on the same class of bug.
-
-- **Android Studio JBR upgrade to JDK 25 broke every Android Gradle build — RESOLVED by Gradle 9.3.1 + AGP 8.13.2 + KGP 2.3.20 (issue #80).** Flutter runs Gradle on Android Studio's bundled JBR (`flutter doctor -v` → "Java binary at"), not on `JAVA_HOME`. When an Android Studio update moved that JBR to JDK 25, Gradle 8.14 failed in ~2 s with a bare `What went wrong: 25.0.2`. That message is an `IllegalArgumentException` from `JavaVersion.parse` in Gradle's embedded Kotlin compiler, which compiles `settings.gradle.kts` and can't parse the new version string. Gradle only runs on Java 25 from 9.1.0.
-   - **The three bumps are coupled.** KGP 2.2.x is only certified up to Gradle 8.14, so KGP moved to 2.3.20 (Flutter 3.44's max-known KGP). R8 in AGP versions older than 8.13.2 lacks Kotlin 2.3 metadata support, so AGP moved to 8.13.2. KGP 2.3 also turns `android { kotlinOptions {} }` into a script compile error, so `android/app/build.gradle.kts` now uses the top-level `kotlin { compilerOptions {} }` block from Flutter's template.
-   - **Kotlin: `:app` no longer applies KGP (#83). Don't add `id("kotlin-android")` back.** Flutter 3.44's Gradle plugin (`detectApplyingKotlinGradlePlugin`) applies `kotlin-android` itself to every module whose build file doesn't declare it, and prints the "migrate to Built-in Kotlin" warning for the app module if it does. KGP therefore stays in `settings.gradle.kts` as `apply false` so it's on the classpath; the app's `kotlin { compilerOptions {} }` block uses the KGP that Flutter applies. The remaining "plugins that apply KGP" warning (file_picker, package_info_plus, pdfx, sentry_flutter, share_plus, wakelock_plus) is expected until #82. The file_picker entry is a false positive: 11.x only applies KGP on AGP < 9, which Flutter's detection can't see (bullet after next).
-   - **Stayed on AGP 8.x on purpose: AGP 9 is blocked, tracked in #82.** No `file_picker` release builds on Flutter 3.44 + AGP 9 without patching it from our Gradle files. We're on 11.x for the Android path-traversal fix (#85), and don't go past 11.x before #82. 8.x hard-codes `compileSdk 34`, which AGP 9's new library-module AAR-metadata check rejects. 11.x fools Flutter's KGP detection (next bullet). 12.x+ needs `win32` 6, which drags in `share_plus` 13. When it's unblocked, target AGP **9.0.1** (Flutter 3.44's template; KGP 2.3.20 is certified only up to AGP 9.0.0), not 9.1. On AGP 9 with Flutter 3.44, `android.builtInKotlin` and `android.newDsl` in `android/gradle.properties` must stay `false`: `true` needs Flutter ≥ 3.47 and a Flutter Gradle plugin off the legacy variant API. They do nothing on AGP 8. Don't delete the lines either: Flutter's migrator re-adds them.
-   - **Flutter's KGP detection is a regex over the plugin's build file, not a check of what's applied.** A plugin that applies KGP only on AGP < 9 through a Groovy `apply plugin: 'org.jetbrains.kotlin.android'` line (file_picker 11.x) looks as if it applies KGP. On AGP 9 with `builtInKotlin=false`, neither the plugin nor Flutter then applies KGP, and the plugin's Kotlin is never compiled. The symptom is `GeneratedPluginRegistrant.java: cannot find symbol <SomePlugin>`. Plugins that use `project.pluginManager.apply(...)` or Kotlin-DSL `apply(plugin = ...)` aren't matched, so Flutter applies KGP for them.
-   - **Don't fix the next JBR jump with `flutter config --jdk-dir`.** That setting is global and per-machine, and it silently diverges from other machines. Bump the wrapper instead, staying inside [Gradle's compatibility matrix](https://docs.gradle.org/current/userguide/compatibility.html) and Flutter's `maxKnownAndSupportedGradleVersion` (`packages/flutter_tools/lib/src/android/gradle_utils.dart` in the Flutter SDK). Java 26 would need Gradle ≥ 9.4.0, which is above what Flutter 3.44 knows about (9.3.1). Check the KGP/AGP rows of the [KGP compatibility table](https://kotlinlang.org/docs/gradle-configure-project.html) at the same time.
-
-## Sync recovery procedures
-
-These are the recovery paths for issues we've actually hit on the live deployment. Follow them in order — most are fast and safe, the last is destructive.
-
-### PowerSync replication slot stalls Postgres
-
-Symptom: app sync indicator goes red. Supabase dashboard shows Database/PostgREST/Storage all "Unhealthy". PowerSync's dashboard issues panel reports `connect ECONNREFUSED ...:5432`, `No replicated commit in more than NNNNNs`, `postgres query failed`. Restarting the project from the dashboard brings it back up still unhealthy.
-
-What's happening: PowerSync's connection died at some point; its logical-replication slot keeps WAL pinned in Postgres; on the NANO compute tier the WAL partition fills up; Postgres stops accepting connections. A restart can't recover because the slot still pins WAL on startup.
-
-Recovery (try in order):
-
-1. **Drop the slot via SQL Editor / Management API SQL endpoint** while Postgres is still partially responsive:
-   ```sql
-   SELECT pg_terminate_backend(active_pid)
-   FROM pg_replication_slots WHERE active_pid IS NOT NULL;
-   SELECT pg_drop_replication_slot(slot_name) FROM pg_replication_slots;
-   ```
-2. If SQL paths all return `ECONNREFUSED`, the project is fully wedged. Best lever left: **`POST /v1/projects/{ref}/pause` then `POST /v1/projects/{ref}/restore` via the Management API** (the dashboard's pause button silently no-ops once Postgres is dead, but the API call sometimes still goes through).
-3. If pause/restore also fails, **recreate the project from scratch** (`POST /v1/projects` with same org_slug + region). Apply migrations from `supabase/migrations/` (the bundle script in `/tmp/ccrl_fresh_setup.sql` is the consolidated form). Patch the new project ref + anon key into `lib/sync/cloud/cloud_config.dart` and `worker/wrangler.toml`. Repoint PowerSync's source-DB connection in PowerSync's dashboard. Redeploy worker (`cd worker && npx wrangler deploy`). User does a fresh import on the device.
-
-Long-term mitigation: move `dive_samples` out of replication (it's the heaviest sync table by an order of magnitude — its WAL volume is what makes the NANO tier vulnerable), or upgrade tier so the WAL partition is bigger.
-
-### "Reset Everything" doesn't fully clear local state
-
-`Settings → Reset everything` calls `psDb.disconnectAndClear()` which is supposed to wipe the local PowerSync SQLite. **In practice it leaves rows behind** — confirmed 2026-05-10. Subsequent bootstrap-imports then dedup-skip those stale rows by `(dcSerial, startTime)` and never re-parse, so old broken data persists.
-
-If a re-import doesn't fix the data, the cleanest workaround is to **delete the local PowerSync SQLite file directly**:
-```bash
-rm /Users/<you>/Library/Containers/com.example.ccrlogger/Data/Documents/powersync.db*
-```
-then restart the app and re-import. The wildcard catches `.db`, `.db-wal`, and `.db-shm`.
-
-Long-term fix: rework `Settings → Reset everything` to also `rm` the SQLite file as a fallback, or file an upstream PowerSync bug.
-
-### Bootstrap clone goes stale relative to user's main repo
-
-CCRLog keeps an internal git clone of the Subsurface repo at `~/Library/Containers/com.example.ccrlogger/Data/Documents/subsurface_clone/<email>-bootstrap/`. Bootstrap-import reads from **this clone**, not from any external git checkout the user might also have.
-
-If the user's Subsurface app re-uploaded older dives with newer DC recordings (e.g. switching primary DC), the cloud branch updates — but **CCRLog's clone is never refreshed across bootstrap runs**. Result: bootstrap re-parses stale data, producing wrong PPO2/setpoint traces because the older Subsurface format uses sparse `dc_supplied_ppo2=` and frequent rounded `po2=` tokens, whereas the modern Petrel-3 format inverts that ratio.
-
-Recovery: delete the clone alongside the local DB:
-```bash
-rm -rf ~/Library/Containers/com.example.ccrlogger/Data/Documents/subsurface_clone
-rm /Users/<you>/Library/Containers/com.example.ccrlogger/Data/Documents/powersync.db*
-```
-then restart and re-import — bootstrap will re-clone fresh.
-
-Long-term fix: bootstrap should `git fetch && git reset --hard origin/<branch>` before reading, or compare commit hashes and re-clone on mismatch.
-
-### Sign in BEFORE bootstrap-import, not after
-
-Sample data flowing through `dao.importDive()` stamps `owner_id` from the current Supabase session at write time. If the user is **not signed in** when bootstrap runs, every `dives` and `dive_samples` row gets `owner_id = NULL`. Sync indicator goes green because there's no auth needed locally — but the moment the user signs in, PowerSync's CRUD upload fails every row with `new row violates row-level security policy for table "dives"`.
-
-The existing `OwnerIdBackfiller` (run on first sign-in) **omits `dives` and `dive_samples`** — it only stamps the seven smaller equipment/annotation tables. So a sign-in after a not-signed-in import doesn't fix it; the only recovery today is to wipe local state and re-import while signed in.
-
-Long-term fix: extend `OwnerIdBackfiller` with SQL `UPDATE` paths that stamp `owner_id = $userId WHERE owner_id IS NULL` against the existing PowerSync local rows for `dives` and `dive_samples`. The current backfiller does Drift→PowerSync copies; this needs to be an in-place PowerSync update instead.
-
-### Subsurface-Cloud branch corruption from CCRLog write-direction sync
-
-Historical incident (2026-05-08): an early version of the CCRLog → Subsurface git write-direction sync emitted samples in the older Subsurface format (sparse `dc_supplied_ppo2=`, frequent `po2=`) and force-pushed a commit titled "CCRLog sync — N dives" to Subsurface Cloud, **overwriting the user's authoritative recordings** for those dives. The user's main repo at `~/Dev/CCRLog/ss_git/...` retained the correct working-tree content because it hadn't fetched yet, but the cloud branch held the corrupt commit.
-
-A safety hold is currently in place in `sync_orchestrator.dart` that throws unconditionally to prevent the write-direction code from running until the planner is rewritten. **Do not remove that hold without first**:
-
-1. Making the serializer emit `dc_supplied_ppo2=` per-sample (current code only emits `po2=` based step values, which is what produced the broken output).
-2. Adding conflict resolution: when CCRLog's planned write would change a Divecomputer file in a way that loses data Subsurface previously recorded, **abort that per-dive write** rather than overwrite.
-
-If a user reports their Subsurface Cloud is corrupted again: have them force-push their main repo's HEAD over the cloud branch (`git push --force origin HEAD:<branch>`), reset Subsurface app's local cache (so it doesn't re-push the bad commit), then in CCRLog `rm -rf subsurface_clone` and re-bootstrap.
-
-## Stack-rank of features by user value
-
-When prioritizing within Phase 1 polish, this is roughly the order:
-
-1. Reliable, fast import from a Petrel (the table stake — if this is flaky, nothing else matters)
-2. Clean profile rendering with PPO2 + setpoint as first-class traces
-3. Per-cell mV inspection on a single dive
-4. Longitudinal per-cell mV trend across all dives on that cell
-5. Scrubber session tracking with minutes-used warnings
-6. Surface GF / CNS / OTU prominence in the dive summary
-7. Solenoid fire visualization
-8. Gas density / END overlays
-9. Bailout gas time tracking (which gases were breathed vs. carried)
-10. Trip / location organization
-
-Items 3 and 4 are the differentiator. Item 1 is the prerequisite for everything.
+- **Build/toolchain failures** (git2dart, Xcode 26 SDK shadowing, Gradle/AGP/KGP/JBR): `.claude/skills/toolchain-gotchas`. Hard rules from it: never resurrect the vendored libcrypto dylib or its build phase; don't add `id("kotlin-android")` back to `:app`; stay on AGP 8.x until #82; never fix a JBR jump with `flutter config --jdk-dir`.
+- **Live sync incidents** (PowerSync slot, Reset Everything, stale bootstrap clone, owner_id NULL, Subsurface Cloud corruption): `.claude/skills/sync-recovery`. Hard rule: **never remove the write-direction safety hold in `sync_orchestrator.dart`** until the serializer emits per-sample `dc_supplied_ppo2=` and per-dive conflict aborts exist. Users must sign in before bootstrap-import.
+- **Phase 1 scope, build order, feature stack-rank, extract_libdc_log fixture workflow**: `docs/PROJECT_PLAN.md`.
 
 ## Out of scope (forever, probably)
 
@@ -267,9 +71,3 @@ Items 3 and 4 are the differentiator. Item 1 is the prerequisite for everything.
 - Anything not Shearwater for the foreseeable future. The "expand to libdc" Phase 4 is conditional, not promised.
 - Social / sharing features beyond per-dive export. The audience self-selects toward people who don't want their dives on a feed.
 - Insurance / certification card storage, training records, etc. Adjacent but not core.
-
-## Notes on the related extract_libdc_log project
-
-There is a separate small project (`extract_libdc_log.py`) that extracts raw `.read.bin` and `.write.bin` byte streams from libdivecomputer logfiles produced by Subsurface or `dctool -vv`. That project is the practical workaround for the macOS limitation that `dctool` lacks a built-in CoreBluetooth BLE backend, so on macOS the workflow for capturing reference protocol traces is: have Subsurface do the BLE download with verbose logging enabled, save the libdc logfile, then run `extract_libdc_log.py` to recover the raw bytes that flowed over the wire.
-
-The `.read.bin` files produced by that tool are exactly the kind of fixtures this project's parser should be tested against. Treat the two projects as complementary: that one captures protocol traces from real dive computers on macOS, this one consumes them in tests.
