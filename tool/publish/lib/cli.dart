@@ -14,19 +14,29 @@ const String publishUsage = '''
 Usage: dart tool/publish/publish.dart <action> [options]
 
 Actions:
-  release   --version V --build N --notes-file F --file KEY=PATH ...
+  release   --version V --build N --notes-file F
+            --file windows-x64=PATH --file linux-x64=PATH
             [--force] [--dry-run]
   nightly   --version V --build N --file KEY=PATH ... [--notes-file F]
             [--dry-run]
   rollback  --version V [--dry-run]
 
-KEY is windows-x64, linux-x64 or macos. PATH ends in .exe, .AppImage or .dmg.
---force replaces a release that is already published.
+A release has exactly windows-x64 (.exe) and linux-x64 (.AppImage). A nightly
+has at least one of windows-x64, linux-x64 and macos (.dmg).
+Publishing what is already published (same version or build, same files)
+changes nothing and succeeds.
+--force replaces a release that is published with other files. The edge may
+keep serving the old file: purge the Cloudflare cache for the replaced URLs
+afterwards.
 --dry-run reads the bucket and prints the list that would be written; it
 uploads and writes nothing.
 
-Environment: DOWNLOADS_BASE_URL (not for rollback), R2_ACCOUNT_ID, R2_BUCKET,
-AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY.''';
+The list is updated by reading, changing and writing it back, without
+locking. Do not run this by hand while a publish job is running (CI runs one
+publish job per lane at a time).
+
+Environment: DOWNLOADS_BASE_URL (an https URL; not for rollback),
+R2_ACCOUNT_ID, R2_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY.''';
 
 /// Runs the publish command and returns its exit code. [environment] is the
 /// process environment, [bucketFactory] makes the bucket from it (the AWS CLI
@@ -298,11 +308,9 @@ _Environment _readEnvironment(Map<String, String> env, _Action action) {
 
   final baseUrl = env['DOWNLOADS_BASE_URL']!.trim();
   final uri = Uri.tryParse(baseUrl);
-  if (uri == null ||
-      !(uri.scheme == 'https' || uri.scheme == 'http') ||
-      uri.host.isEmpty) {
+  if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
     throw const _CliError(
-      'DOWNLOADS_BASE_URL must be an http(s) URL such as https://downloads.example.',
+      'DOWNLOADS_BASE_URL must be an https URL such as https://downloads.example.',
     );
   }
   return _Environment(baseUrl);
@@ -324,8 +332,9 @@ String _readNotes(_Options options) {
   return notes;
 }
 
-String _publishSummary(Lane lane, Manifest result, _Options options) {
-  final all = [?result.latest, ...result.previous];
+String _publishSummary(Lane lane, PublishResult result, _Options options) {
+  final manifest = result.manifest;
+  final all = [?manifest.latest, ...manifest.previous];
   final entry = all.firstWhere(
     (e) =>
         e.version == options.version &&
@@ -333,20 +342,31 @@ String _publishSummary(Lane lane, Manifest result, _Options options) {
   );
   final laneName = lane == Lane.releases ? 'release' : 'nightly';
   final b = StringBuffer(
-    options.dryRun
+    result.alreadyPublished
+        ? '$laneName ${entry.version} (build ${entry.build}) is already '
+              'published, nothing to do\n'
+        : options.dryRun
         ? 'Dry run: $laneName ${entry.version} (build ${entry.build})\n'
         : 'Published $laneName ${entry.version} (build ${entry.build})\n',
   );
   for (final file in entry.files.entries) {
     b.writeln('  ${file.key.padRight(11)}  ${file.value.url}');
   }
-  if (!identical(entry, result.latest)) {
+  final latest = manifest.latest;
+  if (!identical(entry, latest) && latest != null) {
     b.writeln(
-      '${entry.version} is listed under previous; the latest release is '
-      'still ${result.latest?.version}.',
+      lane == Lane.releases
+          ? '${entry.version} is listed under previous; the latest release '
+                'is still ${latest.version}.'
+          : 'build ${entry.build} is listed under previous; the latest '
+                'nightly is build ${latest.build}.',
     );
   }
-  _writeManifestPart(b, manifestKey(lane), result, options.dryRun);
+  if (result.alreadyPublished) {
+    b.writeln('${manifestKey(lane)} was not changed.');
+  } else {
+    _writeManifestPart(b, manifestKey(lane), manifest, options.dryRun);
+  }
   return b.toString();
 }
 

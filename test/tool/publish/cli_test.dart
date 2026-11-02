@@ -117,6 +117,16 @@ void main() {
     ...?extra,
   ];
 
+  /// A nightly with exactly these files (platform key to path).
+  List<String> nightlyOf(Map<String, String> files) => [
+    'nightly',
+    '--version',
+    '1.3.0',
+    '--build',
+    '157',
+    for (final f in files.entries) ...['--file', '${f.key}=${f.value}'],
+  ];
+
   const releasesKey = 'releases/manifest.json';
   const nightlyKey = 'nightly/manifest.json';
 
@@ -173,12 +183,104 @@ void main() {
     test('--force replaces a version that is already published', () async {
       final bucket = FakeBucket();
       await run(release(), bucket: bucket);
+      File(win).writeAsStringSync('windows, rebuilt');
 
       final refused = await run(release(), bucket: bucket);
       expectFailure(refused, '1.2.0');
 
       final forced = await run(release(extra: ['--force']), bucket: bucket);
       expect(forced.code, 0, reason: forced.out);
+      expect(forced.out, contains('Published release 1.2.0'));
+      expect(forced.out, isNot(contains('nothing to do')));
+    });
+
+    test('publishing the same release again does nothing and says so', () async {
+      final bucket = FakeBucket();
+      await run(release(), bucket: bucket);
+      final written = bucket.texts[releasesKey];
+      bucket.calls.clear();
+
+      final r = await run(release(), bucket: bucket);
+
+      expect(r.code, 0, reason: r.out);
+      expect(r.out, contains('already published, nothing to do'));
+      expect(r.out, contains('1.2.0'));
+      expect(
+        r.out,
+        contains(
+          'https://dl.example/releases/1.2.0/Anchorline-1.2.0-windows-x64.exe',
+        ),
+      );
+      expect(r.out, isNot(contains('was updated')));
+      expect(r.out, isNot(contains('Published')));
+      expect(bucket.calls, ['getText $releasesKey']);
+      expect(bucket.texts[releasesKey], written);
+    });
+
+    test('--force on the same release again does nothing either', () async {
+      final bucket = FakeBucket();
+      await run(release(), bucket: bucket);
+      bucket.calls.clear();
+
+      final r = await run(release(extra: ['--force']), bucket: bucket);
+
+      expect(r.code, 0, reason: r.out);
+      expect(r.out, contains('nothing to do'));
+      expect(bucket.putCalls, isEmpty);
+    });
+
+    test('a dry run of the same release again says so too', () async {
+      final bucket = FakeBucket();
+      await run(release(), bucket: bucket);
+      bucket.calls.clear();
+
+      final r = await run(release(extra: ['--dry-run']), bucket: bucket);
+
+      expect(r.code, 0, reason: r.out);
+      expect(r.out, contains('already published, nothing to do'));
+      expect(r.out, isNot(contains('would become')));
+      expect(bucket.calls, ['getText $releasesKey']);
+    });
+
+    test('the same version with a changed file is refused', () async {
+      final bucket = FakeBucket();
+      await run(release(), bucket: bucket);
+      File(win).writeAsStringSync('windows, rebuilt');
+      bucket.calls.clear();
+
+      final r = await run(release(), bucket: bucket);
+
+      expectFailure(r, '1.2.0', bucket: bucket);
+    });
+
+    test('a release is for windows-x64 and linux-x64 and no other', () async {
+      final bucket = FakeBucket();
+      final withMac = await run(
+        release(extra: ['--file', 'macos=$mac']),
+        bucket: bucket,
+      );
+      expectFailure(withMac, 'macos', bucket: bucket);
+      expect(bucket.calls, isEmpty);
+
+      for (final only in [
+        {'windows-x64': win},
+        {'linux-x64': linux},
+        {'macos': mac},
+      ]) {
+        final args = [
+          'release',
+          '--version',
+          '1.2.0',
+          '--build',
+          '45',
+          '--notes-file',
+          notes,
+          for (final f in only.entries) ...['--file', '${f.key}=${f.value}'],
+        ];
+        final r = await run(args, bucket: bucket);
+        expectFailure(r, 'windows-x64 and linux-x64', bucket: bucket);
+        expect(bucket.calls, isEmpty);
+      }
     });
 
     test('--dry-run prints the manifest and uploads nothing', () async {
@@ -263,6 +365,69 @@ void main() {
 
       expectFailure(r, '--force', bucket: bucket);
       expect(bucket.calls, isEmpty);
+    });
+
+    test('takes any non-empty set of platforms', () async {
+      for (final files in [
+        {'macos': mac},
+        {'windows-x64': win},
+        {'windows-x64': win, 'linux-x64': linux},
+      ]) {
+        final bucket = FakeBucket();
+        final r = await run(nightlyOf(files), bucket: bucket);
+
+        expect(r.code, 0, reason: r.out);
+        expect(
+          Manifest.parse(bucket.texts[nightlyKey]!).latest!.files.keys,
+          files.keys,
+        );
+      }
+    });
+
+    test(
+      'publishing the same nightly again does nothing and says so',
+      () async {
+        final bucket = FakeBucket();
+        await run(nightly(), bucket: bucket);
+        final written = bucket.texts[nightlyKey];
+        bucket.calls.clear();
+
+        final r = await run(nightly(), bucket: bucket);
+
+        expect(r.code, 0, reason: r.out);
+        expect(r.out, contains('already published, nothing to do'));
+        expect(r.out, contains('157'));
+        expect(bucket.calls, ['getText $nightlyKey']);
+        expect(bucket.texts[nightlyKey], written);
+      },
+    );
+
+    test('says so when an older build is listed under previous', () async {
+      final bucket = FakeBucket();
+      await run(nightly(), bucket: bucket);
+      final newer = nightly().toList();
+      newer[newer.indexOf('--build') + 1] = '158';
+      await run(newer, bucket: bucket);
+
+      final r = await run(nightly(), bucket: bucket);
+
+      expect(r.code, 0, reason: r.out);
+      expect(r.out, contains('already published, nothing to do'));
+      expect(r.out, contains('build 157 is listed under previous'));
+      expect(r.out, contains('latest nightly is build 158'));
+    });
+
+    test('the same nightly build with a changed file is refused', () async {
+      final bucket = FakeBucket();
+      await run(nightly(), bucket: bucket);
+      File(mac).writeAsStringSync('macos, rebuilt');
+      bucket.calls.clear();
+
+      expectFailure(
+        await run(nightly(), bucket: bucket),
+        '157',
+        bucket: bucket,
+      );
     });
 
     test('--dry-run prints the manifest and uploads nothing', () async {
@@ -453,7 +618,7 @@ void main() {
     test('a --file path that does not exist', () async {
       final bucket = FakeBucket();
       final r = await run(
-        release(extra: ['--file', 'macos=${tmp.path}/ghost.dmg']),
+        nightlyOf({'macos': '${tmp.path}/ghost.dmg'}),
         bucket: bucket,
       );
 
@@ -471,7 +636,7 @@ void main() {
       final zip = '${tmp.path}/app.zip';
       File(zip).writeAsStringSync('zip');
       expectFailure(
-        await run(release(extra: ['--file', 'macos=$zip']), bucket: bucket),
+        await run(nightlyOf({'macos': zip}), bucket: bucket),
         '.zip',
         bucket: bucket,
       );
@@ -510,14 +675,42 @@ void main() {
       expectFailure(r, 'AWS_SECRET_ACCESS_KEY');
     });
 
-    test('DOWNLOADS_BASE_URL has to be an http(s) URL', () async {
-      final r = await run(
-        release(),
-        env: {..._env, 'DOWNLOADS_BASE_URL': 'dl.example/files'},
-      );
+    test('DOWNLOADS_BASE_URL has to be an https URL', () async {
+      for (final bad in [
+        'dl.example/files',
+        'http://dl.example',
+        'ftp://dl.example',
+        'https://',
+      ]) {
+        final bucket = FakeBucket();
+        final r = await run(
+          release(),
+          bucket: bucket,
+          env: {..._env, 'DOWNLOADS_BASE_URL': bad},
+        );
 
-      expectFailure(r, 'DOWNLOADS_BASE_URL');
+        expectFailure(r, 'DOWNLOADS_BASE_URL', bucket: bucket);
+        expect(r.out, contains('https'), reason: bad);
+        expect(bucket.calls, isEmpty);
+      }
     });
+
+    test(
+      'an https URL, with a path or a trailing slash, is accepted',
+      () async {
+        for (final good in [
+          'https://dl.example',
+          'https://dl.example/files/',
+        ]) {
+          final r = await run(
+            release(),
+            env: {..._env, 'DOWNLOADS_BASE_URL': good},
+          );
+
+          expect(r.code, 0, reason: '$good: ${r.out}');
+        }
+      },
+    );
   });
 
   group('failures from the publisher and the bucket', () {

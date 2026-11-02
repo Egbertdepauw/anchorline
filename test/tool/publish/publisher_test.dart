@@ -85,7 +85,7 @@ void main() {
     dryRun: dryRun,
   );
 
-  Future<Manifest> publishRelease(
+  Future<PublishResult> releaseResult(
     Publisher p, {
     String version = '1.2.0',
     int build = 45,
@@ -101,7 +101,23 @@ void main() {
     force: force,
   );
 
-  Future<Manifest> publishNightly(
+  Future<Manifest> publishRelease(
+    Publisher p, {
+    String version = '1.2.0',
+    int build = 45,
+    String notes = 'Release notes',
+    Map<String, String>? files,
+    bool force = false,
+  }) async => (await releaseResult(
+    p,
+    version: version,
+    build: build,
+    notes: notes,
+    files: files,
+    force: force,
+  )).manifest;
+
+  Future<PublishResult> nightlyResult(
     Publisher p, {
     String version = '1.3.0',
     int build = 157,
@@ -114,6 +130,20 @@ void main() {
     notes: notes,
     files: files ?? {'windows-x64': win, 'linux-x64': linux, 'macos': mac},
   );
+
+  Future<Manifest> publishNightly(
+    Publisher p, {
+    String version = '1.3.0',
+    int build = 157,
+    String notes = '',
+    Map<String, String>? files,
+  }) async => (await nightlyResult(
+    p,
+    version: version,
+    build: build,
+    notes: notes,
+    files: files,
+  )).manifest;
 
   group('publish, releases lane', () {
     test(
@@ -429,6 +459,16 @@ void main() {
       },
     );
 
+    test('a re-run of an older build does not make it the latest', () async {
+      final bucket = FakeBucket();
+      await publishNightly(publisher(bucket), build: 158);
+      final result = await publishNightly(publisher(bucket), build: 157);
+
+      expect(result.latest!.build, 158);
+      expect(result.previous.map((e) => e.build), [157]);
+      expect(Manifest.parse(bucket.texts[_nightlyKey]!).latest!.build, 158);
+    });
+
     test('dry run changes nothing', () async {
       final bucket = FakeBucket();
       final result = await publishNightly(publisher(bucket, dryRun: true));
@@ -439,35 +479,82 @@ void main() {
   });
 
   group('publish refuses bad input before anything is uploaded', () {
-    final cases = <String, Future<Manifest> Function(Publisher)>{
-      'an unknown platform key': (p) =>
-          publishRelease(p, files: {'windows-arm64': win}),
-      'an unsupported file extension': (p) => publishRelease(
-        p,
-        files: {'windows-x64': '${tmp.path}/Anchorline.zip'},
+    // Each case: the call, and what the message says.
+    final cases = <String, (Future<Object?> Function(Publisher), String)>{
+      'an unknown platform key': (
+        (p) => publishRelease(p, files: {'windows-arm64': win}),
+        'windows-arm64',
       ),
-      'a file that does not exist': (p) =>
-          publishRelease(p, files: {'windows-x64': '${tmp.path}/missing.exe'}),
-      'no files at all': (p) => publishRelease(p, files: {}),
-      'a release version that is not X.Y.Z': (p) =>
-          publishRelease(p, version: '1.2'),
-      'a nightly version that is not X.Y.Z': (p) =>
-          publishNightly(p, version: '1.3.0-beta'),
-      'a build number of zero': (p) => publishRelease(p, build: 0),
+      'an unsupported file extension': (
+        (p) => publishRelease(
+          p,
+          files: {
+            'windows-x64': '${tmp.path}/Anchorline.zip',
+            'linux-x64': linux,
+          },
+        ),
+        '.exe',
+      ),
+      'a file that does not exist': (
+        (p) => publishRelease(
+          p,
+          files: {'windows-x64': '${tmp.path}/missing.exe', 'linux-x64': linux},
+        ),
+        'missing.exe',
+      ),
+      'no files at all': ((p) => publishRelease(p, files: {}), 'no files'),
+      'a release version that is not X.Y.Z': (
+        (p) => publishRelease(p, version: '1.2'),
+        "'1.2'",
+      ),
+      'a nightly version that is not X.Y.Z': (
+        (p) => publishNightly(p, version: '1.3.0-beta'),
+        '1.3.0-beta',
+      ),
+      'a build number of zero': ((p) => publishRelease(p, build: 0), 'build'),
       // The files exist; only the pairing is wrong.
-      'a .dmg for windows-x64': (p) =>
-          publishRelease(p, files: {'windows-x64': mac}),
-      'an .exe for linux-x64': (p) =>
-          publishRelease(p, files: {'linux-x64': win}),
-      'an .AppImage for macos': (p) =>
-          publishNightly(p, files: {'macos': linux}),
-      'force on the nightly lane': (p) => p.publish(
-        lane: Lane.nightly,
-        version: '1.3.0',
-        build: 157,
-        notes: '',
-        files: {'windows-x64': win},
-        force: true,
+      'a .dmg for windows-x64': (
+        (p) =>
+            publishRelease(p, files: {'windows-x64': mac, 'linux-x64': linux}),
+        '.exe',
+      ),
+      'an .exe for linux-x64': (
+        (p) => publishRelease(p, files: {'windows-x64': win, 'linux-x64': win}),
+        '.AppImage',
+      ),
+      'an .AppImage for macos': (
+        (p) => publishNightly(p, files: {'macos': linux}),
+        '.dmg',
+      ),
+      'a release that includes macos': (
+        (p) => publishRelease(
+          p,
+          files: {'windows-x64': win, 'linux-x64': linux, 'macos': mac},
+        ),
+        'macos',
+      ),
+      'a release without linux-x64': (
+        (p) => publishRelease(p, files: {'windows-x64': win}),
+        'linux-x64',
+      ),
+      'a release without windows-x64': (
+        (p) => publishRelease(p, files: {'linux-x64': linux}),
+        'windows-x64',
+      ),
+      'a release with macos only': (
+        (p) => publishRelease(p, files: {'macos': mac}),
+        'macos',
+      ),
+      'force on the nightly lane': (
+        (p) => p.publish(
+          lane: Lane.nightly,
+          version: '1.3.0',
+          build: 157,
+          notes: '',
+          files: {'windows-x64': win},
+          force: true,
+        ),
+        'force',
       ),
     };
 
@@ -477,11 +564,313 @@ void main() {
         File('${tmp.path}/Anchorline.zip').writeAsStringSync('zip');
         final bucket = FakeBucket();
 
-        await expectLater(entry.value(publisher(bucket)), _publishError());
+        await expectLater(
+          entry.value.$1(publisher(bucket)),
+          _publishError(entry.value.$2),
+        );
         // Refused from the arguments alone: not even the list was read.
         expect(bucket.calls, isEmpty);
       });
     }
+  });
+
+  group('publish, nightly lane takes any non-empty set of platforms', () {
+    for (final platforms in [
+      ['macos'],
+      ['windows-x64'],
+      ['linux-x64'],
+      ['windows-x64', 'linux-x64'],
+      ['linux-x64', 'macos'],
+      ['windows-x64', 'linux-x64', 'macos'],
+    ]) {
+      test(platforms.join(' + '), () async {
+        final all = {'windows-x64': win, 'linux-x64': linux, 'macos': mac};
+        final bucket = FakeBucket();
+        final result = await publishNightly(
+          publisher(bucket),
+          files: {for (final k in platforms) k: all[k]!},
+        );
+
+        expect(result.latest!.files.keys, unorderedEquals(platforms));
+        expect(bucket.filePuts, hasLength(platforms.length));
+        expect(bucket.textPuts, hasLength(1));
+      });
+    }
+  });
+
+  group('publishing exactly what is already published', () {
+    const winKey = 'releases/1.2.0/Anchorline-1.2.0-windows-x64.exe';
+
+    test('release: a second identical run changes nothing', () async {
+      final bucket = FakeBucket();
+      final first = await releaseResult(publisher(bucket));
+      expect(first.alreadyPublished, isFalse);
+      final written = bucket.texts[_releasesKey]!;
+      bucket.calls.clear();
+
+      // Later, with other notes: the date and the notes are not compared.
+      final second = await releaseResult(
+        publisher(bucket, now: DateTime.utc(2026, 11, 5)),
+        notes: 'Other notes',
+      );
+
+      expect(second.alreadyPublished, isTrue);
+      expect(bucket.calls, ['getText $_releasesKey']);
+      expect(second.manifest.encode(), written);
+      expect(second.manifest.latest!.date, '2026-11-03');
+      expect(second.manifest.latest!.notes, 'Release notes');
+      expect(bucket.texts[_releasesKey], written);
+    });
+
+    test('release: an identical run with --force still does nothing', () async {
+      final bucket = FakeBucket();
+      await releaseResult(publisher(bucket));
+      bucket.calls.clear();
+
+      final again = await releaseResult(publisher(bucket), force: true);
+
+      expect(again.alreadyPublished, isTrue);
+      expect(bucket.calls, ['getText $_releasesKey']);
+    });
+
+    test('release: a dry run of an identical publish reports it', () async {
+      final bucket = FakeBucket();
+      await releaseResult(publisher(bucket));
+      bucket.calls.clear();
+
+      final dry = await releaseResult(publisher(bucket, dryRun: true));
+
+      expect(dry.alreadyPublished, isTrue);
+      expect(bucket.calls, ['getText $_releasesKey']);
+    });
+
+    test('release: a hotfix listed under previous is recognised too', () async {
+      final bucket = FakeBucket();
+      await releaseResult(publisher(bucket));
+      await releaseResult(publisher(bucket), version: '1.1.1', build: 44);
+      bucket.calls.clear();
+
+      final again = await releaseResult(
+        publisher(bucket),
+        version: '1.1.1',
+        build: 44,
+      );
+
+      expect(again.alreadyPublished, isTrue);
+      expect(bucket.putCalls, isEmpty);
+    });
+
+    test('release: one file with other bytes is still refused', () async {
+      final bucket = FakeBucket();
+      await releaseResult(publisher(bucket));
+      bucket.calls.clear();
+      File(win).writeAsStringSync('a rebuilt windows installer');
+
+      await expectLater(
+        releaseResult(publisher(bucket)),
+        _publishError('1.2.0'),
+      );
+      expect(bucket.putCalls, isEmpty);
+      // --force is how a release is replaced.
+      final forced = await releaseResult(publisher(bucket), force: true);
+      expect(forced.alreadyPublished, isFalse);
+      expect(
+        forced.manifest.latest!.files['windows-x64']!.sha256,
+        _sha('a rebuilt windows installer'),
+      );
+    });
+
+    test('release: the same hash with another size is still refused', () async {
+      final bucket = FakeBucket(
+        texts: {
+          _releasesKey: _manifestText(
+            latest: ReleaseEntry(
+              version: '1.2.0',
+              build: 45,
+              date: '2026-11-03',
+              notes: '',
+              files: {
+                'windows-x64': FileEntry(
+                  url: '$_baseUrl/$winKey',
+                  size: _winBytes.length + 1,
+                  sha256: _sha(_winBytes),
+                ),
+                'linux-x64': FileEntry(
+                  url:
+                      '$_baseUrl/releases/1.2.0/Anchorline-1.2.0-linux-x64.AppImage',
+                  size: _linuxBytes.length,
+                  sha256: _sha(_linuxBytes),
+                ),
+              },
+            ),
+          ),
+        },
+      );
+
+      await expectLater(
+        releaseResult(publisher(bucket)),
+        _publishError('1.2.0'),
+      );
+      expect(bucket.putCalls, isEmpty);
+    });
+
+    test('release: another build number is still refused', () async {
+      final bucket = FakeBucket();
+      await releaseResult(publisher(bucket), build: 44);
+      bucket.calls.clear();
+
+      await expectLater(
+        releaseResult(publisher(bucket), build: 45),
+        _publishError('1.2.0'),
+      );
+      expect(bucket.putCalls, isEmpty);
+    });
+
+    test('release: a different URL is still refused', () async {
+      final bucket = FakeBucket();
+      await releaseResult(publisher(bucket));
+      bucket.calls.clear();
+
+      await expectLater(
+        releaseResult(publisher(bucket, baseUrl: 'https://other.example')),
+        _publishError('1.2.0'),
+      );
+      expect(bucket.putCalls, isEmpty);
+    });
+
+    test(
+      'release: an extra platform key in the list is still refused',
+      () async {
+        final bucket = FakeBucket();
+        await releaseResult(publisher(bucket));
+        // The list names a third file the new run does not have.
+        final listed = Manifest.parse(bucket.texts[_releasesKey]!).latest!;
+        bucket.texts[_releasesKey] = _manifestText(
+          latest: ReleaseEntry(
+            version: listed.version,
+            build: listed.build,
+            date: listed.date,
+            notes: listed.notes,
+            files: {
+              ...listed.files,
+              'macos': FileEntry(url: '$_baseUrl/m.dmg', size: 1, sha256: 'ab'),
+            },
+          ),
+        );
+        bucket.calls.clear();
+
+        await expectLater(
+          releaseResult(publisher(bucket)),
+          _publishError('1.2.0'),
+        );
+        expect(bucket.putCalls, isEmpty);
+      },
+    );
+
+    test(
+      'release: a platform key missing from the list is still refused',
+      () async {
+        final bucket = FakeBucket();
+        await releaseResult(publisher(bucket));
+        final listed = Manifest.parse(bucket.texts[_releasesKey]!).latest!;
+        bucket.texts[_releasesKey] = _manifestText(
+          latest: ReleaseEntry(
+            version: listed.version,
+            build: listed.build,
+            date: listed.date,
+            notes: listed.notes,
+            files: {'windows-x64': listed.files['windows-x64']!},
+          ),
+        );
+        bucket.calls.clear();
+
+        await expectLater(
+          releaseResult(publisher(bucket)),
+          _publishError('1.2.0'),
+        );
+        expect(bucket.putCalls, isEmpty);
+      },
+    );
+
+    test('nightly: a second identical run changes nothing', () async {
+      final bucket = FakeBucket();
+      final first = await nightlyResult(publisher(bucket));
+      expect(first.alreadyPublished, isFalse);
+      final written = bucket.texts[_nightlyKey]!;
+      bucket.calls.clear();
+
+      final second = await nightlyResult(
+        publisher(bucket, now: DateTime.utc(2026, 11, 4)),
+      );
+
+      expect(second.alreadyPublished, isTrue);
+      expect(bucket.calls, ['getText $_nightlyKey']);
+      expect(second.manifest.encode(), written);
+      expect(bucket.texts[_nightlyKey], written);
+    });
+
+    test('nightly: an older build that is listed under previous', () async {
+      final bucket = FakeBucket();
+      await nightlyResult(publisher(bucket), build: 157);
+      await nightlyResult(publisher(bucket), build: 158);
+      bucket.calls.clear();
+
+      final again = await nightlyResult(publisher(bucket), build: 157);
+
+      expect(again.alreadyPublished, isTrue);
+      expect(bucket.putCalls, isEmpty);
+    });
+
+    test('nightly: a dry run of an identical publish reports it', () async {
+      final bucket = FakeBucket();
+      await nightlyResult(publisher(bucket));
+      bucket.calls.clear();
+
+      final dry = await nightlyResult(publisher(bucket, dryRun: true));
+
+      expect(dry.alreadyPublished, isTrue);
+      expect(bucket.calls, ['getText $_nightlyKey']);
+    });
+
+    test('nightly: one file with other bytes is still refused', () async {
+      final bucket = FakeBucket();
+      await nightlyResult(publisher(bucket));
+      bucket.calls.clear();
+      File(mac).writeAsStringSync('another dmg');
+
+      await expectLater(nightlyResult(publisher(bucket)), _publishError('157'));
+      expect(bucket.putCalls, isEmpty);
+    });
+
+    test('nightly: another set of platforms is still refused', () async {
+      final bucket = FakeBucket();
+      await nightlyResult(publisher(bucket), files: {'windows-x64': win});
+      bucket.calls.clear();
+
+      await expectLater(
+        nightlyResult(
+          publisher(bucket),
+          files: {'windows-x64': win, 'linux-x64': linux},
+        ),
+        _publishError('157'),
+      );
+      expect(bucket.putCalls, isEmpty);
+    });
+
+    test(
+      'nightly: the same build with another version is still refused',
+      () async {
+        final bucket = FakeBucket();
+        await nightlyResult(publisher(bucket));
+        bucket.calls.clear();
+
+        await expectLater(
+          nightlyResult(publisher(bucket), version: '1.4.0'),
+          _publishError('157'),
+        );
+        expect(bucket.putCalls, isEmpty);
+      },
+    );
   });
 
   group('an upload that fails half way', () {

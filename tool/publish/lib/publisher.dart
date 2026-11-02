@@ -10,6 +10,18 @@
 /// listed. Its files are overwritten before the list changes, so if that run
 /// fails half way the list keeps describing the old bytes (size and sha256) of
 /// files that may already be the new ones, until the command is run again.
+/// The edge may also keep serving a replaced file from its cache: after a
+/// forced re-publish, purge the Cloudflare cache for the replaced URLs.
+///
+/// Publishing what is already published, byte for byte, is not an error: it
+/// changes nothing and says so. A re-run of a delivery job (or a list write
+/// that reached R2 but timed out on the client) therefore finishes instead of
+/// being refused.
+///
+/// A list is updated by reading it, changing it and writing it back, with no
+/// lock. Two publishes to the same lane at the same time can lose one of the
+/// changes. CI runs one publish job per lane at a time; do not run the command
+/// by hand while one is running.
 library;
 
 import 'dart:io';
@@ -21,6 +33,11 @@ import 'manifest.dart' as manifest show rollback;
 /// The platforms an installer can be published for, in the order they are
 /// uploaded and listed.
 const List<String> platformKeys = ['windows-x64', 'linux-x64', 'macos'];
+
+/// The platforms a release has, and only those: a release is published for
+/// Windows and Linux together (macOS comes from the stores). A nightly may
+/// have any non-empty subset of [platformKeys].
+const List<String> releasePlatformKeys = ['windows-x64', 'linux-x64'];
 
 /// The bucket key of a lane's download list.
 String manifestKey(Lane lane) => switch (lane) {
@@ -43,8 +60,6 @@ const Map<String, String> _contentTypes = {
   'dmg': 'application/x-apple-diskimage',
 };
 
-final RegExp _versionPattern = RegExp(r'^\d+\.\d+\.\d+$');
-
 /// One installer on its way into the bucket.
 class _Upload {
   _Upload(this.platformKey, this.path, this.key, this.contentType);
@@ -53,6 +68,19 @@ class _Upload {
   final String path;
   final String key;
   final String contentType;
+}
+
+/// What [Publisher.publish] did.
+class PublishResult {
+  const PublishResult(this.manifest, {this.alreadyPublished = false});
+
+  /// The list as written (as it would be written, for a dry run). When
+  /// [alreadyPublished] is set, the list as it is in the bucket, unchanged.
+  final Manifest manifest;
+
+  /// The lane already listed this version (release) or build (nightly) with
+  /// exactly these files, so nothing was uploaded or written.
+  final bool alreadyPublished;
 }
 
 class Publisher {
@@ -78,6 +106,9 @@ class Publisher {
   /// [lane]'s list, and returns the list as written (as it would be written,
   /// for a dry run).
   ///
+  /// A release has exactly [releasePlatformKeys]; a nightly any non-empty
+  /// subset of [platformKeys].
+  ///
   /// Order: check the input, read the list (absent means empty), measure the
   /// files, build the new list (this is where a version or build that is
   /// already published is refused), upload every file, download each one
@@ -85,8 +116,14 @@ class Publisher {
   /// that can be refused is refused before the first upload. [force] lets a
   /// release replace an entry of the same version; nightlies refuse it.
   ///
+  /// If the lane already lists this version (release) or build (nightly) with
+  /// the same build number, the same platform keys, and the same url, size and
+  /// sha256 for each, nothing is uploaded or written (also with [force], also
+  /// in a dry run) and the result says [PublishResult.alreadyPublished]. Any
+  /// difference is refused as above.
+  ///
   /// Throws [PublishError].
-  Future<Manifest> publish({
+  Future<PublishResult> publish({
     required Lane lane,
     required String version,
     required int build,
@@ -97,7 +134,7 @@ class Publisher {
     if (force && lane == Lane.nightly) {
       throw const PublishError('force only applies to releases, not nightlies');
     }
-    if (!_versionPattern.hasMatch(version)) {
+    if (!versionPattern.hasMatch(version)) {
       throw PublishError("version must look like 1.2.3, got '$version'");
     }
     if (build <= 0) {
@@ -115,6 +152,10 @@ class Publisher {
         sha256: await sha256OfFile(upload.path),
       );
     }
+    if (_isListed(existing, version, build, entries)) {
+      return PublishResult(existing, alreadyPublished: true);
+    }
+
     final now = _now().toUtc();
     final entry = ReleaseEntry(
       version: version,
@@ -127,7 +168,7 @@ class Publisher {
       Lane.releases => addRelease(existing, entry, force: force),
       Lane.nightly => addNightly(existing, entry, now: now),
     };
-    if (_dryRun) return updated;
+    if (_dryRun) return PublishResult(updated);
 
     for (final upload in uploads) {
       await _bucket.putFile(
@@ -154,7 +195,7 @@ class Publisher {
       }
     }
     await _writeManifest(lane, updated);
-    return updated;
+    return PublishResult(updated);
   }
 
   /// Makes the earlier release [toVersion] the latest again. Only the list
@@ -186,6 +227,20 @@ class Publisher {
         'use ${platformKeys.join(', ')}',
       );
     }
+    if (lane == Lane.releases) {
+      final missing = releasePlatformKeys.where((k) => !files.containsKey(k));
+      final extra = files.keys.where((k) => !releasePlatformKeys.contains(k));
+      if (missing.isNotEmpty || extra.isNotEmpty) {
+        final problems = [
+          if (missing.isNotEmpty) 'missing ${missing.join(', ')}',
+          if (extra.isNotEmpty) 'not a release download: ${extra.join(', ')}',
+        ];
+        throw PublishError(
+          'a release has exactly ${releasePlatformKeys.join(' and ')} '
+          '(${problems.join('; ')})',
+        );
+      }
+    }
     final uploads = <_Upload>[];
     for (final platformKey in platformKeys) {
       final path = files[platformKey];
@@ -216,6 +271,36 @@ class Publisher {
       );
     }
     return uploads;
+  }
+
+  /// Whether [existing] already lists what this run would publish: an entry
+  /// with this [version] and [build] and the same platform keys, with the same
+  /// url, size and sha256 for each key as [files]. For a release that is the
+  /// entry of this version; for a nightly, the entry of this build (a nightly
+  /// of the same build but another version has other URLs). The date and the
+  /// notes are not compared.
+  bool _isListed(
+    Manifest existing,
+    String version,
+    int build,
+    Map<String, FileEntry> files,
+  ) {
+    bool same(ReleaseEntry e) {
+      if (e.version != version || e.build != build) return false;
+      if (e.files.length != files.length) return false;
+      for (final f in files.entries) {
+        final listed = e.files[f.key];
+        if (listed == null ||
+            listed.url != f.value.url ||
+            listed.size != f.value.size ||
+            listed.sha256 != f.value.sha256) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    return [?existing.latest, ...existing.previous].any(same);
   }
 
   /// The lane's list as it is in the bucket; empty when there is none yet. A

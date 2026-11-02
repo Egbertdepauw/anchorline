@@ -45,8 +45,10 @@ typedef ProcessRunner =
       Map<String, String>? environment,
     });
 
-/// A [Bucket] that shells out to the AWS CLI (`aws s3 cp`), pointed at R2's
-/// S3 endpoint. The AWS CLI is preinstalled on GitHub's runners.
+/// A [Bucket] that shells out to the AWS CLI, pointed at R2's S3 endpoint:
+/// uploads use `aws s3 cp`, reads use `aws s3api get-object` (only the error
+/// `NoSuchKey` means the object is absent). The AWS CLI is preinstalled on
+/// GitHub's runners.
 ///
 /// Credentials are not handled here: `aws` reads `AWS_ACCESS_KEY_ID` and
 /// `AWS_SECRET_ACCESS_KEY` from the environment it inherits, and nothing in
