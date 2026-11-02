@@ -4,7 +4,9 @@
 /// rules what this run is (release, nightly or dry run) and reports the answer
 /// as `key=value` lines on stdout and, when `$GITHUB_OUTPUT` is set, appended
 /// to that file. Imports only `dart:` libraries and its sibling, so
-/// `dart run <path>/tool/ci/version.dart` works from any directory.
+/// `dart <path>/tool/ci/version.dart` works from any directory. (Not
+/// `dart run`: that runs the package's build hooks and writes their progress
+/// to stdout.)
 library;
 
 import 'dart:convert';
@@ -13,7 +15,7 @@ import 'dart:io';
 import 'lib/version_rules.dart';
 
 const _usage = '''
-Usage: dart run tool/ci/version.dart
+Usage: dart tool/ci/version.dart
   --event <push|schedule|workflow_dispatch>
   --ref <github.ref>
   --run-number <n>
@@ -31,21 +33,28 @@ int _run(List<String> args) {
   try {
     final options = _Options.parse(args);
     final plan = _plan(options);
-    _writeOutputs(plan);
+    // A release's notes are its tag message, so they are read (and a missing
+    // message is caught) before anything is reported or written.
     final notesOut = options.notesOut;
-    if (notesOut != null) {
-      final notes = plan.channel == Channel.release
-          ? _releaseNotes(options.releaseTag)
-          : _commitNotes(options.lastDeliveredSha);
+    final notes = plan.channel == Channel.release
+        ? _releaseNotes(options.releaseTag)
+        : (notesOut == null ? null : _commitNotes(options.lastDeliveredSha));
+    if (notesOut != null && notes != null) {
       File(notesOut).parent.createSync(recursive: true);
       File(notesOut).writeAsStringSync(notes);
     }
+    _writeOutputs(plan);
     return 0;
   } on VersionRuleError catch (e) {
     return _fail(e.message);
   } on _CliError catch (e) {
     if (e.showUsage) stderr.writeln(_usage);
     return _fail(e.message);
+  } on FileSystemException catch (e) {
+    return _fail(
+      'Could not write ${e.path ?? 'a file'}: '
+      '${e.osError?.message ?? e.message}',
+    );
   }
 }
 
@@ -135,6 +144,9 @@ class _Options {
       published: (values['published'] ?? '')
           .split(',')
           .map((v) => v.trim())
+          // `gh release list --json tagName` reports v1.2.0, the rules compare
+          // plain versions.
+          .map((v) => v.startsWith('v') ? v.substring(1) : v)
           .where((v) => v.isNotEmpty)
           .toSet(),
       notesOut: values['notes-out'],
@@ -220,8 +232,13 @@ String _gitText(List<String> args) {
 bool _isAncestor(String commit, String of) =>
     _git(['merge-base', '--is-ancestor', commit, of]).exitCode == 0;
 
+/// Whether [ref] resolves to a commit in this checkout.
+bool _refExists(String ref) =>
+    _git(['rev-parse', '--verify', '--quiet', '$ref^{commit}']).exitCode == 0;
+
 /// What git says about the pushed tag. A missing `origin/release/X.Y` counts
-/// as "not on it".
+/// as "not on it"; a missing `origin/main` is an error (it means the checkout
+/// is too shallow, not that the tag is elsewhere).
 TagFacts _tagFacts(String name) {
   final version = SemVer.parseTag(name);
   final ref = 'refs/tags/$name';
@@ -231,6 +248,12 @@ TagFacts _tagFacts(String name) {
     throw _CliError(
       'Tag $name was not found in this checkout; fetch tags before running '
       '(fetch-depth: 0).',
+    );
+  }
+  if (version != null && !_refExists('origin/main')) {
+    throw _CliError(
+      'origin/main is missing in this checkout; check out with '
+      'fetch-depth: 0 so tags and remote branches are present.',
     );
   }
   return TagFacts(
@@ -254,13 +277,13 @@ void _writeOutputs(BuildPlan plan) {
     'build=${plan.build}',
     'reason=${_oneLine(plan.reason)}',
   ];
-  lines.forEach(stdout.writeln);
   final file = Platform.environment['GITHUB_OUTPUT'];
   if (file != null && file.isNotEmpty) {
     File(
       file,
     ).writeAsStringSync('${lines.join('\n')}\n', mode: FileMode.append);
   }
+  lines.forEach(stdout.writeln);
 }
 
 String _channelName(Channel channel) => switch (channel) {
@@ -272,15 +295,26 @@ String _channelName(Channel channel) => switch (channel) {
 /// Outputs and annotations are line based; a value must stay on one line.
 String _oneLine(String s) => s.replaceAll(RegExp(r'\s*[\r\n]+\s*'), ' ').trim();
 
+/// PGP, SSH and X.509 (`git -c gpg.format=x509`) signatures all end up as a
+/// block at the end of the tag message.
 final _signatureBlock = RegExp(
-  r'-----BEGIN (?:PGP|SSH) SIGNATURE-----[\s\S]*?'
-  r'(?:-----END (?:PGP|SSH) SIGNATURE-----|$)',
+  r'-----BEGIN (?:(?:PGP|SSH) SIGNATURE|SIGNED MESSAGE)-----[\s\S]*?'
+  r'(?:-----END (?:(?:PGP|SSH) SIGNATURE|SIGNED MESSAGE)-----|$)',
 );
 
 /// The annotated tag's message (subject and body) without a signature block.
+/// A tag without a message can't produce release notes, so that stops the run.
 String _releaseNotes(String tag) {
   final message = _gitText(['tag', '-l', '--format=%(contents)', tag]);
-  return '${message.replaceAll(_signatureBlock, '').trim()}\n';
+  final notes = message.replaceAll(_signatureBlock, '').trim();
+  if (notes.isEmpty) {
+    throw _CliError(
+      'Tag $tag has no message, and the release notes come from it. Nothing '
+      'was built or published: delete the tag (locally and on origin) and '
+      'push it again as an annotated tag with notes (git tag -a $tag).',
+    );
+  }
+  return '$notes\n';
 }
 
 final _sha = RegExp(r'^[0-9a-fA-F]{7,64}$');

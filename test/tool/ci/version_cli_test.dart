@@ -14,9 +14,12 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// Tags: `v1.1.0` (annotated, on A), `v1.1.9` (lightweight, on C), `v1.1.1`
 /// (annotated, on D), `v1.0.1` (annotated, on B, but there is no
-/// origin/release/1.0), `v0.9.0` (annotated on B, message carries a signature
-/// block), `v0.8.0` (annotated on D, so not on main). `v1.1.9` stays the
-/// highest tag, so nightlies carry 1.2.0.
+/// origin/release/1.0), `v0.9.0` (annotated on B, message carries a PGP
+/// signature block), `v0.8.0` (annotated on D, so not on main), `v0.7.0`
+/// (annotated on B with an empty message), `v0.6.0` (annotated on B, message is
+/// only a signature block), `v0.5.0` (annotated on B, message carries an X.509
+/// signed-message block). `v1.1.9` stays the highest tag, so nightlies carry
+/// 1.2.0.
 void main() {
   late Directory tmp;
   late Directory repo;
@@ -68,6 +71,25 @@ void main() {
           '-----BEGIN PGP SIGNATURE-----\n\nSECRETBLOB\n'
           '-----END PGP SIGNATURE-----',
     ]);
+    git(['tag', '-a', 'v0.7.0', shaB, '-m', '']);
+    git([
+      'tag',
+      '-a',
+      'v0.6.0',
+      shaB,
+      '-m',
+      '-----BEGIN PGP SIGNATURE-----\n\nONLYBLOB\n-----END PGP SIGNATURE-----',
+    ]);
+    git([
+      'tag',
+      '-a',
+      'v0.5.0',
+      shaB,
+      '-m',
+      'v0.5.0 — x509\n\nBody line.\n\n'
+          '-----BEGIN SIGNED MESSAGE-----\nMIIBLOB\n'
+          '-----END SIGNED MESSAGE-----',
+    ]);
 
     git(['checkout', '-q', '-b', 'release-side', shaA]);
     final shaD = commit('fix: hotfix on the release branch');
@@ -82,14 +104,20 @@ void main() {
     if (tmp.existsSync()) tmp.deleteSync(recursive: true);
   });
 
-  /// Runs the CLI in the fixture repository. `$GITHUB_OUTPUT` always points at
-  /// a file in [tmp] so the test never touches CI's real output file.
-  Future<ProcessResult> runCli(List<String> args, {String? outputFile}) {
+  /// Runs the CLI in the fixture repository (or in [cwd]). `$GITHUB_OUTPUT`
+  /// always points at a file in [tmp] so the test never touches CI's real
+  /// output file. Spawned as `dart <file>`, like CI does: `dart run` would
+  /// print the package's build-hook progress onto stdout.
+  Future<ProcessResult> runCli(
+    List<String> args, {
+    String? outputFile,
+    Directory? cwd,
+  }) {
     outputFile ??= '${tmp.path}/output-${runs++}.txt';
     return Process.run(
       'dart',
-      ['run', cli, ...args],
-      workingDirectory: repo.path,
+      [cli, ...args],
+      workingDirectory: (cwd ?? repo).path,
       environment: {'GITHUB_OUTPUT': outputFile},
     );
   }
@@ -100,6 +128,8 @@ void main() {
     test('push of an annotated tag on main → release outputs', () async {
       final notes = notesPath('release-notes');
       final outputFile = '${tmp.path}/release-output.txt';
+      // The CLI appends to $GITHUB_OUTPUT: other steps' lines must survive.
+      File(outputFile).writeAsStringSync('other=1\n');
       final r = await runCli([
         '--event', 'push', '--ref', 'refs/tags/v1.1.0', //
         '--run-number', '5', '--base', '100', '--notes-out', notes,
@@ -115,6 +145,7 @@ void main() {
       );
       expect(
         File(outputFile).readAsStringSync(),
+        'other=1\n'
         'channel=release\n'
         'version=1.1.0\n'
         'build_number=105\n'
@@ -192,6 +223,17 @@ void main() {
       expect(r.stdout, contains('version=1.1.0'));
     });
 
+    test('--published accepts tag names with a leading v', () async {
+      // `gh release list --json tagName` reports v1.1.0, not 1.1.0.
+      final r = await runCli([
+        '--event', 'push', '--ref', 'refs/tags/v1.1.0', //
+        '--run-number', '10', '--base', '100', '--published', 'v1.1.0',
+      ]);
+      expect(r.exitCode, 1);
+      expect(r.stdout, contains('::error::'));
+      expect(r.stdout, contains('already released'));
+    });
+
     test('release notes drop the signature block', () async {
       final notes = notesPath('signed-notes');
       final r = await runCli([
@@ -206,6 +248,78 @@ void main() {
       expect(text, isNot(contains('SECRETBLOB')));
     });
 
+    test('release notes drop an X.509 signed-message block', () async {
+      final notes = notesPath('x509-notes');
+      final r = await runCli([
+        '--event', 'push', '--ref', 'refs/tags/v0.5.0', //
+        '--run-number', '11', '--base', '100', '--notes-out', notes,
+      ]);
+      expect(r.exitCode, 0);
+      final text = File(notes).readAsStringSync();
+      expect(text, contains('v0.5.0 — x509'));
+      expect(text, contains('Body line.'));
+      expect(text, isNot(contains('SIGNED MESSAGE')));
+      expect(text, isNot(contains('MIIBLOB')));
+    });
+
+    test('tag with an empty message → error, nothing written', () async {
+      // The notes come from the tag message; the check holds without
+      // --notes-out too, and it stops the run before any output.
+      final outputFile = '${tmp.path}/empty-message-output.txt';
+      final notes = notesPath('empty-message-notes');
+      var r = await runCli([
+        '--event', 'push', '--ref', 'refs/tags/v0.7.0', //
+        '--run-number', '13', '--base', '100',
+      ], outputFile: outputFile);
+      expect(r.exitCode, 1);
+      expect(r.stdout, contains('::error::'));
+      expect(r.stdout, contains('no message'));
+      expect(r.stdout, contains('v0.7.0'));
+      expect(r.stdout, isNot(contains('channel=')));
+      expect(
+        !File(outputFile).existsSync() ||
+            File(outputFile).readAsStringSync().isEmpty,
+        isTrue,
+      );
+
+      r = await runCli([
+        '--event', 'push', '--ref', 'refs/tags/v0.7.0', //
+        '--run-number', '13', '--base', '100', '--notes-out', notes,
+      ], outputFile: outputFile);
+      expect(r.exitCode, 1);
+      expect(r.stdout, contains('no message'));
+      expect(File(notes).existsSync(), isFalse);
+      expect(
+        !File(outputFile).existsSync() ||
+            File(outputFile).readAsStringSync().isEmpty,
+        isTrue,
+      );
+    });
+
+    test('tag whose message is only a signature → error', () async {
+      final r = await runCli([
+        '--event', 'push', '--ref', 'refs/tags/v0.6.0', //
+        '--run-number', '14', '--base', '100',
+        '--notes-out', notesPath('signature-only-notes'),
+      ]);
+      expect(r.exitCode, 1);
+      expect(r.stdout, contains('::error::'));
+      expect(r.stdout, contains('no message'));
+      expect(File(notesPath('signature-only-notes')).existsSync(), isFalse);
+    });
+
+    test('unwritable notes path → ::error:: and exit 1', () async {
+      // A directory where the file should go: the write fails.
+      final blocked = Directory('${tmp.path}/blocked.txt')..createSync();
+      final r = await runCli([
+        '--event', 'push', '--ref', 'refs/tags/v1.1.0', //
+        '--run-number', '15', '--base', '100', '--notes-out', blocked.path,
+      ]);
+      expect(r.exitCode, 1);
+      expect(r.stdout, contains('::error::'));
+      expect(r.stdout, contains('blocked.txt'));
+    });
+
     test('push of a non-tag ref → error', () async {
       final r = await runCli([
         '--event', 'push', '--ref', 'refs/heads/main', //
@@ -214,6 +328,38 @@ void main() {
       expect(r.exitCode, 1);
       expect(r.stdout, contains('::error::'));
       expect(r.stdout, contains('refs/heads/main'));
+    });
+  });
+
+  group('checkout without origin/main', () {
+    test('release tag → error that asks for fetch-depth: 0', () async {
+      // `git merge-base --is-ancestor` exits 128 for a bad ref; that must not
+      // be reported as "the tag is not on main".
+      final bare = Directory('${tmp.path}/no-origin')..createSync();
+      void bareGit(List<String> args) {
+        final r = Process.runSync('git', args, workingDirectory: bare.path);
+        if (r.exitCode != 0) {
+          fail('git ${args.join(' ')} failed: ${r.stderr}');
+        }
+      }
+
+      bareGit(['init', '-q', '-b', 'main']);
+      bareGit(['config', 'user.name', 'Test']);
+      bareGit(['config', 'user.email', 'test@example.com']);
+      bareGit(['config', 'commit.gpgsign', 'false']);
+      bareGit(['config', 'tag.gpgsign', 'false']);
+      bareGit(['commit', '--allow-empty', '-q', '-m', 'feat: only']);
+      bareGit(['tag', '-a', 'v1.0.0', '-m', 'v1.0.0 — first']);
+
+      final r = await runCli([
+        '--event', 'push', '--ref', 'refs/tags/v1.0.0', //
+        '--run-number', '1', '--base', '100',
+      ], cwd: bare);
+      expect(r.exitCode, 1);
+      expect(r.stdout, contains('::error::'));
+      expect(r.stdout, contains('origin/main is missing'));
+      expect(r.stdout, contains('fetch-depth: 0'));
+      expect(r.stdout, isNot(contains('must be on main')));
     });
   });
 
