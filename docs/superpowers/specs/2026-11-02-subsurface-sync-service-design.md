@@ -163,7 +163,10 @@ directory and the result document are deleted after download or after
 
 The app and the server must agree byte for byte on the Subsurface
 format, so the format code lives once, in a pure-Dart package inside
-this repository, with no Flutter, Drift, PowerSync or I/O imports.
+this repository, with no Flutter, Drift, PowerSync, filesystem or
+network imports. The one allowed `dart:io` use is zlib in the sample
+codec's `column_packer.dart`, since the SDK has no pure-Dart zlib; a
+purity test allow-lists that line and fails on any other.
 
 Moves out of `lib/sync/subsurface_git/` into the package:
 
@@ -174,8 +177,10 @@ Moves out of `lib/sync/subsurface_git/` into the package:
   "parse these files" with the directory walk injected, so it stays
   I/O-free).
 - The domain models they need: `lib/data/models/dive.dart`,
-  `sample_set.dart`, `annotation.dart`, `equipment.dart` and the
-  `lib/data/sample_codec/` package, which are already pure Dart. The
+  `sample_set.dart`, `annotation.dart` and the
+  `lib/data/sample_codec/` package, which are already pure Dart
+  (`equipment.dart` is not used by anything that moves and stays in
+  the app). The
   Shearwater parser's `constants.dart`, `hardware.dart`,
   `dive_converter.dart` and `parsed_dive.dart` come along because the
   read-mapper produces a `ConvertedDive`. The parser directory is
@@ -574,7 +579,9 @@ planner with per-dive aborts shipped 2026-05-11. Step 5 corrects it.
   round-trip test over every dive in the fixture corpus.
 - **Fixture corpus (decided with Egbert 2026-11-02): an anonymised
   subset of his real Subsurface repo, committed under
-  `test/fixtures/subsurface/corpus/`.** A script in `tool/` takes a
+  `packages/subsurface_core/test/fixtures/subsurface/corpus/`, next to
+  the existing fixtures, which move into the package in rollout step
+  1; the corpus and its script are added after that step.** A script in `tool/` takes a
   checkout of the real repo and a list of dive folders and writes
   copies with personal fields removed or replaced: `notes`, `buddy`,
   `divemaster`, `suit`, site names, GPS coordinates (replaced by
