@@ -135,9 +135,10 @@ version:
 }
 ```
 
-`latest` is the highest version published; `previous` lists the others,
-newest first. A hotfix for an older line (1.1.1 while 1.2.0 is the latest)
-is listed in `previous` and does not become `latest`.
+`latest` is the highest version published, unless a roll back has made
+an earlier release `latest`. `previous` lists the others, newest first.
+A hotfix for an older line (1.1.1 while 1.2.0 is the latest) is listed
+in `previous` and does not become `latest`.
 
 A reader that meets a `format` it does not know treats the list as
 unavailable. New platforms are added as new keys under `files`; readers
@@ -145,9 +146,16 @@ ignore keys they do not know.
 
 **The nightly list** (`nightly/manifest.json`) has the same format-1
 shape. Its entries carry a `macos` key (the `.dmg`) next to
-`windows-x64` and `linux-x64`. Nightlies stay for 14 days: the publish
-command drops older entries from the list, and an R2 lifecycle rule on
-the `nightly/` prefix deletes their files. Release files are kept.
+`windows-x64` and `linux-x64`. A nightly is offered for 14 days. The
+publish command drops older entries from the list, but only when it
+publishes, and nightlies are only built when main has changed. So the
+list alone does not keep an old entry out, and the rule is part of the
+contract: **a reader (the site and the app) treats a nightly entry dated
+more than 14 days ago as unavailable.** When main has been quiet that
+long there is simply no nightly to download. The R2 lifecycle rule on
+the `nightly/` prefix deletes files after 15 days, one day longer, so a
+nightly that is listed and offered never points to a deleted file.
+Release files are kept.
 
 **Sources in the Anchorline repository**
 
@@ -185,6 +193,7 @@ Each has a dry-run mode that prints what would change.
   and re-checks every five minutes.
 - The download page shows version, date, release notes and each file's
   checksum.
+- A nightly entry dated more than 14 days ago is not offered.
 - Markdown is rendered to plain formatting only. Raw HTML and scripts in
   a text are not rendered.
 - Store links for iOS, macOS and Android are site settings; they do not
@@ -202,9 +211,8 @@ Each has a dry-run mode that prints what would change.
 **Security.** Only the build pipeline can write to the bucket, with an
 R2 key that is scoped to this bucket; the owner can run the publish
 command by hand in an emergency. The site holds no secret; it reads
-public files. Each legal text carries a
-last-updated date, and its history is in the Anchorline repository's git
-log.
+public files. Each legal text carries a last-updated date, and its
+history is in the Anchorline repository's git log.
 
 ### 3. Look, content and rollout
 

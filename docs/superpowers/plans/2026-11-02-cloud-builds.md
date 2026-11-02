@@ -441,7 +441,7 @@ Egbert does this; an agent can't. Nothing is printed, and each secret goes in wi
   - Check whether the account has production access. If not, note the closed-testing track name to use instead.
   - Note the upload certificate's SHA-256: `keytool -list -v -keystore android/upload-keystore.jks -alias upload`.
 - [ ] **Step 5: Cloudflare R2.**
-  - Use or create the bucket `anchorline-downloads`, with public access.
+  - Use or create the bucket `anchorline-downloads`, with public access, in the default (automatic) location and jurisdiction, not the EU jurisdiction: the publish command's endpoint is `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`, and a bucket in the EU jurisdiction is not served there (it has its own `.eu.` endpoint).
   - Add a lifecycle rule that deletes objects under `nightly/` after 15 days.
   - Create an R2 API token with Object Read & Write on that bucket only, and note its S3 access key pair.
 - [ ] **Step 6: GitHub secrets**

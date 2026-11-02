@@ -165,6 +165,9 @@ class _Options {
       }
       final value = args[++i];
       if (name != 'file') {
+        if (values.containsKey(name)) {
+          throw _CliError('Flag --$name is given twice.', showUsage: true);
+        }
         values[name] = value;
         continue;
       }

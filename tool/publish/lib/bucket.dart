@@ -60,14 +60,14 @@ class AwsCliBucket implements Bucket {
     this.executable = 'aws',
   }) : _run = runner ?? Process.run;
 
-  /// Reads `R2_ACCOUNT_ID` and `R2_BUCKET`. The caller has checked that both
-  /// are set.
+  /// Reads `R2_ACCOUNT_ID` and `R2_BUCKET`, trimmed like the command's check
+  /// that they are set. The caller has checked that both are.
   factory AwsCliBucket.fromEnvironment(
     Map<String, String> env, {
     ProcessRunner? runner,
   }) => AwsCliBucket(
-    accountId: env['R2_ACCOUNT_ID']!,
-    bucket: env['R2_BUCKET']!,
+    accountId: env['R2_ACCOUNT_ID']!.trim(),
+    bucket: env['R2_BUCKET']!.trim(),
     runner: runner,
   );
 
@@ -107,7 +107,12 @@ class AwsCliBucket implements Bucket {
     String path, {
     required String contentType,
   }) async {
-    final result = await _cp(path, _uri(key), ['--content-type', contentType]);
+    // Absolute, so that a path that starts with a dash cannot be read as an
+    // option.
+    final result = await _cp(File(path).absolute.path, _uri(key), [
+      '--content-type',
+      contentType,
+    ]);
     if (result.exitCode != 0) throw _failure('uploading $key', result);
   }
 
@@ -135,30 +140,39 @@ class AwsCliBucket implements Bucket {
     return sha256OfFile(path);
   });
 
-  /// Downloads [key] to [path]. False when the bucket has no such object;
-  /// every other failure throws.
+  /// Downloads [key] to [path] with `s3api get-object`. False when the object
+  /// is not there (see [_isMissingObject]); every other failure throws.
+  ///
+  /// Not `s3 cp`: that starts with a HEAD request, and a HEAD response has no
+  /// body, so a missing key and a missing bucket look the same.
   Future<bool> _download(String key, String path) async {
-    final result = await _cp(_uri(key), path);
+    final result = await _aws([
+      's3api',
+      'get-object',
+      '--bucket',
+      bucket,
+      '--key',
+      key,
+      path,
+    ]);
     if (result.exitCode == 0) return true;
     if (_isMissingObject('${result.stderr}')) return false;
     throw _failure('downloading $key', result);
   }
 
-  /// `aws s3 cp [from] [to]` against the R2 endpoint, without the progress
-  /// lines (they would only pile up in the captured output).
+  /// `aws s3 cp [from] [to]`, without the progress lines (they would only
+  /// pile up in the captured output).
   Future<ProcessResult> _cp(
     String from,
     String to, [
     List<String> options = const [],
-  ]) async {
+  ]) => _aws(['s3', 'cp', from, to, ...options, '--no-progress']);
+
+  /// Runs the aws command [args] against the R2 endpoint.
+  Future<ProcessResult> _aws(List<String> args) async {
     try {
       return await _run(executable, [
-        's3',
-        'cp',
-        from,
-        to,
-        ...options,
-        '--no-progress',
+        ...args,
         '--endpoint-url',
         _endpoint,
         '--region',
@@ -179,14 +193,17 @@ class AwsCliBucket implements Bucket {
   }
 }
 
-/// Whether aws's error output says the object does not exist. `s3 cp` reports
-/// a missing key as a 404 on HeadObject; `s3api` calls say NoSuchKey. A
-/// missing bucket (NoSuchBucket) or a refusal (403) is deliberately not here:
-/// reading those as "absent" would make an empty manifest out of a mistake.
-bool _isMissingObject(String stderr) =>
-    stderr.contains('NoSuchKey') ||
-    stderr.contains('(404)') ||
-    stderr.contains('Not Found');
+/// Whether aws's error output is the GetObject error `NoSuchKey`: the one
+/// answer that means "the bucket answered and has no such object".
+///
+/// This is all that is read as absent. A GET error carries an XML body, so aws
+/// names the error code, and `NoSuchBucket`, `AccessDenied`, a 403, bad
+/// credentials and network trouble each say what they are. A bare `(404)` is
+/// not enough: a HEAD request (what `aws s3 cp` and `s3api head-object` send)
+/// has no body, so a missing key, a missing bucket and a bucket that lives
+/// under another jurisdiction's endpoint all come back as just `(404)`. Reading
+/// any of those as "absent" would make an empty list out of a mistake.
+bool _isMissingObject(String stderr) => stderr.contains('(NoSuchKey)');
 
 String _tempFile(Directory dir) => '${dir.path}${Platform.pathSeparator}object';
 
@@ -196,6 +213,11 @@ Future<T> _withTempDir<T>(Future<T> Function(Directory dir) body) async {
   try {
     return await body(dir);
   } finally {
-    await dir.delete(recursive: true);
+    try {
+      await dir.delete(recursive: true);
+    } on FileSystemException {
+      // A leftover temp directory is not worth hiding the real outcome (or the
+      // real error) behind.
+    }
   }
 }

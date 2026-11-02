@@ -5,6 +5,11 @@
 /// The list is what the website and the app read, so it is written last: a
 /// publish that stops half way leaves objects in the bucket that nothing
 /// points to, never a list that points to missing or wrong files.
+///
+/// The one exception is a forced re-publish of a version that is already
+/// listed. Its files are overwritten before the list changes, so if that run
+/// fails half way the list keeps describing the old bytes (size and sha256) of
+/// files that may already be the new ones, until the command is run again.
 library;
 
 import 'dart:io';
@@ -21,6 +26,13 @@ const List<String> platformKeys = ['windows-x64', 'linux-x64', 'macos'];
 String manifestKey(Lane lane) => switch (lane) {
   Lane.releases => 'releases/manifest.json',
   Lane.nightly => 'nightly/manifest.json',
+};
+
+/// The file extension (without the dot) each platform's installer has.
+const Map<String, String> _platformExtensions = {
+  'windows-x64': 'exe',
+  'linux-x64': 'AppImage',
+  'macos': 'dmg',
 };
 
 /// File extension (without the dot) to the content type the file is served
@@ -71,8 +83,7 @@ class Publisher {
   /// already published is refused), upload every file, download each one
   /// again and compare checksums, and only then write the list. Everything
   /// that can be refused is refused before the first upload. [force] lets a
-  /// release replace an entry of the same version; it has no meaning for
-  /// nightlies.
+  /// release replace an entry of the same version; nightlies refuse it.
   ///
   /// Throws [PublishError].
   Future<Manifest> publish({
@@ -83,6 +94,9 @@ class Publisher {
     required Map<String, String> files,
     bool force = false,
   }) async {
+    if (force && lane == Lane.nightly) {
+      throw const PublishError('force only applies to releases, not nightlies');
+    }
     if (!_versionPattern.hasMatch(version)) {
       throw PublishError("version must look like 1.2.3, got '$version'");
     }
@@ -153,8 +167,9 @@ class Publisher {
     return updated;
   }
 
-  /// Checks every file (known platform, known extension, exists) and decides
-  /// where it goes, in [platformKeys] order whatever the order of [files].
+  /// Checks every file (known platform, the extension that platform's
+  /// installer has, exists) and decides where it goes, in [platformKeys] order
+  /// whatever the order of [files].
   List<_Upload> _plan(
     Lane lane,
     String version,
@@ -175,13 +190,11 @@ class Publisher {
     for (final platformKey in platformKeys) {
       final path = files[platformKey];
       if (path == null) continue;
-      final extension = _extension(path);
-      final contentType = _contentTypes[extension];
-      if (contentType == null) {
+      final extension = _platformExtensions[platformKey]!;
+      if (_extension(path) != extension) {
         throw PublishError(
-          "cannot publish $path for $platformKey: the file extension "
-          "'${extension ?? ''}' is not one of "
-          '${_contentTypes.keys.map((e) => '.$e').join(', ')}',
+          'cannot publish $path for $platformKey: the file has to end in '
+          '.$extension',
         );
       }
       if (!FileSystemEntity.isFileSync(path)) {
@@ -196,9 +209,9 @@ class Publisher {
             version: version,
             build: build,
             platformKey: platformKey,
-            extension: extension!,
+            extension: extension,
           ),
-          contentType,
+          _contentTypes[extension]!,
         ),
       );
     }

@@ -6,6 +6,8 @@ import 'package:crypto/crypto.dart';
 // path.
 // ignore: avoid_relative_lib_imports
 import '../../../tool/publish/lib/bucket.dart';
+// ignore: avoid_relative_lib_imports
+import '../../../tool/publish/lib/manifest.dart' show PublishError;
 
 /// One call to [FakeBucket.putFile].
 typedef FilePut = ({String key, String path, String contentType});
@@ -36,6 +38,10 @@ class FakeBucket implements Bucket {
   /// Keys [putFile] pretends to store but does not (an upload that vanished).
   final Set<String> dropUploads = {};
 
+  /// Keys whose [putFile] throws a [PublishError] (an upload that breaks
+  /// half way). The call is still recorded in [calls] and [filePuts].
+  final Set<String> failPut = {};
+
   final List<String> calls = [];
   final List<FilePut> filePuts = [];
   final List<TextPut> textPuts = [];
@@ -60,6 +66,7 @@ class FakeBucket implements Bucket {
   }) async {
     calls.add('putFile $key');
     filePuts.add((key: key, path: path, contentType: contentType));
+    if (failPut.contains(key)) throw PublishError('upload of $key failed');
     if (dropUploads.contains(key)) return;
     objects[key] = sha256.convert(File(path).readAsBytesSync()).toString();
   }

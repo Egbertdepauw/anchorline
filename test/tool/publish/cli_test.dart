@@ -396,6 +396,22 @@ void main() {
       expectFailure(await run(args), '--version');
     });
 
+    test(
+      'a value flag given twice is refused, not silently overridden',
+      () async {
+        final bucket = FakeBucket();
+        for (final flag in [
+          ['--version', '1.9.9'],
+          ['--build', '99'],
+          ['--notes-file', notes],
+        ]) {
+          final r = await run(release(extra: flag), bucket: bucket);
+          expectFailure(r, flag.first, bucket: bucket);
+          expect(r.out, contains('twice'));
+        }
+      },
+    );
+
     test('--build is required and has to be a positive integer', () async {
       final without = release().toList()..removeRange(3, 5);
       expectFailure(await run(without), '--build');

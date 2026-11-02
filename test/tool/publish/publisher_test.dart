@@ -454,6 +454,21 @@ void main() {
       'a nightly version that is not X.Y.Z': (p) =>
           publishNightly(p, version: '1.3.0-beta'),
       'a build number of zero': (p) => publishRelease(p, build: 0),
+      // The files exist; only the pairing is wrong.
+      'a .dmg for windows-x64': (p) =>
+          publishRelease(p, files: {'windows-x64': mac}),
+      'an .exe for linux-x64': (p) =>
+          publishRelease(p, files: {'linux-x64': win}),
+      'an .AppImage for macos': (p) =>
+          publishNightly(p, files: {'macos': linux}),
+      'force on the nightly lane': (p) => p.publish(
+        lane: Lane.nightly,
+        version: '1.3.0',
+        build: 157,
+        notes: '',
+        files: {'windows-x64': win},
+        force: true,
+      ),
     };
 
     for (final entry in cases.entries) {
@@ -463,9 +478,32 @@ void main() {
         final bucket = FakeBucket();
 
         await expectLater(entry.value(publisher(bucket)), _publishError());
-        expect(bucket.putCalls, isEmpty);
+        // Refused from the arguments alone: not even the list was read.
+        expect(bucket.calls, isEmpty);
       });
     }
+  });
+
+  group('an upload that fails half way', () {
+    test('stops there: no later upload, no manifest write', () async {
+      final bucket = FakeBucket();
+      const linuxKey =
+          'nightly/1.3.0-157/Anchorline-Nightly-1.3.0-157-linux-x64.AppImage';
+      bucket.failPut.add(linuxKey);
+
+      await expectLater(
+        publishNightly(publisher(bucket)),
+        _publishError(linuxKey),
+      );
+
+      expect(bucket.calls, [
+        'getText $_nightlyKey',
+        'putFile nightly/1.3.0-157/Anchorline-Nightly-1.3.0-157-windows-x64.exe',
+        'putFile $linuxKey',
+      ]);
+      expect(bucket.textPuts, isEmpty);
+      expect(bucket.texts.containsKey(_nightlyKey), isFalse);
+    });
   });
 
   group('rollback', () {
