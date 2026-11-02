@@ -588,6 +588,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Bypasses PowerSync\'s upload pump and pushes each queued CRUD op directly to Supabase. Use when the queue is stuck (ps_crud is non-empty, sync status shows uploading=false, lastSyncedAt=never). Slow — one HTTP request per op.'),
             onTap: _drainQueueManually,
           ),
+          ListTile(
+            title: const Text('Version'),
+            subtitle: Text(BuildInfo.label),
+          ),
           const Divider(height: 32),
           Padding(
             padding: const EdgeInsets.all(Spacing.lg),
@@ -601,10 +605,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: Theme.of(context).textTheme.labelSmall,
               ),
             ),
-          ),
-          ListTile(
-            title: const Text('Version'),
-            subtitle: Text(BuildInfo.label),
           ),
               ],
             );
