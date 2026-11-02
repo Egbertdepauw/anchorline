@@ -171,15 +171,21 @@ replaces the earlier idea of the Cloudflare `wrangler` tool, because
 the AWS CLI is preinstalled on GitHub's runners. Its actions:
 
 - **Publish a release**: takes a version, a build number, the installer
-  files and a release-notes file. It computes sizes and checksums,
-  uploads the files, verifies each upload, and only then replaces
-  `manifest.json`. The highest version becomes `latest` and the old
-  `latest` moves into `previous`. It refuses to overwrite an existing
-  version unless told to. Older versions stay in the bucket.
+  files (a release needs both `windows-x64` and `linux-x64`) and a
+  release-notes file. It computes sizes and checksums, uploads the
+  files, verifies each upload, and only then replaces `manifest.json`.
+  The highest version becomes `latest` and the old `latest` moves into
+  `previous`. It refuses to overwrite an existing version unless told
+  to, with one exception: publishing the identical files again for the
+  same version and build is a no-op that succeeds ("already published,
+  nothing to do"), so a re-run of the build pipeline finishes. Different
+  files are refused unless told to. Older versions stay in the bucket.
 - **Publish a nightly**: the same steps for a nightly, with a version
   and a build number, into `nightly/manifest.json` and
   `nightly/<version>-<build>/`. It refuses a build number that is
-  already listed and drops entries older than 14 days.
+  already listed, except for the identical files again, which is the
+  same no-op that succeeds; a nightly cannot be forced. It drops entries
+  older than 14 days.
 - **Roll back**: makes a previous release `latest` again by replacing
   `releases/manifest.json`. Nothing is deleted.
 - **Publish content**: uploads the legal and documentation texts and
