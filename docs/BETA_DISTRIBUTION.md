@@ -202,9 +202,8 @@ Build + package:
 flutter pub get
 flutter build windows --release
 
-:: Pass the build number from pubspec.yaml so the installer filename
-:: matches what the landing page expects.
-:: Replace 1.0.0 with whatever's in pubspec.yaml's version field.
+:: Replace <V> and <N> with the version and the build number from
+:: pubspec.yaml's version field (<V>+<N>).
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ^
   /DMyAppVersion=<V> /DMyAppBuild=<N> /DChannel=release ^
   windows\installer\anchorline.iss

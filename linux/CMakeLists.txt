@@ -10,6 +10,8 @@ set(BINARY_NAME "anchorline")
 # `ANCHORLINE_CHANNEL=nightly flutter build linux` selects the nightly identity;
 # unset, or any other value, builds the release. The environment is read when
 # CMake configures, and `flutter build` re-configures on every run.
+# The Dart side has its own switch, `--dart-define=BUILD_CHANNEL=nightly`
+# (it picks the data folder), so a nightly build needs both.
 #
 # APPLICATION_ID is the unique GTK application identifier. See:
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID

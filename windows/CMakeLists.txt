@@ -10,13 +10,16 @@ set(BINARY_NAME "Anchorline")
 # `ANCHORLINE_CHANNEL=nightly flutter build windows` selects the nightly
 # identity; unset, or any other value, builds the release. The environment is
 # read when CMake configures, and `flutter build` re-configures on every run.
+# The Dart side has its own switch, `--dart-define=BUILD_CHANNEL=nightly`
+# (it picks the data folder), so a nightly build needs both.
 #
 # The runner gets this as a value-less compile flag (runner/CMakeLists.txt) and
 # runner/app_identity.h turns it into the display name: the window title and
 # the Windows product name (runner/Runner.rc). The product name decides the
-# support folder, %APPDATA%\De Spaankamer\<product name>, which
-# lib/data/app_data_folder.dart pins for the data folder too. BINARY_NAME stays
-# the same for both channels: each installs into its own folder.
+# support folder, %APPDATA%\De Spaankamer\<product name>.
+# lib/data/app_data_folder.dart pins the same company and product names under
+# %LOCALAPPDATA% for the data folder. BINARY_NAME stays the same for both
+# channels: each installs into its own folder.
 if("$ENV{ANCHORLINE_CHANNEL}" STREQUAL "nightly")
   set(ANCHORLINE_NIGHTLY ON)
 else()

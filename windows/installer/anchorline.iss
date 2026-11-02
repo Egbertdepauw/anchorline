@@ -3,9 +3,13 @@
 ; To produce an .msi-like installer .exe:
 ;   1. Build the Flutter Windows release: `flutter build windows --release`
 ;      (must run ON a Windows machine — Flutter doesn't cross-compile
-;      Windows binaries from macOS or Linux). For the nightly, set the
-;      environment variable ANCHORLINE_CHANNEL=nightly for that build (see
-;      windows/CMakeLists.txt) and pass /DChannel=nightly to ISCC below.
+;      Windows binaries from macOS or Linux). For the nightly, build with
+;      the environment variable ANCHORLINE_CHANNEL=nightly set AND
+;      `flutter build windows --release --dart-define=BUILD_CHANNEL=nightly`.
+;      The first switches the native identity (see windows/CMakeLists.txt);
+;      the second makes the Dart side use the nightly's own data folder.
+;      With only one of them the app shares the release's data folder or its
+;      identity. Then pass /DChannel=nightly to ISCC below.
 ;   2. Install Inno Setup 6 (https://jrsoftware.org/isdl.php).
 ;   3. From the repo root, run:
 ;        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ^
@@ -20,10 +24,10 @@
 ; Output is a standard NSIS-style installer .exe (Inno Setup doesn't
 ; produce true .msi files — for .msi you'd use WiX, which is a much
 ; bigger lift). The landing page on staging.despaankamer.nl serves
-; this .exe under the name it is built with (despite the .msi naming
-; convention the user originally asked for — Inno is the path of
-; least resistance and the result behaves identically from a user's
-; perspective).
+; this .exe (despite the .msi naming convention the user originally
+; asked for — Inno is the path of least resistance and the result
+; behaves identically from a user's perspective). The cloud publish
+; step will upload it under the name it is built with.
 ;
 ; Code signing: for production we want to avoid Windows SmartScreen
 ; warnings. That requires an EV Code Signing Certificate (~€350-700/yr
