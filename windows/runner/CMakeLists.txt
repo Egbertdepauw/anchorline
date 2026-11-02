@@ -27,6 +27,10 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_MINOR=${FLUTT
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_PATCH=${FLUTTER_VERSION_PATCH}")
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_BUILD=${FLUTTER_VERSION_BUILD}")
 
+# Add the preprocessor definition for the app's display name (window title in
+# main.cpp, product name in Runner.rc); see windows/CMakeLists.txt.
+target_compile_definitions(${BINARY_NAME} PRIVATE "APP_DISPLAY_NAME=\"${APP_DISPLAY_NAME}\"")
+
 # Disable Windows macros that collide with C++ standard library functions.
 target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 

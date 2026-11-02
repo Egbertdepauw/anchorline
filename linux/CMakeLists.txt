@@ -4,10 +4,24 @@ project(runner LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "ccrlogger")
-# The unique GTK application identifier for this application. See:
+set(BINARY_NAME "anchorline")
+
+# Release and nightly builds are separate apps that install side by side.
+# `ANCHORLINE_CHANNEL=nightly flutter build linux` selects the nightly identity;
+# unset, or any other value, builds the release. The environment is read when
+# CMake configures, and `flutter build` re-configures on every run.
+#
+# APPLICATION_ID is the unique GTK application identifier. See:
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
-set(APPLICATION_ID "com.example.ccrlogger")
+# lib/data/app_data_folder.dart pins the same two ids for the Linux data
+# folder. APP_DISPLAY_NAME is the window title.
+if("$ENV{ANCHORLINE_CHANNEL}" STREQUAL "nightly")
+  set(APPLICATION_ID "nl.despaankamer.ccrlogger.nightly")
+  set(APP_DISPLAY_NAME "Anchorline Nightly")
+else()
+  set(APPLICATION_ID "nl.despaankamer.ccrlogger")
+  set(APP_DISPLAY_NAME "Anchorline")
+endif()
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.

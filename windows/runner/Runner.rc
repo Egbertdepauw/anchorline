@@ -72,6 +72,12 @@ IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
 #define VERSION_AS_STRING "1.0.0"
 #endif
 
+// The channel's name, passed by CMake (see windows/CMakeLists.txt). ProductName
+// decides the Windows support folder, so the nightly must not share it.
+#if !defined(APP_DISPLAY_NAME)
+#define APP_DISPLAY_NAME "Anchorline"
+#endif
+
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION VERSION_AS_NUMBER
  PRODUCTVERSION VERSION_AS_NUMBER
@@ -90,12 +96,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "De Spaankamer" "\0"
-            VALUE "FileDescription", "Anchorline" "\0"
+            VALUE "FileDescription", APP_DISPLAY_NAME "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "Anchorline" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 De Spaankamer. All rights reserved." "\0"
             VALUE "OriginalFilename", "Anchorline.exe" "\0"
-            VALUE "ProductName", "Anchorline" "\0"
+            VALUE "ProductName", APP_DISPLAY_NAME "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

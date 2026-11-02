@@ -74,10 +74,12 @@ bare .exe does not run without its siblings. Sanity checks:
 
 ```powershell
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
-  /DMyAppVersion=<x.y.z> windows\installer\anchorline.iss
+  /DMyAppVersion=<x.y.z> /DMyAppBuild=<n> /DChannel=<release|nightly> `
+  windows\installer\anchorline.iss
 ```
 
-Output: `windows\installer\Output\Anchorline-Setup-<x.y.z>.exe` — a
+Output: `windows\installer\Output\Anchorline-<x.y.z>-windows-x64.exe` (release;
+the nightly is `Anchorline-Nightly-<x.y.z>-<n>-windows-x64.exe`) — a
 per-machine (admin-elevated) installer that bundles the entire
 `Release\` folder, creates Start-menu/desktop entries, and preserves
 user data on uninstall (databases, Subsurface clone and BLE log in

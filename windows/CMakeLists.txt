@@ -6,6 +6,22 @@ project(anchorline LANGUAGES CXX)
 # the on-disk name of your application.
 set(BINARY_NAME "Anchorline")
 
+# Release and nightly builds are separate apps that install side by side.
+# `ANCHORLINE_CHANNEL=nightly flutter build windows` selects the nightly
+# identity; unset, or any other value, builds the release. The environment is
+# read when CMake configures, and `flutter build` re-configures on every run.
+#
+# APP_DISPLAY_NAME is the window title and the Windows product name
+# (runner/Runner.rc). The product name decides the support folder,
+# %APPDATA%\De Spaankamer\<product name>, which lib/data/app_data_folder.dart
+# pins for the data folder too. BINARY_NAME stays the same for both channels:
+# each installs into its own folder.
+if("$ENV{ANCHORLINE_CHANNEL}" STREQUAL "nightly")
+  set(APP_DISPLAY_NAME "Anchorline Nightly")
+else()
+  set(APP_DISPLAY_NAME "Anchorline")
+endif()
+
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
 cmake_policy(VERSION 3.14...3.25)
