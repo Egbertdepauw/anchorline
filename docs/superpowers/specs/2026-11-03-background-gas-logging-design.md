@@ -404,7 +404,7 @@ With "Log on OK" on and the bridge connected, the existing save card turns into 
 | Stays until changed | **Gas role** | Decides the label layout, so it belongs to the setup |
 | Stays until changed | **For** | Who the gas is for: free text, in the log and the CSV, not on the label |
 | Stays until changed | **Print label on OK** | On by default when a printer is configured; off on the boat |
-| Next cylinder only | **A Blend-page target, the cylinder, fill pressure, notes** | Used up by the first OK press that saves **complete** (`needs_signoff = 0`, printed if printing was wanted). A press that needs sign-off (pressed too early, a mismatch, a failed print) leaves them in place, so pressing OK again on the same cylinder still has them |
+| Next cylinder only | **A Blend-page target, the cylinder, fill pressure, notes** | Used up by the first OK press that saves **complete** (`needs_signoff = 0`, printed if printing was wanted). A press that needs sign-off (a mismatch, a failed print, no name) leaves them in place, so pressing OK again on the same cylinder still has them |
 
 - **The Blend-page target** (the 24 h `recentTarget`) is **preselected**.
   - Today the card offers it as the first chip but selects nothing. With the phone in a pocket,
