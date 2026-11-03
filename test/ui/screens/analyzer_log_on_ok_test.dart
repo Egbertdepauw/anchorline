@@ -978,6 +978,48 @@ void main() {
       expect(h.loggersBuilt, 1);
     });
 
+    _test('the MOD rows keep following the picked mix across the layouts '
+        'and an OK save', (tester, h) async {
+      // 33.0 % at 1.6 is 38.5 m. With no desired mix that is a stop: 39 m
+      // would be 1.62, so 36 m. Above the desired EAN32 it is the exact
+      // depth rounded down, 38 m (#145).
+      String mod16() => tester
+          .widgetList<Text>(find.descendant(
+              of: _key('analyzer-mod-1.6'), matching: find.byType(Text)))
+          .map((t) => t.data ?? t.textSpan!.toPlainText())
+          .join(' | ');
+
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await h.feed(tester, 33.0, 0);
+      expect(mod16(), contains('36 m'));
+
+      await tester.tap(_key('desired-mix-32-0'));
+      await tester.pump();
+      expect(mod16(), contains('38 m'));
+
+      // The card is kept across the layouts, and so is the mix it reports.
+      tester.view.physicalSize = const Size(1200, 3200);
+      await tester.pump();
+      await tester.pump();
+      expect(tester.widget<ChoiceChip>(_key('desired-mix-32-0')).selected,
+          isTrue);
+      expect(mod16(), contains('38 m'));
+
+      // An OK save leaves the mix picked, so the rows stay as they are.
+      await h.pressOk(tester);
+      expect(h.dao.addedFromBridge, hasLength(1));
+      expect(tester.widget<ChoiceChip>(_key('desired-mix-32-0')).selected,
+          isTrue);
+      expect(mod16(), contains('38 m'));
+
+      tester.view.physicalSize = const Size(400, 3200);
+      await tester.pump();
+      await tester.pump();
+      expect(mod16(), contains('38 m'));
+    });
+
     testWidgets('a disposed card leaves the setup of its successor alone',
         (tester) async {
       final dao = FakeGasAnalysesDao();
