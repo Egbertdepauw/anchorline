@@ -55,10 +55,10 @@ import '../../data/db/dive_annotations_dao.dart';
 import 'package:subsurface_core/data/models/annotation.dart';
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart' show ConvertedDive;
 import 'credentials.dart';
-import 'format/subsurface_format.dart';
-import 'format/subsurface_parser.dart';
+import 'package:subsurface_core/sync/subsurface_git/format/subsurface_format.dart';
+import 'package:subsurface_core/sync/subsurface_git/format/subsurface_parser.dart';
 import 'repo.dart';
-import 'subsurface_to_ccrlog_mapper.dart';
+import 'package:subsurface_core/sync/subsurface_git/subsurface_to_ccrlog_mapper.dart';
 
 /// Sentinel parser version stamped on dives the bootstrap importer
 /// brings in. Distinguishes Subsurface-imported dives from BLE-imported

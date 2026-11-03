@@ -2,11 +2,11 @@ import 'dart:typed_data';
 
 import 'package:subsurface_core/data/models/annotation.dart';
 import 'package:subsurface_core/data/models/sample_set.dart';
-import 'package:ccrlogger/sync/subsurface_git/format/subsurface_format.dart';
-import 'package:ccrlogger/sync/subsurface_git/format/subsurface_serializer.dart';
-import 'package:ccrlogger/sync/subsurface_git/mapper.dart';
-import 'package:ccrlogger/sync/subsurface_git/sync_inputs.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:subsurface_core/sync/subsurface_git/format/subsurface_format.dart';
+import 'package:subsurface_core/sync/subsurface_git/format/subsurface_serializer.dart';
+import 'package:subsurface_core/sync/subsurface_git/mapper.dart';
+import 'package:subsurface_core/sync/subsurface_git/sync_inputs.dart';
+import 'package:test/test.dart';
 
 void main() {
   test('mapDive emits divemaster from annotation when set', () {

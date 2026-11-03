@@ -4,7 +4,7 @@
 library;
 
 import '../../data/db/database.dart' show Cylinder, Dive, DiveComputer;
-import 'sync_inputs.dart';
+import 'package:subsurface_core/sync/subsurface_git/sync_inputs.dart';
 
 SubsurfaceDiveInput diveInputFromRow(Dive row) => SubsurfaceDiveInput(
       id: row.id,

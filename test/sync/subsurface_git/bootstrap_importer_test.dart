@@ -116,7 +116,7 @@ class _FakeRepo extends SubsurfaceRepo {
 
 // ── Fixture-folder helpers ───────────────────────────────────────────
 
-const _fixturesRoot = 'test/fixtures/subsurface';
+const _fixturesRoot = 'packages/subsurface_core/test/fixtures/subsurface';
 
 Directory _tempDir(String prefix) {
   final dir = Directory.systemTemp.createTempSync('ccrlog_$prefix');

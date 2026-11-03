@@ -16,11 +16,11 @@ import 'dart:typed_data';
 import 'package:subsurface_core/data/models/annotation.dart';
 import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'package:subsurface_core/data/models/sample_set.dart';
-import 'package:ccrlogger/sync/subsurface_git/format/subsurface_parser.dart';
-import 'package:ccrlogger/sync/subsurface_git/mapper.dart';
-import 'package:ccrlogger/sync/subsurface_git/sync_inputs.dart';
-import 'package:ccrlogger/sync/subsurface_git/sync_planner.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:subsurface_core/sync/subsurface_git/format/subsurface_parser.dart';
+import 'package:subsurface_core/sync/subsurface_git/mapper.dart';
+import 'package:subsurface_core/sync/subsurface_git/sync_inputs.dart';
+import 'package:subsurface_core/sync/subsurface_git/sync_planner.dart';
+import 'package:test/test.dart';
 
 void main() {
   group('SyncPlanner.plan', () {

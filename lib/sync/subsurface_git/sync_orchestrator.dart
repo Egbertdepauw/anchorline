@@ -30,9 +30,9 @@ import 'package:subsurface_core/data/models/sample_set.dart';
 import 'credentials.dart';
 import 'drift_sync_inputs.dart';
 import 'remote_repo_reader.dart';
-import 'remote_snapshot.dart';
+import 'package:subsurface_core/sync/subsurface_git/remote_snapshot.dart';
 import 'repo.dart';
-import 'sync_planner.dart' show AbortedDive, CcrlogDiveBundle, SyncPlanner;
+import 'package:subsurface_core/sync/subsurface_git/sync_planner.dart' show AbortedDive, CcrlogDiveBundle, SyncPlanner;
 
 /// Result of one [SubsurfaceSyncOrchestrator.syncNow] invocation.
 class SubsurfaceSyncResult {

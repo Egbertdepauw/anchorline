@@ -21,12 +21,12 @@ import 'package:subsurface_core/data/models/dive.dart';
 import 'package:subsurface_core/data/models/sample_set.dart';
 import 'package:subsurface_core/shearwater/parser/constants.dart';
 import 'package:subsurface_core/shearwater/parser/hardware.dart';
-import 'package:ccrlogger/sync/subsurface_git/format/subsurface_format.dart';
-import 'package:ccrlogger/sync/subsurface_git/format/subsurface_parser.dart';
-import 'package:ccrlogger/sync/subsurface_git/mapper.dart' as write_mapper;
-import 'package:ccrlogger/sync/subsurface_git/subsurface_to_ccrlog_mapper.dart';
-import 'package:ccrlogger/sync/subsurface_git/sync_inputs.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:subsurface_core/sync/subsurface_git/format/subsurface_format.dart';
+import 'package:subsurface_core/sync/subsurface_git/format/subsurface_parser.dart';
+import 'package:subsurface_core/sync/subsurface_git/mapper.dart' as write_mapper;
+import 'package:subsurface_core/sync/subsurface_git/subsurface_to_ccrlog_mapper.dart';
+import 'package:subsurface_core/sync/subsurface_git/sync_inputs.dart';
+import 'package:test/test.dart';
 
 const _fixturesRoot = 'test/fixtures/subsurface';
 
