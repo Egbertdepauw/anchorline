@@ -442,9 +442,13 @@ Over a cable the app sees the SOLO's stream itself, so the OK rule of §1 runs i
 - **`lib/analyzer/hold_detector.dart`** is the Dart twin of the firmware's `hold_detector`, with
   the same named thresholds: 2.0 s of silence while attached, 5 s of flow before the first hold,
   3 s before later holds, and a 30 s window.
-  - Flow is counted from the first line after attach, or from the resume after the last recorded
+  - Flow is counted from the first line after attach, or from the last resume. A resume is the
+    first line after any silence of 2 s or more, whether or not that silence was recorded as a
     hold.
   - Dips under 2 s don't reset it.
+  - The record's window holds only the lines since the last resume, capped at 30 s, so lines from
+    the previous cylinder never count towards stability.
+  - The firmware's `hold_detector` follows the same two rules.
   - The transport leaving `connected` cancels a pending hold and resets arming.
   - It is tested against the same captures, which give two holds in capture *a* and one in
     capture *b*.
