@@ -412,7 +412,6 @@ bool _isTimeout(Exception e) =>
 PrinterFault? _faultFor(PhomemoEvent event) => switch (event) {
   PhomemoEvent.jobDone => null,
   PhomemoEvent.noLabels => PrinterFault.noLabels,
-  PhomemoEvent.coverOpen => PrinterFault.coverOpen,
   PhomemoEvent.lowBattery => PrinterFault.lowBattery,
 };
 

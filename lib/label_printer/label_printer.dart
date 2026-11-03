@@ -13,7 +13,8 @@ enum PrinterFault { noLabels, coverOpen, overheated, lowBattery }
 
 /// The user-facing text for [f].
 String printerFaultMessage(PrinterFault f) => switch (f) {
-  PrinterFault.noLabels => 'Out of labels',
+  // An M110 reports an open cover as out of paper, so say both.
+  PrinterFault.noLabels => 'Out of labels, or the cover is open',
   PrinterFault.coverOpen => 'Printer cover is open',
   PrinterFault.overheated => 'Printer is overheated. Let it cool down.',
   PrinterFault.lowBattery => 'Printer battery is low',

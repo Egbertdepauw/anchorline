@@ -17,11 +17,10 @@ void main() {
       );
     });
 
-    test('1A 05 98 is coverOpen', () {
-      expect(
-        parsePhomemoNotification([0x1A, 0x05, 0x98]),
-        PhomemoEvent.coverOpen,
-      );
+    test('1A 05 98 is ignored: an M110 sends it with the cover closed', () {
+      // Bench, 2026-11-03: the M110 answers the cover query with 1A 05 98
+      // while the cover is shut. An open cover shows up as 1A 06 88.
+      expect(parsePhomemoNotification([0x1A, 0x05, 0x98]), isNull);
     });
 
     test('1A 04 A4 is lowBattery', () {
@@ -31,7 +30,7 @@ void main() {
       );
     });
 
-    test('1A 05 99 (cover closed) is ignored', () {
+    test('1A 05 99 is ignored', () {
       expect(parsePhomemoNotification([0x1A, 0x05, 0x99]), isNull);
     });
 

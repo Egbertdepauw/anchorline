@@ -144,7 +144,8 @@ void main() {
           3,
           [PrinterFault.lowBattery, PrinterFault.noLabels],
         ),
-        'Printed 3 labels. Printer battery is low. Out of labels.',
+        'Printed 3 labels. Printer battery is low. '
+        'Out of labels, or the cover is open.',
       );
     });
 
@@ -398,7 +399,7 @@ void main() {
 
       await tester.tap(find.text('Retry'));
       await tester.pumpAndSettle();
-      expect(find.text('Out of labels'), findsOneWidget);
+      expect(find.text('Out of labels, or the cover is open'), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
 
       await tester.tap(find.text('Retry'));

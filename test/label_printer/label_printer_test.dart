@@ -4,7 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('printerFaultMessage', () {
     test('has the exact user-facing copy for every fault', () {
-      expect(printerFaultMessage(PrinterFault.noLabels), 'Out of labels');
+      expect(
+        printerFaultMessage(PrinterFault.noLabels),
+        'Out of labels, or the cover is open',
+      );
       expect(
         printerFaultMessage(PrinterFault.coverOpen),
         'Printer cover is open',
@@ -38,11 +41,11 @@ void main() {
 
     test('carries the fault', () {
       const e = LabelPrinterException(
-        'Out of labels',
+        'Out of labels, or the cover is open',
         fault: PrinterFault.noLabels,
       );
       expect(e.fault, PrinterFault.noLabels);
-      expect('$e', 'Out of labels');
+      expect('$e', 'Out of labels, or the cover is open');
     });
   });
 

@@ -372,7 +372,11 @@ void main() {
         throwsA(
           isA<LabelPrinterException>()
               .having((e) => e.fault, 'fault', PrinterFault.noLabels)
-              .having((e) => e.message, 'message', 'Out of labels'),
+              .having(
+                (e) => e.message,
+                'message',
+                'Out of labels, or the cover is open',
+              ),
         ),
       );
       expect(rig.printer.printed, hasLength(1));
