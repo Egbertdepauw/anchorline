@@ -32,6 +32,11 @@ typedef LabelPrinterFactory = LabelPrinter Function(String printerId);
 const int kMaxLabelCopies = 9;
 
 const String _kNoPrinter = 'No label printer set up';
+
+/// What a print of an entry that still needs sign-off fails with. Public so
+/// the log screen shows the same words when it stops a print itself.
+const String kSignOffBeforePrintMessage =
+    'Sign off this analysis before printing it.';
 const String _kPrinterNotFound = 'Printer not found';
 
 class LabelPrintService {
@@ -85,11 +90,22 @@ class LabelPrintService {
   /// The label is built now. The job then waits for every job asked for
   /// before it.
   ///
-  /// Throws a [LabelPrinterException] when no printer is saved, when the
+  /// Throws a [LabelPrinterException] when [a] still needs sign-off
+  /// ([kSignOffBeforePrintMessage]), when no printer is saved, when the
   /// printer can't be reached ("Printer not found" after [connectTimeout]),
   /// or when it reports a fault that stops the job.
-  Future<List<PrinterFault>> printAnalysis(GasAnalysis a, {int copies = 1}) =>
-      _enqueue(labelFor(a), copies);
+  ///
+  /// An entry that needs sign-off is refused at once: it is not queued, and
+  /// nothing is rendered or connected. The refusal is a failed future, like
+  /// the other errors, so the callers' existing handling shows it.
+  Future<List<PrinterFault>> printAnalysis(GasAnalysis a, {int copies = 1}) {
+    if (a.needsSignoff) {
+      return Future<List<PrinterFault>>.error(
+        const LabelPrinterException(kSignOffBeforePrintMessage),
+      );
+    }
+    return _enqueue(labelFor(a), copies);
+  }
 
   /// Prints the sample label of Settings → "Print test label", dated now.
   /// Queues, throws and returns like [printAnalysis].

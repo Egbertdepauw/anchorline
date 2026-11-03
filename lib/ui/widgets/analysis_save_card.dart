@@ -11,20 +11,31 @@
 /// printer set up, "Save & print" saves the analysis and then prints its
 /// label. A hard mismatch with the desired mix is confirmed before
 /// anything is saved; a print that fails leaves the analysis saved.
+///
+/// With a [UsbOkLogger] (issue #113, Log on OK over USB) the card becomes the
+/// setup for the OK presses: its fields are what the next OK press saves, the
+/// Save buttons give way to a hint, and the outcome of each press shows on
+/// the card with Edit and Delete. Room air is the exception, because OK does
+/// not log it: the Save buttons stay.
 library;
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../analysis/fill_pressure.dart';
 import '../../analysis/gas_naming.dart';
 import '../../analysis/mix_match.dart';
+import '../../analyzer/bridge/bridge_protocol.dart';
+import '../../analyzer/bridge/record_to_analysis.dart';
 import '../../analyzer/protocol/analyzer_reading.dart';
 import '../../analyzer/stability.dart';
+import '../../analyzer/usb_ok_logger.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../../labels/label_print_service.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
+import 'analysis_edit_sheet.dart';
 import 'desired_mix_picker.dart';
 import 'label_print_controls.dart';
 import 'mix_match_indicator.dart';
@@ -40,6 +51,11 @@ class AnalysisSaveCard extends StatefulWidget {
     this.blendTarget,
     this.labelPrinting,
     this.onSetUpPrinter,
+    this.okLogger,
+    this.initialAnalysedBy,
+    this.onAnalysedByChanged,
+    this.initialPrintOnOk = true,
+    this.onPrintOnOkChanged,
     this.now = DateTime.now,
   });
 
@@ -64,6 +80,28 @@ class AnalysisSaveCard extends StatefulWidget {
   /// Opens the label printer settings, for the "Set up label printer" link.
   final VoidCallback? onSetUpPrinter;
 
+  /// Non-null puts the card in Log on OK mode: it is the setup of this
+  /// logger and shows what its OK presses did. The card follows the logger
+  /// it is given: a new one starts a new run, and a null one ends it.
+  final UsbOkLogger? okLogger;
+
+  /// The name the "Analysed by" field starts with (the one remembered from
+  /// the last session). Read once, when the card is created.
+  final String? initialAnalysedBy;
+
+  /// Told the "Analysed by" text on every edit, null when it is blank, so
+  /// the screen can remember it.
+  final ValueChanged<String?>? onAnalysedByChanged;
+
+  /// Whether "Print label on OK" starts on (the choice remembered from the
+  /// last session; it only counts while a printer is set up). Read once, when
+  /// the card is created.
+  final bool initialPrintOnOk;
+
+  /// Told when the diver flips "Print label on OK", so the screen can
+  /// remember it.
+  final ValueChanged<bool>? onPrintOnOkChanged;
+
   /// Clock, injectable for tests.
   final DateTime Function() now;
 
@@ -73,6 +111,8 @@ class AnalysisSaveCard extends StatefulWidget {
 
 class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
   final _diver = TextEditingController();
+  final _diverFocus = FocusNode();
+  final _for = TextEditingController();
   final _pressure = TextEditingController();
   final _notes = TextEditingController();
 
@@ -93,11 +133,48 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
 
   bool get _busy => _saving || _printing;
 
+  // ── Log on OK ───────────────────────────────────────────────────
+  StreamSubscription<OkLogResult>? _okSub;
+
+  /// The latest OK press of this logger, shown with Edit and Delete.
+  OkLogResult? _okResult;
+
+  /// Edit or Delete of the result is under way.
+  bool _okBusy = false;
+
+  /// "Print label on OK"; it counts only while a printer is set up.
+  late bool _printOnOk = widget.initialPrintOnOk;
+
+  /// The per-cylinder fields the press of [_okResult] took (from the setup
+  /// it carries), for it to use up: by itself when it saved complete, or from
+  /// a sign-off on the result row. Only the fields still as they were are
+  /// cleared, because the diver may already be typing for the next cylinder
+  /// while the label prints. Null once used up.
+  ({String? cylinderId, double? pressure, String notes})? _takenForResult;
+
+  /// The "Analysed by" the screen was last told, so it hears of a change once.
+  String? _toldAnalysedBy;
+
   @override
   void initState() {
     super.initState();
+    _diver.text = widget.initialAnalysedBy ?? '';
+    _toldAnalysedBy = _analysedByNow;
+    _diverFocus.addListener(_onDiverFocus);
     _loadCylinders();
     _loadMixOptions();
+    _bindLogger();
+  }
+
+  @override
+  void didUpdateWidget(AnalysisSaveCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.okLogger != widget.okLogger) {
+      _unbindLogger(oldWidget.okLogger);
+      _okResult = null;
+      _takenForResult = null;
+      _bindLogger();
+    }
   }
 
   Future<void> _loadCylinders() async {
@@ -125,11 +202,139 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
 
   @override
   void dispose() {
+    _unbindLogger(widget.okLogger);
+    // A name still being typed (a touch outside the field doesn't end the
+    // edit on a phone). Told once the tree is done, not while it is torn
+    // down, because the screen listens to what it changes.
+    final told = widget.onAnalysedByChanged;
+    final name = _analysedByNow;
+    if (told != null && name != _toldAnalysedBy) {
+      scheduleMicrotask(() => told(name));
+    }
+    _diverFocus.removeListener(_onDiverFocus);
+    _diverFocus.dispose();
     _diver.dispose();
+    _for.dispose();
     _pressure.dispose();
     _notes.dispose();
     super.dispose();
   }
+
+  /// Becomes the setup of the logger and listens to what its presses did.
+  /// The results are not replayed, so the card listens for as long as it has
+  /// the logger.
+  void _bindLogger() {
+    final logger = widget.okLogger;
+    if (logger == null) return;
+    logger.setupProvider = _okSetup;
+    _okSub = logger.results.listen(_onOkResult);
+  }
+
+  void _unbindLogger(UsbOkLogger? logger) {
+    // Not awaited: cancelling a broadcast subscription returns a root-zone
+    // future, which never completes under the fake clock of widget tests.
+    unawaited(_okSub?.cancel());
+    _okSub = null;
+    // Only this card's own: a card that took the logger over (the layout
+    // changed under a card with no key) has set its own by now.
+    if (logger != null && logger.setupProvider == _okSetup) {
+      logger.setupProvider = null;
+    }
+  }
+
+  /// The "Analysed by" text, null when blank.
+  String? get _analysedByNow => _blankToNull(_diver.text);
+
+  void _onDiverFocus() {
+    if (!_diverFocus.hasFocus) _tellAnalysedBy();
+  }
+
+  /// Tells the screen the name when it changed since it was last told: when
+  /// the edit ends (Done, leaving the field), when an OK press takes the
+  /// setup and when a Save is made. Not on every keystroke, as the screen
+  /// remembers it by writing a setting that the whole app listens to.
+  void _tellAnalysedBy() {
+    final name = _analysedByNow;
+    if (name == _toldAnalysedBy) return;
+    _toldAnalysedBy = name;
+    widget.onAnalysedByChanged?.call(name);
+  }
+
+  bool get _printReady => widget.labelPrinting?.isConfigured == true;
+
+  /// The fields as they are now, for the OK press the logger is handling.
+  /// A fill pressure that is not a number is not passed: the field says so,
+  /// and the entry is saved without a pressure rather than with a wrong one.
+  OkSetup _okSetup() {
+    _tellAnalysedBy();
+    final cylinderId =
+        _cylinders.any((c) => c.id == _cylinderId) ? _cylinderId : null;
+    final printReady = _printReady;
+    final pressure = parseFillPressure(_pressure.text);
+    return (
+      setup: LogOnOkSetup(
+        analysedBy: _diver.text,
+        desiredMix: _desired,
+        gasRole: _role,
+        analysedFor: _blankToNull(_for.text),
+        printOnOk: printReady && _printOnOk,
+        printerConfigured: printReady,
+        cylinderId: cylinderId,
+        fillPressureBar: pressure.bar,
+        notes: _notes.text,
+        modPpo2s: widget.modPpo2s,
+      ),
+      copies: _copies,
+    );
+  }
+
+  /// Shows the outcome of an OK press. One that saved complete uses up the
+  /// per-cylinder fields; a press that needs sign-off leaves them, so OK on
+  /// the same cylinder again still has them. The name, desired mix, role,
+  /// "for", copies and print switch stay for the next cylinder.
+  void _onOkResult(OkLogResult r) {
+    if (!mounted) return;
+    setState(() {
+      _okResult = r;
+      _takenForResult = _takenBy(r);
+      if (r.complete) _useUpTaken();
+    });
+    // Not awaited: the mix just used may be new to the chips.
+    if (r.analysisId != null) unawaited(_loadMixOptions());
+  }
+
+  /// The per-cylinder fields [r]'s own press took, or null when it did not
+  /// get as far as a setup. They come with the result: presses queue up, and
+  /// by the time a result arrives the provider may have been asked for the
+  /// next press already.
+  static ({String? cylinderId, double? pressure, String notes})? _takenBy(
+    OkLogResult r,
+  ) {
+    final used = r.setupUsed?.setup;
+    if (used == null) return null;
+    return (
+      cylinderId: used.cylinderId,
+      pressure: used.fillPressureBar,
+      notes: used.notes ?? '',
+    );
+  }
+
+  /// Clears the per-cylinder fields the shown result's press took, the ones
+  /// still as it took them. A pressure that is not a number now was not what
+  /// the press took. Call inside setState.
+  void _useUpTaken() {
+    final taken = _takenForResult;
+    _takenForResult = null;
+    if (taken == null) return;
+    final current =
+        _cylinders.any((c) => c.id == _cylinderId) ? _cylinderId : null;
+    if (current == taken.cylinderId) _cylinderId = null;
+    final pressure = parseFillPressure(_pressure.text);
+    if (pressure.valid && pressure.bar == taken.pressure) _pressure.clear();
+    if (_notes.text == taken.notes) _notes.clear();
+  }
+
+  static String? _blankToNull(String s) => s.trim().isEmpty ? null : s;
 
   /// O2/He usable for a log entry, or null (no data / sensor error).
   ({double o2, double he})? get _usable {
@@ -137,13 +342,6 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     final he = widget.reading?.he ?? 0;
     if (o2 == null || !o2.isFinite || o2 <= 0 || !he.isFinite) return null;
     return (o2: o2, he: he < 0 ? 0.0 : he);
-  }
-
-  /// Accepts `,` as decimal separator too (comma-locale keypads).
-  static double? _parseDecimal(String s) {
-    final t = s.trim();
-    if (t.isEmpty) return null;
-    return double.tryParse(t.replaceAll(',', '.'));
   }
 
   CylinderChoice? _cylinder(String? id) =>
@@ -208,9 +406,11 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
   /// Retry only prints.
   Future<void> _save({LabelPrintService? printTo}) async {
     final gas = _usable;
+    final pressure = parseFillPressure(_pressure.text);
     // The guard goes up before the first await, so a second tap while a
     // dialog opens or the save runs can't save the reading twice.
-    if (gas == null || _busy) return;
+    if (gas == null || _busy || !pressure.valid) return;
+    _tellAnalysedBy();
     setState(() => _saving = true);
     try {
       // Snapshot before any await: the reading keeps updating at 1 Hz.
@@ -218,10 +418,11 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
       final analysis = NewGasAnalysis(
         cylinderId: _cylinderId,
         analysedBy: _diver.text,
+        analysedFor: _blankToNull(_for.text),
         analysedAt: widget.now(),
         o2Percent: gas.o2,
         hePercent: gas.he,
-        fillPressureBar: _parseDecimal(_pressure.text),
+        fillPressureBar: pressure.bar,
         tempC: reading.tempC != null && reading.tempC!.isFinite
             ? reading.tempC
             : null,
@@ -294,12 +495,15 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     // and the desired mix, role and copies start over: up to a red match
     // the label prints the desired name, so a mix left picked would label
     // the next cylinder with it. A print still uses [saved] and the copies
-    // taken with it, the snapshot.
-    setState(() {
-      _desired = null;
-      _role = gasRoleForCylinderRole(_cylinder(_cylinderId)?.role);
-      _copies = 1;
-    });
+    // taken with it, the snapshot. In Log on OK mode they are the setup of
+    // the next OK press and stay, as a press that saves them leaves them.
+    if (widget.okLogger == null) {
+      setState(() {
+        _desired = null;
+        _role = gasRoleForCylinderRole(_cylinder(_cylinderId)?.role);
+        _copies = 1;
+      });
+    }
     // Not awaited: the print needn't wait for the chips.
     unawaited(_loadMixOptions());
     _pressure.clear();
@@ -312,6 +516,137 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     return saved;
   }
 
+  /// The stored entry [id], or null when it is gone.
+  Future<GasAnalysis?> _readStored(String id) async =>
+      (await widget.dao.list()).where((x) => x.id == id).firstOrNull;
+
+  /// "Edit" on the result: the sheet on the entry as stored, so changes made
+  /// since (a sign-off from the log, a sync) are in it. Afterwards the result
+  /// follows the entry as stored: signed off, here or elsewhere, it is a
+  /// plain "Saved" and the press counts as complete. Printing after a
+  /// sign-off is left to the log, so the sheet does not offer it.
+  Future<void> _editResult(OkLogResult r) async {
+    final id = r.analysisId;
+    if (id == null || _okBusy) return;
+    setState(() => _okBusy = true);
+    try {
+      final messenger = ScaffoldMessenger.of(context);
+      final List<GasAnalysis> log;
+      try {
+        log = await widget.dao.list();
+      } catch (e) {
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+            SnackBar(content: Text('Could not open the analysis: $e')));
+        return;
+      }
+      if (!mounted) return;
+      final stored = log.where((x) => x.id == id).firstOrNull;
+      if (stored == null) {
+        setState(() {
+          if (identical(_okResult, r)) _okResult = null;
+        });
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+            const SnackBar(content: Text('This analysis was deleted.')));
+        return;
+      }
+      final name = _diver.text.trim();
+      final outcome = await showAnalysisEditSheet(
+        context,
+        dao: widget.dao,
+        analysis: stored,
+        mixOptions: recentDesiredMixes(log, blendTarget: widget.blendTarget),
+        suggestedAnalysedBy: name.isEmpty ? null : name,
+      );
+      if (!mounted || outcome == AnalysisEditOutcome.cancelled) return;
+      messenger.hideCurrentSnackBar();
+      if (outcome == AnalysisEditOutcome.deleted) {
+        setState(() {
+          if (identical(_okResult, r)) _okResult = null;
+        });
+        messenger.showSnackBar(
+          SnackBar(content: Text('Deleted ${stored.mixName} analysis.')),
+        );
+        return;
+      }
+      // The entry as the edit left it, not as it was opened.
+      final GasAnalysis? after;
+      try {
+        after = await _readStored(id);
+      } catch (e) {
+        debugPrint('Analysis save card: reading the edited entry failed: $e');
+        return;
+      }
+      if (!mounted || !identical(_okResult, r)) return;
+      if (after == null) {
+        setState(() => _okResult = null);
+      } else if (!r.complete && !after.needsSignoff) {
+        // Signed off: nothing is left to do for this entry, so its press
+        // counts as complete and uses up what it took.
+        final mixName = after.mixName;
+        setState(() {
+          _useUpTaken();
+          _okResult = OkLogResult(
+            code: r.code == FeedbackCode.printed
+                ? FeedbackCode.printed
+                : FeedbackCode.saved,
+            text: mixName,
+            analysisId: id,
+            complete: true,
+            setupUsed: r.setupUsed,
+          );
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _okBusy = false);
+    }
+  }
+
+  /// "Delete" on the result: a confirm, then the entry is soft-deleted.
+  Future<void> _deleteResult(OkLogResult r) async {
+    final id = r.analysisId;
+    if (id == null || _okBusy) return;
+    setState(() => _okBusy = true);
+    try {
+      final messenger = ScaffoldMessenger.of(context);
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Delete this analysis?'),
+          content: const Text('It is removed from the analysis log.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const ValueKey('analysis-ok-delete-confirm'),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      try {
+        await widget.dao.softDelete(id);
+      } catch (e) {
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        if (identical(_okResult, r)) _okResult = null;
+      });
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(const SnackBar(content: Text('Analysis deleted.')));
+    } finally {
+      if (mounted) setState(() => _okBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -320,13 +655,19 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     final stable = widget.stability == ReadingStability.stable;
     final desired = _desired;
     final printing = widget.labelPrinting;
-    final printReady = printing != null && printing.isConfigured;
+    final printReady = _printReady;
+    final okMode = widget.okLogger != null;
+    final roomAir = gas != null && isRoomAir(gas.o2, gas.he);
+    // OK doesn't log air, so the Save buttons stay for it.
+    final showSave = !okMode || roomAir;
     // A cylinder deleted elsewhere (sync) drops out of the list; don't
     // leave the dropdown pointing at a value it no longer has.
     final selected = _cylinders.any((c) => c.id == _cylinderId)
         ? _cylinderId
         : null;
-    final onSave = usable && !_busy ? () => _save() : null;
+    final pressure = parseFillPressure(_pressure.text);
+    final canSave = usable && !_busy && pressure.valid;
+    final onSave = canSave ? () => _save() : null;
     const saveIcon = Icon(Icons.save_alt);
     const saveLabel = Text('Save analysis');
     return Container(
@@ -409,16 +750,19 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
           ),
           const SizedBox(height: Spacing.sm),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: TextField(
                   key: const ValueKey('analysis-diver'),
                   controller: _diver,
+                  focusNode: _diverFocus,
                   textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(
                     labelText: 'Analysed by',
                     isDense: true,
                   ),
+                  onSubmitted: (_) => _tellAnalysedBy(),
                 ),
               ),
               const SizedBox(width: Spacing.md),
@@ -428,13 +772,27 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
                   controller: _pressure,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
                     labelText: 'Fill pressure (bar)',
                     isDense: true,
+                    errorText:
+                        pressure.valid ? null : 'Enter a pressure in bar',
+                    errorMaxLines: 2,
                   ),
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: Spacing.sm),
+          TextField(
+            key: const ValueKey('analysis-for'),
+            controller: _for,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'For (optional)',
+              isDense: true,
+            ),
           ),
           const SizedBox(height: Spacing.sm),
           TextField(
@@ -455,7 +813,14 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
                 const SizedBox(width: Spacing.xs),
                 Expanded(
                   child: Text(
-                    'Reading not stable yet. Wait for STABLE before saving.',
+                    // An OK press is the confirmation; it saves the reading
+                    // marked not stable (decision 18). The manual Save still
+                    // asks to wait.
+                    !showSave
+                        ? 'Not stable yet. An OK press now saves it marked '
+                            'not stable.'
+                        : 'Reading not stable yet. Wait for STABLE before '
+                            'saving.',
                     style: AppTypography.caption
                         .copyWith(color: SafetyColors.warning),
                   ),
@@ -464,14 +829,19 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
             ),
             const SizedBox(height: Spacing.sm),
           ],
-          if (!printReady)
+          if (okMode) ...[
+            _printOnOkRow(printReady: printReady, showCopies: !showSave),
+            _okHint(roomAir),
+            if (showSave) const SizedBox(height: Spacing.sm),
+          ],
+          if (showSave && !printReady)
             FilledButton.icon(
               key: const ValueKey('analysis-save'),
               onPressed: onSave,
               icon: saveIcon,
               label: saveLabel,
             )
-          else
+          else if (showSave)
             // Wraps on a phone: "Save & print" and its copies stay
             // together on the second line.
             Wrap(
@@ -491,9 +861,8 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
                   children: [
                     FilledButton.icon(
                       key: const ValueKey('analysis-save-print'),
-                      onPressed: usable && !_busy
-                          ? () => _save(printTo: printing)
-                          : null,
+                      onPressed:
+                          canSave ? () => _save(printTo: printing) : null,
                       icon: const Icon(Icons.print_outlined),
                       label: const Text('Save & print'),
                     ),
@@ -516,8 +885,149 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
               label: const Text('Set up label printer'),
             ),
           ],
+          if (okMode && _okResult != null) ...[
+            const SizedBox(height: Spacing.sm),
+            _okResultRow(_okResult!),
+          ],
         ],
       ),
+    );
+  }
+
+  /// "Print label on OK", with the copies while the Save buttons (which
+  /// carry their own) are away. Off and disabled without a printer.
+  Widget _printOnOkRow({required bool printReady, required bool showCopies}) {
+    final on = printReady && _printOnOk;
+    return Row(
+      children: [
+        Expanded(
+          // A ListTile paints on the nearest Material, and the card's own
+          // background would hide its ink.
+          child: Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              key: const ValueKey('analysis-print-on-ok'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('Print label on OK'),
+              value: on,
+              onChanged: printReady
+                  ? (v) {
+                      setState(() => _printOnOk = v);
+                      widget.onPrintOnOkChanged?.call(v);
+                    }
+                  : null,
+            ),
+          ),
+        ),
+        if (on && showCopies)
+          CopiesStepper(
+            value: _copies,
+            onChanged: (v) => setState(() => _copies = v),
+          ),
+      ],
+    );
+  }
+
+  /// What to do in Log on OK mode: press OK, or, for room air, tap Save.
+  Widget _okHint(bool roomAir) {
+    final palette = context.palette;
+    return Row(
+      key: const ValueKey('analysis-ok-hint'),
+      children: [
+        Icon(Icons.touch_app_outlined, size: 18, color: palette.textSecondary),
+        const SizedBox(width: Spacing.sm),
+        Expanded(
+          child: Text(
+            roomAir
+                ? "Air isn't logged on OK. Tap Save."
+                : 'Press OK on the SOLO to save',
+            style: AppTypography.body.copyWith(color: palette.textSecondary),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// How the latest OK press went, with Edit and Delete for the entry it
+  /// saved.
+  Widget _okResultRow(OkLogResult r) {
+    final palette = context.palette;
+    final (message, icon, color) = switch (r.code) {
+      // The label is out but the entry could not be signed off in the log.
+      FeedbackCode.printed when !r.complete => (
+          'Printed ${r.text} — sign off in the log',
+          Icons.print_outlined,
+          SafetyColors.warning,
+        ),
+      FeedbackCode.printed => (
+          'Printed ${r.text}',
+          Icons.print_outlined,
+          SafetyColors.success,
+        ),
+      FeedbackCode.saved when r.complete => (
+          'Saved ${r.text}',
+          Icons.check_circle_outline,
+          SafetyColors.success,
+        ),
+      FeedbackCode.saved => (
+          'Saved, needs sign-off: ${r.text}',
+          Icons.warning_amber_rounded,
+          SafetyColors.warning,
+        ),
+      FeedbackCode.check => (
+          'Needs sign-off: ${r.text}',
+          Icons.warning_amber_rounded,
+          SafetyColors.warning,
+        ),
+      FeedbackCode.skipped => (
+          'Room air: not logged',
+          Icons.info_outline,
+          palette.textMuted,
+        ),
+      FeedbackCode.error => (
+          'Not saved: ${r.text}',
+          Icons.error_outline,
+          SafetyColors.danger,
+        ),
+    };
+    final hasEntry = r.analysisId != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: Spacing.sm),
+            Expanded(
+              child: Text(
+                message,
+                key: const ValueKey('analysis-ok-result'),
+                style: AppTypography.body.copyWith(color: palette.textPrimary),
+              ),
+            ),
+          ],
+        ),
+        if (hasEntry)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton.icon(
+                key: const ValueKey('analysis-ok-edit'),
+                onPressed: _okBusy ? null : () => _editResult(r),
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Edit'),
+              ),
+              TextButton.icon(
+                key: const ValueKey('analysis-ok-delete'),
+                onPressed: _okBusy ? null : () => _deleteResult(r),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Delete'),
+              ),
+            ],
+          ),
+      ],
     );
   }
 }

@@ -50,6 +50,10 @@ void main() {
     bool stable = true,
     DesiredMix? desiredMix,
     GasRole gasRole = GasRole.bailout,
+    bool needsSignoff = false,
+    CaptureSource captureSource = CaptureSource.screen,
+    String? bridgeRecordId,
+    String? analysedFor,
   }) =>
       NewGasAnalysis(
         cylinderId: cylinderId,
@@ -65,6 +69,10 @@ void main() {
         notes: '',
         desiredMix: desiredMix,
         gasRole: gasRole,
+        needsSignoff: needsSignoff,
+        captureSource: captureSource,
+        bridgeRecordId: bridgeRecordId,
+        analysedFor: analysedFor,
       );
 
   test('add round-trips every stored field at full precision', () async {
@@ -232,6 +240,9 @@ void main() {
         gasRole: GasRole.diluent,
         analysedBy: '  Sam  ',
         notes: ' topped up ',
+        cylinderId: null,
+        fillPressureBar: 232.5,
+        analysedFor: null,
       ),
     );
 
@@ -265,6 +276,9 @@ void main() {
         gasRole: GasRole.bailout,
         analysedBy: '   ',
         notes: '',
+        cylinderId: null,
+        fillPressureBar: 232.5,
+        analysedFor: null,
       ),
     );
 
@@ -288,12 +302,231 @@ void main() {
         gasRole: GasRole.diluent,
         analysedBy: 'x',
         notes: 'x',
+        cylinderId: null,
+        fillPressureBar: null,
+        analysedFor: null,
       ),
     );
     final row = await ps.get('SELECT * FROM gas_analyses WHERE id = ?', [id]);
     expect(row['version'], 1);
     expect(row['gas_role'], 'bailout');
     expect(await ps.getAll('SELECT id FROM gas_analyses'), hasLength(1));
+  });
+
+  // -- Bridge fields and the sign-off flag (#113) --------------------------
+
+  const bridgeId = 'a1b2c3d4e5f6/1a2b3c4d-7';
+
+  /// An edit that changes nothing a test isn't about: the entry's own
+  /// cylinder (none) and fill pressure ([analysis] saves 232.5), and the
+  /// stated values of [analysis].
+  GasAnalysisEdit sameEdit({
+    String? cylinderId,
+    double? fillPressureBar = 232.5,
+    String? analysedFor,
+    bool signOff = false,
+  }) =>
+      GasAnalysisEdit(
+        desiredMix: null,
+        gasRole: GasRole.bailout,
+        analysedBy: 'Egbert',
+        notes: null,
+        cylinderId: cylinderId,
+        fillPressureBar: fillPressureBar,
+        analysedFor: analysedFor,
+        signOff: signOff,
+      );
+
+  test('add round-trips the bridge fields', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    final id = await dao.add(analysis(
+      needsSignoff: true,
+      captureSource: CaptureSource.bridgeOk,
+      bridgeRecordId: bridgeId,
+      analysedFor: '  Wendy ',
+    ));
+
+    final a = (await dao.list()).single;
+    expect(a.needsSignoff, isTrue);
+    expect(a.captureSource, CaptureSource.bridgeOk);
+    expect(a.bridgeRecordId, bridgeId);
+    expect(a.analysedFor, 'Wendy'); // trimmed
+
+    final row = await ps.get('SELECT * FROM gas_analyses WHERE id = ?', [id]);
+    expect(row['needs_signoff'], 1);
+    expect(row['capture_source'], 'bridge_ok');
+    expect(row['bridge_record_id'], bridgeId);
+    expect(row['analysed_for'], 'Wendy');
+  });
+
+  test('add of a plain screen save stores 0 and nulls, never a null flag',
+      () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    final id = await dao.add(analysis(analysedFor: '   '));
+    final row = await ps.get('SELECT * FROM gas_analyses WHERE id = ?', [id]);
+    expect(row['needs_signoff'], 0);
+    expect(row['capture_source'], isNull);
+    expect(row['bridge_record_id'], isNull);
+    expect(row['analysed_for'], isNull); // blank -> null
+  });
+
+  test('a row without the new columns reads as an unflagged screen save',
+      () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    await insertRawAnalysis(ps, 'old-1');
+    final a = (await dao.list()).single;
+    expect(a.needsSignoff, isFalse);
+    expect(a.captureSource, CaptureSource.screen);
+    expect(a.bridgeRecordId, isNull);
+    expect(a.analysedFor, isNull);
+  });
+
+  test('addFromBridge inserts once per id', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    expect(
+        await dao.addFromBridge(
+            'id-1',
+            analysis(
+                needsSignoff: true,
+                captureSource: CaptureSource.bridgeOk,
+                bridgeRecordId: bridgeId)),
+        isTrue);
+    expect(await dao.addFromBridge('id-1', analysis(o2: 30)), isFalse);
+    final a = (await dao.list()).single;
+    expect(a.id, 'id-1');
+    expect(a.o2Percent, 21.4);
+    expect(a.needsSignoff, isTrue);
+    expect(a.captureSource, CaptureSource.bridgeOk);
+    expect(await ps.getAll('SELECT id FROM gas_analyses'), hasLength(1));
+  });
+
+  test('addFromBridge stamps owner_id and sync metadata like add', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u-7'));
+    await dao.addFromBridge('id-1', analysis());
+    final row =
+        await ps.get('SELECT * FROM gas_analyses WHERE id = ?', ['id-1']);
+    expect(row['owner_id'], 'u-7');
+    expect(row['version'], 1);
+    expect(row['sync_status'], 0);
+    expect(row['deleted_at'], isNull);
+    expect(row['updated_at'], row['created_at']);
+  });
+
+  test('addFromBridge never brings back a soft-deleted row', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    await dao.addFromBridge('id-1', analysis());
+    await dao.softDelete('id-1');
+    expect(await dao.addFromBridge('id-1', analysis()), isFalse);
+    expect(await dao.list(), isEmpty);
+    final row =
+        await ps.get('SELECT * FROM gas_analyses WHERE id = ?', ['id-1']);
+    expect(row['deleted_at'], isNotNull);
+  });
+
+  test('setNeedsSignoff bumps version and updated_at', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    final id = await dao.add(analysis(needsSignoff: true));
+    await ps
+        .execute('UPDATE gas_analyses SET updated_at = 0 WHERE id = ?', [id]);
+
+    await dao.setNeedsSignoff(id, false);
+
+    expect((await dao.list()).single.needsSignoff, isFalse);
+    var row = await ps.get('SELECT * FROM gas_analyses WHERE id = ?', [id]);
+    expect(row['needs_signoff'], 0);
+    expect(row['version'], 2);
+    expect(row['updated_at'], greaterThan(0));
+    expect(row['deleted_at'], isNull);
+
+    await dao.setNeedsSignoff(id, true);
+    expect((await dao.list()).single.needsSignoff, isTrue);
+    row = await ps.get('SELECT * FROM gas_analyses WHERE id = ?', [id]);
+    expect(row['needs_signoff'], 1);
+    expect(row['version'], 3);
+
+    // Unknown id is a no-op.
+    await dao.setNeedsSignoff('nope', true);
+    expect(await ps.getAll('SELECT id FROM gas_analyses'), hasLength(1));
+  });
+
+  test(
+      'update writes cylinder, fill pressure and analysed for, never '
+      'measured values', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    await insertCylinder(ps, 'c1', 'S80 #2');
+    await dao.addFromBridge(
+        'b-1',
+        analysis(
+          needsSignoff: true,
+          captureSource: CaptureSource.bridgeOk,
+          bridgeRecordId: bridgeId,
+        ));
+
+    await dao.update(
+      'b-1',
+      sameEdit(cylinderId: 'c1', fillPressureBar: 210.0, analysedFor: ' Wendy '),
+    );
+
+    final a = (await dao.list()).single;
+    expect(a.cylinderId, 'c1');
+    expect(a.cylinderLabel, 'S80 #2'); // re-joined on read
+    expect(a.fillPressureBar, 210.0);
+    expect(a.analysedFor, 'Wendy'); // trimmed
+
+    final row =
+        await ps.get('SELECT * FROM gas_analyses WHERE id = ?', ['b-1']);
+    expect(row['version'], 2);
+    // Never written by an edit.
+    expect(row['o2_percent'], 21.4);
+    expect(row['he_percent'], 34.6);
+    expect(row['temp_c'], 21.4);
+    expect(row['baro_hpa'], 1013.2);
+    expect(row['analysed_at'],
+        DateTime(2026, 10, 30, 18, 5).millisecondsSinceEpoch);
+    expect(row['stable'], 1);
+    expect(row['capture_source'], 'bridge_ok');
+    expect(row['bridge_record_id'], bridgeId);
+    // No sign-off asked for, so the flag stays.
+    expect(row['needs_signoff'], 1);
+
+    // Null clears the cylinder, the fill pressure and the name.
+    await dao.update(
+        'b-1', sameEdit(cylinderId: null, fillPressureBar: null));
+    final cleared = (await dao.list()).single;
+    expect(cleared.cylinderId, isNull);
+    expect(cleared.fillPressureBar, isNull);
+    expect(cleared.analysedFor, isNull);
+  });
+
+  test('update with signOff clears needs_signoff; without it the flag stays',
+      () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    final id = await dao.add(analysis(needsSignoff: true));
+
+    await dao.update(id, sameEdit());
+    expect((await dao.list()).single.needsSignoff, isTrue);
+
+    await dao.update(id, sameEdit(signOff: true));
+    expect((await dao.list()).single.needsSignoff, isFalse);
+    final row = await ps.get('SELECT * FROM gas_analyses WHERE id = ?', [id]);
+    expect(row['needs_signoff'], 0);
+    expect(row['version'], 3);
+
+    // Signing off an entry that isn't flagged leaves it unflagged.
+    final other = await dao.add(analysis());
+    await dao.update(other, sameEdit(signOff: true));
+    expect(
+        (await dao.list()).singleWhere((a) => a.id == other).needsSignoff,
+        isFalse);
   });
 
   test('rows from older builds read as bailout with no desired mix', () async {

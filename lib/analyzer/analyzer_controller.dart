@@ -18,6 +18,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'hold_detector.dart' show kHoldSilence;
 import 'protocol/analyzer_reading.dart';
 import 'protocol/solo_line_parser.dart';
 import 'stability.dart';
@@ -69,6 +70,10 @@ class AnalyzerController extends ChangeNotifier {
   /// [_elapsed] at the start of the current session.
   Duration _sessionStart = Duration.zero;
 
+  /// When the previous data line of this session arrived, on the session
+  /// clock; null before the first one.
+  Duration? _lastLineAt;
+
   AnalyzerTransport? _transport;
   StreamSubscription<String>? _linesSub;
   StreamSubscription<AnalyzerConnectionStatus>? _statusSub;
@@ -78,6 +83,7 @@ class AnalyzerController extends ChangeNotifier {
   final List<AnalyzerHistoryPoint> _history = [];
   double _nowSeconds = 0;
   bool _noDataHint = false;
+  bool _hasHadData = false;
   bool _disposed = false;
 
   /// The transport of the current session, or null when not in a session.
@@ -109,6 +115,12 @@ class AnalyzerController extends ChangeNotifier {
   /// True while connected and no line has arrived for [noDataTimeout].
   bool get noDataHint => _noDataHint;
 
+  /// True once a data line has arrived in this session (since the last
+  /// [connect]). A SOLO that has streamed and then goes quiet is on hold
+  /// (OK was pressed), not misconfigured: the screen shows the "no data is
+  /// arriving" setup hint only while this is false.
+  bool get hasHadData => _hasHadData;
+
   /// Starts a session on [transport]. Any previous session is closed and
   /// its transport disposed. The controller takes ownership of
   /// [transport] and disposes it on [disconnect] / [dispose].
@@ -119,6 +131,8 @@ class AnalyzerController extends ChangeNotifier {
     _history.clear();
     _nowSeconds = 0;
     _sessionStart = _elapsed();
+    _lastLineAt = null;
+    _hasHadData = false;
     _noDataHint = false;
     _detector.reset();
     _linesSub = transport.lines.listen(_onLine);
@@ -156,6 +170,14 @@ class AnalyzerController extends ChangeNotifier {
     if (reading == null) return; // banner / garbage: not data
     _latest = reading;
     final now = _elapsed() - _sessionStart;
+    // The SOLO only goes quiet this long when OK suspended it, so this line
+    // is a resume: a new cylinder's gas. The OK logger restarts its record
+    // window at the same moment (HoldDetector), so the pill must too, or it
+    // says STABLE on readings the record would not accept yet.
+    final last = _lastLineAt;
+    if (last != null && now - last >= kHoldSilence) _detector.reset();
+    _lastLineAt = now;
+    _hasHadData = true;
     _detector.add(reading.o2, reading.he, elapsed: now);
     _nowSeconds = now.inMicroseconds / Duration.microsecondsPerSecond;
     _history.add(AnalyzerHistoryPoint(

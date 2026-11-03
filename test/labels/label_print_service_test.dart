@@ -319,6 +319,29 @@ void main() {
       expect(rig.printer.disconnects, 0);
     });
 
+    test('a flagged analysis is refused before any connect', () async {
+      final rig = _Rig();
+      final flagged = GasAnalysis(
+        id: 'a1',
+        analysedAt: _when,
+        o2Percent: 32,
+        hePercent: 0,
+        stable: true,
+        needsSignoff: true,
+      );
+      await expectLater(
+        rig.service.printAnalysis(flagged),
+        throwsA(_printerError(kSignOffBeforePrintMessage)),
+      );
+      expect(kSignOffBeforePrintMessage,
+          'Sign off this analysis before printing it.');
+      expect(rig.requestedIds, isEmpty);
+      expect(rig.rendered, isEmpty);
+      expect(rig.printer.connects, 0);
+      expect(rig.printer.printed, isEmpty);
+      expect(rig.printer.disconnects, 0);
+    });
+
     test('a connect failure is "Printer not found", and still disconnects',
         () async {
       final rig = _Rig(

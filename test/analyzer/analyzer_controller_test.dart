@@ -54,6 +54,8 @@ class FakeTransport implements AnalyzerTransport {
 }
 
 const _airLine = 'He 0.0 O2 20.9 % Ti 21.4 ~C 1013.2 hPa 2026/10/27 20:30:00';
+const _ean32Line =
+    'He 0.0 O2 32.0 % Ti 21.4 ~C 1013.2 hPa 2026/10/27 20:30:00';
 const _errorLine =
     'He ***.* O2 20.9 % Ti 21.4 ~C 1013.2 hPa 2026/10/27 20:30:01';
 
@@ -191,6 +193,65 @@ void main() {
     expect(c.noDataHint, isFalse);
     expect(t.disposed, isTrue, reason: 'controller owns the transport');
     c.dispose();
+  });
+
+  group('a pause on the SOLO (OK pressed)', () {
+    /// Steady EAN32 lines at 5 Hz for [seconds] on the fake clock, the first
+    /// one now.
+    Future<void> stream(
+      WidgetTester tester,
+      FakeTransport t,
+      double seconds,
+    ) async {
+      final steps = (seconds * 5).round();
+      for (var i = 0; i <= steps; i++) {
+        t.send(_ean32Line);
+        await tester.pump();
+        if (i < steps) await tester.pump(const Duration(milliseconds: 200));
+      }
+    }
+
+    testWidgets('the pill earns STABLE again 20 s after the resume',
+        (tester) async {
+      final c = AnalyzerController(elapsed: fakeElapsed(tester));
+      final t = FakeTransport();
+      await c.connect(t);
+
+      await stream(tester, t, 25);
+      expect(c.stability, ReadingStability.stable);
+
+      // OK pressed: the SOLO goes quiet for 25 s, then OK again.
+      await tester.pump(const Duration(seconds: 25));
+      await stream(tester, t, 19.8);
+      expect(c.stability, ReadingStability.settling,
+          reason: 'the record window restarted at the resume: 19.8 s of '
+              'new gas is not stable yet, whatever the old cylinder did');
+      // The same stream, one more line: 20.0 s since the resume.
+      await tester.pump(const Duration(milliseconds: 200));
+      t.send(_ean32Line);
+      await tester.pump();
+      expect(c.stability, ReadingStability.stable);
+
+      await c.disconnect();
+      c.dispose();
+    });
+
+    testWidgets('a 1 s dip is not a resume and does not reset', (tester) async {
+      final c = AnalyzerController(elapsed: fakeElapsed(tester));
+      final t = FakeTransport();
+      await c.connect(t);
+
+      await stream(tester, t, 25);
+      expect(c.stability, ReadingStability.stable);
+
+      await tester.pump(const Duration(seconds: 1));
+      t.send(_ean32Line);
+      await tester.pump();
+      expect(c.stability, ReadingStability.stable);
+
+      await c.disconnect();
+      c.dispose();
+    });
   });
 
   testWidgets('no hint when the transport is not connected', (tester) async {

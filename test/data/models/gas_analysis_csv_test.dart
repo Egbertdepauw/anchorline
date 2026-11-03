@@ -7,7 +7,8 @@ void main() {
     expect(
         gasAnalysesToCsv(const []),
         '"time","cylinder","diver","mix","o2","he","mod_1_1","mod_1_4",'
-        '"mod_1_6","pressure_bar","temp_c","stable","desired_mix","gas_role"\n');
+        '"mod_1_6","pressure_bar","temp_c","stable","desired_mix","gas_role",'
+        '"analysed_for","needs_signoff"\n');
   });
 
   test('rows: whole-number mix, one-decimal values, derived MODs', () {
@@ -38,15 +39,16 @@ void main() {
     expect(
         lines[1],
         '"2026-10-30T18:05:00.000Z","S80 ""left""","Egbert","Tx21/35",'
-        '"21.4","34.6","41.4","55.4","64.8","232.0","21.4","true","","bailout"');
+        '"21.4","34.6","41.4","55.4","64.8","232.0","21.4","true","","bailout",'
+        '"","false"');
     // Pure O2: MODs 1 / 4 / 6 m; no cylinder, no pressure → blank.
     expect(
         lines[2],
         '"2026-10-29T00:00:00.000Z","","","O2","100.0","0.0","1.0","4.0",'
-        '"6.0","","","false","","bailout"');
+        '"6.0","","","false","","bailout","","false"');
   });
 
-  test('desired mix and gas role are the last two columns', () {
+  test('desired mix and gas role columns', () {
     final csv = gasAnalysesToCsv([
       GasAnalysis(
         id: '1',
@@ -75,10 +77,26 @@ void main() {
       ),
     ]);
     final lines = csv.trimRight().split('\n');
-    expect(lines[1], endsWith(',"Tx21/35","diluent"'));
-    expect(lines[2], endsWith(',"EAN32","bailout"'));
+    expect(lines[1], endsWith(',"Tx21/35","diluent","","false"'));
+    expect(lines[2], endsWith(',"EAN32","bailout","","false"'));
     // No desired mix: empty column; no stored role reads as bailout.
-    expect(lines[3], endsWith(',"","bailout"'));
+    expect(lines[3], endsWith(',"","bailout","","false"'));
+  });
+
+  test('analysed for and needs sign-off are the last two columns', () {
+    final csv = gasAnalysesToCsv([
+      GasAnalysis(
+        id: '1',
+        analysedAt: DateTime.utc(2026, 10, 30, 18, 5),
+        o2Percent: 21.4,
+        hePercent: 34.6,
+        stable: true,
+        analysedFor: 'Wendy',
+        needsSignoff: true,
+      ),
+    ]);
+    final lines = csv.trimRight().split('\n');
+    expect(lines[1], endsWith(',"bailout","Wendy","true"'));
   });
 
   test('mod ppO2 set round-trips and tolerates garbage', () {
