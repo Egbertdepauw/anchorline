@@ -385,7 +385,8 @@ class BridgeRecord {
   /// Oldest first, offsets zero or negative.
   final List<BridgeWindowLine> window;
 
-  /// The raw SOLO line of the held reading.
+  /// The raw SOLO line of the held reading. Empty when the bridge sent `END`
+  /// without an `H` line; the reader treats that as "no reading".
   final String heldLine;
 
   const BridgeRecord({
@@ -403,7 +404,9 @@ class BridgeRecord {
 class _OpenRecord {
   final BridgeRecordStart start;
   final List<BridgeWindowLine> window = [];
-  String? heldLine;
+
+  /// Stays empty until an `H` line arrives.
+  String heldLine = '';
 
   _OpenRecord(this.start);
 }
@@ -414,11 +417,15 @@ class _OpenRecord {
 /// assembler keeps one open record at a time and drops it when
 ///
 ///  * a new `REC` arrives (the bridge started over, so the old one is
-///    partial),
-///  * an `END` carries another rid, or
-///  * `END` arrives without an `H` line. Returning a record with no
-///    reading would get it confirmed and deleted on the bridge; dropping it
-///    leaves it there to be sent again.
+///    partial), or
+///  * an `END` carries another rid.
+///
+/// An `END` for the open record without an `H` line still returns the
+/// record, with an empty `heldLine`. The bridge sends pending records one at
+/// a time and the next only after the `ACK` for this one, so a record that
+/// is never returned would never be confirmed and would block every later
+/// record. The reader parses the empty line as "no reading", answers `ACK`
+/// and `FB <rid> error NO READING`, and the queue moves on.
 ///
 /// Live lines, status and other messages are ignored, also in the middle of
 /// a record. `W` and `H` outside a record are ignored.
@@ -440,10 +447,7 @@ class BridgeRecordAssembler {
       case BridgeRecordEnd():
         final open = _open;
         _open = null;
-        final held = open?.heldLine;
-        if (open == null || held == null || open.start.rid != m.rid) {
-          return null;
-        }
+        if (open == null || open.start.rid != m.rid) return null;
         final s = open.start;
         return BridgeRecord(
           rid: s.rid,
@@ -452,7 +456,7 @@ class BridgeRecordAssembler {
           wallMs: s.wallMs,
           live: s.live,
           window: List.unmodifiable(open.window),
-          heldLine: held,
+          heldLine: open.heldLine,
         );
       case BridgeHello() ||
           BridgeStatus() ||

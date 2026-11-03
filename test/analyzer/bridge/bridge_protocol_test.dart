@@ -375,12 +375,29 @@ void main() {
       expect(a.add(parseBridgeMessage('END r1')), isNull);
     });
 
-    test('a record without a held line is dropped', () {
+    test('END without H returns the record with an empty held line', () {
       final a = BridgeRecordAssembler();
+      final rec = feed(a, [
+        'REC r1 boot=3 up=1 wall=0 live=0',
+        'W -2000 a1',
+        'W -1000 a2',
+        'END r1',
+      ]);
+      expect(rec, isNotNull);
+      expect(rec!.rid, 'r1');
       expect(
-        feed(a, ['REC r1 boot=3 up=1 wall=0 live=0', 'W -1000 a1', 'END r1']),
-        isNull,
+        [for (final w in rec.window) (w.offsetMs, w.line)],
+        [(-2000, 'a1'), (-1000, 'a2')],
       );
+      expect(rec.heldLine, '');
+    });
+
+    test('an H line of an earlier record does not carry over', () {
+      final a = BridgeRecordAssembler();
+      feed(a, ['REC r1 boot=3 up=1 wall=0 live=0', 'H held1', 'END r1']);
+      final rec = feed(a, ['REC r2 boot=3 up=2 wall=0 live=0', 'END r2']);
+      expect(rec!.rid, 'r2');
+      expect(rec.heldLine, '');
     });
 
     test('messages outside a record give null', () {
