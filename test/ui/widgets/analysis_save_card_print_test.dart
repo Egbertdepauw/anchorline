@@ -412,13 +412,17 @@ void main() {
       testWidgets('an analysis whose mix changed since is not printed',
           (tester) async {
         await saveAndFail(tester);
+        final saved = dao.analyses.single;
         await dao.update(
-          dao.analyses.single.id,
-          const GasAnalysisEdit(
-            desiredMix: DesiredMix(21, 33),
+          saved.id,
+          GasAnalysisEdit(
+            desiredMix: const DesiredMix(21, 33),
             gasRole: GasRole.bailout,
             analysedBy: null,
             notes: null,
+            cylinderId: saved.cylinderId,
+            fillPressureBar: saved.fillPressureBar,
+            analysedFor: saved.analysedFor,
           ),
         );
         await retry(tester);
