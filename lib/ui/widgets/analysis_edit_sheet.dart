@@ -17,6 +17,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../analysis/fill_pressure.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
@@ -108,9 +109,12 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
   late DesiredMix? _desired = widget.analysis.desiredMix;
   late GasRole _role = widget.analysis.gasRole;
   late String? _cylinderId = widget.analysis.cylinderId;
+  // The suggestion is for the entry that is waiting for a sign-off. An old
+  // entry that was saved without a name stays without one: Save must not put
+  // today's name on it.
   late final _diver = TextEditingController(
       text: _blankToNull(widget.analysis.analysedBy ?? '') ??
-          widget.suggestedAnalysedBy ??
+          (widget.analysis.needsSignoff ? widget.suggestedAnalysedBy : null) ??
           '');
   late final _fill = TextEditingController(
       text: _pressureText(widget.analysis.fillPressureBar));
@@ -168,17 +172,6 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
   static String _pressureText(double? bar) {
     if (bar == null || !bar.isFinite) return '';
     return bar == bar.roundToDouble() ? bar.toStringAsFixed(0) : bar.toString();
-  }
-
-  /// The typed fill pressure in bar. Blank is valid and means none; the
-  /// decimal separator is `,` or `.`, as in the cylinder screen. Anything
-  /// that is not a finite number of at least 0 is not valid.
-  static ({bool valid, double? bar}) _parsePressure(String s) {
-    final t = s.trim();
-    if (t.isEmpty) return (valid: true, bar: null);
-    final v = double.tryParse(t.replaceAll(',', '.'));
-    if (v == null || !v.isFinite || v < 0) return (valid: false, bar: null);
-    return (valid: true, bar: v);
   }
 
   /// "No cylinder", the entry's own cylinder when it is not one of the
@@ -247,9 +240,10 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
     // The guard goes up before the first await, so a double tap can't
     // write the edit twice.
     if (_saving) return;
-    final pressure = _parsePressure(_fill.text);
+    final pressure = parseFillPressure(_fill.text);
     if (!pressure.valid) return;
-    final signOff = outcome != AnalysisEditOutcome.saved;
+    final signOff = outcome == AnalysisEditOutcome.signedOff ||
+        outcome == AnalysisEditOutcome.signOffAndPrint;
     final analysedBy = _blankToNull(_diver.text);
     if (signOff && (analysedBy == null || _desired == null)) return;
     setState(() {
@@ -257,6 +251,7 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
       _error = null;
     });
     final navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
     final onDone = widget.onDone;
     try {
       await widget.dao.update(
@@ -281,7 +276,15 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
       return;
     }
     onDone(outcome);
-    if (mounted) navigator.pop();
+    _closeIfOpen(navigator, route);
+  }
+
+  /// Closes the sheet after a write, unless it is already closing. A sheet
+  /// dismissed while its write was under way is still mounted for the length
+  /// of its exit animation; a pop then would close the route underneath (the
+  /// analyzer screen, which stops Log on OK).
+  void _closeIfOpen(NavigatorState navigator, ModalRoute<dynamic>? route) {
+    if (mounted && (route == null || route.isCurrent)) navigator.pop();
   }
 
   /// Asks, then soft-deletes the entry and closes. The guard stays up while
@@ -293,6 +296,7 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
       _error = null;
     });
     final navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
     final onDone = widget.onDone;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -329,7 +333,7 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
       return;
     }
     onDone(AnalysisEditOutcome.deleted);
-    if (mounted) navigator.pop();
+    _closeIfOpen(navigator, route);
   }
 
   @override
@@ -339,7 +343,7 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
     final desired = _desired;
     final error = _error;
     final flagged = a.needsSignoff;
-    final pressure = _parsePressure(_fill.text);
+    final pressure = parseFillPressure(_fill.text);
     final hasName = _blankToNull(_diver.text) != null;
     final canWrite = !_saving && pressure.valid;
     final canSignOff = canWrite && hasName && desired != null;
@@ -552,7 +556,8 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
   }
 }
 
-/// What was measured, as text: never an input.
+/// What was measured, as text: never an input. The cylinder and the fill
+/// pressure are stated, not measured: they are inputs of the sheet.
 class _MeasuredValues extends StatelessWidget {
   const _MeasuredValues({required this.analysis});
 
@@ -567,9 +572,6 @@ class _MeasuredValues extends StatelessWidget {
     final stableColor = a.stable ? SafetyColors.success : SafetyColors.warning;
     final details = <String>[
       _dateFormat.format(a.analysedAt),
-      if (a.cylinderDisplay != null) a.cylinderDisplay!,
-      if (a.fillPressureBar != null)
-        '${a.fillPressureBar!.toStringAsFixed(0)} bar',
       if (a.tempC != null) '${a.tempC!.toStringAsFixed(1)} °C',
     ];
     return Container(

@@ -193,9 +193,10 @@ void main() {
     expect(measured(find.textContaining('22.5')), findsOneWidget);
     expect(measured(find.textContaining('33.8')), findsOneWidget);
     expect(measured(find.textContaining('30 Oct 2026, 18:05')), findsOneWidget);
-    expect(measured(find.textContaining('S80 left')), findsOneWidget);
-    expect(measured(find.textContaining('200 bar')), findsOneWidget);
     expect(measured(find.textContaining('21.4 °C')), findsOneWidget);
+    // The cylinder and the fill pressure are inputs below, not repeated here.
+    expect(measured(find.textContaining('S80 left')), findsNothing);
+    expect(measured(find.textContaining('bar')), findsNothing);
     expect(measured(find.text('Stable')), findsOneWidget);
     expect(measured(find.byType(EditableText)), findsNothing);
 
@@ -210,6 +211,7 @@ void main() {
     expect(_field(tester, 'analysis-edit-notes'), 'Blended Friday');
 
     // The stated fields are inputs: who analysed, fill pressure, for, notes.
+    expect(_cylinderShown(tester), 'S80 left');
     expect(_field(tester, 'analysis-edit-pressure'), '200');
     expect(_field(tester, 'analysis-edit-for'), 'Jan');
     expect(_inSheet(find.byType(EditableText)), findsNWidgets(4));
@@ -656,13 +658,25 @@ void main() {
   });
 
   group('analysed by', () {
-    testWidgets('starts from the suggestion when empty', (tester) async {
-      final dao =
-          FakeGasAnalysesDao(analyses: [_tx(analysedBy: null)]);
+    testWidgets('a flagged entry with no name starts from the suggestion',
+        (tester) async {
+      final dao = FakeGasAnalysesDao(
+          analyses: [_tx(analysedBy: null, needsSignoff: true)]);
       await _open(tester, dao: dao, suggestedAnalysedBy: 'Wendy');
       expect(_field(tester, 'analysis-edit-diver'), 'Wendy');
       await _tapAndSettle(tester, _key('analysis-edit-save'));
       expect(dao.updated.single.$2.analysedBy, 'Wendy');
+    });
+
+    testWidgets('an old unflagged entry with no name stays without one',
+        (tester) async {
+      final dao = FakeGasAnalysesDao(analyses: [_tx(analysedBy: null)]);
+      await _open(tester, dao: dao, suggestedAnalysedBy: 'Wendy');
+      expect(_field(tester, 'analysis-edit-diver'), '');
+      await tester.enterText(_key('analysis-edit-notes'), 'Checked');
+      await _tapAndSettle(tester, _key('analysis-edit-save'));
+      expect(dao.updated.single.$2.analysedBy, isNull,
+          reason: 'Save must not put today\'s name on an old entry');
     });
 
     testWidgets('keeps the entry\'s own name over the suggestion',
@@ -847,6 +861,24 @@ void main() {
       expect(_key('analysis-edit-signoff-print'), findsNothing);
     });
 
+    testWidgets('only the two sign-off buttons set the sign-off flag',
+        (tester) async {
+      final dao = FakeGasAnalysesDao(analyses: [_tx(needsSignoff: true)]);
+      await _open(tester, dao: dao, canPrint: true);
+      await _tapAndSettle(tester, _key('analysis-edit-save'));
+      expect(dao.updated.single.$2.signOff, isFalse);
+
+      final dao2 = FakeGasAnalysesDao(analyses: [_tx(needsSignoff: true)]);
+      await _open(tester, dao: dao2, canPrint: true);
+      await _tapAndSettle(tester, _key('analysis-edit-signoff'));
+      expect(dao2.updated.single.$2.signOff, isTrue);
+
+      final dao3 = FakeGasAnalysesDao(analyses: [_tx(needsSignoff: true)]);
+      await _open(tester, dao: dao3, canPrint: true);
+      await _tapAndSettle(tester, _key('analysis-edit-signoff-print'));
+      expect(dao3.updated.single.$2.signOff, isTrue);
+    });
+
     testWidgets('Sign off and print signs off and returns signOffAndPrint',
         (tester) async {
       final dao = FakeGasAnalysesDao(analyses: [_tx(needsSignoff: true)]);
@@ -918,6 +950,69 @@ void main() {
       await tester.pumpAndSettle();
       expect(dao.updated, hasLength(1));
       expect(results, [AnalysisEditOutcome.signedOff]);
+    });
+
+    testWidgets('a sheet dismissed mid-write does not pop the page beneath',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final gate = Completer<void>();
+      final dao = _GatedDao(gate, analyses: [_tx(needsSignoff: true)]);
+      final results = <AnalysisEditOutcome>[];
+      // A page that opens the sheet, on top of a home page (the analyzer
+      // screen over the rest of the app).
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (home) => TextButton(
+              onPressed: () => Navigator.of(home).push(MaterialPageRoute<void>(
+                builder: (_) => Scaffold(
+                  body: Builder(
+                    builder: (page) => TextButton(
+                      onPressed: () async =>
+                          results.add(await showAnalysisEditSheet(
+                        page,
+                        dao: dao,
+                        analysis: dao.analyses.first,
+                        mixOptions: _options,
+                      )),
+                      child: const Text('Edit'),
+                    ),
+                  ),
+                ),
+              )),
+              child: const Text('Home'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('Home'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      // Sign off starts the write; it waits on the gate. Then the diver
+      // taps outside the sheet.
+      tester
+          .widget<ButtonStyleButton>(_key('analysis-edit-signoff'))
+          .onPressed!();
+      await tester.pump();
+      await tester.tapAt(const Offset(200, 10));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(_sheet, findsOneWidget, reason: 'still sliding out');
+
+      // The write ends while the sheet is still on its way out.
+      gate.complete();
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(_sheet, findsNothing);
+      expect(find.text('Edit'), findsOneWidget,
+          reason: 'the page beneath is still there');
+      expect(find.text('Home'), findsNothing);
+      expect(dao.updated, hasLength(1));
+      expect(results, [AnalysisEditOutcome.cancelled]);
     });
 
     testWidgets('while an update is under way no button writes again',

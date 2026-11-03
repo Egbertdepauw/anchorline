@@ -114,9 +114,11 @@ const appSchema = Schema([
   // percents (null target O2 = none set); gas_role is 'diluent' or 'bailout'
   // (null = bailout/deco). Issue #114 (cylinder labels).
   // needs_signoff is 0/1: the entry waits in the log for the diver to sign
-  // it off. capture_source is 'bridge_ok' for a capture made on the SOLO's OK
-  // press, null for a screen save; bridge_record_id is '<bridge>/<rid>';
-  // analysed_for is who the gas is for (free text). Issue #113.
+  // it off. capture_source is null for a screen save, 'bridge_ok' for a
+  // capture made on the SOLO's OK press through the ESP32 bridge and 'usb_ok'
+  // for one the app made itself on a USB cable (Log on OK); bridge_record_id
+  // is '<bridge>/<rid>'; analysed_for is who the gas is for (free text).
+  // Issue #113.
   Table('gas_analyses', [
     Column.text('owner_id'),
     Column.text('cylinder_id'),

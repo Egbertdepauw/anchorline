@@ -127,8 +127,11 @@ class SaveRecord extends RecordOutcome {
   /// when it succeeds.
   final bool printLabel;
 
-  /// The record was live, so the per-cylinder values of the setup were used
-  /// and may be used up (cleared) by the caller.
+  /// The record was live, so the setup was used, the per-cylinder values
+  /// (cylinder, fill pressure, notes) among it. Only a save that is complete
+  /// (not [NewGasAnalysis.needsSignoff]) uses them up: the caller clears them
+  /// then, and not for an entry that still needs sign-off, because OK on the
+  /// same cylinder again needs them.
   final bool live;
 }
 

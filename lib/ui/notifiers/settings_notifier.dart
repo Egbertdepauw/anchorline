@@ -43,6 +43,7 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kBlendSettledTempC = 'blend_settled_temp_c';
   static const _kAnalyzerModPpo2s = 'analyzer_mod_ppo2s';
   static const _kAnalyzerLogOnOk = 'analyzer_log_on_ok';
+  static const _kAnalyzerPrintOnOk = 'analyzer_print_on_ok';
   static const _kAnalyzerAnalysedBy = 'analyzer_analysed_by';
   static const _kLabelUse14 = 'label_use_14_for_deeper_mixes';
   static const _kLabelPrinterId = 'label_printer_id';
@@ -118,6 +119,7 @@ class SettingsNotifier extends ChangeNotifier {
   List<double> _analyzerModPpo2s = [...defaultAnalyzerModPpo2s];
   // Log on OK over USB (device-local, never synced).
   bool _analyzerLogOnOk = false;
+  bool _analyzerPrintOnOk = true;
   String? _analyzerAnalysedBy;
   // ── Cylinder labels (device-local, never synced) ────────────────
   bool _labelUse14ForDeeperMixes = false;
@@ -168,6 +170,10 @@ class SettingsNotifier extends ChangeNotifier {
   /// Whether an OK press on the SOLO, over a USB cable, saves an analysis
   /// while the analyzer screen is open (issue #113). Off by default.
   bool get analyzerLogOnOk => _analyzerLogOnOk;
+
+  /// Whether an OK press also prints the label, when a label printer is set
+  /// up (issue #113). On by default.
+  bool get analyzerPrintOnOk => _analyzerPrintOnOk;
 
   /// The name on the analyzer's save card, kept between sessions; null until
   /// one has been typed.
@@ -295,6 +301,7 @@ class SettingsNotifier extends ChangeNotifier {
       if (parsed.isNotEmpty) _analyzerModPpo2s = parsed;
     }
     _analyzerLogOnOk = prefs.getBool(_kAnalyzerLogOnOk) ?? false;
+    _analyzerPrintOnOk = prefs.getBool(_kAnalyzerPrintOnOk) ?? true;
     _analyzerAnalysedBy = prefs.getString(_kAnalyzerAnalysedBy);
     _labelUse14ForDeeperMixes = prefs.getBool(_kLabelUse14) ?? false;
     _labelPrinterId = prefs.getString(_kLabelPrinterId);
@@ -631,6 +638,14 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kAnalyzerLogOnOk, v);
+  }
+
+  Future<void> setAnalyzerPrintOnOk(bool v) async {
+    if (_analyzerPrintOnOk == v) return;
+    _analyzerPrintOnOk = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kAnalyzerPrintOnOk, v);
   }
 
   /// Remembers the name typed on the save card. Blank means none.

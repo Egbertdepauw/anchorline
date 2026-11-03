@@ -40,6 +40,7 @@ import '../../analyzer/transport/desktop_serial_transport.dart';
 import '../../analyzer/transport/serial_port_selection.dart';
 import '../../analyzer/usb_ok_logger.dart';
 import '../../data/db/gas_analyses_dao.dart';
+import '../../label_printer/label_printer.dart' show LabelPrinterException;
 import '../../labels/label_print_service.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/data_colors.dart';
@@ -146,14 +147,20 @@ List<AnalyzerTransportOption> defaultAnalyzerTransportOptions() => [
 /// whether it is ([LogOnOkSetup.printerConfigured]). A printer set up after
 /// the connect (through the card's link) is used from the next press.
 ///
-/// [elapsed] and [tickInterval] are for tests; the screen leaves them out. A
-/// null [tickInterval] switches the timer off, so no OK would ever be seen.
+/// A [LabelPrinterException] (printer off or not found, cover open, no
+/// labels) is the diver's situation, not a bug: the card already says the
+/// press needs a sign-off, so it is not reported.
+///
+/// [elapsed], [tickInterval] and [report] are for tests; the screen leaves
+/// them out. A null [tickInterval] switches the timer off, so no OK would
+/// ever be seen.
 @visibleForTesting
 UsbOkLogger buildOkLogger({
   required GasAnalysesDaoLike dao,
   LabelPrintService? printing,
   Duration Function()? elapsed,
   Duration? tickInterval = kOkTickInterval,
+  void Function(Object error, StackTrace stack)? report,
 }) =>
     UsbOkLogger(
       save: dao.addFromBridge,
@@ -163,8 +170,22 @@ UsbOkLogger buildOkLogger({
           : (a, copies) => printing.printAnalysis(a, copies: copies),
       elapsed: elapsed,
       tickInterval: tickInterval,
-      onError: (e, s) => Sentry.captureException(e, stackTrace: s),
+      onError: (e, s) {
+        if (e is LabelPrinterException) return;
+        (report ?? (e, s) => Sentry.captureException(e, stackTrace: s))(e, s);
+      },
     );
+
+/// Whether the source in use is the demo's. While a session is on it is the
+/// session's ([sessionIsDemo], recorded when it started), because that is what
+/// Log on OK goes by; otherwise it is the option selected in the picker.
+@visibleForTesting
+bool analyzerSourceIsDemo({
+  required bool inSession,
+  required bool? sessionIsDemo,
+  required bool selectedIsDemo,
+}) =>
+    inSession && sessionIsDemo != null ? sessionIsDemo : selectedIsDemo;
 
 /// Switches the platform wakelock on or off. Log on OK holds it while it is
 /// watching the SOLO: once the display sleeps, the system idles and App Nap
@@ -471,13 +492,17 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   }
 
   /// The "Log on OK" switch (#113), followed by a gap; empty without a log
-  /// to save to and for the demo source, whose readings are made up. The
-  /// switch is remembered on the device; the logger itself runs only while a
-  /// real session is connected ([_okWanted]).
+  /// to save to and for the demo source, whose readings are made up (the
+  /// session's source while one is on, as for [_okWanted]). The switch is
+  /// remembered on the device; the logger itself runs only while a real
+  /// session is connected.
   List<Widget> _logOnOkSwitch() {
-    if (widget.analysesDao == null || _options[_selected].isDemo) {
-      return const [];
-    }
+    final demo = analyzerSourceIsDemo(
+      inSession: _controller.isBusy,
+      sessionIsDemo: _sessionIsDemo,
+      selectedIsDemo: _options[_selected].isDemo,
+    );
+    if (widget.analysesDao == null || demo) return const [];
     // While the logger is watching and the SOLO has streamed and gone quiet,
     // OK was pressed: say so in the switch's own subtitle, so nothing moves.
     final held =
@@ -527,6 +552,8 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         okLogger: _okLogger,
         initialAnalysedBy: widget.settings.analyzerAnalysedBy,
         onAnalysedByChanged: widget.settings.setAnalyzerAnalysedBy,
+        initialPrintOnOk: widget.settings.analyzerPrintOnOk,
+        onPrintOnOkChanged: widget.settings.setAnalyzerPrintOnOk,
         onSetUpPrinter: printing == null
             ? null
             : () => Navigator.of(context).push(MaterialPageRoute(

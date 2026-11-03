@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ccrlogger/analyzer/analyzer_controller.dart';
+import 'package:ccrlogger/analyzer/bridge/record_to_analysis.dart';
 import 'package:ccrlogger/analyzer/stability.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
 import 'package:ccrlogger/analyzer/transport/demo_transport.dart';
@@ -8,6 +9,7 @@ import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
 import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
 import 'package:ccrlogger/data/models/equipment.dart';
 import 'package:ccrlogger/label_printer/label_bitmap.dart';
+import 'package:ccrlogger/label_printer/label_printer.dart';
 import 'package:ccrlogger/labels/label_print_service.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
@@ -73,6 +75,13 @@ class _SlowDao extends FakeGasAnalysesDao {
     await gate?.future;
     return super.addFromBridge(id, a);
   }
+}
+
+/// A log whose sign-off clearing fails, like a database that is busy.
+class _NoSignoffDao extends FakeGasAnalysesDao {
+  @override
+  Future<void> setNeedsSignoff(String id, bool needsSignoff) async =>
+      throw StateError('db busy');
 }
 
 const _dil =
@@ -889,6 +898,250 @@ void main() {
       // Not awaited: closing the stream needs the real zone's microtasks.
       unawaited(logger.dispose());
       await tester.pump();
+    });
+  });
+
+  group('presses in a row', () {
+    _test('a queued press does not take the fields of the one before',
+        (tester, h) async {
+      final slow = h.dao as _SlowDao;
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await _setUp(tester);
+      await _pickCylinder(tester, 'S80 left');
+      await tester.enterText(_key('analysis-pressure'), '200');
+      await tester.enterText(_key('analysis-notes'), 'first');
+      await tester.pump();
+
+      // The first press: complete, but its save is slow.
+      await h.feed(tester, 32.0, 0);
+      slow.gate = Completer<void>();
+      await h.pressOk(tester);
+
+      // The next cylinder is filled in, and OK is pressed on it too, while
+      // the first save is still going.
+      await _pickCylinder(tester, 'Dil 3L');
+      await tester.enterText(_key('analysis-pressure'), '180');
+      await tester.enterText(_key('analysis-notes'), 'second');
+      await tester.pump();
+      await h.feed(tester, 32.0, 0, seconds: 4);
+      await h.pressOk(tester);
+
+      slow.gate!.complete();
+      await tester.pumpAndSettle();
+
+      // Each press took the fields of its own moment.
+      final saved = h.dao.addedFromBridge.map((e) => e.$2).toList();
+      expect(saved, hasLength(2));
+      expect(saved[0].cylinderId, 'c-s80');
+      expect(saved[0].fillPressureBar, 200);
+      expect(saved[1].cylinderId, 'c-dil');
+      expect(saved[1].fillPressureBar, 180);
+
+      // The second press (4 s of flow, not stable) leaves its fields, and
+      // the first one, complete, uses up only its own: none of them are
+      // still on the card.
+      expect(_resultText(tester), 'Needs sign-off: NOT STABLE');
+      expect(find.text('180'), findsOneWidget);
+      expect(find.text('second'), findsOneWidget);
+      expect(
+        tester
+            .widget<DropdownButtonFormField<String?>>(_key('analysis-cylinder'))
+            .initialValue,
+        'c-dil',
+      );
+    }, dao: _SlowDao(cylinders: const [_dil, _s80]));
+  });
+
+  group('the fill pressure on the card', () {
+    _test('a typo says so and is not saved as a pressure', (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await _setUp(tester);
+      expect(find.text('Enter a pressure in bar'), findsNothing);
+
+      await tester.enterText(_key('analysis-pressure'), '21o');
+      await tester.pump();
+      expect(find.text('Enter a pressure in bar'), findsOneWidget);
+
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+
+      final a = h.dao.addedFromBridge.single.$2;
+      expect(a.fillPressureBar, isNull);
+      expect(a.needsSignoff, isFalse, reason: 'the rest was fine');
+      // Not used up: the diver still sees what to fix.
+      expect(find.text('21o'), findsOneWidget);
+      expect(find.text('Enter a pressure in bar'), findsOneWidget);
+
+      await tester.enterText(_key('analysis-pressure'), '210');
+      await tester.pump();
+      expect(find.text('Enter a pressure in bar'), findsNothing);
+    });
+
+    _test('a pressure is passed as a number, comma or dot', (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await _setUp(tester);
+      await tester.enterText(_key('analysis-pressure'), '199,5');
+      await tester.pump();
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+      expect(h.dao.addedFromBridge.single.$2.fillPressureBar, 199.5);
+      expect(find.text('199,5'), findsNothing, reason: 'used up');
+    });
+  });
+
+  group('what the card says about a label', () {
+    _test('a label that printed but could not be signed off says so',
+        (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await _setUp(tester);
+
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+      await tester.pumpAndSettle();
+
+      expect(h.fakePrinter!.printed, hasLength(1));
+      expect(h.dao.analyses.single.needsSignoff, isTrue);
+      expect(_resultText(tester), 'Printed EAN32 — sign off in the log');
+    }, printer: true, dao: _NoSignoffDao());
+
+    _test('a label that printed and was signed off says only Printed',
+        (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await _setUp(tester);
+
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+      await tester.pumpAndSettle();
+      expect(_resultText(tester), 'Printed EAN32');
+    }, printer: true);
+  });
+
+  group('print label on OK is remembered', () {
+    _test('the switch is written, and the next card starts from it',
+        (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      expect(h.settings.analyzerPrintOnOk, isTrue, reason: 'on by default');
+
+      await tester.tap(_key('analysis-print-on-ok'));
+      await tester.pump();
+      expect(h.settings.analyzerPrintOnOk, isFalse);
+      final again = SettingsNotifier();
+      await again.load();
+      expect(again.analyzerPrintOnOk, isFalse);
+
+      // A new screen (a new card) starts from the remembered choice.
+      await tester.pumpWidget(const SizedBox());
+      h.controller.dispose();
+      await h.pump(tester, useSettings: again);
+      await h.connect(tester);
+      expect(
+        tester.widget<SwitchListTile>(_key('analysis-print-on-ok')).value,
+        isFalse,
+      );
+
+      await tester.tap(_key('analysis-print-on-ok'));
+      await tester.pump();
+      expect(again.analyzerPrintOnOk, isTrue);
+      expect(
+        tester.widget<SwitchListTile>(_key('analysis-print-on-ok')).value,
+        isTrue,
+      );
+    }, printer: true);
+  });
+
+  group('what is reported', () {
+    /// One OK press on a logger built like the screen's, with [printing];
+    /// returns what reached the reporter.
+    Future<List<Object>> reportedFor(LabelPrintService printing) async {
+      var clock = Duration.zero;
+      final errors = <Object>[];
+      final logger = buildOkLogger(
+        dao: FakeGasAnalysesDao(),
+        printing: printing,
+        elapsed: () => clock,
+        tickInterval: null,
+        report: (e, s) => errors.add(e),
+      );
+      final solo = _FakeSolo();
+      logger.attach(solo);
+      logger.setupProvider = () => (
+            setup: const LogOnOkSetup(
+              analysedBy: 'EdP',
+              desiredMix: DesiredMix(32, 0),
+              printOnOk: true,
+              printerConfigured: true,
+            ),
+            copies: 1,
+          );
+      for (var ms = 0; ms <= 25000; ms += 200) {
+        clock = Duration(milliseconds: ms);
+        solo.emitLine(_line(32.0, 0));
+      }
+      clock += const Duration(milliseconds: 2200);
+      logger.tick();
+      await logger.results.first.timeout(const Duration(seconds: 5));
+      await logger.dispose();
+      return errors;
+    }
+
+    LabelPrintService service({
+      PrinterFault? fault,
+      Future<LabelBitmap> Function(Object label)? render,
+    }) =>
+        LabelPrintService(
+          render: (label) async =>
+              render != null ? await render(label) : LabelBitmap.blank(384, 240),
+          printerFor: (_) => FakeLabelPrinter(faultOnPrint: fault),
+          scanner: FakeLabelPrinterScanner(),
+          printerId: () => 'dev-1',
+          use14ForDeeperMixes: () => false,
+        );
+
+    test('a printer that is off or has its cover open is not a bug', () async {
+      expect(
+        await reportedFor(service(fault: PrinterFault.coverOpen)),
+        isEmpty,
+      );
+    });
+
+    test('a real error in the print still is reported', () async {
+      final boom = StateError('render');
+      final errors = await reportedFor(
+        service(render: (_) async => throw boom),
+      );
+      expect(errors, [boom]);
+    });
+  });
+
+  group('the source in use', () {
+    test('a live session decides, the picker only when there is none', () {
+      bool demo(bool inSession, bool? session, bool selected) =>
+          analyzerSourceIsDemo(
+            inSession: inSession,
+            sessionIsDemo: session,
+            selectedIsDemo: selected,
+          );
+      // No session: what the picker says.
+      expect(demo(false, null, false), isFalse);
+      expect(demo(false, null, true), isTrue);
+      expect(demo(false, false, true), isTrue, reason: 'last session is over');
+      // A session: its own source, whatever the picker shows.
+      expect(demo(true, false, true), isFalse);
+      expect(demo(true, true, false), isTrue);
+      // A session that has not recorded its source falls back to the picker.
+      expect(demo(true, null, true), isTrue);
     });
   });
 

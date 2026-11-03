@@ -679,6 +679,87 @@ void main() {
       await rig.close();
     });
 
+    test('each result carries the setup its own hold used', () async {
+      final gate = Completer<void>();
+      final rig = Rig(saveGate: gate);
+      var asked = 0;
+      rig.logger.setupProvider = () {
+        final n = ++asked;
+        return (
+          setup: LogOnOkSetup(
+            analysedBy: 'EdP',
+            desiredMix: const DesiredMix(32, 0),
+            cylinderId: 'c$n',
+            fillPressureBar: 100.0 * n,
+            notes: 'hold $n',
+          ),
+          copies: n,
+        );
+      };
+      rig.steady(32.0, 0.0, seconds: 25);
+      await rig.silenceThenTick();
+      expect(asked, 1);
+      // OK again while the first save is stuck: queued, setup not read yet.
+      rig.steady(32.0, 0.0, seconds: 25);
+      await rig.silenceThenTick();
+      expect(asked, 1, reason: 'the provider is asked when the hold is handled');
+
+      gate.complete();
+      await pumpEventQueue();
+      expect(asked, 2);
+      expect(rig.results, hasLength(2));
+      for (var i = 0; i < 2; i++) {
+        final used = rig.results[i].setupUsed!;
+        expect(used.setup.cylinderId, 'c${i + 1}');
+        expect(used.setup.fillPressureBar, 100.0 * (i + 1));
+        expect(used.setup.notes, 'hold ${i + 1}');
+        expect(used.copies, i + 1);
+      }
+      await rig.close();
+    });
+
+    test('a skipped, failed or unprinted press carries its setup too',
+        () async {
+      // Room air: skipped.
+      final air = Rig();
+      air.logger.setupProvider =
+          () => (setup: const LogOnOkSetup(cylinderId: 'air'), copies: 1);
+      air.steady(20.9, 0.0, seconds: 25);
+      await air.silenceThenTick();
+      expect(air.results.single.code, FeedbackCode.skipped);
+      expect(air.results.single.setupUsed!.setup.cylinderId, 'air');
+      await air.close();
+
+      // The save fails.
+      final bad = Rig(saveError: StateError('disk full'));
+      bad.logger.setupProvider =
+          () => (setup: const LogOnOkSetup(cylinderId: 'bad'), copies: 1);
+      bad.steady(32.0, 0.0, seconds: 25);
+      await bad.silenceThenTick();
+      expect(bad.results.single.text, 'SAVE FAILED');
+      expect(bad.results.single.setupUsed!.setup.cylinderId, 'bad');
+      await bad.close();
+
+      // The label prints, the sign-off clearing fails.
+      final half = Rig(markCompleteError: StateError('db busy'));
+      half.logger.setupProvider = () => (
+            setup: const LogOnOkSetup(
+              analysedBy: 'EdP',
+              desiredMix: _ean32,
+              printOnOk: true,
+              printerConfigured: true,
+              cylinderId: 'half',
+            ),
+            copies: 1,
+          );
+      half.steady(32.0, 0.0, seconds: 25);
+      await half.silenceThenTick();
+      expect(half.results.single.code, FeedbackCode.printed);
+      expect(half.results.single.complete, isFalse);
+      expect(half.results.single.setupUsed!.setup.cylinderId, 'half');
+      await half.close();
+    });
+
     test('a failure in one hold does not stop the next', () async {
       var calls = 0;
       final events = <OkLogResult>[];

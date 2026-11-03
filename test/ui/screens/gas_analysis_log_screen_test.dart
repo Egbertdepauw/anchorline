@@ -1070,10 +1070,11 @@ void main() {
       expect(inTile('tx', find.text('Tx23/34')), findsOneWidget);
     });
 
-    testWidgets('the sheet starts "analysed by" from the latest name in the '
-        'log', (tester) async {
+    testWidgets('the sheet of an entry waiting for sign-off starts "analysed '
+        'by" from the latest name in the log', (tester) async {
       final dao = FakeGasAnalysesDao(analyses: [
-        entry('newest', DateTime(2026, 10, 30), 32.1, 0, analysedBy: null),
+        entry('newest', DateTime(2026, 10, 30), 32.1, 0,
+            analysedBy: null, needsSignoff: true),
         entry('mid', DateTime(2026, 10, 29), 32.1, 0, analysedBy: '  '),
         entry('older', DateTime(2026, 10, 28), 32.1, 0, analysedBy: 'Wendy'),
         entry('oldest', DateTime(2026, 10, 27), 32.1, 0, analysedBy: 'Jan'),
@@ -1085,6 +1086,21 @@ void main() {
           .controller!
           .text;
       expect(diver, 'Wendy');
+    });
+
+    testWidgets('the sheet of an old entry with no name does not suggest one',
+        (tester) async {
+      final dao = FakeGasAnalysesDao(analyses: [
+        entry('newest', DateTime(2026, 10, 30), 32.1, 0, analysedBy: null),
+        entry('older', DateTime(2026, 10, 28), 32.1, 0, analysedBy: 'Wendy'),
+      ]);
+      await pump(tester, GasAnalysisLogScreen(dao: dao));
+      await tapAndSettle(tester, _key('analysis-newest'));
+      final diver = tester
+          .widget<TextField>(_key('analysis-edit-diver'))
+          .controller!
+          .text;
+      expect(diver, '');
     });
 
     testWidgets('deleting from the sheet shows the deleted SnackBar',

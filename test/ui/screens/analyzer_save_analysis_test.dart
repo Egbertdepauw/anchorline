@@ -126,6 +126,33 @@ void main() {
     expect(find.text('Egbert'), findsOneWidget);
   });
 
+  testWidgets('a mistyped fill pressure says so and blocks Save',
+      (tester) async {
+    final dao = FakeGasAnalysesDao();
+    await pumpScreen(tester, dao);
+    await connect(tester);
+    await seconds(tester, 90);
+    await disconnect(tester); // freeze the reading
+    expect(find.text('Enter a pressure in bar'), findsNothing);
+    expect(tester.widget<ButtonStyleButton>(saveButton()).onPressed, isNotNull);
+
+    await tester.enterText(
+        find.byKey(const ValueKey('analysis-pressure')), '21o');
+    await tester.pump();
+    expect(find.text('Enter a pressure in bar'), findsOneWidget);
+    expect(tester.widget<ButtonStyleButton>(saveButton()).onPressed, isNull,
+        reason: 'not saved as "no pressure" without a word');
+    expect(dao.added, isEmpty);
+
+    await tester.enterText(
+        find.byKey(const ValueKey('analysis-pressure')), '210');
+    await tester.pump();
+    expect(find.text('Enter a pressure in bar'), findsNothing);
+    await tester.tap(saveButton());
+    await tester.pump();
+    expect(dao.added.single.fillPressureBar, 210);
+  });
+
   testWidgets('unstable reading warns; cancel skips, save anyway saves',
       (tester) async {
     final dao = FakeGasAnalysesDao();

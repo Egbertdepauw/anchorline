@@ -56,6 +56,7 @@ class OkLogResult {
     required this.text,
     required this.analysisId,
     required this.complete,
+    this.setupUsed,
   });
 
   /// The feedback: printed, saved, check, skipped or error.
@@ -71,6 +72,14 @@ class OkLogResult {
   /// The row was saved with `needs_signoff = 0`: nothing is left for the
   /// diver to do (and the label printed, if a print was wanted).
   final bool complete;
+
+  /// The setup this press used: what the setup provider gave when the press
+  /// was handled. Presses are handled one after the other, so a result can
+  /// arrive after the provider was asked again for the next press; the card
+  /// goes by this, not by what the provider gives now, to see which of its
+  /// fields this press took. Null when the press never got as far as the
+  /// setup (a failed timer tick).
+  final OkSetup? setupUsed;
 
   @override
   String toString() =>
@@ -331,25 +340,34 @@ class UsbOkLogger {
           text: outcome.feedbackText,
           analysisId: null,
           complete: false,
+          setupUsed: setup,
         );
       case SaveRecord():
-        return _saveAndPrint(outcome, setup.copies);
+        return _saveAndPrint(outcome, setup);
     }
   }
 
-  Future<OkLogResult> _saveAndPrint(SaveRecord outcome, int copies) async {
+  Future<OkLogResult> _saveAndPrint(SaveRecord outcome, OkSetup setup) async {
+    final copies = setup.copies;
     final rowId = outcome.rowId;
     final analysis = outcome.analysis;
+    final saveFailed = OkLogResult(
+      code: FeedbackCode.error,
+      text: 'SAVE FAILED',
+      analysisId: null,
+      complete: false,
+      setupUsed: setup,
+    );
 
     try {
       // False means a row with this id was already there, and nothing was
       // written. Do not print for it or touch it: [_markComplete] only ever
       // clears a row this hold wrote.
       final inserted = await _save(rowId, analysis);
-      if (!inserted) return _saveFailed;
+      if (!inserted) return saveFailed;
     } catch (e, st) {
       _report(e, st);
-      return _saveFailed;
+      return saveFailed;
     }
 
     if (!outcome.printLabel) {
@@ -358,6 +376,7 @@ class UsbOkLogger {
         text: outcome.feedbackText,
         analysisId: rowId,
         complete: !analysis.needsSignoff,
+        setupUsed: setup,
       );
     }
 
@@ -371,6 +390,7 @@ class UsbOkLogger {
         text: 'NO PRINTER',
         analysisId: rowId,
         complete: false,
+        setupUsed: setup,
       );
     }
     try {
@@ -385,6 +405,7 @@ class UsbOkLogger {
         text: 'PRINT FAILED',
         analysisId: rowId,
         complete: false,
+        setupUsed: setup,
       );
     }
     final mixName = gasMixName(analysis.o2Percent, analysis.hePercent);
@@ -399,6 +420,7 @@ class UsbOkLogger {
         text: mixName,
         analysisId: rowId,
         complete: false,
+        setupUsed: setup,
       );
     }
     return OkLogResult(
@@ -406,15 +428,9 @@ class UsbOkLogger {
       text: mixName,
       analysisId: rowId,
       complete: true,
+      setupUsed: setup,
     );
   }
-
-  static const OkLogResult _saveFailed = OkLogResult(
-    code: FeedbackCode.error,
-    text: 'SAVE FAILED',
-    analysisId: null,
-    complete: false,
-  );
 
   /// A monotonic clock that starts now.
   static Duration Function() _stopwatchClock() {
