@@ -1,7 +1,10 @@
 # Log on OK: background gas-analysis logging through the SOLO bridge — design
 
 **Date:** 2026-11-03
-**Status:** draft for Egbert's approval. Nothing is built. OK detection is measured (§1).
+**Status:** merged design, 2026-11-03. Nothing is built. OK detection is measured (§1).
+This merges two brainstorms of the same feature. This one, and the bridge-logging spec
+(`2026-11-03-solo-bridge-background-logging-design.md`), which Egbert approved and which this file
+replaces. Egbert settled the two points where they disagreed: decisions 14 and 11 below.
 **Issue:** #113 (ESP32 USB→BLE bridge). New issues get filed per build step (see "Build order").
 **Builds on:** `2026-10-27-gas-analyzer-solo-design.md` (analyzer, #104–#113) and
 `2026-10-31-cylinder-label-printing-design.md` (labels, #114).
@@ -50,6 +53,22 @@ iPhones can't talk to the SOLO over USB at all, so this rides on the ESP32 USB�
    - Everything in git is in English.
    - New synced columns are deployed before a build writes them.
    - Don't run `dart format` on whole files.
+
+From the second brainstorm (the bridge-logging spec) and the merge:
+
+10. **No label before sign-off.** An entry that isn't complete is signed off in the log before it
+    prints. A cylinder and a gas role (DIL / BO-DECO) should preferably be assigned too.
+11. **An OK press on room air saves nothing:** O2 20.5–21.5 % with He 0–1 %. The bridge shows
+    `AIR — NOT LOGGED`, and air cylinders are saved by hand on the analyzer screen (§5). Egbert
+    chose this narrow band over a wider one.
+12. **The bridge screen is the quick status display:** settling, stable, saved, and errors such as
+    "connection lost" (§2).
+13. **Every save can be changed or deleted,** also right after it is made.
+14. **Sessions first.** "Switch the bridge on and it works", without opening the app, is
+    preferred. In v1 a session starts from the analyzer screen, and the always-armed connection is
+    the first later step (see "Later").
+15. **OK is the trigger.** Saving on "the reading went stable" was the fallback in case OK couldn't
+    be detected. The capture shows it can (§1), so there is no stable trigger.
 
 ## Goals
 
@@ -225,12 +244,30 @@ sign of a hold. The silence is.
   - One central at a time. Advertises as `Anchorline Bridge XXXX` (the last 4 hex digits of the
     MAC) with the NUS UUID.
   - MTU up to 247. No bonding in v1; see "Risks".
-- **Screen and LEDs.** Big text, readable at arm's length:
-  - **Status line:** SOLO ✓/✗, phone ✓/✗, battery.
+- **Screen and LEDs.** The quick status display (decision 12), with big text readable at arm's
+  length.
+  - **Status line:** SOLO ✓/✗, phone ✓/✗, battery, VBUS on.
   - **Pending:** "3 waiting for phone".
-  - **Last result**, from `FB`: `PRINTED EAN32`, `SAVED — SIGN OFF LATER`, or
-    `CHECK PHONE: MISMATCH`.
-  - **SOLO silent:** attached but no lines for 4 s shows "SOLO: turn on Send data to USB".
+  - **Main area: one state at a time, by priority.** States the bridge knows itself come first:
+
+    | Situation | Screen |
+    |---|---|
+    | No phone has connected since power-on | `WAITING FOR PHONE` |
+    | A phone was connected and the link dropped | `CONNECTION LOST` |
+    | Connected and `LIVE ON`, but no `STATE` for 10 s | `PHONE NOT RESPONDING` |
+    | No SOLO attached | `NO SOLO` |
+    | SOLO attached but no lines for 4 s, and never a line since attach | `SOLO: TURN ON SEND DATA TO USB` |
+    | A hold was detected and its record is waiting for its `FB` | `HELD — SAVING…` |
+    | Queue full | `FULL — CONNECT PHONE` |
+    | Battery low, or at cut-off | battery warning, or `BATTERY EMPTY` |
+
+    Otherwise the bridge shows the **last result** (from `FB`) for 10 s after it arrives, then the
+    **live state** (from `STATE`, §3):
+    - last results: `PRINTED EAN32`, `SAVED — SIGN OFF LATER`, `CHECK PHONE: MISMATCH`,
+      `AIR — NOT LOGGED`, `NO READING`;
+    - live states: `SETTLING… TX21/35`, `STABLE TX21/35`, `SENSOR ERROR`, `AIR`.
+
+    The bridge never works out a state such as stable from the lines itself; the app sends it.
   - **LEDs:** the green LED blinks when the app has confirmed a record; the yellow LED stays on
     while records are waiting or something needs attention.
 - **Buttons:** one shows a short info screen (bridge id, firmware, battery, VBUS mode). There is
@@ -290,9 +327,10 @@ sign of a hold. The silence is.
 | Message | Meaning |
 |---|---|
 | `TIME <epoch-ms>` | Sent first on every connection; the bridge keeps wall time until it powers off |
-| `LIVE ON` / `LIVE OFF` | Forward `L` lines or not. On while the analyzer screen is visible, off in the background (fewer wake-ups on iOS) |
+| `LIVE ON` / `LIVE OFF` | Forward `L` lines or not. On while the analyzer screen is visible **or a session runs**, so the bridge screen can show the live state (decision 12). Off only for a short collection connect. In a background session this wakes an iPhone about 5 times a second; the session is bounded, so this is accepted |
+| `STATE <code> [<mix>]` | The live state for the bridge screen: `settling`, `stable`, `sensor_error` or `air`, plus the live mix name (`gasMixName`). Sent on every change and at least every 3 s while `LIVE ON`; this doubles as the heartbeat |
 | `ACK <rid>` | Sent **after** the local database write has committed (or after deciding not to save, see §5). The bridge deletes the record |
-| `FB <rid> <code> <text>` | The result, for the screen. `code` is `printed`, `saved`, `check` or `error`. `text` is ≤ 24 characters, e.g. `EAN32`, `NOT STABLE`, `MISMATCH`, `NO MIX SET`, `PRINT FAILED` |
+| `FB <rid> <code> <text>` | The result, for the screen. `code` is `printed`, `saved`, `check`, `skipped` or `error`. `text` is ≤ 24 characters, e.g. `EAN32`, `NOT STABLE`, `MISMATCH`, `NO MIX SET`, `PRINT FAILED`, `AIR — NOT LOGGED` |
 | `CFG rec=<on\|off> vbus=<off\|on>` | Persisted on the bridge. `rec` mirrors the app's "Log on OK" option and is sent on every connection; with `rec=off`, OK makes no records at all. The factory default is `off` |
 
 ## 4. The app
@@ -337,7 +375,13 @@ sign of a hold. The silence is.
 With "Log on OK" on and the bridge connected, the existing save card turns into the setup.
 - **Same fields and the same print copies,** but the Save buttons are replaced by a hint: "Press OK
   on the SOLO to save".
-- **One setup, one save path:** an OK press plus a Save tap can't make two entries.
+  - **Exception:** while the live reading is room air (§5), the Save buttons stay, because OK
+    doesn't log air (decision 11).
+- **One setup, one save path:** an OK press plus a Save tap can't make two entries. OK never saves
+  air, and Save is only offered for air.
+- **After each OK, the card shows the result** ("Saved EAN32", "Printed EAN32", "Needs sign-off:
+  not stable") with **Edit**, which opens the edit sheet, and **Delete**, which soft-deletes after
+  a confirm (decision 13).
 
 | Kind | Fields | Behaviour |
 |---|---|---|
@@ -392,6 +436,14 @@ With "Log on OK" on and the bridge connected, the existing save card turns into 
   0).
 - **Not usable** (`***.*`, no O2): save nothing. Send `ACK`, then `FB error NO READING`. There is
   nothing to keep, and the diver sees it at once on the bridge.
+- **Room air** (decision 11): O2 from 20.5 to 21.5 % inclusive and He below 1.0 %. That is
+  `kAirO2MinPercent`, `kAirO2MaxPercent` and `kHeliumNoiseFloorPercent` from `gas_naming.dart`, and a
+  negative He counts as 0.
+  - Save nothing, live or late. Send `ACK`, then `FB skipped AIR — NOT LOGGED`.
+  - Nothing per-cylinder is used up.
+  - **Calibration caveat:** all three captures read room air at O2 19.7–19.8 % (31 Oct and
+    3 Nov). That is outside the band, so on that SOLO an OK on air would save "Hypoxic 20". The
+    rule assumes a SOLO calibrated on air, and a calibration hint is not part of this work.
 - **Stable:** feed every `W` line, then `H`, to a fresh `StabilityDetector`, using the offsets as
   `elapsed`. `stable` is its state at `H`. This is exactly the screen's rule, not a firmware copy.
 
@@ -480,9 +532,9 @@ A crash between steps leaves the entry flagged, never unflagged without a label.
   is in the background or the phone is locked. The pending connection from `autoConnect: true`
   never times out: switching the bridge off and on, or walking out of range and back, reconnects
   without the app in front.
-- The app sends `LIVE OFF` when it goes to the background (`AppLifecycleState.paused`) and
-  `LIVE ON` when the analyzer screen is visible again. In the background only `ST` (every 5 s) and
-  records arrive.
+- In a session, `LIVE` stays on in the background, so the app can keep sending `STATE` for the
+  bridge screen (§3). That means about 5 wake-ups a second, but only during a session. A short
+  collection connect, outside a session, uses `LIVE OFF`: only `ST` and records arrive.
 - **Printing in the background:** connecting to the M110 by its stored id needs no scan, so the BLE
   side works in the background. **The label is drawn with `Picture.toImage`, and iOS restricts GPU
   work in the background.** This must be tested on an iPhone in step 4. If it fails, the print is
@@ -490,11 +542,15 @@ A crash between steps leaves the entry flagged, never unflagged without a label.
   render path, for example) becomes its own issue. The rest of the feature doesn't depend on it.
 - **When iOS kills the app in the background** (memory) or the user force-quits it, the session ends
   and records wait on the bridge.
-- **State restoration is not used in v1.** flutter_blue_plus 1.36.8 supports `restoreState`, but
-  the app uses the UIScene implicit engine, and a background relaunch most likely doesn't start
-  Dart. The bridge queue makes this unnecessary. If it's tried later, `setOptions(restoreState: true)`
-  must run before the first flutter_blue_plus call anywhere, because the Shearwater import and the
-  label printer share the central manager.
+- **State restoration is not used in v1** (decision 14: sessions first). The bridge queue covers
+  what a killed app misses.
+  - flutter_blue_plus 1.36.8 supports `restoreState`, but the code confirms that a background
+    relaunch wouldn't start Dart today:
+    - `AppDelegate` is a `FlutterImplicitEngineDelegate`, with a `FlutterSceneDelegate` and the
+      `Main` storyboard;
+    - the implicit engine is created only when a scene connects;
+    - `flutter_blue_plus_darwin` creates its `CBCentralManager` only on the first call from Dart.
+  - Making it work is part of the always-armed step in "Later".
 - **No local notification per save in v1.** The bridge screen is the feedback, and it's where the
   diver is looking. A notification would need a new permission and native code.
 
@@ -565,9 +621,16 @@ A crash between steps leaves the entry flagged, never unflagged without a label.
 - **Picking a cylinder on an entry with no desired mix** prefills the desired mix and role from that
   cylinder's latest other analysis. This is the re-check-on-the-boat case: it compares against what
   the diver thought was in the cylinder.
-- **On a flagged entry, the sheet's button reads "Sign off".** It needs "analysed by" filled in.
-  Saving clears `needs_signoff`. With a printer configured there is also "Sign off and print", which
-  goes through the existing print path, hard-mismatch dialog included.
+- **On a flagged entry, the sheet's button reads "Sign off".**
+  - It needs **"analysed by" and a desired mix**, the same two things that let OK print from the
+    pocket (decision 2), so an entry is complete the same way whichever path it takes.
+  - Saving clears `needs_signoff`.
+  - With a printer configured there is also "Sign off and print". It goes through the existing
+    print path, hard-mismatch dialog included.
+- **No label while flagged:** a flagged entry has no print action in the log. `LabelPrintService`
+  also refuses it, so no code path can print one (decision 10).
+- **Delete** (decision 13): a Delete button in the sheet, with a confirm, next to today's swipe.
+  It is a soft delete, so a re-sent record never brings it back (§8).
 - `GasAnalysisEdit` grows to match: cylinder id, fill pressure, analysed for, and a sign-off flag.
 
 ## 10. Duplicates and failure cases
@@ -585,8 +648,9 @@ A crash between steps leaves the entry flagged, never unflagged without a label.
 | Bridge switched off with records waiting | They are kept in flash. Time comes from §5 (uptime is lost, so `wall` or the SOLO clock is used) |
 | Bridge queue full (50) | No new records. The screen says "FULL — connect phone". Nothing is overwritten |
 | No network | Doesn't matter: the save is local (PowerSync is offline-first) and the `ACK` follows the local commit. The upload happens later |
-| Signed out | Same as a manual save today (owner from the session at insert time). No new behaviour |
+| Signed out | Same as a manual save today (owner from the session at insert time). No new behaviour. **Known bug, being fixed separately:** `gas_analyses` was missing from `OwnerIdBackfiller._syncedTables`, so rows saved while signed out disappeared from the log after sign-in. The fix is its own issue and PR, from the session "Fix: signed-out gas analyses vanish after sign-in" |
 | SOLO sensor error at the hold | Nothing saved, `ACK`, `FB error NO READING` |
+| OK pressed on room air | Nothing saved, `ACK`, `FB skipped AIR — NOT LOGGED`. Save air cylinders by hand on the analyzer screen |
 | Diver pressed OK before stable | Saved with `stable = 0`, needs sign-off, no label, `FB check NOT STABLE` |
 | Wrong mix in the setup, or the wrong cylinder | Red or hard: saved, needs sign-off, no label, `FB check MISMATCH`. The cylinder visibly has no label |
 | Printer off, out of paper, cover open | Saved, needs sign-off, `FB check PRINT FAILED`. Reprint from the log |
@@ -646,9 +710,30 @@ Each step is its own issue and PR, and each one is useful on its own.
   design: finding the user, write access to someone else's log, sync delivery, privacy. CLAUDE.md
   lists social and sharing features as out of scope, so this needs Egbert's explicit decision to
   widen that line. `analysed_for` is the hook.
+- **Always armed: the first later step** (decision 14). The goal is to switch the bridge on and
+  have the phone connect, with no need to open Anchorline, even after iOS has closed the app
+  overnight. The bridge-logging brainstorm worked this out:
+  - **iOS.**
+    1. Create and run one `FlutterEngine` in `application(_:didFinishLaunchingWithOptions:)`,
+       register the plugins on it, and have the scene's `FlutterViewController` attach to that
+       engine.
+    2. Call `FlutterBluePlus.setOptions(restoreState: true)` at the top of `main()`, then touch the
+       adapter, so the central manager exists while iOS is still within the launch window.
+    3. Keep a standing `connect(autoConnect: true, mtu: null)` to the stored bridge.
+
+    TN3115 relaunch rules apply: it works after the system kills the app and after a reboot, but
+    not after a user force-quit (AccessorySetupKit on iOS 26 is the exception). On restoration,
+    disconnect restored peripherals that aren't the bridge, such as a Petrel or the printer.
+  - **Android 12+.**
+    1. Pair through `CompanionDeviceManager.associate` with a filter on the bridge's service UUID.
+    2. Observe presence: `startObservingDevicePresence` on API 31–35, `ObservingDevicePresenceRequest`
+       on API 36+.
+    3. Start the `connectedDevice` foreground service from the `CompanionDeviceService` when the
+       bridge appears. Companion-device apps are allowed to do this from the background.
+    4. Cache the Flutter engine, so that swiping the app away doesn't stop logging.
+  - Both change app-wide startup and lifecycle (the Shearwater import and the printer share them),
+    which is why they are not in v1.
 - OK logging over a direct USB cable, by porting the hold rule to Dart with the same fixtures.
-- iOS state restoration and an Android cached engine, to survive kills without waiting for the next
-  connection.
 - Firmware CI, and OTA updates.
 
 ## Risks and things to verify on hardware
@@ -701,3 +786,17 @@ Each step is its own issue and PR, and each one is useful on its own.
     Nordic UART, with no BLE bonding in v1.
 14. **Host 5 V is off by default.** The power-meter bench in step 1 decides, and charging the SOLO
     goes back to Egbert if it turns out to be needed.
+
+Calls made in the merge:
+
+15. **Signing off needs "analysed by" and a desired mix,** the same pair that lets OK print. The
+    other brainstorm asked only for "analysed by".
+16. **The Save button stays on the setup card while the live reading is room air,** since OK
+    doesn't log air. It is hidden otherwise, so a cylinder can't be saved twice.
+17. **`LIVE` stays on through a background session,** and the app sends `STATE` (live state plus
+    heartbeat) so the bridge screen can show settling and stable. This costs extra iPhone
+    wake-ups, but only during a session.
+18. **The bridge's own states take priority on its screen:** no phone, connection lost, no SOLO,
+    no data, held, full, battery. After them comes the last result for 10 s, then the live state.
+19. **After an OK save,** the setup card shows the result with Edit and Delete, and the edit sheet
+    gets a Delete button with a confirm.
