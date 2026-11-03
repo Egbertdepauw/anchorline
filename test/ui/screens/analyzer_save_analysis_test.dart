@@ -226,6 +226,57 @@ void main() {
     expect(dao.added.single.o2Percent, 18.2);
   });
 
+  testWidgets('the MOD rows follow the desired mix picked on the save card',
+      (tester) async {
+    // 18.2 % at 1.6 is 77.9 m. With no desired mix that is a stop: 78 m
+    // would be just over 1.6, so 75 m. Above the desired Tx18/45 it is the
+    // exact depth rounded down, 77 m (#145).
+    String mod16() => tester
+        .widgetList<Text>(find.descendant(
+            of: find.byKey(const ValueKey('analyzer-mod-1.6')),
+            matching: find.byType(Text)))
+        .map((t) => t.data ?? t.textSpan!.toPlainText())
+        .join(' | ');
+
+    tester.view.physicalSize = const Size(400, 3200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final settings = await loadSettings();
+    await tester.pumpWidget(MaterialApp(
+      home: AnalyzerScreen(
+        settings: settings,
+        analysesDao: FakeGasAnalysesDao(),
+        blendTarget: const DesiredMix(18, 45),
+        controller: fakeClockAnalyzerController(tester),
+        transportOptions: [
+          AnalyzerTransportOption(
+            label: 'Bench',
+            create: () => DemoAnalyzerTransport(
+              targetO2: 18.2,
+              targetHe: 45.1,
+              random: Random(11),
+            ),
+          ),
+        ],
+      ),
+    ));
+    await tester.pump();
+    await connect(tester);
+    await seconds(tester, 90);
+    expect(mod16(), contains('75 m'));
+
+    await tester.tap(find.byKey(const ValueKey('desired-mix-18-45')));
+    await tester.pump();
+    expect(mod16(), contains('77 m'));
+
+    // Saving clears the desired mix for the next cylinder, and the rows
+    // go back to the stop rule.
+    await disconnect(tester);
+    await tester.tap(saveButton());
+    await tester.pump();
+    expect(mod16(), contains('75 m'));
+  });
+
   testWidgets('wide layout also shows the save card', (tester) async {
     await pumpScreen(tester, FakeGasAnalysesDao(),
         size: const Size(1200, 1600));

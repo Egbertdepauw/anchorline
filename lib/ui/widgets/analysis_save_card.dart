@@ -40,6 +40,7 @@ class AnalysisSaveCard extends StatefulWidget {
     this.blendTarget,
     this.labelPrinting,
     this.onSetUpPrinter,
+    this.onDesiredMixChanged,
     this.now = DateTime.now,
   });
 
@@ -63,6 +64,11 @@ class AnalysisSaveCard extends StatefulWidget {
 
   /// Opens the label printer settings, for the "Set up label printer" link.
   final VoidCallback? onSetUpPrinter;
+
+  /// Told whenever the picked desired mix changes, including back to none
+  /// after a save, so the analyzer screen's MOD rows follow the same depth
+  /// rule as the label (issue #145).
+  final ValueChanged<DesiredMix?>? onDesiredMixChanged;
 
   /// Clock, injectable for tests.
   final DateTime Function() now;
@@ -98,6 +104,14 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     super.initState();
     _loadCylinders();
     _loadMixOptions();
+    // A new card starts with no desired mix. Say so, so a mix picked on an
+    // earlier card (the other layout, or before switching source) isn't
+    // kept by the screen. After the frame: the screen is mid-build now.
+    if (widget.onDesiredMixChanged != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onDesiredMixChanged?.call(null);
+      });
+    }
   }
 
   Future<void> _loadCylinders() async {
@@ -300,6 +314,7 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
       _role = gasRoleForCylinderRole(_cylinder(_cylinderId)?.role);
       _copies = 1;
     });
+    widget.onDesiredMixChanged?.call(null);
     // Not awaited: the print needn't wait for the chips.
     unawaited(_loadMixOptions());
     _pressure.clear();
@@ -362,7 +377,10 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
               DesiredMixPicker(
                 options: _mixOptions,
                 selected: desired,
-                onChanged: (m) => setState(() => _desired = m),
+                onChanged: (m) {
+                  setState(() => _desired = m);
+                  widget.onDesiredMixChanged?.call(m);
+                },
               ),
               // Only for a usable reading: grading NaN throws.
               if (desired != null && gas != null) ...[

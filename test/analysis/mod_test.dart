@@ -63,6 +63,65 @@ void main() {
     });
   });
 
+  group('roundToStopDepth', () {
+    // The stop depth for the exact MOD of [fO2] at [ppO2].
+    int stop(double fO2, double ppO2) =>
+        roundToStopDepth(modMeters(fO2, ppO2), fO2);
+
+    test('rounds to the nearest 3 m stop', () {
+      expect(stop(0.50, 1.6), 21); // 22.0 m
+      expect(stop(0.21, 1.4), 57); // 56.7 m
+      expect(stop(0.32, 1.4), 33); // 33.75 m
+      expect(stop(0.47, 1.6), 24); // 24.0 m, 1.598 bar there
+      expect(stop(1.0, 1.6), 6); // 6.0 m, exactly 1.6 bar there
+    });
+
+    test('goes a stop shallower when the nearest one is above ppO2 1.6', () {
+      expect(stop(0.49, 1.6), 21); // 22.7 m; 24 m would be 1.67
+      expect(stop(0.52, 1.6), 18); // 20.8 m; 21 m would be 1.61
+      expect(stop(0.80, 1.6), 9); // 10.0 m; 12 m would be 1.76
+      expect(stop(0.21, 1.6), 66); // 66.2 m; 1.596 at 66 m
+    });
+
+    test('exactly halfway between two stops goes to the shallower one', () {
+      expect(roundToStopDepth(22.5, 0.21), 21);
+      expect(roundToStopDepth(22.5 + 1e-12, 0.21), 21);
+      expect(roundToStopDepth(22.51, 0.21), 24);
+    });
+
+    test('never above the surface', () {
+      expect(roundToStopDepth(0.0, 1.0), 0);
+      expect(roundToStopDepth(1.0, 1.0), 0);
+    });
+
+    test('always the nearest stop at which the gas stays at or under 1.6', () {
+      for (var p = 100; p <= 160; p += 5) {
+        for (var k = 1; k <= 1000; k++) {
+          final fO2 = k / 1000.0;
+          final exact = modMeters(fO2, p / 100.0);
+          if (exact < 0) continue;
+          final d = roundToStopDepth(exact, fO2);
+          final why = 'O2 ${k / 10} % at ${p / 100} bar, exact $exact m';
+          bool allowed(int depth) => fO2 * (depth / 10 + 1) <= 1.6 + 1e-9;
+
+          expect(d % 3, 0, reason: why);
+          expect(d, greaterThanOrEqualTo(0), reason: why);
+          expect(allowed(d), isTrue, reason: why);
+          // No allowed stop is strictly nearer.
+          if (allowed(d + 3)) {
+            expect((d + 3 - exact).abs(),
+                greaterThanOrEqualTo((d - exact).abs() - 1e-9),
+                reason: why);
+          }
+          if (d >= 3) {
+            expect((d - 3 - exact).abs(), greaterThan((d - exact).abs()),
+                reason: why);
+          }
+        }
+      }
+    });
+  });
+
   group('minDepthMeters', () {
     test('10 % needs 6 m before it is breathable', () {
       expect(minDepthMeters(0.10), closeTo(6.0, 1e-9));

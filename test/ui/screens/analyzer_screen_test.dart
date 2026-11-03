@@ -101,8 +101,8 @@ void main() {
     expect(rowText(tester, 'analyzer-mod-1.4'), contains('MOD @ ppO₂ 1.4'));
     expect(rowText(tester, 'analyzer-mod-1.6'), contains('MOD @ ppO₂ 1.6'));
     expect(rowText(tester, 'analyzer-mod-1.4'), isNot(contains('CCR dil')));
-    // (1.4 / 0.182 − 1) × 10 = 66.9 m, floored (not rounded to 67) so the
-    // screen agrees with the cylinder label.
+    // (1.4 / 0.182 − 1) × 10 = 66.9 m: the nearest 3 m stop, 66, as the
+    // cylinder label shows it (#145).
     expect(rowText(tester, 'analyzer-mod-1.4'), contains('66 m'));
     expect(rowText(tester, 'analyzer-temp'), contains('21.4 °C'));
     expect(rowText(tester, 'analyzer-baro'), contains('1013 hPa'));

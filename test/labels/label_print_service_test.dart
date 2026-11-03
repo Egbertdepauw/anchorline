@@ -288,7 +288,8 @@ void main() {
       await rig.service.printAnalysis(_analysis());
       expect(rig.rendered, hasLength(1));
       expect(rig.rendered.single.mixName, 'EAN32');
-      expect(rig.rendered.single.headlineText, '40');
+      // 40.0 m at 1.6; the nearest 3 m stop is 39 (#145).
+      expect(rig.rendered.single.headlineText, '39');
     });
 
     test('sends 1 copy by default', () async {

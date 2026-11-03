@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import '../../analysis/end.dart';
 import '../../analysis/gas_density.dart';
 import '../../analysis/gas_naming.dart';
+import '../../analysis/mix_match.dart';
 import '../../analysis/mod.dart';
 import '../../analyzer/analyzer_controller.dart';
 import '../../analyzer/protocol/analyzer_reading.dart';
@@ -30,6 +31,7 @@ import '../../analyzer/transport/demo_transport.dart';
 import '../../analyzer/transport/desktop_serial_transport.dart';
 import '../../analyzer/transport/serial_port_selection.dart';
 import '../../data/db/gas_analyses_dao.dart';
+import '../../labels/cylinder_label.dart';
 import '../../labels/label_print_service.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/data_colors.dart';
@@ -173,6 +175,10 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   /// selected option alone says nothing about where a frozen reading came
   /// from. Null until a first session starts.
   bool? _sessionIsDemo;
+
+  /// The desired mix picked on the save card, so the MOD rows follow the
+  /// label's depth rule (issue #145). Only used while the card is shown.
+  DesiredMix? _desiredMix;
 
   @override
   void initState() {
@@ -322,13 +328,29 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         const SizedBox(height: Spacing.md),
         _MixCard(reading: r, stability: _controller.stability),
         const SizedBox(height: Spacing.md),
-        _PlanningCard(reading: r, settings: widget.settings),
+        _PlanningCard(
+          reading: r,
+          settings: widget.settings,
+          desired: _planningDesired,
+        ),
         const SizedBox(height: Spacing.md),
         _ChartCard(controller: _controller),
         ..._saveCard(),
       ],
     );
   }
+
+  /// Whether the save card is shown; see [_saveCard].
+  bool get _showsSaveCard {
+    if (widget.analysesDao == null) return false;
+    final readingFromDemo =
+        _controller.latest == null ? null : _sessionIsDemo;
+    return !(readingFromDemo ?? _options[_selected].isDemo);
+  }
+
+  /// The desired mix the MOD rows are judged against: the save card's,
+  /// while the card is shown.
+  DesiredMix? get _planningDesired => _showsSaveCard ? _desiredMix : null;
 
   /// The "Save analysis" card (#111), preceded by a gap; empty without a
   /// DAO, and for readings from the demo source (they are made up). It goes
@@ -339,10 +361,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   /// decides.
   List<Widget> _saveCard() {
     final dao = widget.analysesDao;
-    if (dao == null) return const [];
-    final readingFromDemo =
-        _controller.latest == null ? null : _sessionIsDemo;
-    if (readingFromDemo ?? _options[_selected].isDemo) return const [];
+    if (dao == null || !_showsSaveCard) return const [];
     final printing = widget.labelPrinting;
     return [
       const SizedBox(height: Spacing.md),
@@ -353,6 +372,9 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         modPpo2s: widget.settings.analyzerModPpo2s,
         blendTarget: widget.blendTarget,
         labelPrinting: printing,
+        onDesiredMixChanged: (m) {
+          if (mounted) setState(() => _desiredMix = m);
+        },
         onSetUpPrinter: printing == null
             ? null
             : () => Navigator.of(context).push(MaterialPageRoute(
@@ -406,7 +428,11 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _PlanningCard(reading: r, settings: widget.settings),
+                  _PlanningCard(
+                    reading: r,
+                    settings: widget.settings,
+                    desired: _planningDesired,
+                  ),
                   ..._saveCard(),
                 ],
               ),
@@ -711,10 +737,17 @@ class StabilityPill extends StatelessWidget {
 }
 
 class _PlanningCard extends StatelessWidget {
-  const _PlanningCard({required this.reading, required this.settings});
+  const _PlanningCard({
+    required this.reading,
+    required this.settings,
+    this.desired,
+  });
 
   final AnalyzerReading? reading;
   final SettingsNotifier settings;
+
+  /// The desired mix picked on the save card, or null.
+  final DesiredMix? desired;
 
   @override
   Widget build(BuildContext context) {
@@ -722,14 +755,34 @@ class _PlanningCard extends StatelessWidget {
     final f = _fractions(reading);
     final rows = <Widget>[];
 
+    // The label's depth rule (#145): judged against the desired mix, except
+    // on a hard mismatch, where the label names the analysed gas.
+    int? depthDesiredO2;
+    final d = desired;
+    if (d != null && f != null) {
+      final hard = gradeMix(
+            o2Percent: f.fo2 * 100,
+            hePercent: f.fhe * 100,
+            targetO2Percent: d.o2Percent,
+            targetHePercent: d.hePercent,
+          ).level ==
+          MixMatchLevel.hard;
+      depthDesiredO2 = hard ? null : d.o2Percent;
+    }
+
     for (final p in settings.analyzerModPpo2s) {
       final isDil = (p - kAnalyzerCcrDiluentPpo2).abs() < 1e-9;
       String value = '–';
       if (f != null) {
         final m = modMeters(f.fo2, p);
-        // Floored, never rounded up: the label floors too (with the same
-        // helper), and a MOD that is too deep is the unsafe direction.
-        value = m.isFinite && m > 0 ? '${floorDepthTolerant(m)} m' : 'n/a';
+        // The same depth as the cylinder label: the nearest 3 m stop, or
+        // the exact depth rounded down when the reading is above the
+        // desired mix.
+        final depth = m.isFinite && m > 0
+            ? limitDepthMeters(reading!.o2!, p,
+                desiredO2Percent: depthDesiredO2)
+            : null;
+        value = depth == null ? 'n/a' : '$depth m';
       }
       rows.add(_KvRow(
         key: ValueKey('analyzer-mod-${_fmtPpo2(p)}'),

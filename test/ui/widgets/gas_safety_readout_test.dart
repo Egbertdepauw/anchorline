@@ -11,6 +11,32 @@ const _statusDanger = Color(0xFFE74C3C);
 const _idle = Color(0xFFA0AEB6);
 
 void main() {
+  group('MOD is shown as a stop depth (#145)', () {
+    String modText(int o2, int he) => computeGasSafetyReadout(
+          DivePlanGas(oxygenPercent: o2, heliumPercent: he, isDiluent: false),
+          null,
+          idleColor: _idle,
+        )!
+            .text
+            .split(' · ')
+            .first;
+
+    test('nitrox at 1.6: EAN50 21 m, EAN32 39 m, air 66 m', () {
+      expect(modText(50, 0), 'MOD 21 m'); // 22.0 m
+      expect(modText(32, 0), 'MOD 39 m'); // 40.0 m; 42 m would be 1.66
+      expect(modText(21, 0), 'MOD 66 m'); // 66.2 m
+    });
+
+    test('trimix at 1.4: Tx21/35 57 m, Tx18/45 69 m', () {
+      expect(modText(21, 35), 'MOD 57 m'); // 56.7 m
+      expect(modText(18, 45), 'MOD 69 m'); // 67.8 m, 1.42 at 69 m
+    });
+
+    test('oxygen at 1.6 is 6 m', () {
+      expect(modText(100, 0), 'MOD 6 m');
+    });
+  });
+
   group('computeGasSafetyReadout', () {
     test('green when OC PPO2 ≤ 1.1 AND END ≤ 30 m, even on a hypoxic mix',
         () {
