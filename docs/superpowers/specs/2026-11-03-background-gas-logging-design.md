@@ -76,6 +76,10 @@ From the second brainstorm (the bridge-logging spec) and the merge:
     - The setup carries over from one cylinder to the next (call 6), and the "for" field goes in
       the log, not on the label (decision 6).
     - The firmware is Apache-2.0 (decision 8).
+18. **Print on OK needs only "analysed by"** (Egbert, 2026-11-03 evening, after the first real test). This replaces decision 2's desired-mix requirement and §5's stability rule.
+    - **Don't wait on stable.** An OK press is the diver's confirmation, so an unstable reading is saved complete and printed. The `stable` flag is still recorded.
+    - **The desired mix is optional.** Without one, the label shows the analysed mix, and there is no mismatch check.
+    - **A desired mix picked on the card still gives the check:** red and hard still don't print.
 17. **Log on OK also works with the SOLO on a USB cable** (Egbert: "Log on OK can be created
     already for directly connected SOLO"). It runs while the analyzer screen is open, on macOS and
     the other desktops, and on Android with USB OTG (§4c). It doesn't wait for the bridge.
@@ -514,15 +518,16 @@ Over a cable the app sees the SOLO's stream itself, so the OK rule of §1 runs i
 The label prints only when **all** of these hold:
 
 1. "Print label on OK" is on, and a printer is configured.
-2. "Analysed by" and the desired mix are set (Egbert's rule).
+2. "Analysed by" is set (decision 18; the label always carries the analyser's name).
 3. The record is live.
-4. The reading is usable and **stable**.
-5. `gradeMix` against the desired mix is `match` or `orange`.
+4. The reading is usable. **Stability is not required:** the OK press is the confirmation
+   (decision 18).
+5. With a desired mix set, `gradeMix` against it is `match` or `orange`. With no desired mix,
+   there is no check, and the label shows the analysed mix.
 
-**Stricter than the screen, on purpose:** on screen, an unstable reading asks first, and red still
-prints because the diver sees the red. In the pocket nobody sees anything, so red, unstable and
-hard all mean no print. A hard mismatch prints the analysed name on screen after a dialog. In the
-pocket it doesn't print at all.
+**Stricter than the screen, on purpose:** in the pocket nobody sees the match colour, so with a
+desired mix set, red and hard mean no print. A hard mismatch prints the analysed name on screen
+after a dialog. In the pocket it doesn't print at all.
 
 ### What is saved
 
@@ -542,10 +547,9 @@ pocket it doesn't print at all.
 ### `needs_signoff`
 
 - **`1`** when any of these is true:
-  - no "analysed by", or no desired mix;
+  - no "analysed by";
   - the record is late;
-  - the reading is not stable;
-  - the match is red or hard;
+  - a desired mix is set and the match is red or hard;
   - a print was wanted (rule 1 held) but didn't happen.
 - **`0`** otherwise. For example, on the boat with printing off but mix and name set, a stable,
   matching re-check needs nothing more.
@@ -667,8 +671,8 @@ A crash between steps leaves the entry flagged, never unflagged without a label.
   cylinder's latest other analysis. This is the re-check-on-the-boat case: it compares against what
   the diver thought was in the cylinder.
 - **On a flagged entry, the sheet's button reads "Sign off".**
-  - It needs **"analysed by" and a desired mix**, the same two things that let OK print from the
-    pocket (decision 2), so an entry is complete the same way whichever path it takes.
+  - It needs **"analysed by"**, the same thing that lets OK print from the pocket (decision 18), so
+    an entry is complete the same way whichever path it takes. A desired mix is optional.
   - Saving clears `needs_signoff`.
   - With a printer configured there is also "Sign off and print". It goes through the existing
     print path, hard-mismatch dialog included.
