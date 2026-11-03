@@ -9,11 +9,9 @@
 // closure-style "last synced at" reader. Each test wires whatever it
 // needs.
 
-import 'dart:typed_data';
-
-import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/sync/subsurface_git/bootstrap_importer.dart';
 import 'package:ccrlogger/sync/subsurface_git/credentials.dart';
+import 'package:ccrlogger/sync/subsurface_git/sync_inputs.dart';
 import 'package:ccrlogger/sync/subsurface_git/sync_orchestrator.dart';
 import 'package:ccrlogger/sync/subsurface_git/sync_planner.dart'
     show AbortedDive, AbortReason;
@@ -557,31 +555,21 @@ void main() {
 
 // ── Test helpers ──────────────────────────────────────────────────────
 
-/// Minimal [Dive] fixture for use in push-button tests. Accepts
-/// [diveNumber] so tests can assert on `#NNN` in the aborted-dive list.
-Dive _testDive({int diveNumber = 700}) {
-  return Dive(
+/// Minimal [SubsurfaceDiveInput] fixture for use in push-button tests.
+/// Accepts [diveNumber] so tests can assert on `#NNN` in the aborted-dive
+/// list.
+SubsurfaceDiveInput _testDive({int diveNumber = 700}) {
+  return SubsurfaceDiveInput(
     id: 'test-$diveNumber',
     dcSerial: 123456,
     dcDiveNumber: diveNumber,
     startTime: 1747000000,
-    endTime: 1747003600,
-    utcOffsetMinutes: null,
     durationSeconds: 3600,
     maxDepthMm: 30000,
     diveMode: 0,
-    decoModel: 0,
-    gfLow: 35,
-    gfHigh: 75,
+    dcModel: 3,
+    logVersion: 17,
     atmosphericPressureMbar: 1013,
     waterDensity: 1025,
-    logVersion: 14,
-    dcModel: 3,
-    dcFirmware: null,
-    sampleIntervalMs: 10000,
-    gasMixesJson: '[{"o2":21,"he":35,"dil":true}]',
-    rawBlob: Uint8List(0),
-    parserVersion: 1,
-    importedAt: 1747000000,
   );
 }

@@ -16,7 +16,6 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:ccrlogger/data/db/database.dart' as db;
 import 'package:subsurface_core/data/models/annotation.dart';
 import 'package:subsurface_core/data/models/dive.dart';
 import 'package:subsurface_core/data/models/sample_set.dart';
@@ -26,6 +25,7 @@ import 'package:ccrlogger/sync/subsurface_git/format/subsurface_format.dart';
 import 'package:ccrlogger/sync/subsurface_git/format/subsurface_parser.dart';
 import 'package:ccrlogger/sync/subsurface_git/mapper.dart' as write_mapper;
 import 'package:ccrlogger/sync/subsurface_git/subsurface_to_ccrlog_mapper.dart';
+import 'package:ccrlogger/sync/subsurface_git/sync_inputs.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _fixturesRoot = 'test/fixtures/subsurface';
@@ -365,7 +365,7 @@ void main() {
       );
 
       final writeMapper = write_mapper.CcrlogToSubsurfaceMapper();
-      final dbDive = _domainDiveToDbDive(domainDive);
+      final dbDive = _domainDiveToInput(domainDive);
       final mapped = writeMapper.mapDive(
         dive: dbDive,
         samples: domainSamples,
@@ -534,31 +534,24 @@ SampleSet _syntheticSamples(String diveId) {
   );
 }
 
-/// Build a Drift-row `Dive` (the type the write mapper expects) from a
+/// Build a `SubsurfaceDiveInput` (the type the write mapper expects) from a
 /// domain `Dive`. The write mapper reads a fixed subset of fields; we
 /// hand-fill them.
-db.Dive _domainDiveToDbDive(Dive d) {
-  return db.Dive(
+SubsurfaceDiveInput _domainDiveToInput(Dive d) {
+  return SubsurfaceDiveInput(
     id: d.id,
     dcSerial: d.dcSerial,
     dcDiveNumber: d.dcDiveNumber,
     startTime: d.startTime.millisecondsSinceEpoch ~/ 1000,
-    endTime: d.endTime.millisecondsSinceEpoch ~/ 1000,
     durationSeconds: d.duration.inSeconds,
     maxDepthMm: (d.maxDepthMeters * 1000).round(),
     diveMode: d.diveMode.value,
-    decoModel: d.decoModel.value,
     gfLow: d.gfLow,
     gfHigh: d.gfHigh,
     atmosphericPressureMbar: d.atmosphericPressureMbar,
     waterDensity: d.waterDensityKgM3,
     logVersion: d.logVersion,
     dcModel: d.dcModel.index,
-    sampleIntervalMs: d.sampleIntervalMs,
-    gasMixesJson: '',
-    rawBlob: Uint8List(0),
-    parserVersion: 1,
-    importedAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
     configuredStackSeconds: d.configuredStackSeconds,
     stackRemainingAtStartSeconds: d.stackRemainingAtStartSeconds,
     stackRemainingAtEndSeconds: d.stackRemainingAtEndSeconds,

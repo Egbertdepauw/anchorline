@@ -36,7 +36,7 @@ import 'format/subsurface_format.dart';
 import 'format/subsurface_serializer.dart';
 import 'mapper.dart';
 
-import '../../data/db/database.dart' show Cylinder, Dive, DiveComputer;
+import 'sync_inputs.dart';
 import 'package:subsurface_core/data/models/annotation.dart';
 import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix, DiveTank;
 import 'package:subsurface_core/data/models/sample_set.dart';
@@ -57,18 +57,18 @@ class CcrlogDiveBundle {
     required this.userDiveComputers,
   });
 
-  final Dive dive;
+  final SubsurfaceDiveInput dive;
   final SampleSet samples;
   final DiveAnnotation? annotation;
   final List<DiveGasMix> gasMixes;
   final List<DiveTank> tanks;
-  final Map<int, Cylinder> cylindersByMixIndex;
+  final Map<int, SubsurfaceCylinderInput> cylindersByMixIndex;
 
   /// All known CCRLog dive computers — the mapper uses these to build
   /// the top-level `divecomputerid` lines. The same list is passed for
   /// every bundle (it's a property of the user's setup, not the dive).
   /// We carry it on the bundle for symmetry with the rest of the state.
-  final List<DiveComputer> userDiveComputers;
+  final List<SubsurfaceDiveComputerInput> userDiveComputers;
 }
 
 /// One existing dive, recovered from the remote-repo snapshot.
@@ -160,7 +160,7 @@ class AbortedDive {
     required this.conflictingLines,
   });
 
-  final Dive dive;
+  final SubsurfaceDiveInput dive;
   final AbortReason reason;
 
   /// The line keys (e.g. `cylinder`, `duration`) that triggered a
@@ -255,8 +255,8 @@ class SyncPlanner {
   }) {
     final filesToWrite = <String, String>{};
     final diveIdsPlanned = <String>[];
-    final newDives = <Dive>[];
-    final updatedDives = <Dive>[];
+    final newDives = <SubsurfaceDiveInput>[];
+    final updatedDives = <SubsurfaceDiveInput>[];
     final abortedDives = <AbortedDive>[];
     var skipped = 0;
 
@@ -315,7 +315,7 @@ class SyncPlanner {
     // Track the userDiveComputers we encountered (for the top-level
     // delta). The bundles all carry the same list, but we don't want to
     // assume that — gather seen ones and dedup by serial.
-    final dcsBySerial = <int, DiveComputer>{};
+    final dcsBySerial = <int, SubsurfaceDiveComputerInput>{};
 
     for (final bundle in sortedDives) {
       final dive = bundle.dive;

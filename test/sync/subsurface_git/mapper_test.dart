@@ -17,7 +17,6 @@
 
 import 'dart:typed_data';
 
-import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
 import 'package:subsurface_core/data/models/annotation.dart';
 import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix, DiveTank;
 import 'package:subsurface_core/data/models/sample_set.dart';
@@ -25,6 +24,7 @@ import 'package:subsurface_core/shearwater/parser/parsed_dive.dart' show TankUsa
 import 'package:ccrlogger/sync/subsurface_git/format/subsurface_format.dart';
 import 'package:ccrlogger/sync/subsurface_git/format/subsurface_serializer.dart';
 import 'package:ccrlogger/sync/subsurface_git/mapper.dart';
+import 'package:ccrlogger/sync/subsurface_git/sync_inputs.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -418,16 +418,14 @@ void main() {
       final mapper = CcrlogToSubsurfaceMapper();
       // diveMode 8 = OC (DiveMode.openCircuit.value); _ccrPetrelDive
       // hardcodes 0=CC so we build a fresh OC Dive here.
-      final dive = Dive(
+      final dive = SubsurfaceDiveInput(
         id: 'oc-dive-id-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
         dcSerial: 0xb89641e4,
         dcDiveNumber: 706,
         startTime: 1776591525,
-        endTime: 1776591525 + 600,
         durationSeconds: 600,
         maxDepthMm: 12000,
         diveMode: 8, // OC
-        decoModel: 0,
         gfLow: 30,
         gfHigh: 80,
         atmosphericPressureMbar: 1013,
@@ -435,11 +433,6 @@ void main() {
         logVersion: 17,
         dcModel: 3,
         dcFirmware: 0xa3,
-        sampleIntervalMs: 10000,
-        gasMixesJson: '',
-        rawBlob: Uint8List(0),
-        parserVersion: 1,
-        importedAt: 1776591525,
       );
       final samples = _threeMinSampleSet(diveId: dive.id);
       final result = mapper.mapDive(
@@ -624,7 +617,7 @@ String _keyOf(SsLine l) {
 String _scalar(List<ScalarLine> lines, String key) =>
     lines.firstWhere((l) => l.key == key).value;
 
-Dive _ccrPetrelDive({
+SubsurfaceDiveInput _ccrPetrelDive({
   String diveId = 'dive-id-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   int? configuredStackSeconds = 25200,
   int? stackRemainingAtStartSeconds = 10847,
@@ -632,17 +625,14 @@ Dive _ccrPetrelDive({
   String? sensorCalibrationJson,
 }) {
   // 1776591525 = 2026-04-04T13:18:45Z (UTC).
-  return Dive(
+  return SubsurfaceDiveInput(
     id: diveId,
     dcSerial: 0xb89641e4,
     dcDiveNumber: 705,
     startTime: 1776591525,
-    endTime: 1776591525 + 3450,
-    utcOffsetMinutes: null,
     durationSeconds: 3450,
     maxDepthMm: 18000,
     diveMode: 0, // cc
-    decoModel: 0, // gf
     gfLow: 50,
     gfHigh: 95,
     atmosphericPressureMbar: 1013,
@@ -650,32 +640,18 @@ Dive _ccrPetrelDive({
     logVersion: 17,
     dcModel: 3, // petrel3
     dcFirmware: 0xa3,
-    sampleIntervalMs: 10000,
-    gasMixesJson: '',
-    tanksJson: null,
     sensorCalibrationJson: sensorCalibrationJson,
     configuredStackSeconds: configuredStackSeconds,
     stackRemainingAtStartSeconds: stackRemainingAtStartSeconds,
     stackRemainingAtEndSeconds: stackRemainingAtEndSeconds,
-    rawBlob: Uint8List(0),
-    parserVersion: 1,
-    importedAt: 1776591525,
   );
 }
 
-DiveComputer _diveComputer() {
-  return DiveComputer(
-    id: 'dc-1',
+SubsurfaceDiveComputerInput _diveComputer() {
+  return const SubsurfaceDiveComputerInput(
     serial: 0xb89641e4,
     model: 3,
-    firmwareVersion: 0xa3,
     nickname: 'Petrel 3',
-    createdAt: 0,
-    updatedAt: 0,
-    deletedAt: null,
-    version: 1,
-    syncStatus: 0,
-    ownerId: null,
   );
 }
 

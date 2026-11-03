@@ -28,6 +28,7 @@ import 'package:subsurface_core/data/models/annotation.dart';
 import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix, DiveTank;
 import 'package:subsurface_core/data/models/sample_set.dart';
 import 'credentials.dart';
+import 'drift_sync_inputs.dart';
 import 'remote_snapshot.dart';
 import 'repo.dart';
 import 'sync_planner.dart' show AbortedDive, CcrlogDiveBundle, SyncPlanner;
@@ -297,6 +298,7 @@ class SubsurfaceSyncOrchestrator {
     // single source of truth for what counts as new vs. updated.
     final dives = await _data.getAllDives();
     final allComputers = await _data.listAllDiveComputers();
+    final computerInputs = allComputers.map(diveComputerInputFromRow).toList();
 
     final bundles = <CcrlogDiveBundle>[];
     for (final dive in dives) {
@@ -307,13 +309,16 @@ class SubsurfaceSyncOrchestrator {
       final gasMixes = _decodeGasMixes(dive.gasMixesJson);
       final tanks = _decodeTanks(dive.tanksJson);
       bundles.add(CcrlogDiveBundle(
-        dive: dive,
+        dive: diveInputFromRow(dive),
         samples: samples,
         annotation: annotation,
         gasMixes: gasMixes,
         tanks: tanks,
-        cylindersByMixIndex: cylinders,
-        userDiveComputers: allComputers,
+        cylindersByMixIndex: {
+          for (final e in cylinders.entries)
+            e.key: cylinderInputFromRow(e.value),
+        },
+        userDiveComputers: computerInputs,
       ));
     }
 
