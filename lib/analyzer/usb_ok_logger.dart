@@ -32,6 +32,18 @@ typedef OkSetup = ({LogOnOkSetup setup, int copies});
 /// The setup used when the screen has none to give.
 const OkSetup _noSetup = (setup: LogOnOkSetup(), copies: 1);
 
+/// A gap between two timer callbacks longer than this means the isolate or
+/// the process was stalled (Android freezing a cached app, a long jank), not
+/// that the SOLO went quiet.
+const Duration kStallGap = Duration(seconds: 1);
+
+/// After a stall the detector is not asked for a hold for this long (on the
+/// logger's clock). The lines that piled up during the stall are delivered
+/// in that time and bring their fresh delivery times, which clears the
+/// "silence" the stall made. A real suspend still fires on the first tick
+/// after the grace.
+const Duration kStallGrace = Duration(seconds: 1);
+
 /// How one OK press went, for the screen and the save card.
 class OkLogResult {
   const OkLogResult({
@@ -70,12 +82,14 @@ class UsbOkLogger {
     Duration Function()? elapsed,
     DateTime Function()? now,
     Duration? tickInterval = const Duration(milliseconds: 200),
+    void Function(Object error, StackTrace stack)? onError,
   }) : _save = save,
        _markComplete = markComplete,
        _printLabel = printLabel,
        _elapsed = elapsed ?? _stopwatchClock(),
        _now = now ?? DateTime.now,
-       _tickInterval = tickInterval;
+       _tickInterval = tickInterval,
+       _onError = onError;
 
   final Future<bool> Function(String id, NewGasAnalysis a) _save;
   final Future<void> Function(String id) _markComplete;
@@ -83,6 +97,7 @@ class UsbOkLogger {
   final Duration Function() _elapsed;
   final DateTime Function() _now;
   final Duration? _tickInterval;
+  final void Function(Object error, StackTrace stack)? _onError;
 
   /// The setup of the save card, asked for when a hold is handled. Null, or
   /// a provider that throws, means [LogOnOkSetup] with its defaults and one
@@ -105,6 +120,15 @@ class UsbOkLogger {
   Future<void> _chain = Future<void>.value();
 
   bool _disposed = false;
+
+  /// The logger's clock at the previous timer callback; null before the
+  /// first one after [attach].
+  Duration? _lastTimerAt;
+
+  /// While set, and the clock is before it, the timer does not ask the
+  /// detector for a hold: a stall just ended and the lines it held back are
+  /// still on their way.
+  Duration? _graceUntil;
 
   /// The last timer tick threw and it was reported; stays set until a tick
   /// works again, so a broken clock does not flood the results.
@@ -137,15 +161,23 @@ class UsbOkLogger {
     _linesSub = null;
     _statusSub?.cancel();
     _statusSub = null;
+    _lastTimerAt = null;
+    _graceUntil = null;
     _detector.detached();
   }
 
   /// Asks the detector, at the logger's clock, whether OK was pressed, and
   /// handles the hold if so. The timer calls this every `tickInterval`; call
   /// it yourself when the logger was made without a timer.
-  void tick() {
+  ///
+  /// This asks the detector at once. The timer goes through the stall guard
+  /// first (see [kStallGap]); a caller that drives [tick] itself is
+  /// responsible for its own pacing.
+  void tick() => _tickAt(_elapsed());
+
+  void _tickAt(Duration elapsed) {
     if (_disposed) return;
-    final hold = _detector.tick(_elapsed());
+    final hold = _detector.tick(elapsed);
     if (hold != null) {
       _chain = _chain.then((_) => _handle(hold));
     }
@@ -169,11 +201,32 @@ class UsbOkLogger {
 
   /// A timer callback must not throw: that would be an uncaught error in the
   /// zone. A failing tick is reported once.
+  ///
+  /// If the isolate stalled while the SOLO kept streaming, the periodic
+  /// timer can run before the lines that queued up are delivered, and the
+  /// detector would see a silence nobody caused: an OK press that was never
+  /// made. A gap of more than [kStallGap] since the last callback therefore
+  /// starts a grace of [kStallGrace] in which the detector is not asked.
+  /// Lines keep going to the detector, and the detector is not reset: an OK
+  /// pressed during the stall is still found by the first tick after the
+  /// grace.
   void _onTimer() {
     try {
-      tick();
+      final now = _elapsed();
+      final last = _lastTimerAt;
+      _lastTimerAt = now;
+      if (last != null && now - last > kStallGap) {
+        _graceUntil = now + kStallGrace;
+      }
+      final graceUntil = _graceUntil;
+      if (graceUntil != null) {
+        if (now < graceUntil) return;
+        _graceUntil = null;
+      }
+      _tickAt(now);
       _tickFailing = false;
-    } catch (_) {
+    } catch (e, st) {
+      _report(e, st);
       if (_tickFailing) return;
       _tickFailing = true;
       _emit(
@@ -187,6 +240,14 @@ class UsbOkLogger {
     }
   }
 
+  /// Hands a caught error to the owner's [onError]; whatever that does,
+  /// it must not break the logger.
+  void _report(Object error, StackTrace stack) {
+    try {
+      _onError?.call(error, stack);
+    } catch (_) {}
+  }
+
   void _emit(OkLogResult r) {
     if (!_results.isClosed) _results.add(r);
   }
@@ -196,7 +257,8 @@ class UsbOkLogger {
     OkLogResult result;
     try {
       result = await _process(hold);
-    } catch (_) {
+    } catch (e, st) {
+      _report(e, st);
       // Nothing was saved (the steps after the save catch their own
       // failures), but the press must not vanish.
       result = const OkLogResult(
@@ -213,7 +275,8 @@ class UsbOkLogger {
     OkSetup setup;
     try {
       setup = setupProvider?.call() ?? _noSetup;
-    } catch (_) {
+    } catch (e, st) {
+      _report(e, st);
       setup = _noSetup;
     }
 
@@ -257,14 +320,14 @@ class UsbOkLogger {
     final analysis = outcome.analysis;
 
     try {
-      await _save(rowId, analysis);
-    } catch (_) {
-      return const OkLogResult(
-        code: FeedbackCode.error,
-        text: 'SAVE FAILED',
-        analysisId: null,
-        complete: false,
-      );
+      // False means a row with this id was already there, and nothing was
+      // written. Do not print for it or touch it: [_markComplete] only ever
+      // clears a row this hold wrote.
+      final inserted = await _save(rowId, analysis);
+      if (!inserted) return _saveFailed;
+    } catch (e, st) {
+      _report(e, st);
+      return _saveFailed;
     }
 
     if (!outcome.printLabel) {
@@ -293,7 +356,8 @@ class UsbOkLogger {
         GasAnalysis.fromNew(rowId, analysis).withNeedsSignoff(false),
         copies < 1 ? 1 : copies,
       );
-    } catch (_) {
+    } catch (e, st) {
+      _report(e, st);
       return OkLogResult(
         code: FeedbackCode.check,
         text: 'PRINT FAILED',
@@ -304,7 +368,8 @@ class UsbOkLogger {
     final mixName = gasMixName(analysis.o2Percent, analysis.hePercent);
     try {
       await _markComplete(rowId);
-    } catch (_) {
+    } catch (e, st) {
+      _report(e, st);
       // The label is out but the stored flag could not be cleared: the diver
       // is told it printed, and the entry still asks for a sign-off.
       return OkLogResult(
@@ -321,6 +386,13 @@ class UsbOkLogger {
       complete: true,
     );
   }
+
+  static const OkLogResult _saveFailed = OkLogResult(
+    code: FeedbackCode.error,
+    text: 'SAVE FAILED',
+    analysisId: null,
+    complete: false,
+  );
 
   /// A monotonic clock that starts now.
   static Duration Function() _stopwatchClock() {

@@ -63,6 +63,8 @@ class Rig {
     this.printError,
     this.markCompleteError,
     this.saveGate,
+    this.saveResult = true,
+    void Function(Object error, StackTrace stack)? onError,
     Duration? tickInterval,
   }) {
     logger = UsbOkLogger(
@@ -71,7 +73,7 @@ class Rig {
         if (saveGate != null) await saveGate!.future;
         if (saveError != null) throw saveError!;
         saved.add((id: id, analysis: a));
-        return true;
+        return saveResult;
       },
       markComplete: (id) async {
         events.add('markComplete');
@@ -85,9 +87,13 @@ class Rig {
               printed.add((analysis: a, copies: copies));
             }
           : null,
-      elapsed: () => clock,
+      elapsed: () {
+        elapsedReads++;
+        return clock;
+      },
       now: () => _wallStart.add(clock),
       tickInterval: tickInterval,
+      onError: onError,
     );
     sub = logger.results.listen(results.add);
     logger.attach(transport);
@@ -98,12 +104,17 @@ class Rig {
   final Object? printError;
   final Object? markCompleteError;
   final Completer<void>? saveGate;
+  final bool saveResult;
 
   final transport = FakeTransport();
   late final UsbOkLogger logger;
   late final StreamSubscription<OkLogResult> sub;
 
   Duration clock = Duration.zero;
+
+  /// How often the logger read the clock; with a timer and no lines going
+  /// in, that is how often the timer fired.
+  int elapsedReads = 0;
   final events = <String>[];
   final saved = <({String id, NewGasAnalysis analysis})>[];
   final printed = <({GasAnalysis analysis, int copies})>[];
@@ -128,6 +139,17 @@ class Rig {
     clock += silence;
     logger.tick();
     await pumpEventQueue();
+  }
+
+  /// Waits, in real time, until the logger's timer has fired at least
+  /// [callbacks] more times. Call it with no lines going in.
+  Future<void> waitForTimer({int callbacks = 3}) async {
+    final target = elapsedReads + callbacks;
+    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    while (elapsedReads < target) {
+      if (DateTime.now().isAfter(deadline)) fail('the timer did not fire');
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
   }
 
   Future<void> close() async {
@@ -405,6 +427,97 @@ void main() {
       await rig.close();
     });
 
+    test('save returning false is a failed save', () async {
+      final rig = Rig(saveResult: false);
+      rig.logger.setupProvider = () => (
+        setup: const LogOnOkSetup(
+          analysedBy: 'EdP',
+          desiredMix: _ean32,
+          printOnOk: true,
+          printerConfigured: true,
+        ),
+        copies: 1,
+      );
+      rig.steady(32.0, 0.0, seconds: 25);
+      await rig.silenceThenTick();
+
+      // The row was already there: nothing printed, nothing cleared.
+      expect(rig.events, ['save']);
+      expect(rig.printed, isEmpty);
+      expect(rig.completed, isEmpty);
+      expectResult(
+        rig.results.single,
+        FeedbackCode.error,
+        'SAVE FAILED',
+        idPresent: false,
+        complete: false,
+      );
+      await rig.close();
+    });
+
+    test('errors reach onError', () async {
+      final errors = <(Object, StackTrace)>[];
+      final failure = StateError('disk full');
+      final rig = Rig(
+        saveError: failure,
+        onError: (e, st) => errors.add((e, st)),
+      );
+      rig.steady(32.0, 0.0, seconds: 25);
+      await rig.silenceThenTick();
+
+      expect(errors, hasLength(1));
+      expect(errors.single.$1, same(failure));
+      expect(rig.results.single.text, 'SAVE FAILED');
+      await rig.close();
+    });
+
+    test('print, mark-complete and setup errors reach onError too', () async {
+      const printOk = LogOnOkSetup(
+        analysedBy: 'EdP',
+        desiredMix: _ean32,
+        printOnOk: true,
+        printerConfigured: true,
+      );
+      final printFailure = StateError('printer offline');
+      final markFailure = StateError('db busy');
+      final setupFailure = StateError('card disposed');
+      final errors = <Object>[];
+
+      final a = Rig(printError: printFailure, onError: (e, _) => errors.add(e));
+      a.logger.setupProvider = () => (setup: printOk, copies: 1);
+      a.steady(32.0, 0.0, seconds: 25);
+      await a.silenceThenTick();
+      await a.close();
+
+      final b = Rig(
+        markCompleteError: markFailure,
+        onError: (e, _) => errors.add(e),
+      );
+      b.logger.setupProvider = () => (setup: printOk, copies: 1);
+      b.steady(32.0, 0.0, seconds: 25);
+      await b.silenceThenTick();
+      await b.close();
+
+      final c = Rig(onError: (e, _) => errors.add(e));
+      c.logger.setupProvider = () => throw setupFailure;
+      c.steady(32.0, 0.0, seconds: 25);
+      await c.silenceThenTick();
+      await c.close();
+
+      expect(errors, [printFailure, markFailure, setupFailure]);
+    });
+
+    test('an onError that throws does not stop the logger', () async {
+      final rig = Rig(
+        saveError: StateError('disk full'),
+        onError: (e, st) => throw StateError('the reporter is broken'),
+      );
+      rig.steady(32.0, 0.0, seconds: 25);
+      await rig.silenceThenTick();
+      expect(rig.results.single.text, 'SAVE FAILED');
+      await rig.close();
+    });
+
     test('analysed_at is the time of the held line', () async {
       final rig = Rig();
       final heldAt = rig.steady(32.0, 0.0, seconds: 25);
@@ -610,6 +723,55 @@ void main() {
         const Duration(seconds: 5),
       );
       expect(r.text, 'NO MIX SET');
+      await rig.close();
+    });
+
+    test('a stall while the SOLO streams is not an OK press', () async {
+      final rig = Rig(tickInterval: const Duration(milliseconds: 10));
+      rig.steady(32.0, 0.0, seconds: 7);
+      await rig.waitForTimer(); // the timer has seen the clock at 7 s
+
+      // The process stalls for 3 s. The timer is due before the lines that
+      // queued up are delivered, and the last line is now 3 s old.
+      rig.clock += const Duration(seconds: 3);
+      await rig.waitForTimer();
+
+      // Now the queued lines arrive, with fresh delivery times.
+      final resumed = rig.clock;
+      for (var ms = 0; ms <= 800; ms += 200) {
+        rig.clock = resumed + Duration(milliseconds: ms);
+        rig.transport.emitLine(steadyLine(32.0, 0.0));
+      }
+      await rig.waitForTimer(); // still inside the grace
+      rig.clock += const Duration(milliseconds: 400); // the grace is over
+      await rig.waitForTimer();
+
+      expect(rig.events, isEmpty);
+      expect(rig.results, isEmpty);
+      await rig.close();
+    });
+
+    test('an OK during a stall still counts after the grace', () async {
+      final rig = Rig(tickInterval: const Duration(milliseconds: 10));
+      final heldAt = rig.steady(32.0, 0.0, seconds: 7);
+      await rig.waitForTimer();
+
+      // The process stalls for 3 s and no line ever comes again: that was
+      // an OK press. Inside the 1 s grace nothing is decided.
+      rig.clock += const Duration(seconds: 3);
+      await rig.waitForTimer();
+      rig.clock += const Duration(milliseconds: 500);
+      await rig.waitForTimer();
+      expect(rig.events, isEmpty);
+      expect(rig.results, isEmpty);
+
+      // The grace is over: the first tick finds the hold.
+      final first = rig.logger.results.first;
+      rig.clock += const Duration(milliseconds: 500);
+      await first.timeout(const Duration(seconds: 5));
+
+      expect(rig.saved, hasLength(1));
+      expect(rig.saved.single.analysis.analysedAt, _wallStart.add(heldAt));
       await rig.close();
     });
 
