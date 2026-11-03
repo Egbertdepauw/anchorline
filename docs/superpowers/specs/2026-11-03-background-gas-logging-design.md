@@ -76,6 +76,9 @@ From the second brainstorm (the bridge-logging spec) and the merge:
     - The setup carries over from one cylinder to the next (call 6), and the "for" field goes in
       the log, not on the label (decision 6).
     - The firmware is Apache-2.0 (decision 8).
+17. **Log on OK also works with the SOLO on a USB cable** (Egbert: "Log on OK can be created
+    already for directly connected SOLO"). It runs while the analyzer screen is open, on macOS and
+    the other desktops, and on Android with USB OTG (§4c). It doesn't wait for the bridge.
 
 ## Goals
 
@@ -92,8 +95,8 @@ From the second brainstorm (the bridge-logging spec) and the merge:
 
 - Lining up a batch. It is designed as the first later step; see "Later".
 - Sharing analyses between Anchorline users (a separate project).
-- OK logging over a direct USB cable (Android OTG, desktop serial). Over a cable the analyzer screen
-  works as today. Porting the OK rule to Dart later makes it possible.
+- OK logging over a direct USB cable **in the background**. With the analyzer screen open, it is in
+  v1 (§4c, decision 17).
 - Relaunching a killed app in the background (iOS state restoration). The bridge's queue covers this
   case instead.
 - Firmware updates over the air, and printing from the bridge straight to the M110.
@@ -432,6 +435,36 @@ With "Log on OK" on and the bridge connected, the existing save card turns into 
 - A session doesn't resume by itself after an app restart (v1). The collect-on-start covers what was
   waiting.
 
+### 4c. Log on OK over USB (analyzer screen open)
+
+Over a cable the app sees the SOLO's stream itself, so the OK rule of §1 runs in Dart.
+
+- **`lib/analyzer/hold_detector.dart`** is the Dart twin of the firmware's `hold_detector`, with
+  the same named thresholds: 2.0 s of silence while attached, 5 s of flow before the first hold,
+  3 s before later holds, and a 30 s window.
+  - Flow is counted from the first line after attach, or from the resume after the last recorded
+    hold.
+  - Dips under 2 s don't reset it.
+  - The transport leaving `connected` cancels a pending hold and resets arming.
+  - It is tested against the same captures, which give two holds in capture *a* and one in
+    capture *b*.
+- **A hold becomes a record:** `BridgeRecord` with boot 0, `live=1`, a unique rid, and the window
+  and held line. It goes through `recordToAnalysis` with bridge id `usb` and
+  `capture_source = 'usb_ok'`. The pocket print rules, sign-off, room-air skip and derived row id
+  all apply unchanged. There is no queue and no `ACK`: the app is the only party.
+- **`UsbOkLogger`** watches the analyzer session's transport while the analyzer screen is open, a
+  non-demo transport is connected, and the "Log on OK" switch is on. An OK press with the screen
+  closed only pauses the SOLO, and nothing is saved.
+- **Printing:**
+  - The entry is saved flagged while its label prints (§5 order of operations).
+  - The label is printed from an in-memory copy marked complete, because `LabelPrintService`
+    refuses flagged entries.
+  - The flag is cleared in the database after the print succeeds.
+- **Feedback:** the result shows on the save card (there is no bridge screen), with Edit and
+  Delete.
+- **The setup card** behaves as in §4, including the sticky and per-cylinder fields. One step is
+  deferred to plan 3: preselecting the Blend target and marking it used.
+
 ## 5. Turning a record into an analysis
 
 `record_to_analysis` decides everything below. It is pure and tested.
@@ -596,7 +629,7 @@ A crash between steps leaves the entry flagged, never unflagged without a label.
 | Column | Type | Meaning |
 |---|---|---|
 | `needs_signoff` | `integer not null default 0` | 1 = waiting for sign-off in the log (§5). Existing rows are 0 |
-| `capture_source` | `text` | null = saved on screen (all rows so far); `'bridge_ok'` = saved from an OK press on the SOLO |
+| `capture_source` | `text` | null = saved on screen (all rows so far); `'bridge_ok'` = saved from an OK press through the bridge; `'usb_ok'` = saved from an OK press over a USB cable (§4c) |
 | `bridge_record_id` | `text` | `<bridge>/<rid>`, for tracing; null for screen saves |
 | `analysed_for` | `text` | Who the gas is for, free text. A later sharing project can add a user reference next to it |
 

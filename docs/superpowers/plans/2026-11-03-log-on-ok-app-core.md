@@ -717,3 +717,281 @@ Behaviour (spec §9):
   - the deploy-0021-first note;
   - what plans 2 and 3 will build on: `bridge_protocol.dart`, `recordToAnalysis`, `addFromBridge`, `setNeedsSignoff`, `AnalysisEditOutcome`.
 - Nothing here changes behaviour for today's users until a bridge exists, apart from the CSV's two new columns and the extra fields in the edit sheet.
+
+---
+
+## Tasks 7–9: Log on OK over USB (added 2026-11-03)
+
+Egbert: "Log on OK can be created already for directly connected SOLO." Spec §4c and decision 17. These tasks make Log on OK work with the SOLO on a USB cable (desktop serial, Android OTG) while the analyzer screen is open. They reuse Tasks 1–6 unchanged, apart from the two small additions in Task 7.
+
+### Task 7: Hold detector (pure Dart), `usb_ok` source, printable copy
+
+**Files:**
+- Create:
+  - `lib/analyzer/hold_detector.dart`
+  - `test/analyzer/hold_detector_test.dart`
+- Modify:
+  - `lib/data/models/gas_analysis.dart`: add `CaptureSource.usbOk` and `GasAnalysis.withNeedsSignoff`
+  - `lib/analyzer/bridge/record_to_analysis.dart`: add a `source` parameter
+  - `test/_helpers/solo_capture_log.dart`: ERROR times, and a replay helper
+  - `test/_helpers/fake_gas_analyses_dao.dart`: replace `_copy` with `withNeedsSignoff` where it fits
+- Test:
+  - `test/analyzer/hold_detector_test.dart`
+  - `test/data/models/gas_analysis_test.dart`
+  - `test/analyzer/bridge/record_to_analysis_test.dart`
+
+**Interfaces:**
+- Produces:
+  ```dart
+  // lib/analyzer/hold_detector.dart — the Dart twin of the firmware rule, spec §1 and §4c
+  const Duration kHoldSilence = Duration(seconds: 2);
+  const Duration kFirstHoldMinFlow = Duration(seconds: 5);
+  const Duration kNextHoldMinFlow = Duration(seconds: 3);
+  const Duration kHoldWindow = Duration(seconds: 30);
+  class DetectedHold {
+    final Duration heldAt;                  // elapsed time of the held (last) line
+    final String heldLine;
+    final List<BridgeWindowLine> window;    // lines within kHoldWindow up to and including the held line; offsets ms relative to heldAt (≤ 0, last is 0), oldest first
+  }
+  class HoldDetector {
+    HoldDetector({this.silence = kHoldSilence, this.firstMinFlow = kFirstHoldMinFlow,
+        this.nextMinFlow = kNextHoldMinFlow, this.window = kHoldWindow});
+    void addLine(Duration elapsed, String line); // only lines where parseSoloLine(line) != null count
+    DetectedHold? tick(Duration elapsed);       // returns a hold at most once per silence
+    void detached();                            // transport gone: forget lines, arming and hold count
+  }
+  // gas_analysis.dart
+  //   CaptureSource.usbOk: dbValue 'usb_ok'; fromDb('usb_ok') → usbOk
+  //   GasAnalysis withNeedsSignoff(bool value) — a copy with only that flag changed
+  // record_to_analysis.dart
+  //   recordToAnalysis({..., CaptureSource source = CaptureSource.bridgeOk}) — the saved analysis carries it
+  // test/_helpers/solo_capture_log.dart
+  //   SoloCaptureLog gains `final List<Duration> errors` (ERROR line times = USB detach)
+  //   List<DetectedHold> replayCapture(SoloCaptureLog log, HoldDetector d, {Duration step = const Duration(milliseconds: 100)})
+  //     walks time from 0 in `step`s to the last event + 3 s; feeds lines at their elapsed, calls
+  //     d.detached() at each error time, collects every tick() result
+  ```
+- The rule:
+  - `flowStart` is set by the first data line after construction or `detached()`, and by the first line after a recorded hold (the resume).
+  - A hold fires on `tick(t)` when all of these hold:
+    - a line has been seen;
+    - `t − lastLineAt ≥ silence`;
+    - no hold has fired for this silence yet;
+    - `lastLineAt − flowStart` is at least `firstMinFlow` (if no hold has fired since attach) or `nextMinFlow` (otherwise).
+  - A silence that didn't fire doesn't move `flowStart`. Dips under 2 s therefore never reset arming.
+
+- [ ] **Step 1: Write the failing tests**
+  ```dart
+  test('capture a: two holds, at the 28.7 s and the 7.9 s pause', () {
+    final holds = replayCapture(readSoloCaptureLog('test/fixtures/analyzer/solo_ok_presses_2026-11-03_a.txt'), HoldDetector());
+    expect(holds.map((h) => h.heldAt.inMilliseconds), [58357, 119677]);
+    expect(holds[0].heldLine, contains('Ti  22.0'));
+    expect(holds[1].heldLine, contains('Ti  22.2'));
+    expect(holds[0].window.last.offsetMs, 0);
+    expect(holds[0].window.first.offsetMs, greaterThanOrEqualTo(-30000));
+  });
+  test('capture b: quick double presses and the switch-off make no hold; the 20.9 s pause makes one', () {
+    final holds = replayCapture(readSoloCaptureLog('test/fixtures/analyzer/solo_ok_presses_2026-11-03_b.txt'), HoldDetector());
+    expect(holds.map((h) => h.heldAt.inMilliseconds), [17518]);
+    expect(holds.single.heldLine, contains('Ti  22.5'));
+  });
+  test('no hold before 5 s of flow', () { /* lines every 200 ms from 0 to 4.8 s, then ticks to 10 s → none */ });
+  test('one hold per silence', () { /* 10 s of lines, then ticks every 100 ms for 30 s → exactly one */ });
+  test('after a hold, 3 s of flow arms the next one', () { /* hold; resume; 2.8 s of lines + silence → none; then 3.2 s + silence → one */ });
+  test('a detach before 2 s of silence cancels the hold', () { /* 10 s of lines, detached() at +1.0 s, ticks to +5 s → none */ });
+  test('non-data lines are not flow', () { /* 10 s of 'Divesoft SOLO' banner lines then silence → none */ });
+  // gas_analysis_test.dart
+  test('usb_ok round-trips', () { expect(CaptureSource.usbOk.dbValue, 'usb_ok'); expect(CaptureSource.fromDb('usb_ok'), CaptureSource.usbOk); });
+  test('withNeedsSignoff changes only the flag', () { /* every other field equal */ });
+  // record_to_analysis_test.dart
+  test('the source is carried into the analysis', () { /* source: CaptureSource.usbOk → analysis.captureSource == usbOk */ });
+  ```
+
+- [ ] **Step 2: Run them and see them fail**
+
+  Run: `flutter test test/analyzer/ test/data/models/gas_analysis_test.dart`
+  Expected: compile errors (`HoldDetector`, `usbOk` and `withNeedsSignoff` are undefined).
+
+- [ ] **Step 3: Implement** the detector, the model additions, the `source` parameter and the helpers.
+
+  `lib/analyzer/hold_detector.dart` is pure Dart. It imports only `parseSoloLine` and `BridgeWindowLine`. The window is trimmed on each `addLine`, so memory stays bounded.
+
+- [ ] **Step 4: Run the tests and see them pass**
+
+  Run: `flutter analyze && flutter test test/analyzer/ test/data/`
+  Expected: clean, PASS.
+
+- [ ] **Step 5: Commit**
+
+  `feat(analyzer): Dart hold detector for OK presses over USB, tested on the SOLO captures`
+
+---
+
+### Task 8: `UsbOkLogger` (pure Dart)
+
+**Files:**
+- Create:
+  - `lib/analyzer/usb_ok_logger.dart`
+  - `test/analyzer/usb_ok_logger_test.dart`
+
+**Interfaces:**
+- Consumes:
+  - `AnalyzerTransport` (`lib/analyzer/transport/analyzer_transport.dart`: `lines`, `statusChanges`, `status`);
+  - from Task 7: `HoldDetector`, `DetectedHold`, `CaptureSource.usbOk`, `GasAnalysis.withNeedsSignoff`;
+  - from Task 3: `recordToAnalysis`, `LogOnOkSetup`, `BridgeClock`, `SaveRecord`, `SkipRecord`, `gasMixName`;
+  - from Task 2: `BridgeRecord`, `FeedbackCode`.
+- Produces:
+  ```dart
+  typedef OkSetup = ({LogOnOkSetup setup, int copies});
+  class OkLogResult {
+    final FeedbackCode code; final String text; // the feedback (printed/saved/check/skipped/error)
+    final String? analysisId;                   // the saved row's id; null when nothing was saved
+    final bool complete;                        // saved with needs_signoff = 0 (printed if a print was wanted)
+  }
+  class UsbOkLogger {
+    UsbOkLogger({
+      required Future<bool> Function(String id, NewGasAnalysis a) save,   // dao.addFromBridge
+      required Future<void> Function(String id) markComplete,             // dao.setNeedsSignoff(id, false)
+      Future<void> Function(GasAnalysis a, int copies)? printLabel,       // throws on failure
+      Duration Function()? elapsed,     // monotonic clock; default a started Stopwatch
+      DateTime Function()? now,         // default DateTime.now
+      Duration? tickInterval = const Duration(milliseconds: 200), // null: no timer; tests call tick()
+    });
+    OkSetup Function()? setupProvider;  // set by the save card; null → LogOnOkSetup() with 1 copy
+    Stream<OkLogResult> get results;    // broadcast
+    void attach(AnalyzerTransport t);   // lines → detector; a status other than connected → detector.detached()
+    void detach();
+    void tick();                        // runs the detector at elapsed(); handles a hold
+    Future<void> dispose();
+  }
+  ```
+- Handling a hold, one at a time (chain the futures, so a second hold waits for the first):
+  1. `rid = now().microsecondsSinceEpoch.toString()`.
+  2. `record = BridgeRecord(rid: rid, boot: 0, upMs: heldAt.inMilliseconds, wallMs: 0, live: true, window: hold.window, heldLine: hold.heldLine)`.
+  3. `outcome = recordToAnalysis(record: record, bridgeId: 'usb', setup: provider.setup, clock: BridgeClock(boot: 0, upMs: elapsed().inMilliseconds), now: now(), active: true, source: CaptureSource.usbOk)`.
+  4. **Skip:** emit `(outcome.feedback, outcome.feedbackText, null, false)`.
+  5. **Save:** `await save(rowId, analysis)`. If it throws, emit `(error, 'SAVE FAILED', null, false)`.
+  6. **`printLabel` set, and a print is wanted:**
+     - call `await printLabel(GasAnalysis.fromNew(rowId, analysis).withNeedsSignoff(false), copies)`;
+     - if it succeeds: `await markComplete(rowId)` and emit `(printed, mixName, rowId, true)`;
+     - if it throws: emit `(check, 'PRINT FAILED', rowId, false)`.
+  7. **Otherwise:** emit `(outcome.feedback, outcome.feedbackText, rowId, !analysis.needsSignoff)`.
+
+- [ ] **Step 1: Write the failing tests**
+
+  Use a test-file `FakeTransport implements AnalyzerTransport` with `StreamController`s, a manual clock, `tickInterval: null`, and `steadyLine(o2, he)` lines every 200 ms.
+
+  ```dart
+  test('an OK on a stable EAN32 with name and mix saves complete', () { /* 25 s steady 32.0/0, setup EdP + DesiredMix(32,0), printOnOk false; 2.2 s silence; tick → save called once with captureSource usbOk, needsSignoff false; result (saved,'EAN32', id, complete: true) */ });
+  test('print on OK prints a copy marked complete, then clears the flag', () { /* printOnOk + printerConfigured, printLabel fake records its GasAnalysis: needsSignoff false; save got needsSignoff true; markComplete(id) called after print; result (printed,'EAN32', id, true) */ });
+  test('a failed print leaves the entry flagged', () { /* printLabel throws → markComplete not called; result (check,'PRINT FAILED', id, false) */ });
+  test('room air is not saved', () { /* steady 20.9/0.3 → save not called; result (skipped,'AIR - NOT LOGGED', null, false) */ });
+  test('an OK before stable saves flagged', () { /* 8 s of lines → (check,'NOT STABLE', id, false) */ });
+  test('no setup provider: saved, needs sign-off', () { /* (saved,'NO MIX SET', id, false) */ });
+  test('a failed save is reported', () { /* save throws → (error,'SAVE FAILED', null, false) */ });
+  test('unplugging during the silence saves nothing', () { /* status → disconnected at +1 s; tick at +3 s → no save */ });
+  test('analysed_at is the time of the held line', () { /* now = T at tick 2.2 s after the held line → analysedAt == T − 2.2 s (±1 ms) */ });
+  ```
+
+- [ ] **Step 2: Run them and see them fail**
+
+  Run: `flutter test test/analyzer/usb_ok_logger_test.dart`
+  Expected: FAIL; the file doesn't exist.
+
+- [ ] **Step 3: Implement `lib/analyzer/usb_ok_logger.dart`** to the interface.
+
+  It is pure Dart: `dart:async` only, with no Flutter or DAO imports, because the DAO is passed in as functions.
+
+- [ ] **Step 4: Run the tests and see them pass**
+
+  Run: `flutter analyze && flutter test test/analyzer/`
+  Expected: clean, PASS.
+
+- [ ] **Step 5: Commit**
+
+  `feat(analyzer): UsbOkLogger saves and prints an analysis on the SOLO's OK press`
+
+---
+
+### Task 9: "Log on OK" on the analyzer screen and the save card
+
+**Files:**
+- Modify:
+  - `lib/ui/notifiers/settings_notifier.dart`
+  - `lib/ui/screens/analyzer_screen.dart`
+  - `lib/ui/widgets/analysis_save_card.dart`
+- Test:
+  - Create `test/ui/screens/analyzer_log_on_ok_test.dart`.
+  - Extend `test/ui/screens/analyzer_save_analysis_test.dart` only if an existing expectation changes.
+
+**Interfaces:**
+- Consumes: Task 8's `UsbOkLogger`, `OkSetup`, `OkLogResult`; Task 6's `showAnalysisEditSheet` / `AnalysisEditOutcome`; Task 3's `isRoomAir` and `LogOnOkSetup`; the `addFromBridge`, `setNeedsSignoff` and `softDelete` DAO methods.
+- Produces:
+  - **Settings**, following the `labelUse14ForDeeperMixes` pattern, device-local:
+    - `analyzerLogOnOk` (bool, key `analyzer_log_on_ok`, default false) with `setAnalyzerLogOnOk(bool)`;
+    - `analyzerAnalysedBy` (String?, key `analyzer_analysed_by`) with `setAnalyzerAnalysedBy(String?)`.
+  - **`AnalyzerScreen`** gains `@visibleForTesting UsbOkLogger Function()? okLoggerFactory`. The default factory builds a real logger wired to `analysesDao` and `labelPrinting`.
+  - **`AnalysisSaveCard`** gains:
+    - `UsbOkLogger? okLogger` (non-null means Log-on-OK mode);
+    - `String? initialAnalysedBy`;
+    - `ValueChanged<String?>? onAnalysedByChanged`.
+  - **Widget keys:** `analyzer-log-on-ok`, `analysis-for`, `analysis-print-on-ok`, `analysis-ok-hint`, `analysis-ok-result`, `analysis-ok-edit`, `analysis-ok-delete`.
+
+Behaviour (spec §4 and §4c):
+- **Analyzer screen:**
+  - A `SwitchListTile` (`analyzer-log-on-ok`) titled "Log on OK", subtitle "Press OK on the SOLO to save. Keep this screen open."
+  - It is shown when `analysesDao != null` and the selected source isn't the demo.
+  - With the switch on and a non-demo session connected, the screen builds the logger, attaches it to `_controller.transport` and passes it to the card. On disconnect, switch-off or dispose: `detach()` / `dispose()`.
+- **The card, in both modes:**
+  - a "For" field (`analysis-for`), saved as `analysedFor`;
+  - "Analysed by" starts from `initialAnalysedBy` and reports edits through `onAnalysedByChanged`. The screen persists them with `setAnalyzerAnalysedBy`.
+- **The card, in Log-on-OK mode:**
+  - It sets `okLogger.setupProvider` to its current fields:
+    - analysed by, desired mix, role, for, cylinder, fill pressure, notes;
+    - "Print label on OK" (`analysis-print-on-ok`, default on when a printer is configured; shown only in this mode);
+    - `printerConfigured`, `modPpo2s` and copies.
+  - The Save buttons are replaced by `analysis-ok-hint`, "Press OK on the SOLO to save", **unless** the live reading is room air (`isRoomAir`). Then the Save buttons stay, with the hint "Air isn't logged on OK. Tap Save."
+  - **On each `OkLogResult`:**
+    - Show `analysis-ok-result`:
+      - printed → "Printed <text>";
+      - saved and complete → "Saved <text>";
+      - saved and not complete → "Saved, needs sign-off: <text>";
+      - check → "Needs sign-off: <text>";
+      - skipped → "Room air: not logged";
+      - error → "Not saved: <text>".
+    - With an id, add **Edit** (`analysis-ok-edit`, opens `showAnalysisEditSheet` on the stored entry) and **Delete** (`analysis-ok-delete`, a confirm, then `softDelete`).
+    - When `complete`, clear the cylinder, fill pressure and notes.
+    - Keep the name, desired mix, role, "for" and print switch. The desired mix stays picked here, a deliberate exception to the clear-after-save rule (spec §4).
+- **Not in this task:** preselecting the Blend target (plan 3, spec §4c).
+
+- [ ] **Step 1: Write the failing tests**
+
+  Use the screen with a fake transport option (non-demo), `FakeGasAnalysesDao`, and an `okLoggerFactory` that builds a logger with a manual clock and `tickInterval: null`, held by the test.
+
+  ```dart
+  testWidgets('Log on OK is offered for USB, not for the demo', ...);
+  testWidgets('with Log on OK on, the card shows the OK hint instead of Save', ...);
+  testWidgets('room air brings Save back', ...);
+  testWidgets('an OK press saves, shows the result and offers Edit and Delete', ...);  // dao.addedFromBridge.length == 1
+  testWidgets('Delete on the result asks, then soft-deletes', ...);
+  testWidgets('a complete save clears cylinder, pressure and notes, keeps name, mix and role', ...);
+  testWidgets('analysed by is remembered', ...);  // settings.analyzerAnalysedBy == 'EdP' after typing; prefilled on a new screen
+  ```
+
+- [ ] **Step 2: Run them and see them fail**
+
+  Run: `flutter test test/ui/screens/analyzer_log_on_ok_test.dart`
+  Expected: FAIL.
+
+- [ ] **Step 3: Implement the settings, the screen and the card.**
+
+  Use theme tokens only, and keep the card's existing double-tap guard. Don't change the manual flow outside Log-on-OK mode, except for the new "For" field and the remembered name.
+
+- [ ] **Step 4: Run the whole suite**
+
+  Run: `flutter analyze && flutter test`
+  Expected: clean, all pass.
+
+- [ ] **Step 5: Commit**
+
+  `feat(analyzer): Log on OK over USB on the analyzer screen`
