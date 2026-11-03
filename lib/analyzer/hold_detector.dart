@@ -15,15 +15,17 @@
 ///  * It fires once per silence: [HoldDetector.tick] returns it the first
 ///    time and nothing more until a line arrives again (the resume).
 ///  * The flow before it must have lasted long enough, counted from the
-///    first line after construction or [HoldDetector.detached], or from the
-///    first line after the last hold: [HoldDetector.firstMinFlow] for the
-///    first hold since attach (this also skips the stale burst a SOLO
-///    sends when it attaches), [HoldDetector.nextMinFlow] for later ones (a
+///    last resume: the first line after construction or
+///    [HoldDetector.detached], or the first line after any silence of
+///    [HoldDetector.silence] or more. [HoldDetector.firstMinFlow] applies to
+///    the first hold since attach (this also skips the stale burst a SOLO
+///    sends when it attaches), [HoldDetector.nextMinFlow] to later ones (a
 ///    stray resume-and-suspend must not make a second record within
 ///    seconds).
-///  * A silence that does not fire does not move the start of the flow, so a
-///    dip shorter than [HoldDetector.silence] (a quick double OK) never
-///    resets arming.
+///  * A silence of [HoldDetector.silence] or more is always a suspend, so
+///    the line after it is a resume and restarts the flow, whether or not a
+///    hold was recorded for that silence. Only a dip shorter than that (a
+///    quick double OK) keeps the flow going and never resets arming.
 ///  * Leaving the transport ([HoldDetector.detached]) cancels a pending
 ///    hold and resets everything. Switching the SOLO off shows up as a USB
 ///    detach within 0.6 s, before the silence is long enough.
@@ -64,9 +66,11 @@ class DetectedHold {
   /// The held line, as it was given to [HoldDetector.addLine].
   final String heldLine;
 
-  /// The data lines within [kHoldWindow] up to and including the held line,
-  /// oldest first. Offsets are milliseconds relative to [heldAt], so zero or
-  /// negative, and the last one is zero.
+  /// The data lines since the last resume, at most [kHoldWindow] of them,
+  /// up to and including the held line, oldest first. Lines from before a
+  /// suspend (the previous cylinder) are never in it, so stability is judged
+  /// on the new gas only. Offsets are milliseconds relative to [heldAt], so
+  /// zero or negative, and the last one is zero.
   final List<BridgeWindowLine> window;
 }
 
@@ -85,18 +89,19 @@ class HoldDetector {
   final Duration nextMinFlow;
   final Duration window;
 
-  /// The data lines of the last [window], oldest first.
+  /// The data lines of the current flow (since the last resume) within the
+  /// last [window], oldest first.
   final Queue<({Duration at, String line})> _lines = Queue();
 
-  /// When the current flow began; null until the first line after
-  /// construction or [detached].
+  /// When the current flow began (the last resume); null until the first
+  /// line after construction or [detached].
   Duration? _flowStart;
 
   /// How many holds fired since the last [detached].
   int _holds = 0;
 
   /// A hold fired for the silence that is still going on. The next data line
-  /// is its resume.
+  /// is its resume, however soon it comes.
   bool _holdFired = false;
 
   Duration? get _lastLineAt => _lines.isEmpty ? null : _lines.last.at;
@@ -104,12 +109,21 @@ class HoldDetector {
   /// Feeds one line from the SOLO, arriving at [elapsed]. Lines that carry
   /// no reading (banners, blanks, garbage) are not flow and are ignored
   /// altogether.
+  ///
+  /// A data line that comes [silence] or more after the previous one is a
+  /// resume: the SOLO only goes quiet that long when it is suspended. It
+  /// restarts the flow and drops the lines before it, whether or not a hold
+  /// was recorded for that silence.
   void addLine(Duration elapsed, String line) {
     if (parseSoloLine(line) == null) return;
-    if (_flowStart == null || _holdFired) {
-      // The first line since attach, or the resume after a hold.
+    final last = _lastLineAt;
+    if (_flowStart == null ||
+        _holdFired ||
+        (last != null && elapsed - last >= silence)) {
+      // The first line since attach, or a resume.
       _flowStart = elapsed;
       _holdFired = false;
+      _lines.clear();
     }
     _lines.add((at: elapsed, line: line));
     while (elapsed - _lines.first.at > window) {
@@ -118,9 +132,12 @@ class HoldDetector {
   }
 
   /// Asks, at [elapsed], whether an OK press has happened. Returns the hold
-  /// the first time the rule is met during a silence, null otherwise. Call
-  /// it as often as is convenient while the transport is attached; the
+  /// the first time the rule is met during a silence, null otherwise. The
   /// silence is measured from the last line, not from the last tick.
+  ///
+  /// Call it at least every 200 ms while the transport is attached. A silence
+  /// that ends between two ticks, after its [silence] mark but before the
+  /// next tick, is never reported: the line that ends it makes it a resume.
   DetectedHold? tick(Duration elapsed) {
     final lastLineAt = _lastLineAt;
     final flowStart = _flowStart;

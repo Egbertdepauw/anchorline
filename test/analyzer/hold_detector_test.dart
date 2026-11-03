@@ -12,9 +12,15 @@ Duration _ms(int ms) => Duration(milliseconds: ms);
 
 /// Feeds a data line every [everyMs] from [fromMs] to [toMs] (both
 /// included).
-void _flow(HoldDetector d, int fromMs, int toMs, {int everyMs = 200}) {
+void _flow(
+  HoldDetector d,
+  int fromMs,
+  int toMs, {
+  int everyMs = 200,
+  double ti = 22.0,
+}) {
   for (var t = fromMs; t <= toMs; t += everyMs) {
-    d.addLine(_ms(t), _data(t ~/ everyMs));
+    d.addLine(_ms(t), _data(t ~/ everyMs, ti: ti));
   }
 }
 
@@ -79,20 +85,16 @@ void main() {
     });
 
     test('after a hold, 3 s of flow arms the next one', () {
-      // 2.8 s of flow after the resume: not enough.
-      final short = HoldDetector();
-      _flow(short, 0, 10000);
-      expect(_ticks(short, 10000, 13000), hasLength(1));
-      _flow(short, 20000, 22800);
-      expect(_ticks(short, 22800, 30000), isEmpty);
-
-      // 3.2 s of flow after the resume: enough.
-      final long = HoldDetector();
-      _flow(long, 0, 10000);
-      expect(_ticks(long, 10000, 13000), hasLength(1));
-      _flow(long, 20000, 23200);
-      final holds = _ticks(long, 23200, 30000);
-      expect(holds.map((h) => h.heldAt.inMilliseconds), [23200]);
+      final d = HoldDetector();
+      _flow(d, 0, 10000);
+      expect(_ticks(d, 10000, 13000), hasLength(1));
+      // A resume with 2.8 s of flow: not enough.
+      _flow(d, 20000, 22800);
+      expect(_ticks(d, 22800, 29000), isEmpty);
+      // Another resume with 3.2 s of flow: enough.
+      _flow(d, 30000, 33200);
+      final holds = _ticks(d, 33200, 40000);
+      expect(holds.map((h) => h.heldAt.inMilliseconds), [33200]);
     });
 
     test('dips under 2 s do not reset arming', () {
@@ -106,17 +108,32 @@ void main() {
       expect(holds.map((h) => h.heldAt.inMilliseconds), [5900]);
     });
 
-    test('a silence that did not fire does not move the start of the flow',
-        () {
+    test('a silence of 2 s or more that did not fire restarts the flow', () {
       final d = HoldDetector();
       // 4.8 s of flow, then a 2.5 s silence that is too early to count.
       _flow(d, 0, 4800);
       expect(_ticks(d, 4800, 7300), isEmpty);
-      // 0.4 s more flow: 7.7 s from the first line to the last, so it is
-      // armed. Had the silence moved the start, it would be 0.4 s.
+      // The line after it is a resume. 0.4 s of fresh flow is not 5 s, and the
+      // 7.7 s since the very first line must not be counted.
       _flow(d, 7300, 7700);
-      final holds = _ticks(d, 7700, 10000);
-      expect(holds.map((h) => h.heldAt.inMilliseconds), [7700]);
+      expect(_ticks(d, 7700, 11000), isEmpty);
+      // After another silence, 5 s of flow from that resume arms the first
+      // hold.
+      _flow(d, 12000, 17000);
+      final holds = _ticks(d, 17000, 20000);
+      expect(holds.map((h) => h.heldAt.inMilliseconds), [17000]);
+    });
+
+    test('a short resume and a second silence is not 3 s of flow', () {
+      final d = HoldDetector();
+      _flow(d, 0, 10000);
+      expect(_ticks(d, 10000, 13000), hasLength(1));
+      // 1 s of flow after the resume, a 4 s silence that makes no hold, then
+      // 1 s more: each run is short, and the silence between them is not flow.
+      _flow(d, 20000, 21000);
+      expect(_ticks(d, 21000, 25000), isEmpty);
+      _flow(d, 26000, 27000);
+      expect(_ticks(d, 27000, 32000), isEmpty);
     });
 
     test('non-data lines are not flow', () {
@@ -127,7 +144,26 @@ void main() {
       expect(_ticks(d, 0, 20000), isEmpty);
     });
 
-    test('non-data lines neither start the flow nor shorten a silence', () {
+    test('non-data lines do not start the flow', () {
+      final d = HoldDetector();
+      // A banner at the start; the 4 s of data after it is the whole flow.
+      d.addLine(_ms(0), 'Divesoft SOLO');
+      _flow(d, 4000, 8000);
+      expect(_ticks(d, 8000, 12000), isEmpty);
+    });
+
+    test('non-data lines do not make a resume', () {
+      final d = HoldDetector();
+      _flow(d, 0, 10000);
+      expect(_ticks(d, 10000, 13000), hasLength(1));
+      // A banner at 20 s is not the resume; the data line at 21 s is, so
+      // 2.2 s of flow is short of 3 s.
+      d.addLine(_ms(20000), 'Divesoft SOLO');
+      _flow(d, 21000, 23200);
+      expect(_ticks(d, 23200, 30000), isEmpty);
+    });
+
+    test('non-data lines do not shorten a silence', () {
       final d = HoldDetector();
       _flow(d, 0, 10000);
       // Banner lines during the silence do not count as data.
@@ -294,13 +330,65 @@ void main() {
       expect(hold.window.every((w) => w.line.contains('O2')), isTrue);
     });
 
+    test('a hold window starts at the resume', () {
+      final d = HoldDetector();
+      // The first cylinder: 10 s of Ti 22.0, then a hold.
+      _flow(d, 0, 10000);
+      expect(_ticks(d, 10000, 12000), hasLength(1));
+      // The second: 25 s of Ti 22.5 from the resume at 12.2 s, then a hold.
+      // The first cylinder's lines are still inside the last 30 s of time, so
+      // only the resume keeps them out.
+      _flow(d, 12200, 37200, ti: 22.5);
+      final hold = _ticks(d, 37200, 40000).single;
+      expect(hold.heldAt, _ms(37200));
+      // The first line after the resume, not a line from before the first
+      // hold, and nothing but the second cylinder's lines.
+      expect(hold.window.first.offsetMs, -25000);
+      expect(hold.window, hasLength(126));
+      expect(hold.window.every((w) => w.line.contains('Ti  22.5')), isTrue);
+    });
+
+    test('a window that outgrew the resume is still capped at 30 s', () {
+      final d = HoldDetector();
+      _flow(d, 0, 10000);
+      expect(_ticks(d, 10000, 13000), hasLength(1));
+      _flow(d, 20000, 70000, ti: 22.5);
+      final hold = _ticks(d, 70000, 73000).single;
+      expect(hold.window.first.offsetMs, -30000);
+      expect(hold.window, hasLength(151));
+      expect(hold.window.every((w) => w.line.contains('Ti  22.5')), isTrue);
+    });
+
+    test('a silence that made no hold also cuts the window', () {
+      final d = HoldDetector();
+      // 4 s of Ti 22.0, then 2.5 s of silence: not armed, so no hold.
+      _flow(d, 0, 4000);
+      expect(_ticks(d, 4000, 6500), isEmpty);
+      // The line after the silence is a resume, so the hold's window holds
+      // the 8 s since then and none of the 4 s before.
+      _flow(d, 6500, 14500, ti: 22.5);
+      final hold = _ticks(d, 14500, 17500).single;
+      expect(hold.heldAt, _ms(14500));
+      expect(hold.window.first.offsetMs, -8000);
+      expect(hold.window, hasLength(41));
+      expect(hold.window.every((w) => w.line.contains('Ti  22.5')), isTrue);
+    });
+
     test('the lines of one hold are not changed by the next', () {
       final d = HoldDetector();
       _flow(d, 0, 10000);
       final first = _ticks(d, 10000, 13000).single;
-      final before = first.window.length;
-      _flow(d, 20000, 30000);
-      expect(first.window, hasLength(before));
+      List<(int, String)> snapshot() => [
+        for (final w in first.window) (w.offsetMs, w.line),
+      ];
+      final before = snapshot();
+      expect(before, hasLength(51));
+      _flow(d, 20000, 30000, ti: 22.5);
+      final second = _ticks(d, 30000, 33000).single;
+      expect(snapshot(), before);
+      // And the second starts at its own resume.
+      expect(second.window.first.offsetMs, -10000);
+      expect(second.window, hasLength(51));
     });
   });
 }
