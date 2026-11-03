@@ -24,6 +24,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../analysis/end.dart';
 import '../../analysis/gas_density.dart';
@@ -165,6 +166,24 @@ UsbOkLogger buildOkLogger({
       onError: (e, s) => Sentry.captureException(e, stackTrace: s),
     );
 
+/// Switches the platform wakelock on or off. Log on OK holds it while it is
+/// watching the SOLO: once the display sleeps, the system idles and App Nap
+/// (macOS) throttles the app, the stream of lines stops being seen and an OK
+/// press goes unnoticed. Errors are swallowed: unsupported targets no-op, and
+/// tests can hit MissingPluginException.
+Future<void> _setWakelock(bool enable) async {
+  try {
+    if (enable) {
+      await WakelockPlus.enable();
+    } else {
+      await WakelockPlus.disable();
+    }
+  } catch (e) {
+    debugPrint('Wakelock ${enable ? 'enable' : 'disable'} failed '
+        '(non-fatal): $e');
+  }
+}
+
 class AnalyzerScreen extends StatefulWidget {
   const AnalyzerScreen({
     super.key,
@@ -175,6 +194,7 @@ class AnalyzerScreen extends StatefulWidget {
     this.blendTarget,
     this.labelPrinting,
     this.okLoggerFactory,
+    this.keepAwake,
   });
 
   final SettingsNotifier settings;
@@ -196,6 +216,12 @@ class AnalyzerScreen extends StatefulWidget {
   /// and timer.
   @visibleForTesting
   final UsbOkLogger Function()? okLoggerFactory;
+
+  /// Injected for tests, which record when the screen asks to stay awake
+  /// (true) and lets go (false). When null the screen uses the platform
+  /// wakelock.
+  @visibleForTesting
+  final Future<void> Function(bool awake)? keepAwake;
 
   /// Injected for tests. When null the screen owns its own controller.
   final AnalyzerController? controller;
@@ -285,6 +311,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
     logger.attach(transport);
     _okLogger = logger;
     _okTransport = transport;
+    unawaited((widget.keepAwake ?? _setWakelock)(true));
   }
 
   /// Detaches and disposes the logger. A press it is handling still
@@ -295,6 +322,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
     _okLogger = null;
     _okTransport = null;
     unawaited(logger.dispose());
+    unawaited((widget.keepAwake ?? _setWakelock)(false));
   }
 
   Future<void> _toggleConnection() async {
@@ -404,7 +432,9 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         text: _controller.errorMessage ?? 'Connection to the analyzer failed.',
       ));
     }
-    if (_controller.noDataHint) {
+    // Only a SOLO that never sent a line is misconfigured. One that streamed
+    // and went quiet is on hold (OK pressed), which is not a problem.
+    if (_controller.noDataHint && !_controller.hasHadData) {
       out.add(const _Banner(
         key: ValueKey('analyzer-no-data-hint'),
         text: 'Connected, but no data is arriving. On the analyzer set '
@@ -448,13 +478,21 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
     if (widget.analysesDao == null || _options[_selected].isDemo) {
       return const [];
     }
+    // While the logger is watching and the SOLO has streamed and gone quiet,
+    // OK was pressed: say so in the switch's own subtitle, so nothing moves.
+    final held =
+        _okLogger != null && _controller.hasHadData && _controller.noDataHint;
     return [
       SwitchListTile(
         key: const ValueKey('analyzer-log-on-ok'),
         contentPadding: EdgeInsets.zero,
         title: const Text('Log on OK'),
-        subtitle:
-            const Text('Press OK on the SOLO to save. Keep this screen open.'),
+        subtitle: Text(
+          held
+              ? 'Held on the SOLO. Press OK there to measure again.'
+              : 'Press OK on the SOLO to save. Keep this screen open.',
+          key: const ValueKey('analyzer-log-on-ok-subtitle'),
+        ),
         value: widget.settings.analyzerLogOnOk,
         onChanged: widget.settings.setAnalyzerLogOnOk,
       ),

@@ -130,6 +130,10 @@ class UsbOkLogger {
   /// first one after [attach].
   Duration? _lastTimerAt;
 
+  /// The previous timer callback came more than [kStallGap] after the one
+  /// before it.
+  bool _lastTimerLagged = false;
+
   /// While set, and the clock is before it, the timer does not ask the
   /// detector for a hold: a stall just ended and the lines it held back are
   /// still on their way.
@@ -167,17 +171,18 @@ class UsbOkLogger {
     _statusSub?.cancel();
     _statusSub = null;
     _lastTimerAt = null;
+    _lastTimerLagged = false;
     _graceUntil = null;
     _detector.detached();
   }
 
   /// Asks the detector, at the logger's clock, whether OK was pressed, and
-  /// handles the hold if so. The timer calls this every `tickInterval`; call
-  /// it yourself when the logger was made without a timer.
+  /// handles the hold if so. Call it yourself when the logger was made
+  /// without a timer.
   ///
-  /// This asks the detector at once. The timer goes through the stall guard
-  /// first (see [kStallGap]); a caller that drives [tick] itself is
-  /// responsible for its own pacing.
+  /// This asks the detector at once. The periodic timer does not call it: it
+  /// goes through the stall guard first (see [kStallGap]), and a caller that
+  /// drives [tick] itself is responsible for its own pacing.
   void tick() => _tickAt(_elapsed());
 
   void _tickAt(Duration elapsed) {
@@ -204,8 +209,12 @@ class UsbOkLogger {
     if (status != AnalyzerConnectionStatus.connected) _detector.detached();
   }
 
+  /// What the periodic timer calls every `tickInterval`. Public so a test
+  /// can play a timer that is late; the screen never calls it.
+  void timerFired() => _onTimer();
+
   /// A timer callback must not throw: that would be an uncaught error in the
-  /// zone. A failing tick is reported once.
+  /// zone. A failing tick is reported once per streak of failures.
   ///
   /// If the isolate stalled while the SOLO kept streaming, the periodic
   /// timer can run before the lines that queued up are delivered, and the
@@ -215,14 +224,22 @@ class UsbOkLogger {
   /// Lines keep going to the detector, and the detector is not reset: an OK
   /// pressed during the stall is still found by the first tick after the
   /// grace.
+  ///
+  /// The grace is for one stall. A callback that is late and directly
+  /// follows another late one starts none: timers that stay throttled (App
+  /// Nap, a covered window) would otherwise never tick the detector, and no
+  /// press would be seen. The lines that piled up in a throttled period have
+  /// been delivered by the time the next callback runs.
   void _onTimer() {
     try {
       final now = _elapsed();
       final last = _lastTimerAt;
       _lastTimerAt = now;
-      if (last != null && now - last > kStallGap) {
+      final lagged = last != null && now - last > kStallGap;
+      if (lagged && !_lastTimerLagged) {
         _graceUntil = now + kStallGrace;
       }
+      _lastTimerLagged = lagged;
       final graceUntil = _graceUntil;
       if (graceUntil != null) {
         if (now < graceUntil) return;
@@ -231,9 +248,9 @@ class UsbOkLogger {
       _tickAt(now);
       _tickFailing = false;
     } catch (e, st) {
-      _report(e, st);
       if (_tickFailing) return;
       _tickFailing = true;
+      _report(e, st);
       _emit(
         const OkLogResult(
           code: FeedbackCode.error,

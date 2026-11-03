@@ -775,6 +775,97 @@ void main() {
       await rig.close();
     });
 
+    test('timers throttled for good do not hide an OK press', () async {
+      // App Nap or a covered window: the timer runs every ~3 s, forever.
+      // Every callback sees a gap, but the lines keep flowing at 5 Hz.
+      final rig = Rig();
+      rig.logger.timerFired(); // the first callback, clock at 0
+      final start = rig.clock;
+      var lastLine = start;
+      for (var ms = 0; ms <= 12000; ms += 200) {
+        rig.clock = start + Duration(milliseconds: ms);
+        lastLine = rig.clock;
+        rig.transport.emitLine(steadyLine(32.0, 0.0));
+        if (ms > 0 && ms % 3000 == 0) rig.logger.timerFired();
+      }
+      await pumpEventQueue();
+      expect(rig.events, isEmpty, reason: 'flowing lines are not a hold');
+
+      // The SOLO is suspended; the throttled timer comes 3 s after the last
+      // line: the press is found by that very callback.
+      rig.clock = lastLine + const Duration(seconds: 3);
+      rig.logger.timerFired();
+      await pumpEventQueue();
+      expect(rig.events, ['save']);
+      expect(rig.results, hasLength(1));
+      await rig.close();
+    });
+
+    test('a single stall still gets its grace', () async {
+      final rig = Rig();
+      // 7 s of lines at 5 Hz with the timer on time.
+      for (var ms = 0; ms <= 7000; ms += 200) {
+        rig.clock = Duration(milliseconds: ms);
+        rig.transport.emitLine(steadyLine(32.0, 0.0));
+        rig.logger.timerFired();
+      }
+
+      // 3 s stall, the timer first, the lines still queued.
+      rig.clock += const Duration(seconds: 3);
+      rig.logger.timerFired();
+      await pumpEventQueue();
+      expect(rig.events, isEmpty);
+
+      // The queued lines arrive, and the callbacks are on time again.
+      for (var ms = 0; ms <= 1000; ms += 200) {
+        rig.clock += const Duration(milliseconds: 200);
+        rig.transport.emitLine(steadyLine(32.0, 0.0));
+        rig.logger.timerFired();
+      }
+      rig.clock += const Duration(milliseconds: 400);
+      rig.logger.timerFired();
+      await pumpEventQueue();
+      expect(rig.events, isEmpty);
+      await rig.close();
+    });
+
+    test('a timer that keeps failing is reported once per streak', () async {
+      var broken = true;
+      final errors = <Object>[];
+      final logger = UsbOkLogger(
+        save: (id, a) async => true,
+        markComplete: (id) async {},
+        elapsed: () {
+          if (broken) throw StateError('clock');
+          return Duration.zero;
+        },
+        tickInterval: null,
+        onError: (e, _) => errors.add(e),
+      );
+      final results = <OkLogResult>[];
+      final sub = logger.results.listen(results.add);
+
+      for (var i = 0; i < 5; i++) {
+        logger.timerFired();
+      }
+      await pumpEventQueue();
+      expect(errors, hasLength(1), reason: 'not once per 200 ms tick');
+      expect(results.map((r) => r.text), ['LOG FAILED']);
+
+      // It works again, then breaks again: a new streak, reported again.
+      broken = false;
+      logger.timerFired();
+      broken = true;
+      logger.timerFired();
+      logger.timerFired();
+      await pumpEventQueue();
+      expect(errors, hasLength(2));
+      expect(results.map((r) => r.text), ['LOG FAILED', 'LOG FAILED']);
+
+      await logger.dispose();
+      await sub.cancel();
+    });
+
     test('with no tick interval there is no timer', () async {
       final rig = Rig();
       rig.steady(32.0, 0.0, seconds: 25);

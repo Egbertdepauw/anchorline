@@ -115,6 +115,9 @@ class _Harness {
   /// The logger's results stream is closed: the screen disposed it.
   bool loggerClosed = false;
 
+  /// Every request to stay awake (true) or let go (false), in order.
+  final awake = <bool>[];
+
   Future<void> pump(
     WidgetTester tester, {
     bool withDao = true,
@@ -138,6 +141,7 @@ class _Harness {
             AnalyzerController(elapsed: fakeElapsed(tester)),
         blendTarget: const DesiredMix(32, 0),
         labelPrinting: printing,
+        keepAwake: (on) async => awake.add(on),
         transportOptions: [
           AnalyzerTransportOption(
             label: 'Bench',
@@ -944,6 +948,101 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: SizedBox()));
       await tester.pump();
       expect(h.loggerClosed, isTrue);
+    });
+  });
+
+  group('keeping the Mac awake', () {
+    _test('the wakelock is held while the logger runs and released after',
+        (tester, h) async {
+      await h.pump(tester);
+      expect(h.awake, isEmpty);
+      await _switchOn(tester);
+      expect(h.awake, isEmpty, reason: 'no connection, no logger, no lock');
+      await h.connect(tester);
+      expect(h.awake, [true]);
+
+      // Readings do not take it again.
+      await h.feed(tester, 32.0, 0, seconds: 3);
+      expect(h.awake, [true]);
+
+      await _switchOn(tester); // off
+      await tester.pump();
+      expect(h.awake, [true, false]);
+    });
+
+    _test('disconnecting releases it, reconnecting takes it again',
+        (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await h.connect(tester); // Disconnect
+      await tester.pump();
+      expect(h.awake, [true, false]);
+      await h.connect(tester);
+      expect(h.awake, [true, false, true]);
+    });
+
+    _test('leaving the screen releases it', (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump();
+      expect(h.awake, [true, false]);
+    });
+
+    _test('a demo session never takes it', (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await _pickSource(tester, 'Demo');
+      await h.connect(tester);
+      await tester.pump(const Duration(seconds: 3));
+      expect(h.awake, isEmpty);
+    });
+  });
+
+  group('the screen when the SOLO is held', () {
+    _test('no data hint if the SOLO never sent a line', (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await tester.pump(const Duration(seconds: 5));
+      expect(_key('analyzer-no-data-hint'), findsOneWidget);
+      expect(find.text('Press OK on the SOLO to save. Keep this screen open.'),
+          findsOneWidget);
+    });
+
+    _test('after an OK press the setup hint stays away, the switch says held',
+        (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await h.feed(tester, 32.0, 0, seconds: 3);
+      expect(_key('analyzer-no-data-hint'), findsNothing);
+
+      // OK pressed: the stream stops and stays stopped.
+      await tester.pump(const Duration(seconds: 5));
+      expect(h.controller.noDataHint, isTrue);
+      expect(_key('analyzer-no-data-hint'), findsNothing);
+      expect(find.text('Held on the SOLO. Press OK there to measure again.'),
+          findsOneWidget);
+
+      // OK again: the lines come back and so does the usual text.
+      h.solo!.emitLine(_line(32.0, 0));
+      await tester.pump();
+      expect(_key('analyzer-no-data-hint'), findsNothing);
+      expect(find.text('Press OK on the SOLO to save. Keep this screen open.'),
+          findsOneWidget);
+    });
+
+    _test('with Log on OK off the quiet SOLO gets no held text and no hint',
+        (tester, h) async {
+      await h.pump(tester);
+      await h.connect(tester);
+      await h.feed(tester, 32.0, 0, seconds: 3);
+      await tester.pump(const Duration(seconds: 5));
+      expect(_key('analyzer-no-data-hint'), findsNothing);
+      expect(find.textContaining('Held on the SOLO'), findsNothing);
     });
   });
 
