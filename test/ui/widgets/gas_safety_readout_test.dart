@@ -82,6 +82,40 @@ void main() {
     });
   });
 
+  group('gas editor MOD is floored, never rounded up (#143)', () {
+    Future<String> modLineFor(WidgetTester tester, DivePlanGas gas) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: AppThemes.byId('miasma').themeData,
+        home: Scaffold(
+          body: PlanGasesEditor(
+            gases: [gas],
+            onAdd: (_) {},
+            onRemove: (_) {},
+            onReplace: (_, _) {},
+          ),
+        ),
+      ));
+      return tester.widget<Text>(find.textContaining('MOD ')).data!;
+    }
+
+    testWidgets('21 % trimix at 1.4 shows 56 m, not 57 m', (tester) async {
+      // (1.4 / 0.21 − 1) × 10 = 56.67 m. Rounding shows 57 m, deeper
+      // than the gas may go; the floor is 56 m.
+      final text = await modLineFor(tester,
+          const DivePlanGas(oxygenPercent: 21, heliumPercent: 35, isDiluent: true));
+      expect(text, startsWith('MOD 56 m'));
+    });
+
+    testWidgets('20 % trimix at 1.4 shows 60 m despite FP noise',
+        (tester) async {
+      // (1.4 / 0.2 − 1) × 10 is 59.99999999999999 in doubles. A bare
+      // floor() would show 59 m for a MOD that is exactly 60 m.
+      final text = await modLineFor(tester,
+          const DivePlanGas(oxygenPercent: 20, heliumPercent: 40, isDiluent: true));
+      expect(text, startsWith('MOD 60 m'));
+    });
+  });
+
   testWidgets('idle readout text follows the theme textSecondary',
       (tester) async {
     final theme = AppThemes.byId('miasma');
