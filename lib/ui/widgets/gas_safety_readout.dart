@@ -95,9 +95,9 @@ GasSafetyReadout? computeGasSafetyReadout(
   final endAtRef = (endRefDepth + 10.0) * (1.0 - fHe) - 10.0;
 
   final parts = <String>[];
-  // Floored, never rounded: a MOD shown too deep is the unsafe
-  // direction. Same helper as the analyzer screen and cylinder label.
-  parts.add('MOD ${mod.floorDepthTolerant(modMeters)} m');
+  // Shown as a stop depth, like the cylinder labels (#145): EAN50 21 m,
+  // Tx21/35 57 m. A planned gas has no analysis, so always the stop rule.
+  parts.add('MOD ${mod.roundToStopDepth(modMeters, fO2)} m');
   parts.add(
     'END ${endAtRef.clamp(0, 200).toStringAsFixed(0)} m'
     '${evaluatedDepth == null ? "" : " @ ${evaluatedDepth.toStringAsFixed(0)} m"}',

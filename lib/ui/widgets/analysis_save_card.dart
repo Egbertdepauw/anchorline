@@ -56,6 +56,7 @@ class AnalysisSaveCard extends StatefulWidget {
     this.onAnalysedByChanged,
     this.initialPrintOnOk = true,
     this.onPrintOnOkChanged,
+    this.onDesiredMixChanged,
     this.now = DateTime.now,
   });
 
@@ -101,6 +102,13 @@ class AnalysisSaveCard extends StatefulWidget {
   /// Told when the diver flips "Print label on OK", so the screen can
   /// remember it.
   final ValueChanged<bool>? onPrintOnOkChanged;
+
+  /// Told the desired mix the card has, whenever it changes: picked, or back
+  /// to none after a save. Not told by a save in Log on OK mode, where the
+  /// mix stays picked for the next press. Also told once when the card is
+  /// made, so the analyzer screen's MOD rows follow the same depth rule as
+  /// the label (issue #145).
+  final ValueChanged<DesiredMix?>? onDesiredMixChanged;
 
   /// Clock, injectable for tests.
   final DateTime Function() now;
@@ -163,6 +171,15 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     _diverFocus.addListener(_onDiverFocus);
     _loadCylinders();
     _loadMixOptions();
+    // Say what mix a new card has, so a mix picked on an earlier card (one
+    // that went away with the source switched) isn't kept by the screen. The
+    // screen keeps this card across the layouts, so what it is told is the
+    // mix the card still has. After the frame: the screen is mid-build now.
+    if (widget.onDesiredMixChanged != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onDesiredMixChanged?.call(_desired);
+      });
+    }
     _bindLogger();
   }
 
@@ -496,13 +513,15 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     // the label prints the desired name, so a mix left picked would label
     // the next cylinder with it. A print still uses [saved] and the copies
     // taken with it, the snapshot. In Log on OK mode they are the setup of
-    // the next OK press and stay, as a press that saves them leaves them.
+    // the next OK press and stay, as a press that saves them leaves them, so
+    // the screen is not told the mix is gone.
     if (widget.okLogger == null) {
       setState(() {
         _desired = null;
         _role = gasRoleForCylinderRole(_cylinder(_cylinderId)?.role);
         _copies = 1;
       });
+      widget.onDesiredMixChanged?.call(_desired);
     }
     // Not awaited: the print needn't wait for the chips.
     unawaited(_loadMixOptions());
@@ -703,7 +722,10 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
               DesiredMixPicker(
                 options: _mixOptions,
                 selected: desired,
-                onChanged: (m) => setState(() => _desired = m),
+                onChanged: (m) {
+                  setState(() => _desired = m);
+                  widget.onDesiredMixChanged?.call(m);
+                },
               ),
               // Only for a usable reading: grading NaN throws.
               if (desired != null && gas != null) ...[

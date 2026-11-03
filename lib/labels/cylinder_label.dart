@@ -7,9 +7,11 @@
 ///
 /// Safety rules, all exercised in `cylinder_label_test.dart`:
 ///
-/// * Depths come from the ANALYSED O2, never the desired one, and are
-///   FLOORED to whole metres. A label must never claim a deeper limit than
-///   the gas in the cylinder allows.
+/// * Depths come from the ANALYSED O2, never the desired one (see
+///   [limitDepthMeters], issue #145). At or below the desired O2 they are
+///   the nearest 3 m stop at which the gas stays at or under ppO2 1.6, as
+///   divers quote them (EAN50 21 m, Tx21/35 at 1.4 57 m). Above the desired
+///   O2 they are the exact depth rounded down to whole metres.
 /// * The bailout/deco ppO2 is 1.6, or 1.4 for mixes under 50 % O2 when the
 ///   setting is on. The 50 % test uses the DESIRED O2, so an EAN50 that
 ///   analyses at 49.6 % keeps 1.6. With no desired mix, or on a hard
@@ -53,15 +55,36 @@ const String _noDepth = '–';
 // Fixed English format so the label reads the same on every device locale.
 final DateFormat _dateFormat = DateFormat('d MMM yy', 'en_US');
 
-/// The floor, in whole metres, of the depth at which a gas with
-/// [o2Percent] % oxygen reaches [ppO2] bar, via [floorDepthTolerant] so an
-/// exact whole-metre MOD (20 % at 1.4 bar is 60 m) isn't lost to floating-
-/// point noise. Null when there is no usable depth: no oxygen (not finite)
-/// or a gas that already exceeds [ppO2] at the surface (below 0).
-int? floorDepthMeters(double o2Percent, double ppO2) {
-  final m = modMeters(o2Percent / 100.0, ppO2);
+/// The depth, in whole metres, shown for where a gas with [o2Percent] %
+/// oxygen reaches [ppO2] bar (issue #145).
+///
+/// * With no [desiredO2Percent], or an analysed O2 at or below it: the
+///   nearest 3 m stop, one stop shallower while the gas would be above
+///   ppO2 1.6 there ([roundToStopDepth]). EAN50 analysed at 49 % is 21 m;
+///   at 47 % it is 24 m.
+/// * With an analysed O2 above [desiredO2Percent]: the exact depth rounded
+///   down to whole metres ([floorDepthTolerant]). EAN50 analysed at 52 %
+///   is 20 m, not the 18 m stop.
+///
+/// "Above" compares the O2 as the label shows it, to one decimal, so a
+/// difference the diver can't see never moves the depth. Callers pass no
+/// [desiredO2Percent] on a hard mismatch, where the label names the
+/// analysed gas.
+///
+/// Null when there is no usable depth: no oxygen (not finite) or a gas
+/// that already exceeds [ppO2] at the surface (below 0).
+int? limitDepthMeters(
+  double o2Percent,
+  double ppO2, {
+  int? desiredO2Percent,
+}) {
+  final fO2 = o2Percent / 100.0;
+  final m = modMeters(fO2, ppO2);
   if (!m.isFinite || m < 0) return null;
-  return floorDepthTolerant(m);
+  final shownO2 = double.parse(o2Percent.toStringAsFixed(1));
+  final aboveDesired =
+      desiredO2Percent != null && shownO2 > desiredO2Percent;
+  return aboveDesired ? floorDepthTolerant(m) : roundToStopDepth(m, fO2);
 }
 
 /// The ppO2 for the bailout/deco MOD. [o2PercentForRule] is the O2 the rule
@@ -134,13 +157,20 @@ class CylinderLabel {
     final hard = a.match?.level == MixMatchLevel.hard;
     final String mixName;
     final int o2PercentForRule;
+    // The desired O2 the depths are judged against; none when the label
+    // names the analysed gas.
+    final int? depthDesiredO2;
     if (desired == null || hard) {
       mixName = gasMixName(a.o2Percent, a.hePercent);
       o2PercentForRule = a.o2Percent.round();
+      depthDesiredO2 = null;
     } else {
       mixName = desired.name;
       o2PercentForRule = desired.o2Percent;
+      depthDesiredO2 = desired.o2Percent;
     }
+    int? depth(double ppO2) => limitDepthMeters(a.o2Percent, ppO2,
+        desiredO2Percent: depthDesiredO2);
 
     final by = a.analysedBy?.trim();
     final he = a.hePercent < kHeliumNoiseFloorPercent ? null : a.hePercent;
@@ -157,15 +187,13 @@ class CylinderLabel {
       kind: diluent ? CylinderLabelKind.diluent : CylinderLabelKind.bailout,
       mixName: mixName,
       analysedBy: (by == null || by.isEmpty) ? null : by,
-      headlineMeters: floorDepthMeters(a.o2Percent, headlinePpo2),
+      headlineMeters: depth(headlinePpo2),
       headlinePpo2: headlinePpo2,
       o2Percent: a.o2Percent,
       hePercent: he,
       analysedAt: a.analysedAt,
-      setpointMeters:
-          diluent ? floorDepthMeters(a.o2Percent, kDiluentSetpointPpo2) : null,
-      mod16Meters:
-          diluent ? floorDepthMeters(a.o2Percent, kDiluentModPpo2) : null,
+      setpointMeters: diluent ? depth(kDiluentSetpointPpo2) : null,
+      mod16Meters: diluent ? depth(kDiluentModPpo2) : null,
     );
   }
 
