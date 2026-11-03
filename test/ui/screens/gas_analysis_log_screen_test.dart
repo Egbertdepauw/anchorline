@@ -1207,6 +1207,32 @@ void main() {
       expect(_key('analysis-needs-signoff-f'), findsNothing);
     });
 
+    testWidgets('an entry with no desired mix signs off with its name and '
+        'prints the analysed mix', (tester) async {
+      final printer = FakeLabelPrinter();
+      final rendered = <CylinderLabel>[];
+      // Named, but no desired mix: nothing to check it against.
+      final dao = FakeGasAnalysesDao(analyses: [
+        entry('f', DateTime(2026, 10, 30, 18), 32.1, 0, needsSignoff: true),
+      ]);
+      await pump(
+          tester,
+          GasAnalysisLogScreen(
+              dao: dao,
+              labelPrinting: _service(printer, rendered: rendered)));
+      await tapAndSettle(tester, find.text('EAN32'));
+      expect(_key('analysis-edit-signoff-hint'), findsNothing);
+      await tapAndSettle(tester, sheetButton('analysis-edit-signoff-print'));
+      await tapAndSettle(tester, _key('copies-dialog-print'));
+
+      expect(dao.updated.single.$2.signOff, isTrue);
+      expect(dao.updated.single.$2.desiredMix, isNull);
+      expect(find.text(mismatchTitle), findsNothing);
+      expect(printer.printed, hasLength(1));
+      expect(rendered.single.mixName, 'EAN32');
+      expect(_key('analysis-needs-signoff-f'), findsNothing);
+    });
+
     testWidgets('Sign off and print goes through the mismatch dialog',
         (tester) async {
       final printer = FakeLabelPrinter();

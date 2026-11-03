@@ -343,7 +343,7 @@ void main() {
       await rig.close();
     });
 
-    test('an OK before stable saves flagged', () async {
+    test('an OK before stable saves complete, marked not stable', () async {
       final rig = Rig();
       rig.logger.setupProvider = () => (
         setup: const LogOnOkSetup(analysedBy: 'EdP', desiredMix: _ean32),
@@ -354,11 +354,111 @@ void main() {
 
       expect(rig.saved, hasLength(1));
       expect(rig.saved.single.analysis.stable, isFalse);
+      expect(rig.saved.single.analysis.needsSignoff, isFalse);
+      expectResult(
+        rig.results.single,
+        FeedbackCode.saved,
+        'EAN32',
+        id: rig.saved.single.id,
+        complete: true,
+      );
+      await rig.close();
+    });
+
+    test('an OK before stable prints when printing is on', () async {
+      final rig = Rig();
+      rig.logger.setupProvider = () => (
+        setup: const LogOnOkSetup(
+          analysedBy: 'EdP',
+          desiredMix: _ean32,
+          printOnOk: true,
+          printerConfigured: true,
+        ),
+        copies: 1,
+      );
+      rig.steady(32.0, 0.0, seconds: 8);
+      await rig.silenceThenTick();
+
+      expect(rig.saved.single.analysis.stable, isFalse);
+      expect(rig.events, ['save', 'print', 'markComplete']);
+      expectResult(
+        rig.results.single,
+        FeedbackCode.printed,
+        'EAN32',
+        id: rig.saved.single.id,
+        complete: true,
+      );
+      await rig.close();
+    });
+
+    test('a name and no desired mix saves complete', () async {
+      final rig = Rig();
+      rig.logger.setupProvider = () => (
+        setup: const LogOnOkSetup(analysedBy: 'EdP'),
+        copies: 1,
+      );
+      rig.steady(32.0, 0.0, seconds: 25);
+      await rig.silenceThenTick();
+
+      expect(rig.saved.single.analysis.desiredMix, isNull);
+      expect(rig.saved.single.analysis.needsSignoff, isFalse);
+      expect(rig.printed, isEmpty);
+      expectResult(
+        rig.results.single,
+        FeedbackCode.saved,
+        'EAN32',
+        id: rig.saved.single.id,
+        complete: true,
+      );
+      await rig.close();
+    });
+
+    test('a name and no desired mix prints the analysed mix', () async {
+      final rig = Rig();
+      rig.logger.setupProvider = () => (
+        setup: const LogOnOkSetup(
+          analysedBy: 'EdP',
+          printOnOk: true,
+          printerConfigured: true,
+        ),
+        copies: 1,
+      );
+      rig.steady(32.0, 0.0, seconds: 25);
+      await rig.silenceThenTick();
+
+      expect(rig.events, ['save', 'print', 'markComplete']);
+      expect(rig.printed.single.analysis.desiredMix, isNull);
+      expectResult(
+        rig.results.single,
+        FeedbackCode.printed,
+        'EAN32',
+        id: rig.saved.single.id,
+        complete: true,
+      );
+      await rig.close();
+    });
+
+    test('a desired mix that does not match is saved flagged, not printed',
+        () async {
+      final rig = Rig();
+      rig.logger.setupProvider = () => (
+        setup: const LogOnOkSetup(
+          analysedBy: 'EdP',
+          desiredMix: _ean32,
+          printOnOk: true,
+          printerConfigured: true,
+        ),
+        copies: 1,
+      );
+      rig.steady(28.0, 0.0, seconds: 25);
+      await rig.silenceThenTick();
+
+      expect(rig.events, ['save']);
       expect(rig.saved.single.analysis.needsSignoff, isTrue);
       expectResult(
         rig.results.single,
         FeedbackCode.check,
-        'NOT STABLE',
+        'MISMATCH',
         id: rig.saved.single.id,
         complete: false,
       );
@@ -377,7 +477,7 @@ void main() {
       expectResult(
         rig.results.single,
         FeedbackCode.saved,
-        'NO MIX SET',
+        'NO NAME SET',
         id: rig.saved.single.id,
         complete: false,
       );
@@ -393,7 +493,7 @@ void main() {
       expectResult(
         rig.results.single,
         FeedbackCode.saved,
-        'NO MIX SET',
+        'NO NAME SET',
         id: rig.saved.single.id,
         complete: false,
       );
@@ -788,7 +888,7 @@ void main() {
         logger.tick();
         await pumpEventQueue();
       }
-      expect(events.map((e) => e.text), ['SAVE FAILED', 'NO MIX SET']);
+      expect(events.map((e) => e.text), ['SAVE FAILED', 'NO NAME SET']);
       await logger.dispose();
       await sub.cancel();
     });
@@ -803,7 +903,7 @@ void main() {
       final r = await rig.logger.results.first.timeout(
         const Duration(seconds: 5),
       );
-      expect(r.text, 'NO MIX SET');
+      expect(r.text, 'NO NAME SET');
       await rig.close();
     });
 
@@ -971,7 +1071,7 @@ void main() {
       await done;
       final list = await all;
       expect(list, hasLength(1));
-      expect(list.single.text, 'NO MIX SET');
+      expect(list.single.text, 'NO NAME SET');
       await rig.sub.cancel();
     });
 

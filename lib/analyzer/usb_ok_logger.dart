@@ -63,7 +63,7 @@ class OkLogResult {
   final FeedbackCode code;
 
   /// The feedback text, ASCII and at most [kFeedbackTextMax] characters
-  /// (`EAN32`, `NOT STABLE`, `PRINT FAILED`, ...).
+  /// (`EAN32`, `MISMATCH`, `NO NAME SET`, `PRINT FAILED`, ...).
   final String text;
 
   /// The id of the saved row; null when nothing was saved.

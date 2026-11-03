@@ -356,7 +356,7 @@ void main() {
       );
     });
 
-    _test('an unstable reading asks to wait before pressing OK',
+    _test('an unstable reading does not ask to wait: OK still saves it',
         (tester, h) async {
       await h.pump(tester);
       await _switchOn(tester);
@@ -364,8 +364,22 @@ void main() {
 
       await h.feed(tester, 32.0, 0, seconds: 3);
       expect(
-        find.text(
-            'Reading not stable yet. Wait for STABLE before pressing OK.'),
+        find.text('Not stable yet. An OK press now saves it marked not '
+            'stable.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Wait for STABLE'), findsNothing);
+    });
+
+    _test('room air keeps the wait-for-stable hint for the manual Save',
+        (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+
+      await h.feed(tester, 20.9, 0, seconds: 3);
+      expect(
+        find.text('Reading not stable yet. Wait for STABLE before saving.'),
         findsOneWidget,
       );
     });
@@ -544,12 +558,12 @@ void main() {
       await tester.enterText(_key('analysis-notes'), 'Topped up');
       await tester.pump();
 
-      // Pressed far too early: 6 s of flow is not stable.
-      await h.feed(tester, 32.0, 0, seconds: 6);
+      // 28.0 against the desired 32: a red mismatch.
+      await h.feed(tester, 28.0, 0, seconds: 6);
       await h.pressOk(tester);
 
       expect(h.dao.addedFromBridge.single.$2.needsSignoff, isTrue);
-      expect(_resultText(tester), 'Needs sign-off: NOT STABLE');
+      expect(_resultText(tester), 'Needs sign-off: MISMATCH');
       expect(_key('analysis-ok-edit'), findsOneWidget);
       expect(find.text('200'), findsOneWidget);
       expect(find.text('Topped up'), findsOneWidget);
@@ -561,8 +575,7 @@ void main() {
       );
     });
 
-    _test('with no name or mix the entry is saved for sign-off',
-        (tester, h) async {
+    _test('with no name the entry is saved for sign-off', (tester, h) async {
       await h.pump(tester);
       await _switchOn(tester);
       await h.connect(tester);
@@ -571,7 +584,46 @@ void main() {
       await h.pressOk(tester);
 
       expect(h.dao.addedFromBridge.single.$2.needsSignoff, isTrue);
-      expect(_resultText(tester), 'Saved, needs sign-off: NO MIX SET');
+      expect(_resultText(tester), 'Saved, needs sign-off: NO NAME SET');
+    });
+
+    _test('with a name and no desired mix the entry is saved complete',
+        (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await tester.pump();
+
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+
+      final a = h.dao.addedFromBridge.single.$2;
+      expect(a.desiredMix, isNull);
+      expect(a.needsSignoff, isFalse);
+      expect(_resultText(tester), 'Saved EAN32');
+    });
+
+    _test('an OK before the reading is stable saves complete, marked not '
+        'stable', (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await _setUp(tester);
+      await _pickCylinder(tester, 'S80 left');
+      await tester.enterText(_key('analysis-pressure'), '200');
+      await tester.pump();
+
+      // 6 s of flow is not stable; the OK press is the confirmation.
+      await h.feed(tester, 32.0, 0, seconds: 6);
+      await h.pressOk(tester);
+
+      final a = h.dao.addedFromBridge.single.$2;
+      expect(a.stable, isFalse);
+      expect(a.needsSignoff, isFalse);
+      expect(_resultText(tester), 'Saved EAN32');
+      // Complete, so the per-cylinder fields are used up.
+      expect(find.text('200'), findsNothing);
     });
 
     _test('typing for the next cylinder while a press is saved is kept',
@@ -610,9 +662,9 @@ void main() {
       await h.connect(tester);
       await _setUp(tester);
 
-      await h.feed(tester, 32.0, 0, seconds: 6);
+      await h.feed(tester, 28.0, 0, seconds: 6);
       await h.pressOk(tester);
-      expect(_resultText(tester), 'Needs sign-off: NOT STABLE');
+      expect(_resultText(tester), 'Needs sign-off: MISMATCH');
 
       await tester.tap(_key('analysis-ok-edit'));
       await tester.pumpAndSettle();
@@ -620,7 +672,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(h.dao.analyses.single.needsSignoff, isFalse);
-      expect(_resultText(tester), 'Saved EAN32');
+      expect(_resultText(tester), 'Saved EAN28');
     });
 
     _test('Edit and Sign off uses up the per-cylinder fields',
@@ -634,7 +686,7 @@ void main() {
       await tester.enterText(_key('analysis-notes'), 'Topped up');
       await tester.pump();
 
-      await h.feed(tester, 32.0, 0, seconds: 6);
+      await h.feed(tester, 28.0, 0, seconds: 6);
       await h.pressOk(tester);
       // Needs sign-off: the fields stay.
       expect(find.text('200'), findsOneWidget);
@@ -644,7 +696,7 @@ void main() {
       await tester.tap(_key('analysis-edit-signoff'));
       await tester.pumpAndSettle();
 
-      expect(_resultText(tester), 'Saved EAN32');
+      expect(_resultText(tester), 'Saved EAN28');
       expect(find.text('200'), findsNothing);
       expect(find.text('Topped up'), findsNothing);
       expect(
@@ -665,7 +717,7 @@ void main() {
       await tester.enterText(_key('analysis-pressure'), '200');
       await tester.pump();
 
-      await h.feed(tester, 32.0, 0, seconds: 6);
+      await h.feed(tester, 28.0, 0, seconds: 6);
       await h.pressOk(tester);
       // The next cylinder is already being filled in.
       await tester.enterText(_key('analysis-pressure'), '180');
@@ -676,7 +728,7 @@ void main() {
       await tester.tap(_key('analysis-edit-signoff'));
       await tester.pumpAndSettle();
 
-      expect(_resultText(tester), 'Saved EAN32');
+      expect(_resultText(tester), 'Saved EAN28');
       expect(find.text('180'), findsOneWidget);
     });
 
@@ -686,9 +738,9 @@ void main() {
       await _switchOn(tester);
       await h.connect(tester);
       await _setUp(tester);
-      await h.feed(tester, 32.0, 0, seconds: 6);
+      await h.feed(tester, 28.0, 0, seconds: 6);
       await h.pressOk(tester);
-      expect(_resultText(tester), 'Needs sign-off: NOT STABLE');
+      expect(_resultText(tester), 'Needs sign-off: MISMATCH');
       final id = h.dao.addedFromBridge.single.$1;
 
       await tester.tap(_key('analysis-ok-edit'));
@@ -698,7 +750,7 @@ void main() {
       await tester.tap(_key('analysis-edit-save'));
       await tester.pumpAndSettle();
 
-      expect(_resultText(tester), 'Saved EAN32');
+      expect(_resultText(tester), 'Saved EAN28');
     });
 
     _test('Delete in the edit sheet clears the result', (tester, h) async {
@@ -776,6 +828,73 @@ void main() {
 
       expect(h.fakePrinter!.printed, hasLength(1));
       expect(_resultText(tester), 'Printed EAN32');
+    }, printer: true);
+
+    _test('an OK before the reading is stable prints', (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await _setUp(tester);
+
+      // 6 s of flow is not stable; the OK press is the confirmation.
+      await h.feed(tester, 32.0, 0, seconds: 6);
+      await h.pressOk(tester);
+      await tester.pumpAndSettle();
+
+      expect(h.fakePrinter!.printed, hasLength(1));
+      expect(h.dao.addedFromBridge.single.$2.stable, isFalse);
+      expect(h.dao.analyses.single.needsSignoff, isFalse);
+      expect(_resultText(tester), 'Printed EAN32');
+    }, printer: true);
+
+    _test('with a name and no desired mix the label shows the analysed mix',
+        (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await tester.pump();
+
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+      await tester.pumpAndSettle();
+
+      expect(h.fakePrinter!.printed, hasLength(1));
+      expect(h.dao.addedFromBridge.single.$2.desiredMix, isNull);
+      expect(h.dao.analyses.single.needsSignoff, isFalse);
+      expect(_resultText(tester), 'Printed EAN32');
+    }, printer: true);
+
+    _test('without a name nothing prints', (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await tester.tap(_key('desired-mix-32-0'));
+      await tester.pump();
+
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+      await tester.pumpAndSettle();
+
+      expect(h.fakePrinter!.printed, isEmpty);
+      expect(h.dao.analyses.single.needsSignoff, isTrue);
+      expect(_resultText(tester), 'Saved, needs sign-off: NO NAME SET');
+    }, printer: true);
+
+    _test('a desired mix picked on the card still blocks a red mismatch',
+        (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await _setUp(tester);
+
+      await h.feed(tester, 28.0, 0);
+      await h.pressOk(tester);
+      await tester.pumpAndSettle();
+
+      expect(h.fakePrinter!.printed, isEmpty);
+      expect(h.dao.analyses.single.needsSignoff, isTrue);
+      expect(_resultText(tester), 'Needs sign-off: MISMATCH');
     }, printer: true);
 
     _test('with the print switch off the entry is saved, not printed',
@@ -925,7 +1044,7 @@ void main() {
       await tester.enterText(_key('analysis-pressure'), '180');
       await tester.enterText(_key('analysis-notes'), 'second');
       await tester.pump();
-      await h.feed(tester, 32.0, 0, seconds: 4);
+      await h.feed(tester, 28.0, 0, seconds: 4);
       await h.pressOk(tester);
 
       slow.gate!.complete();
@@ -939,10 +1058,10 @@ void main() {
       expect(saved[1].cylinderId, 'c-dil');
       expect(saved[1].fillPressureBar, 180);
 
-      // The second press (4 s of flow, not stable) leaves its fields, and
-      // the first one, complete, uses up only its own: none of them are
-      // still on the card.
-      expect(_resultText(tester), 'Needs sign-off: NOT STABLE');
+      // The second press (a red mismatch) leaves its fields, and the first
+      // one, complete, uses up only its own: the second one's are still on
+      // the card.
+      expect(_resultText(tester), 'Needs sign-off: MISMATCH');
       expect(find.text('180'), findsOneWidget);
       expect(find.text('second'), findsOneWidget);
       expect(

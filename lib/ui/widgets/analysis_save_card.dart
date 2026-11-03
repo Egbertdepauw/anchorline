@@ -813,9 +813,12 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
                 const SizedBox(width: Spacing.xs),
                 Expanded(
                   child: Text(
+                    // An OK press is the confirmation; it saves the reading
+                    // marked not stable (decision 18). The manual Save still
+                    // asks to wait.
                     !showSave
-                        ? 'Reading not stable yet. Wait for STABLE before '
-                            'pressing OK.'
+                        ? 'Not stable yet. An OK press now saves it marked '
+                            'not stable.'
                         : 'Reading not stable yet. Wait for STABLE before '
                             'saving.',
                     style: AppTypography.caption

@@ -790,8 +790,7 @@ void main() {
       expect(_key('analysis-edit-signoff-print'), findsNothing);
     });
 
-    testWidgets('a flagged entry signs off only with a name and a desired mix',
-        (tester) async {
+    testWidgets('a flagged entry signs off only with a name', (tester) async {
       final dao = FakeGasAnalysesDao(analyses: [
         _tx(
             analysedBy: null,
@@ -801,24 +800,21 @@ void main() {
       ]);
       final results = await _open(tester,
           dao: dao, mixOptions: const [DesiredMix(32, 0)]);
-      // Neither: disabled, and the sheet says what is missing.
+      // No name: disabled, and the sheet says what is missing.
       expect(_enabled(tester, 'analysis-edit-signoff'), isFalse);
       expect(_key('analysis-edit-signoff-hint'), findsOneWidget);
+      expect(find.text('To sign off, add who analysed it.'), findsOneWidget);
 
       // A mix but no name (blanks are no name).
       await _tapAndSettle(tester, _key('desired-mix-32-0'));
       await tester.enterText(_key('analysis-edit-diver'), '   ');
       await tester.pumpAndSettle();
       expect(_enabled(tester, 'analysis-edit-signoff'), isFalse);
+      expect(_key('analysis-edit-signoff-hint'), findsOneWidget);
 
-      // A name but no mix.
-      await _tapAndSettle(tester, _key('desired-mix-32-0'));
+      // A name and a mix.
       await tester.enterText(_key('analysis-edit-diver'), 'Wendy');
       await tester.pumpAndSettle();
-      expect(_enabled(tester, 'analysis-edit-signoff'), isFalse);
-
-      // Both.
-      await _tapAndSettle(tester, _key('desired-mix-32-0'));
       expect(_enabled(tester, 'analysis-edit-signoff'), isTrue);
       expect(_key('analysis-edit-signoff-hint'), findsNothing);
       await _tapAndSettle(tester, _key('analysis-edit-signoff'));
@@ -831,6 +827,54 @@ void main() {
       expect(results, [AnalysisEditOutcome.signedOff]);
       expect(_sheet, findsNothing);
       expect(dao.analyses.single.needsSignoff, isFalse);
+    });
+
+    testWidgets('a flagged entry signs off with a name and no desired mix',
+        (tester) async {
+      final dao = FakeGasAnalysesDao(analyses: [
+        _tx(
+            analysedBy: null,
+            targetO2: null,
+            targetHe: null,
+            needsSignoff: true),
+      ]);
+      final results = await _open(tester,
+          dao: dao, mixOptions: const [DesiredMix(32, 0)], canPrint: true);
+      expect(_enabled(tester, 'analysis-edit-signoff'), isFalse);
+      expect(_enabled(tester, 'analysis-edit-signoff-print'), isFalse);
+
+      // A name alone is enough, for both buttons.
+      await tester.enterText(_key('analysis-edit-diver'), 'Wendy');
+      await tester.pumpAndSettle();
+      expect(_enabled(tester, 'analysis-edit-signoff'), isTrue);
+      expect(_enabled(tester, 'analysis-edit-signoff-print'), isTrue);
+      expect(_key('analysis-edit-signoff-hint'), findsNothing);
+      await _tapAndSettle(tester, _key('analysis-edit-signoff'));
+
+      final (_, edit) = dao.updated.single;
+      expect(edit.signOff, isTrue);
+      expect(edit.analysedBy, 'Wendy');
+      expect(edit.desiredMix, isNull);
+      expect(results, [AnalysisEditOutcome.signedOff]);
+      expect(dao.analyses.single.needsSignoff, isFalse);
+    });
+
+    testWidgets('Sign off and print signs off with a name and no desired mix',
+        (tester) async {
+      final dao = FakeGasAnalysesDao(analyses: [
+        _tx(
+            analysedBy: 'Wendy',
+            targetO2: null,
+            targetHe: null,
+            needsSignoff: true),
+      ]);
+      final results = await _open(tester, dao: dao, canPrint: true);
+      await _tapAndSettle(tester, _key('analysis-edit-signoff-print'));
+
+      final (_, edit) = dao.updated.single;
+      expect(edit.signOff, isTrue);
+      expect(edit.desiredMix, isNull);
+      expect(results, [AnalysisEditOutcome.signOffAndPrint]);
     });
 
     testWidgets('Save on a flagged entry keeps the flag', (tester) async {
@@ -891,8 +935,7 @@ void main() {
       expect(_sheet, findsNothing);
     });
 
-    testWidgets('Sign off and print needs a name and a desired mix too',
-        (tester) async {
+    testWidgets('Sign off and print needs a name too', (tester) async {
       final dao = FakeGasAnalysesDao(
           analyses: [_tx(analysedBy: null, needsSignoff: true)]);
       await _open(tester, dao: dao, canPrint: true);

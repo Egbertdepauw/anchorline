@@ -224,32 +224,68 @@ void main() {
       expect((r.feedback, r.feedbackText), (FeedbackCode.check, 'MISMATCH'));
     });
 
-    test('not stable: saved flagged, no label', () {
+    test('not stable, printing on: prints', () {
+      // The OK press is the confirmation (decision 18). The held value, 32.0,
+      // is a match against 31/0.
       final r = _save(
         drifting(30, 32),
-        setup: _setup(desiredMix: const DesiredMix(32, 0)),
+        setup: _setup(desiredMix: const DesiredMix(31, 0)),
+      );
+      expect(r.analysis.stable, isFalse);
+      expect(r.printLabel, isTrue);
+      expect(r.analysis.needsSignoff, isTrue);
+      expect((r.feedback, r.feedbackText), (FeedbackCode.printed, 'EAN32'));
+    });
+
+    test('not stable, printing off: complete', () {
+      final r = _save(
+        drifting(30, 32),
+        setup: _setup(
+          desiredMix: const DesiredMix(31, 0),
+          printOnOk: false,
+        ),
       );
       expect(r.analysis.stable, isFalse);
       expect(r.printLabel, isFalse);
-      expect(r.analysis.needsSignoff, isTrue);
-      expect((r.feedback, r.feedbackText), (FeedbackCode.check, 'NOT STABLE'));
+      expect(r.analysis.needsSignoff, isFalse);
+      expect((r.feedback, r.feedbackText), (FeedbackCode.saved, 'EAN32'));
     });
 
-    test('not stable wins over a mismatch', () {
+    test('not stable and a mismatch: the mismatch is reported', () {
       final r = _save(
         drifting(25, 27),
         setup: _setup(desiredMix: const DesiredMix(32, 0)),
       );
       expect(r.analysis.stable, isFalse);
-      expect((r.feedback, r.feedbackText), (FeedbackCode.check, 'NOT STABLE'));
-    });
-
-    test('no desired mix: saved flagged', () {
-      final r = _save(steady(21.0, 35.0), setup: _setup(desiredMix: null));
-      expect(r.analysis.desiredMix, isNull);
       expect(r.printLabel, isFalse);
       expect(r.analysis.needsSignoff, isTrue);
-      expect((r.feedback, r.feedbackText), (FeedbackCode.saved, 'NO MIX SET'));
+      expect((r.feedback, r.feedbackText), (FeedbackCode.check, 'MISMATCH'));
+    });
+
+    test('no desired mix, printing on: prints the analysed mix', () {
+      final r = _save(steady(32.0, 0.0), setup: _setup(desiredMix: null));
+      expect(r.analysis.desiredMix, isNull);
+      expect(r.printLabel, isTrue);
+      expect(r.analysis.needsSignoff, isTrue);
+      expect((r.feedback, r.feedbackText), (FeedbackCode.printed, 'EAN32'));
+    });
+
+    test('no desired mix, printing off: complete', () {
+      final r = _save(
+        steady(32.0, 0.0),
+        setup: _setup(desiredMix: null, printOnOk: false),
+      );
+      expect(r.analysis.desiredMix, isNull);
+      expect(r.printLabel, isFalse);
+      expect(r.analysis.needsSignoff, isFalse);
+      expect((r.feedback, r.feedbackText), (FeedbackCode.saved, 'EAN32'));
+    });
+
+    test('no desired mix and not stable, printing on: prints', () {
+      final r = _save(drifting(30, 32), setup: _setup(desiredMix: null));
+      expect(r.analysis.stable, isFalse);
+      expect(r.printLabel, isTrue);
+      expect((r.feedback, r.feedbackText), (FeedbackCode.printed, 'EAN32'));
     });
 
     test('no name: saved flagged', () {
@@ -264,13 +300,35 @@ void main() {
       expect(r.analysis.analysedBy, isNull);
     });
 
-    test('no name and no mix: the mix is reported first', () {
+    test('no name and no desired mix: saved flagged, no label', () {
       final r = _save(
         steady(21.0, 35.0),
         setup: _setup(analysedBy: null, desiredMix: null),
       );
-      expect((r.feedback, r.feedbackText), (FeedbackCode.saved, 'NO MIX SET'));
+      expect(r.printLabel, isFalse);
       expect(r.analysis.needsSignoff, isTrue);
+      expect((r.feedback, r.feedbackText), (FeedbackCode.saved, 'NO NAME SET'));
+    });
+
+    test('no name and not stable: saved flagged, no label', () {
+      final r = _save(
+        drifting(30, 32),
+        setup: _setup(analysedBy: null, desiredMix: const DesiredMix(31, 0)),
+      );
+      expect(r.analysis.stable, isFalse);
+      expect(r.printLabel, isFalse);
+      expect(r.analysis.needsSignoff, isTrue);
+      expect((r.feedback, r.feedbackText), (FeedbackCode.saved, 'NO NAME SET'));
+    });
+
+    test('a mismatch is reported before a missing name', () {
+      final r = _save(
+        steady(26.0, 0.0),
+        setup: _setup(analysedBy: null, desiredMix: const DesiredMix(32, 0)),
+      );
+      expect(r.printLabel, isFalse);
+      expect(r.analysis.needsSignoff, isTrue);
+      expect((r.feedback, r.feedbackText), (FeedbackCode.check, 'MISMATCH'));
     });
 
     test('room air is skipped', () {
@@ -417,16 +475,17 @@ void main() {
   });
 
   group('stability', () {
-    test('a window shorter than 20 s is not stable', () {
+    test('a window shorter than 20 s is not stable, and still prints', () {
       final r = _save(steady(21.0, 35.0, lines: 50));
       expect(r.analysis.stable, isFalse);
-      expect((r.feedback, r.feedbackText), (FeedbackCode.check, 'NOT STABLE'));
+      expect(r.printLabel, isTrue);
+      expect((r.feedback, r.feedbackText), (FeedbackCode.printed, 'Tx21/35'));
     });
 
-    test('an empty window is not stable', () {
+    test('an empty window is not stable, and still prints', () {
       final r = _save(steady(21.0, 35.0, lines: 0, heldLine: soloLine(21, 35)));
       expect(r.analysis.stable, isFalse);
-      expect(r.printLabel, isFalse);
+      expect(r.printLabel, isTrue);
     });
 
     test('a sensor error inside the window restarts the 20 s clock', () {
@@ -439,7 +498,7 @@ void main() {
         ),
       );
       expect(r.analysis.stable, isFalse);
-      expect(r.printLabel, isFalse);
+      expect(r.printLabel, isTrue);
     });
 
     test('a window line that is not a SOLO line is ignored', () {
@@ -522,11 +581,15 @@ void main() {
       );
     });
 
-    test('a late record that is not stable still says not stable', () {
+    test('a late record that is not stable still says sign off later', () {
       final r = _save(drifting(30, 32, live: false));
       expect(r.analysis.stable, isFalse);
       expect(r.analysis.needsSignoff, isTrue);
-      expect((r.feedback, r.feedbackText), (FeedbackCode.check, 'NOT STABLE'));
+      expect(r.printLabel, isFalse);
+      expect(
+        (r.feedback, r.feedbackText),
+        (FeedbackCode.saved, 'SIGN OFF LATER'),
+      );
     });
   });
 
@@ -631,7 +694,7 @@ void main() {
       );
     });
 
-    test('the second OK was pressed too early to be stable', () {
+    test('the second OK was pressed too early to be stable, and it saves', () {
       final log = readSoloCaptureLog(
         'test/fixtures/analyzer/solo_ok_presses_2026-11-03_b.txt',
       );
@@ -649,7 +712,34 @@ void main() {
       );
       expect(r.analysis.o2Percent, 19.8);
       expect(r.analysis.stable, isFalse);
-      expect((r.feedback, r.feedbackText), (FeedbackCode.check, 'NOT STABLE'));
+      // The OK press is the confirmation: no desired mix, named, live.
+      expect(r.printLabel, isFalse);
+      expect(r.analysis.needsSignoff, isFalse);
+      expect(
+        (r.feedback, r.feedbackText),
+        (FeedbackCode.saved, 'Hypoxic 20'),
+      );
+    });
+
+    test('the second OK, with printing on, prints', () {
+      final log = readSoloCaptureLog(
+        'test/fixtures/analyzer/solo_ok_presses_2026-11-03_b.txt',
+      );
+      final gap = log.gaps.firstWhere(
+        (g) => g.length > const Duration(seconds: 20),
+      );
+      final record = recordBeforeGap(log, gap);
+      final r = _save(
+        record,
+        clock: BridgeClock(boot: 1, upMs: record.upMs + 2000),
+        setup: _setup(desiredMix: null),
+      );
+      expect(r.analysis.stable, isFalse);
+      expect(r.printLabel, isTrue);
+      expect(
+        (r.feedback, r.feedbackText),
+        (FeedbackCode.printed, 'Hypoxic 20'),
+      );
     });
   });
 }

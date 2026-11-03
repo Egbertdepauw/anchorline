@@ -8,8 +8,9 @@
 /// edit uses the corrected values.
 ///
 /// An entry that needs sign-off (Log on OK) gets a "Sign off" button, which
-/// needs "analysed by" and a desired mix, and, with a printer set up, "Sign
-/// off and print". The sheet can also delete the entry, after a confirm.
+/// needs "analysed by" (a desired mix is optional), and, with a printer set
+/// up, "Sign off and print". The sheet can also delete the entry, after a
+/// confirm.
 library;
 
 import 'dart:async';
@@ -245,7 +246,7 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
     final signOff = outcome == AnalysisEditOutcome.signedOff ||
         outcome == AnalysisEditOutcome.signOffAndPrint;
     final analysedBy = _blankToNull(_diver.text);
-    if (signOff && (analysedBy == null || _desired == null)) return;
+    if (signOff && analysedBy == null) return;
     setState(() {
       _saving = true;
       _error = null;
@@ -346,7 +347,7 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
     final pressure = parseFillPressure(_fill.text);
     final hasName = _blankToNull(_diver.text) != null;
     final canWrite = !_saving && pressure.valid;
-    final canSignOff = canWrite && hasName && desired != null;
+    final canSignOff = canWrite && hasName;
     return Padding(
       key: const ValueKey('analysis-edit-sheet'),
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
@@ -475,9 +476,9 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
             ],
             const SizedBox(height: Spacing.lg),
             if (flagged) ...[
-              if (!hasName || desired == null) ...[
+              if (!hasName) ...[
                 Text(
-                  'To sign off, add who analysed it and the desired mix.',
+                  'To sign off, add who analysed it.',
                   key: const ValueKey('analysis-edit-signoff-hint'),
                   style:
                       AppTypography.caption.copyWith(color: palette.textMuted),

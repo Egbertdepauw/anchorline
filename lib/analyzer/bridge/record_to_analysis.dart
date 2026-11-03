@@ -8,6 +8,10 @@
 /// "print" decision puts a wrong label on a cylinder, so the rules are
 /// deliberately boring and each one has a test.
 ///
+/// The OK press is the diver's confirmation (decision 18): the reading does
+/// not have to be stable, and a desired mix is optional. Stability is still
+/// worked out and stored on the analysis, it just does not gate anything.
+///
 /// Pure Dart: no Flutter, no I/O. The decision order is spec section 5,
 /// `docs/superpowers/specs/2026-11-03-background-gas-logging-design.md`.
 library;
@@ -153,12 +157,14 @@ class SaveRecord extends RecordOutcome {
 ///     [LogOnOkSetup.modPpo2s] always applies.
 ///  7. The desired mix is graded against the measured gas.
 ///  8. Print only if live, the diver asked for it, a printer exists, there
-///     is a name and a desired mix, the reading is stable and the grade is
-///     a match or orange.
-///  9. The entry needs sign-off unless it is complete, stable, live and not
-///     mismatched; a pending print also flags it until the print succeeds.
-/// 10. The feedback, the first that fits: printed, not stable, mismatch,
-///     late, no mix, no name, else saved.
+///     is a name, and either there is no desired mix (the label then shows
+///     the analysed mix) or the grade against it is a match or orange.
+///     Stability is not part of it.
+///  9. The entry needs sign-off if a print is pending (until it succeeds),
+///     or it is late, has no name, or is a red or hard mismatch against a
+///     desired mix. No desired mix and an unstable reading do not flag it.
+/// 10. The feedback, the first that fits: printed, mismatch, late, no name,
+///     else saved with the analysed mix.
 /// 11. The analysis itself, carrying [source] as its capture source
 ///     ([CaptureSource.bridgeOk] for the ESP32 bridge, [CaptureSource.usbOk]
 ///     for the app's own hold detector on a USB cable).
@@ -260,37 +266,27 @@ RecordOutcome recordToAnalysis({
   final mismatch = level == MixMatchLevel.red || level == MixMatchLevel.hard;
   final named = analysedBy != null;
 
-  // 8. A label from the diver's pocket.
+  // 8. A label from the diver's pocket. The OK press is the confirmation, so
+  // stability is not asked for; a desired mix is checked only when there is
+  // one (red and hard mean no print, nobody sees the colour in a pocket).
   final printLabel =
       live &&
       setup.printOnOk &&
       setup.printerConfigured &&
       named &&
-      desiredMix != null &&
-      stable &&
-      matches;
+      (desiredMix == null || matches);
 
   // 9. Sign-off.
-  final needsSignoff =
-      printLabel ||
-      !live ||
-      !named ||
-      desiredMix == null ||
-      !stable ||
-      mismatch;
+  final needsSignoff = printLabel || !live || !named || mismatch;
 
   // 10. Feedback.
   final mix = gasMixName(o2, he);
   final (FeedbackCode, String) feedback = printLabel
       ? (FeedbackCode.printed, mix)
-      : !stable
-      ? (FeedbackCode.check, 'NOT STABLE')
       : mismatch
       ? (FeedbackCode.check, 'MISMATCH')
       : !live
       ? (FeedbackCode.saved, 'SIGN OFF LATER')
-      : desiredMix == null
-      ? (FeedbackCode.saved, 'NO MIX SET')
       : !named
       ? (FeedbackCode.saved, 'NO NAME SET')
       : (FeedbackCode.saved, mix);
