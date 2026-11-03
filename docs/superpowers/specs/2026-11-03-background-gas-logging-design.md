@@ -69,6 +69,13 @@ From the second brainstorm (the bridge-logging spec) and the merge:
     the first later step (see "Later").
 15. **OK is the trigger.** Saving on "the reading went stable" was the fallback in case OK couldn't
     be detected. The capture shows it can (§1), so there is no stable trigger.
+16. **Confirmed in the merge** (Egbert: "I agree with the above"):
+    - "Analysed by" and the desired mix, set before the OK, count as the sign-off (decisions 2 and
+      10 together). Everything else still needs sign-off before it prints.
+    - The bridge keeps each OK press in flash until the app confirms the save (call 2 below).
+    - The setup carries over from one cylinder to the next (call 6), and the "for" field goes in
+      the log, not on the label (decision 6).
+    - The firmware is Apache-2.0 (decision 8).
 
 ## Goals
 
@@ -451,7 +458,8 @@ With "Log on OK" on and the bridge connected, the existing save card turns into 
 
 1. If the record's `boot` is the bridge's current boot: phone now − (bridge `up` now − record `up`).
 2. Otherwise, the record's `wall` if it isn't 0.
-3. Otherwise, the SOLO's own timestamp in `H`. Its clock can be off, but it's better than nothing.
+3. Otherwise, the SOLO's own timestamp in `H`. Its clock can be far off: Egbert's SOLO was about 41
+   minutes behind the Mac on 2026-11-03. It's still better than nothing.
 4. Otherwise, the time of delivery, with a note in `notes` ("time unknown, delivered …").
 
 ### Live or late
