@@ -8,6 +8,10 @@
 /// to edit what the diver stated (desired mix, gas role, analysed by,
 /// notes). With a label printer set up, each entry has a print action:
 /// copies, then the hard-mismatch warning when it applies, then the print.
+///
+/// An entry that needs sign-off (issue #113, Log on OK) carries a "Needs
+/// sign-off" badge and has no print action until it is signed off. A line
+/// above the list counts them, and a filter chip narrows the list to them.
 library;
 
 import 'dart:async';
@@ -86,6 +90,9 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
   /// printer has answered. Their print action is off meanwhile.
   final Set<String> _reprinting = {};
 
+  /// The "Show only these" filter of the sign-off line is on.
+  bool _onlyNeedsSignoff = false;
+
   @override
   void initState() {
     super.initState();
@@ -102,7 +109,14 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
   /// Reads the log and shows it. Returns what was read.
   Future<List<GasAnalysis>> _reload() async {
     final items = await widget.dao.list(cylinderId: widget.cylinderId);
-    if (mounted) setState(() => _items = items);
+    if (mounted) {
+      setState(() {
+        _items = items;
+        // With nothing left to filter to the filter goes too, so it does
+        // not come back on its own when an entry is flagged again.
+        if (!items.any((a) => a.needsSignoff)) _onlyNeedsSignoff = false;
+      });
+    }
     return items;
   }
 
@@ -110,6 +124,29 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
   /// the list on the way.
   Future<GasAnalysis?> _stored(String id) async =>
       (await _reload()).where((x) => x.id == id).firstOrNull;
+
+  /// What the list shows of [items]: all of them, or only those that need
+  /// sign-off while the filter is on. The filter does nothing when none do.
+  List<GasAnalysis> _shown(List<GasAnalysis> items) {
+    if (!_onlyNeedsSignoff) return items;
+    final flagged = items.where((a) => a.needsSignoff).toList();
+    return flagged.isEmpty ? items : flagged;
+  }
+
+  /// Shows [kSignOffBeforePrintMessage] in place of the SnackBar that is up
+  /// when [a] still needs sign-off. True when it does: the caller stops.
+  ///
+  /// The print service refuses such an entry too, but its failure bar
+  /// offers a Retry that could never succeed; this one has none.
+  bool _refuseUnsigned(GasAnalysis a) {
+    if (!a.needsSignoff) return false;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(content: Text(kSignOffBeforePrintMessage)),
+      );
+    return true;
+  }
 
   /// Opens the edit sheet for [a], offering the recent desired mixes of the
   /// list. True when an edit was saved.
@@ -140,7 +177,8 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
   /// The entry is read back after the copies prompt too, since it can be
   /// edited or deleted (here or through sync) while the prompt is up. The
   /// label is always of the entry as stored; a deleted entry is not
-  /// printed. A Retry of a failed print reads it back again.
+  /// printed, and neither is one that needs sign-off by then (the SnackBar
+  /// says so). A Retry of a failed print reads it back again.
   Future<void> _reprint(GasAnalysis a) async {
     final service = widget.labelPrinting;
     // The guard goes up before the first await, so a double tap can't
@@ -152,6 +190,7 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
       if (copies == null || !mounted) return;
       final current = await _stored(a.id);
       if (current == null || !mounted) return;
+      if (_refuseUnsigned(current)) return;
       var entry = current;
       while (entry.match?.level == MixMatchLevel.hard) {
         final choice = await showMixMismatchDialog(context, analysis: entry);
@@ -160,6 +199,7 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
         if (!await _openEditSheet(entry)) return;
         final stored = await _stored(entry.id);
         if (stored == null || !mounted) return;
+        if (_refuseUnsigned(stored)) return;
         entry = stored;
       }
       // The Retry may run after this screen is gone, so it reads through
@@ -194,8 +234,9 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
   }
 
   Future<void> _export() async {
-    final items = _items;
-    if (items == null || items.isEmpty) return;
+    final all = _items;
+    if (all == null || all.isEmpty) return;
+    final items = _shown(all);
     final messenger = ScaffoldMessenger.of(context);
     final box = context.findRenderObject() as RenderBox?;
     final origin =
@@ -231,12 +272,54 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
           ? const Center(child: CircularProgressIndicator())
           : items.isEmpty
               ? _empty(context)
-              : ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (_, _) => Divider(
-                      height: 1, color: context.palette.surfaceRaised),
-                  itemBuilder: (context, i) => _tile(context, items[i]),
-                ),
+              : _list(context, items),
+    );
+  }
+
+  Widget _list(BuildContext context, List<GasAnalysis> items) {
+    final needSignoff = items.where((a) => a.needsSignoff).length;
+    final shown = _shown(items);
+    final list = ListView.separated(
+      itemCount: shown.length,
+      separatorBuilder: (_, _) =>
+          Divider(height: 1, color: context.palette.surfaceRaised),
+      itemBuilder: (context, i) => _tile(context, shown[i]),
+    );
+    if (needSignoff == 0) return list;
+    return Column(
+      children: [
+        _signoffLine(context, needSignoff),
+        Expanded(child: list),
+      ],
+    );
+  }
+
+  /// "2 analyses need sign-off" and the chip that narrows the list to them.
+  Widget _signoffLine(BuildContext context, int count) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.lg, vertical: Spacing.xs),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              count == 1
+                  ? '1 analysis needs sign-off'
+                  : '$count analyses need sign-off',
+              key: const ValueKey('analysis-log-signoff-count'),
+              style: AppTypography.body
+                  .copyWith(color: context.palette.textPrimary),
+            ),
+          ),
+          const SizedBox(width: Spacing.sm),
+          FilterChip(
+            key: const ValueKey('analysis-log-signoff-filter'),
+            label: const Text('Show only these'),
+            selected: _onlyNeedsSignoff,
+            onSelected: (on) => setState(() => _onlyNeedsSignoff = on),
+          ),
+        ],
+      ),
     );
   }
 
@@ -260,7 +343,9 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     final desired = a.desiredMix;
     final diluent = a.gasRole == GasRole.diluent;
     final printing = widget.labelPrinting;
-    final canPrint = printing != null && printing.isConfigured;
+    // An entry that needs sign-off never prints a label until signed off.
+    final canPrint =
+        printing != null && printing.isConfigured && !a.needsSignoff;
     final details = <String>[
       _dateFormat.format(a.analysedAt),
       if (widget.cylinderId == null && a.cylinderDisplay != null)
@@ -295,15 +380,26 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (diluent || desired != null)
+            if (a.needsSignoff || diluent || desired != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: Spacing.xs),
                 child: Wrap(
                   spacing: Spacing.sm,
+                  runSpacing: Spacing.xs,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
+                    if (a.needsSignoff)
+                      _Marker(
+                        key: ValueKey('analysis-needs-signoff-${a.id}'),
+                        label: 'Needs sign-off',
+                        color: SafetyColors.warning,
+                      ),
                     if (diluent)
-                      _DilMarker(key: ValueKey('analysis-dil-${a.id}')),
+                      _Marker(
+                        key: ValueKey('analysis-dil-${a.id}'),
+                        label: 'DIL',
+                        color: palette.accentPrimary,
+                      ),
                     if (desired != null)
                       Text(
                         'Desired ${desired.name}',
@@ -359,13 +455,16 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
   }
 }
 
-/// Marks a diluent entry in the log; bailout/deco entries have none.
-class _DilMarker extends StatelessWidget {
-  const _DilMarker({super.key});
+/// A small outlined tag on an entry: "DIL" on a diluent entry (bailout and
+/// deco entries have none), "Needs sign-off" on one that is not signed off.
+class _Marker extends StatelessWidget {
+  const _Marker({super.key, required this.label, required this.color});
+
+  final String label;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final color = context.palette.accentPrimary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Spacing.xs + 2),
       decoration: BoxDecoration(
@@ -373,7 +472,7 @@ class _DilMarker extends StatelessWidget {
         borderRadius: Radii.chipBr,
       ),
       child: Text(
-        'DIL',
+        label,
         style: AppTypography.label.copyWith(
           color: color,
           fontWeight: FontWeight.w700,

@@ -13,6 +13,7 @@ import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
 import 'package:ccrlogger/ui/screens/equipment/cylinder_detail_screen.dart';
 import 'package:ccrlogger/ui/screens/gas_analysis_log_screen.dart';
+import 'package:ccrlogger/ui/theme/safety_colors.dart';
 import 'package:ccrlogger/ui/widgets/mix_match_indicator.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -75,11 +76,24 @@ class _DeletedOnEditDao extends FakeGasAnalysesDao {
   }
 }
 
+/// A [FakeGasAnalysesDao] where an analysis is flagged as needing sign-off
+/// (through sync, say) as soon as it is edited.
+class _FlaggedOnEditDao extends FakeGasAnalysesDao {
+  _FlaggedOnEditDao({super.analyses});
+
+  @override
+  Future<void> update(String id, GasAnalysisEdit edit) async {
+    await super.update(id, edit);
+    await setNeedsSignoff(id, true);
+  }
+}
+
 void main() {
   GasAnalysis entry(String id, DateTime at, double o2, double he,
           {String? cylinderId,
           String? label,
           bool stable = true,
+          bool needsSignoff = false,
           int? targetO2,
           int? targetHe,
           GasRole gasRole = GasRole.bailout}) =>
@@ -93,6 +107,7 @@ void main() {
         hePercent: he,
         fillPressureBar: 200,
         stable: stable,
+        needsSignoff: needsSignoff,
         targetO2Percent: targetO2,
         targetHePercent: targetHe,
         gasRole: gasRole,
@@ -685,6 +700,211 @@ void main() {
         expect(find.text(mismatchTitle), findsNothing);
         expect(find.byType(SnackBar), findsNothing);
       });
+    });
+  });
+
+  group('needs sign-off', () {
+    const countKey = 'analysis-log-signoff-count';
+    const filterKey = 'analysis-log-signoff-filter';
+
+    /// Two flagged entries (newest) and one that is not.
+    FakeGasAnalysesDao twoFlagged() => FakeGasAnalysesDao(analyses: [
+          entry('f1', DateTime(2026, 10, 30, 18), 32.2, 0,
+              needsSignoff: true),
+          entry('f2', DateTime(2026, 10, 29, 18), 36, 0, needsSignoff: true),
+          entry('ok', DateTime(2026, 10, 28, 18), 50.3, 0),
+        ]);
+
+    int tiles(WidgetTester tester) =>
+        tester.widgetList(find.byType(ListTile)).length;
+
+    testWidgets('a flagged entry shows the badge and no print action',
+        (tester) async {
+      await pump(
+          tester,
+          GasAnalysisLogScreen(
+            dao: FakeGasAnalysesDao(analyses: [
+              entry('a1', DateTime(2026, 10, 30, 18), 32.2, 0,
+                  needsSignoff: true),
+              entry('a2', DateTime(2026, 10, 29, 18), 50.3, 0),
+            ]),
+            labelPrinting: _service(FakeLabelPrinter()),
+          ));
+      expect(_key('analysis-needs-signoff-a1'), findsOneWidget);
+      expect(find.descendant(
+              of: _key('analysis-needs-signoff-a1'),
+              matching: find.text('Needs sign-off')),
+          findsOneWidget);
+      // The warning colour, not a theme one.
+      final label = tester.widget<Text>(find.descendant(
+          of: _key('analysis-needs-signoff-a1'),
+          matching: find.text('Needs sign-off')));
+      expect(label.style?.color, SafetyColors.warning);
+      expect(_key('analysis-print-a1'), findsNothing);
+
+      // An entry that is signed off keeps its print action, and no badge.
+      expect(_key('analysis-needs-signoff-a2'), findsNothing);
+      expect(_key('analysis-print-a2'), findsOneWidget);
+    });
+
+    testWidgets('a flagged entry with a note, a desired mix and a DIL marker '
+        'still fits a phone', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final busy = GasAnalysis(
+        id: 'busy',
+        cylinderId: 'c1',
+        cylinderLabel: 'Left-hand S80 sidemount stage',
+        analysedBy: 'Egbert de Pauw',
+        analysedAt: DateTime(2026, 10, 30, 18, 5),
+        o2Percent: 10.4,
+        hePercent: 71.6,
+        fillPressureBar: 232,
+        stable: false,
+        notes: 'Topped up after the second fill',
+        targetO2Percent: 18,
+        targetHePercent: 45,
+        gasRole: GasRole.diluent,
+        needsSignoff: true,
+      );
+      await pump(
+          tester,
+          GasAnalysisLogScreen(
+            dao: FakeGasAnalysesDao(analyses: [busy]),
+            labelPrinting: _service(FakeLabelPrinter()),
+          ));
+      // A layout overflow would have failed the pump.
+      expect(_key('analysis-needs-signoff-busy'), findsOneWidget);
+      expect(_key('analysis-dil-busy'), findsOneWidget);
+      expect(_key(countKey), findsOneWidget);
+      expect(_key(filterKey), findsOneWidget);
+      expect(_key('analysis-print-busy'), findsNothing);
+    });
+
+    testWidgets('the count line counts flagged entries and filters to them',
+        (tester) async {
+      await pump(tester, GasAnalysisLogScreen(dao: twoFlagged()));
+      expect(tester.widget<Text>(_key(countKey)).data,
+          '2 analyses need sign-off');
+      expect(find.descendant(
+              of: _key(filterKey), matching: find.text('Show only these')),
+          findsOneWidget);
+      expect(tiles(tester), 3);
+
+      await tapAndSettle(tester, _key(filterKey));
+      expect(tiles(tester), 2);
+      expect(_key('analysis-ok'), findsNothing);
+      expect(tester.widget<FilterChip>(_key(filterKey)).selected, isTrue);
+      // The count stays what it is: the filter doesn't hide the line.
+      expect(tester.widget<Text>(_key(countKey)).data,
+          '2 analyses need sign-off');
+
+      await tapAndSettle(tester, _key(filterKey));
+      expect(tiles(tester), 3);
+      expect(tester.widget<FilterChip>(_key(filterKey)).selected, isFalse);
+    });
+
+    testWidgets('one flagged entry: "1 analysis needs sign-off"',
+        (tester) async {
+      await pump(
+          tester,
+          GasAnalysisLogScreen(
+              dao: FakeGasAnalysesDao(analyses: [
+            entry('f1', DateTime(2026, 10, 30, 18), 32.2, 0,
+                needsSignoff: true),
+            entry('ok', DateTime(2026, 10, 28, 18), 50.3, 0),
+          ])));
+      expect(tester.widget<Text>(_key(countKey)).data,
+          '1 analysis needs sign-off');
+    });
+
+    testWidgets('no flagged entries: no count line', (tester) async {
+      await pump(tester, GasAnalysisLogScreen(dao: seeded()));
+      expect(_key(countKey), findsNothing);
+      expect(_key(filterKey), findsNothing);
+      expect(find.textContaining('sign-off'), findsNothing);
+      expect(tiles(tester), 2);
+    });
+
+    testWidgets('the filter follows the entries: it goes when the last '
+        'flagged one is signed off', (tester) async {
+      final dao = twoFlagged();
+      await pump(tester, GasAnalysisLogScreen(dao: dao));
+      await tapAndSettle(tester, _key(filterKey));
+      expect(tiles(tester), 2);
+
+      // Signed off elsewhere, one at a time.
+      await dao.setNeedsSignoff('f1', false);
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(_key(countKey)).data,
+          '1 analysis needs sign-off');
+      expect(tiles(tester), 1);
+
+      await dao.setNeedsSignoff('f2', false);
+      await tester.pumpAndSettle();
+      expect(_key(countKey), findsNothing);
+      expect(tiles(tester), 3, reason: 'nothing left to filter to');
+
+      // Flagged again later: the old filter does not come back by itself.
+      await dao.setNeedsSignoff('ok', true);
+      await tester.pumpAndSettle();
+      expect(tester.widget<FilterChip>(_key(filterKey)).selected, isFalse);
+      expect(tiles(tester), 3);
+    });
+
+    testWidgets('export hands over what is shown', (tester) async {
+      String? csv;
+      await pump(
+          tester,
+          GasAnalysisLogScreen(
+            dao: twoFlagged(),
+            shareCsv: (c, _, _) async => csv = c,
+          ));
+      await tapAndSettle(tester, _key(filterKey));
+      await tapAndSettle(tester, _key('analysis-log-export'));
+      // The header and the two flagged entries.
+      expect(csv!.trimRight().split('\n'), hasLength(3));
+    });
+
+    testWidgets('an entry flagged while its print prompt is open prints '
+        'nothing', (tester) async {
+      final printer = FakeLabelPrinter();
+      final dao = FakeGasAnalysesDao(analyses: [tx()]);
+      await pump(tester,
+          GasAnalysisLogScreen(dao: dao, labelPrinting: _service(printer)));
+      await tapAndSettle(tester, _key('analysis-print-tx'));
+      expect(_key('copies-dialog-print'), findsOneWidget);
+
+      // Flagged through sync meanwhile.
+      await dao.setNeedsSignoff('tx', true);
+      await tester.pumpAndSettle();
+      await tapAndSettle(tester, _key('copies-dialog-print'));
+
+      expect(find.text(kSignOffBeforePrintMessage), findsOneWidget);
+      expect(printer.connects, 0);
+      expect(printer.printed, isEmpty);
+      expect(find.text('Retry'), findsNothing);
+      expect(_key('analysis-needs-signoff-tx'), findsOneWidget);
+    });
+
+    testWidgets('an entry flagged while it was edited after a mismatch '
+        'warning prints nothing', (tester) async {
+      final printer = FakeLabelPrinter();
+      final dao = _FlaggedOnEditDao(analyses: [ean()]);
+      await pump(tester,
+          GasAnalysisLogScreen(dao: dao, labelPrinting: _service(printer)));
+      await reprint(tester, 'ean');
+      await tapAndSettle(tester, find.text('Change desired mix'));
+      await tapAndSettle(tester, _key('desired-mix-other'));
+      await tester.enterText(_key('desired-mix-other-o2'), '32');
+      await tapAndSettle(tester, _key('desired-mix-other-ok'));
+      await tapAndSettle(tester, _key('analysis-edit-save'));
+
+      expect(find.text(kSignOffBeforePrintMessage), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
+      expect(printer.connects, 0);
+      expect(printer.printed, isEmpty);
     });
   });
 
