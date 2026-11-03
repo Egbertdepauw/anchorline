@@ -29,6 +29,7 @@ import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix, DiveTank
 import 'package:subsurface_core/data/models/sample_set.dart';
 import 'credentials.dart';
 import 'drift_sync_inputs.dart';
+import 'remote_repo_reader.dart';
 import 'remote_snapshot.dart';
 import 'repo.dart';
 import 'sync_planner.dart' show AbortedDive, CcrlogDiveBundle, SyncPlanner;
@@ -288,7 +289,8 @@ class SubsurfaceSyncOrchestrator {
     required SubsurfaceRepo repo,
   }) async {
     // Snapshot the on-disk state.
-    final snapshot = await RemoteSnapshot.read(repoDir);
+    final snapshot =
+        RemoteSnapshot.fromFiles(await readRemoteRepoFiles(repoDir));
 
     // Build CCRLog bundles. We load all dives + their satellites; in
     // practice 99% of dives are unchanged between sync runs, so this

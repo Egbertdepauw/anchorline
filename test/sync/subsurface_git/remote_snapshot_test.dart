@@ -1,7 +1,7 @@
-// Tests for RemoteSnapshot — the read-from-disk side of Phase D's
-// orchestration. We mirror the test/fixtures/subsurface tree into a
-// temp directory and assert that the snapshot extracts the right
-// fields from it.
+// Tests for RemoteSnapshot.fromFiles — the pure builder behind Phase D's
+// orchestration. We feed it the test/fixtures/subsurface tree, re-keyed
+// into the canonical repo layout, and assert that the snapshot extracts
+// the right fields from it.
 
 @TestOn('mac-os || linux || windows')
 library;
@@ -15,47 +15,37 @@ import 'package:path/path.dart' as p;
 
 const _fixturesRoot = 'test/fixtures/subsurface';
 
+// The fixtures are organised as
+//   <fixtures>/00-Subsurface
+//   <fixtures>/sites/Site-*
+//   <fixtures>/dives/<YYYY>/<MM>/<DD-Day-...>/{Dive-*, Divecomputer}
+// — but a real repo has Site-* under `01-Divesites/` and dives directly
+// under `<YYYY>/...`. This re-keys them into that canonical layout, as
+// POSIX paths relative to the repo root.
+Map<String, String> _fixtureFiles() => {
+      '00-Subsurface': File('$_fixturesRoot/00-Subsurface').readAsStringSync(),
+      for (final f
+          in Directory('$_fixturesRoot/sites').listSync().whereType<File>())
+        '01-Divesites/${p.basename(f.path)}': f.readAsStringSync(),
+      for (final f in Directory('$_fixturesRoot/dives')
+          .listSync(recursive: true)
+          .whereType<File>())
+        p.posix.joinAll(
+                p.split(p.relative(f.path, from: '$_fixturesRoot/dives'))):
+            f.readAsStringSync(),
+    };
+
 void main() {
-  group('RemoteSnapshot.read', () {
-    late Directory tmp;
-
-    setUp(() {
-      // Build a canonical Subsurface repo layout from the fixtures.
-      // The fixtures themselves are organised as
-      //   <fixtures>/00-Subsurface
-      //   <fixtures>/sites/Site-*
-      //   <fixtures>/dives/<YYYY>/<MM>/<DD-Day-...>/{Dive-*, Divecomputer}
-      // — but a real repo has Site-* under `01-Divesites/` and dives
-      // directly under `<YYYY>/...`. We materialise the canonical
-      // layout into [tmp] so the snapshot reader sees a real-shaped
-      // repo.
-      tmp = Directory.systemTemp.createTempSync('ccrlog_snap_');
-      // 00-Subsurface
-      File('$_fixturesRoot/00-Subsurface').copySync('${tmp.path}/00-Subsurface');
-      // 01-Divesites/
-      final sitesDst = Directory('${tmp.path}/01-Divesites')..createSync();
-      for (final f in Directory('$_fixturesRoot/sites').listSync()) {
-        if (f is File) {
-          f.copySync('${sitesDst.path}/${p.basename(f.path)}');
-        }
-      }
-      // <YYYY>/<MM>/<DD>/
-      _copyDirectory(Directory('$_fixturesRoot/dives'), tmp);
-    });
-
-    tearDown(() {
-      if (tmp.existsSync()) tmp.deleteSync(recursive: true);
-    });
-
-    test('existingMaxDiveNumber matches the highest Dive-NNN seen', () async {
-      final snap = await RemoteSnapshot.read(tmp);
+  group('RemoteSnapshot.fromFiles', () {
+    test('existingMaxDiveNumber matches the highest Dive-NNN seen', () {
+      final snap = RemoteSnapshot.fromFiles(_fixtureFiles());
       // Fixture set has Dive-13, Dive-365, Dive-656, Dive-705, Dive-710.
       expect(snap.existingMaxDiveNumber, 710);
     });
 
     test('existingDivesBySerialAndStart includes the modern Petrel '
-        'entries keyed correctly', () async {
-      final snap = await RemoteSnapshot.read(tmp);
+        'entries keyed correctly', () {
+      final snap = RemoteSnapshot.fromFiles(_fixtureFiles());
 
       // 2026/04/04-Sat-13=30=15 → 2026-04-04T13:30:15Z UTC.
       final t1 = DateTime.utc(2026, 04, 04, 13, 30, 15)
@@ -87,8 +77,8 @@ void main() {
       expect(dive2.diveNumber, 710);
     });
 
-    test('existingTopLevel parses the fixture 00-Subsurface', () async {
-      final snap = await RemoteSnapshot.read(tmp);
+    test('existingTopLevel parses the fixture 00-Subsurface', () {
+      final snap = RemoteSnapshot.fromFiles(_fixtureFiles());
       expect(snap.existingTopLevel, isNotEmpty);
 
       // First non-blank line is `version 3`.
@@ -108,9 +98,8 @@ void main() {
       );
     });
 
-    test('existingSites is keyed by hex id and parses each site',
-        () async {
-      final snap = await RemoteSnapshot.read(tmp);
+    test('existingSites is keyed by hex id and parses each site', () {
+      final snap = RemoteSnapshot.fromFiles(_fixtureFiles());
       // Fixtures: Site-0a9f7232, Site-0acb7fe3, Site-ecaf8184.
       expect(snap.existingSites.keys.toSet(),
           {'0a9f7232', '0acb7fe3', 'ecaf8184'});
@@ -124,52 +113,58 @@ void main() {
       expect(omSid.whereType<GpsLine>().single.lat, '28.420550');
     });
 
-    test('returns empty snapshot when repoRoot does not exist', () async {
-      final missing = Directory('${tmp.path}/does-not-exist');
-      final snap = await RemoteSnapshot.read(missing);
+    test('returns empty snapshot when there are no files', () {
+      final snap = RemoteSnapshot.fromFiles(const {});
       expect(snap.existingTopLevel, isEmpty);
       expect(snap.existingSites, isEmpty);
       expect(snap.existingDivesBySerialAndStart, isEmpty);
       expect(snap.existingMaxDiveNumber, 0);
     });
 
-    test('skips folders whose names do not match the date format', () async {
-      // Drop a stray top-level folder; it must not appear in the snapshot
-      // and must not break the walk.
-      Directory('${tmp.path}/.git').createSync();
-      File('${tmp.path}/.git/HEAD').writeAsStringSync('ref: refs/heads/x\n');
-      Directory('${tmp.path}/junk').createSync();
+    test('skips folders whose names do not match the date format', () {
+      // Stray `.git` and top-level folder contents must not appear in the
+      // snapshot and must not break the build.
+      final baseline = RemoteSnapshot.fromFiles(_fixtureFiles());
+      final files = _fixtureFiles()
+        ..['.git/HEAD'] = 'ref: refs/heads/x\n'
+        ..['junk/Dive-999'] = 'duration 1:00 min\n';
 
-      final snap = await RemoteSnapshot.read(tmp);
+      final snap = RemoteSnapshot.fromFiles(files);
       // Original max stays at 710 — we didn't add any real dive folders.
       expect(snap.existingMaxDiveNumber, 710);
+      expect(snap.existingDivesBySerialAndStart.length,
+          baseline.existingDivesBySerialAndStart.length);
     });
 
-    test('scan parses existing Dive-NNN files and attaches diveLines',
-        () async {
-      final snap = await RemoteSnapshot.read(tmp);
+    test('scan parses existing Dive-NNN files and attaches diveLines', () {
+      final snap = RemoteSnapshot.fromFiles(_fixtureFiles());
       expect(snap.existingDivesBySerialAndStart, isNotEmpty);
       final any = snap.existingDivesBySerialAndStart.values.first;
       expect(any.diveLines, isNotEmpty,
-          reason: 'read should populate diveLines from the on-disk Dive-NNN');
+          reason: 'fromFiles should populate diveLines from the Dive-NNN');
       // A Dive-NNN always carries a `duration` scalar; verify it parsed.
       expect(
         any.diveLines.whereType<ScalarLine>().any((l) => l.key == 'duration'),
         isTrue,
       );
     });
-  });
-}
 
-void _copyDirectory(Directory src, Directory dst) {
-  for (final entity in src.listSync(recursive: true)) {
-    final relPath = p.relative(entity.path, from: src.path);
-    final targetPath = p.join(dst.path, relPath);
-    if (entity is Directory) {
-      Directory(targetPath).createSync(recursive: true);
-    } else if (entity is File) {
-      Directory(p.dirname(targetPath)).createSync(recursive: true);
-      entity.copySync(targetPath);
-    }
-  }
+    test('bare Divecomputer wins over Divecomputer-NNN whatever the map order',
+        () {
+      final folder = '2026/04/04-Sat-13=30=15';
+      final bare =
+          File('$_fixturesRoot/dives/$folder/Divecomputer').readAsStringSync();
+      final files = {
+        '$folder/Divecomputer-001': 'model "Other"\nkeyvalue "Serial" "00000001"\n',
+        '$folder/Divecomputer': bare,
+        '$folder/Dive-705':
+            File('$_fixturesRoot/dives/$folder/Dive-705').readAsStringSync(),
+      };
+      final snap = RemoteSnapshot.fromFiles(files);
+      final t = DateTime.utc(2026, 4, 4, 13, 30, 15).millisecondsSinceEpoch ~/
+          1000;
+      expect(snap.existingDivesBySerialAndStart.keys.single,
+          (serial: 0xb89641e4, startTime: t));
+    });
+  });
 }
