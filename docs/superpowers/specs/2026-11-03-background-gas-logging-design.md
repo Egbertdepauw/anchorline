@@ -344,7 +344,7 @@ sign of a hold. The silence is.
 | `LIVE ON` / `LIVE OFF` | Forward `L` lines or not. On while the analyzer screen is visible **or a session runs**, so the bridge screen can show the live state (decision 12). Off only for a short collection connect. In a background session this wakes an iPhone about 5 times a second; the session is bounded, so this is accepted |
 | `STATE <code> [<mix>]` | The live state for the bridge screen: `settling`, `stable`, `sensor_error` or `air`, plus the live mix name (`gasMixName`). Sent on every change and at least every 3 s while `LIVE ON`; this doubles as the heartbeat |
 | `ACK <rid>` | Sent **after** the local database write has committed (or after deciding not to save, see §5). The bridge deletes the record |
-| `FB <rid> <code> <text>` | The result, for the screen. `code` is `printed`, `saved`, `check`, `skipped` or `error`. `text` is ≤ 24 characters, e.g. `EAN32`, `NOT STABLE`, `MISMATCH`, `NO MIX SET`, `PRINT FAILED`, `AIR — NOT LOGGED` |
+| `FB <rid> <code> <text>` | The result, for the screen. `code` is `printed`, `saved`, `check`, `skipped` or `error`. `text` is ≤ 24 ASCII characters, e.g. `EAN32`, `MISMATCH`, `NO NAME SET`, `SIGN OFF LATER`, `PRINT FAILED`, `AIR - NOT LOGGED` |
 | `CFG rec=<on\|off> vbus=<off\|on>` | Persisted on the bridge. `rec` mirrors the app's "Log on OK" option and is sent on every connection; with `rec=off`, OK makes no records at all. The factory default is `off` |
 
 ## 4. The app
@@ -688,7 +688,7 @@ A crash between steps leaves the entry flagged, never unflagged without a label.
 |---|---|
 | "Log on OK" off | OK only pauses the SOLO's display. The bridge makes no records, and saving is the Save button, as today |
 | Double OK (suspend + resume) | At most one record, made on the suspend. A quick double press (≤ 1.3 s measured) is under the 2 s threshold and makes none; the bridge shows nothing new |
-| OK pressed too early, then again once it settles | The first entry is flagged (`NOT STABLE`, no label). The per-cylinder values stay, so the second press saves complete and prints. The diver deletes the flagged one, or keeps it as a record of the early press |
+| OK pressed before the reading settled | The OK press is the confirmation (decision 18): saved complete with `stable = 0`, and printed when the other rules allow. The log shows the not-stable icon |
 | The bridge comes back after the 60-minute session timeout | The app is woken by the pending connection (iOS) or still running (Android). The session counts as ended, so the record is late: needs sign-off, no label. The app then drops the connection |
 | OK, OK, OK on the same gas | Two records, two entries, and two labels if printing. **Never auto-dropped:** a missing analysis is worse than a duplicate, and two cylinders of the same mix are common. The diver deletes the extra one in the log |
 | Link drops between hold and `ACK` | The record stays on the bridge and is sent again on reconnect. The derived row id plus `addFromBridge` make the re-send a no-op, and it is confirmed again |
@@ -700,7 +700,6 @@ A crash between steps leaves the entry flagged, never unflagged without a label.
 | Signed out | Same as a manual save today (owner from the session at insert time). No new behaviour. **Known bug, being fixed separately:** `gas_analyses` was missing from `OwnerIdBackfiller._syncedTables`, so rows saved while signed out disappeared from the log after sign-in. The fix is its own issue and PR, from the session "Fix: signed-out gas analyses vanish after sign-in" |
 | SOLO sensor error at the hold | Nothing saved, `ACK`, `FB error NO READING` |
 | OK pressed on room air | Nothing saved, `ACK`, `FB skipped AIR — NOT LOGGED`. Save air cylinders by hand on the analyzer screen |
-| Diver pressed OK before stable | Saved with `stable = 0`, needs sign-off, no label, `FB check NOT STABLE` |
 | Wrong mix in the setup, or the wrong cylinder | Red or hard: saved, needs sign-off, no label, `FB check MISMATCH`. The cylinder visibly has no label |
 | Printer off, out of paper, cover open | Saved, needs sign-off, `FB check PRINT FAILED`. Reprint from the log |
 | Two phones | One central at a time. If phone A saved but its `ACK` was lost and phone B connects first, B inserts the same id. Its upload (upsert) could overwrite A's later sign-off. **Accepted:** rare, needs two phones and a lost `ACK`, and loses no measurement |
