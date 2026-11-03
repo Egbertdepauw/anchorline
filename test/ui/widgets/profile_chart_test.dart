@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:ccrlogger/data/db/database.dart';
-import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix, DiveTank;
-import 'package:ccrlogger/data/models/sample_set.dart';
-import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix, DiveTank;
+import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
-import 'package:ccrlogger/shearwater/parser/hardware.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/widgets/trace_segmented_bar.dart' show TraceType;
 import 'package:ccrlogger/ui/theme/active_theme_builder.dart';

@@ -22,7 +22,7 @@ import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 import '../../analysis/cell_health.dart';
 import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
 import '../models/equipment.dart' show CylinderRole, SlotInUseException;
-import '../sample_codec/column_packer.dart';
+import 'package:subsurface_core/data/sample_codec/column_packer.dart';
 import 'database.dart';
 import 'dive_dao.dart' show DiveDao;
 

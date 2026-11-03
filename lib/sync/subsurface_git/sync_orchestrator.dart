@@ -24,9 +24,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../data/db/database.dart' show Cylinder, Dive, DiveComputer;
-import '../../data/models/annotation.dart';
-import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
-import '../../data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix, DiveTank;
+import 'package:subsurface_core/data/models/sample_set.dart';
 import 'credentials.dart';
 import 'remote_snapshot.dart';
 import 'repo.dart';

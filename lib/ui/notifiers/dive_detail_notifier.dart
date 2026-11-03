@@ -8,7 +8,7 @@ import 'package:flutter/foundation.dart';
 import '../../data/db/database.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
-import '../../data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
 
 /// ChangeNotifier backing the dive detail screen.
 ///

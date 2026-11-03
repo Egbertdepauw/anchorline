@@ -1,4 +1,4 @@
-import 'package:ccrlogger/shearwater/parser/constants.dart';
+import 'package:subsurface_core/shearwater/parser/constants.dart';
 import 'package:ccrlogger/ui/theme/data_colors.dart';
 import 'package:ccrlogger/ui/util/dive_mode_color.dart';
 import 'package:flutter/material.dart';

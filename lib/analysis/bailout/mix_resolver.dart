@@ -15,7 +15,7 @@
 /// plan starting at depth.
 library;
 
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'standard_mixes.dart';
 
 /// Hard PPO2 cap for selecting / accepting a bottom mix at [maxDepthMeters].

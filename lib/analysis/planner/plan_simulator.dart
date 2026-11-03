@@ -5,7 +5,7 @@ library;
 
 import 'dart:math' as math;
 
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import '../../data/models/dive_plan.dart';
 import '../bailout/ascent_simulator.dart' show AscentStop;
 import '../deco/schreiner.dart' show loadCompartment;

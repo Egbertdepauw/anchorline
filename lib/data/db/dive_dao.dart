@@ -22,9 +22,9 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 
-import '../models/sample_set.dart';
-import '../sample_codec/sample_codec.dart';
-import '../../shearwater/parser/dive_converter.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/data/sample_codec/sample_codec.dart';
+import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
 import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
 import 'database.dart';
 

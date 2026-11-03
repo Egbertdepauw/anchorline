@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart';
-import 'package:ccrlogger/data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
 import 'package:ccrlogger/ui/notifiers/dive_detail_notifier.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';

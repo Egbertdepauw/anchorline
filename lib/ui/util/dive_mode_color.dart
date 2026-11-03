@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../shearwater/parser/constants.dart';
+import 'package:subsurface_core/shearwater/parser/constants.dart';
 import '../theme/data_colors.dart';
 
 Color diveModeColor(int diveModeValue) {

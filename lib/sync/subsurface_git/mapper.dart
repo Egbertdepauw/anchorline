@@ -21,12 +21,12 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 import '../../data/db/database.dart' show Cylinder, Dive, DiveComputer;
-import '../../data/models/annotation.dart';
-import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
-import '../../data/models/sample_set.dart';
-import '../../shearwater/parser/constants.dart' show DiveMode;
-import '../../shearwater/parser/hardware.dart';
-import '../../shearwater/parser/parsed_dive.dart' show TankUsage;
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix, DiveTank;
+import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/shearwater/parser/constants.dart' show DiveMode;
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
+import 'package:subsurface_core/shearwater/parser/parsed_dive.dart' show TankUsage;
 import 'format/subsurface_format.dart';
 import 'format/subsurface_unit_parsing.dart' show quoteString;
 

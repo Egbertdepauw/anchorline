@@ -4,7 +4,7 @@
 /// the full ascent plan plus per-gas usage and a human-readable verdict.
 library;
 
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'ascent_simulator.dart' show AscentStop;
 import 'tank_recommender.dart' show TankRecommendation;
 

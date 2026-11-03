@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/equipment_dao.dart';
-import '../../data/models/annotation.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
 
 class DiveAnnotationsNotifier extends ChangeNotifier {
   final DiveAnnotationsDao _annotationsDao;

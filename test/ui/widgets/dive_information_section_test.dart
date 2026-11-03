@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
-import 'package:ccrlogger/data/models/annotation.dart' show DiveAnnotation;
+import 'package:subsurface_core/data/models/annotation.dart' show DiveAnnotation;
 import 'package:ccrlogger/ui/notifiers/dive_annotations_notifier.dart';
 import 'package:ccrlogger/ui/widgets/dive_information_section.dart';
 import 'package:drift/native.dart';

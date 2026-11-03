@@ -7,7 +7,7 @@ library;
 import 'dart:typed_data';
 
 import 'byte_reader.dart';
-import 'constants.dart';
+import 'package:subsurface_core/shearwater/parser/constants.dart';
 
 /// A single entry in the dive manifest.
 class ManifestEntry {

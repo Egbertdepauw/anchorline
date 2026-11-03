@@ -15,7 +15,7 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import '../../data/models/dive_plan.dart' show DivePlanGas;
 import '../theme/safety_colors.dart';
 import '../../analysis/mod.dart' as mod;

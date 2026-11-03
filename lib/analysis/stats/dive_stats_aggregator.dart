@@ -1,4 +1,4 @@
-import '../../shearwater/parser/constants.dart' show DiveMode;
+import 'package:subsurface_core/shearwater/parser/constants.dart' show DiveMode;
 import 'stats_result.dart';
 
 /// Pure aggregation of dives + cached derived stats into a [StatsResult].

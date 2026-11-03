@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:ccrlogger/analysis/merge/merged_sample_builder.dart';
 import 'package:ccrlogger/data/db/database.dart';
-import 'package:ccrlogger/data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Dive d({

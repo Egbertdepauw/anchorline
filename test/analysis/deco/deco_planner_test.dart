@@ -1,6 +1,6 @@
 import 'package:ccrlogger/analysis/deco/deco_planner.dart';
 import 'package:ccrlogger/analysis/deco/deco_step.dart';
-import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'package:flutter_test/flutter_test.dart';
 
 const _air = DiveGasMix(oxygenPercent: 21, heliumPercent: 0, isDiluent: false);

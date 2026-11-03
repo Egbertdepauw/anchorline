@@ -5,7 +5,7 @@ library;
 
 import 'dart:typed_data';
 
-import '../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'loop_gas.dart';
 
 /// Standard atmospheric pressure constant (mbar) used as a fallback.

@@ -1,6 +1,6 @@
 import 'package:ccrlogger/shearwater/ble/mock_ble_transport.dart';
 import 'package:ccrlogger/shearwater/ble/shearwater_ble_transport.dart';
-import 'package:ccrlogger/shearwater/parser/hardware.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

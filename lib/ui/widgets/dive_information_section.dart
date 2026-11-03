@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/db/database.dart';
-import '../../shearwater/parser/hardware.dart' show ShearwaterModel;
+import 'package:subsurface_core/shearwater/parser/hardware.dart' show ShearwaterModel;
 import '../components/data_row.dart' as components;
 import '../components/numeric_readout.dart';
 import '../components/section_header.dart';

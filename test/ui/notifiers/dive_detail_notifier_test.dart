@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
-import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
+import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
-import 'package:ccrlogger/shearwater/parser/hardware.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/ui/notifiers/dive_detail_notifier.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';

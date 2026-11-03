@@ -1,10 +1,10 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:ccrlogger/data/models/sample_set.dart';
-import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
-import 'package:ccrlogger/shearwater/parser/hardware.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/ui/widgets/cell_data_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

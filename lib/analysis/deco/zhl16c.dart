@@ -7,7 +7,7 @@ library;
 import 'dart:math';
 import 'dart:typed_data';
 
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'gas_pressures.dart';
 import 'replay_result.dart';
 import 'schreiner.dart';

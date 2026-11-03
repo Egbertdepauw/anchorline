@@ -15,7 +15,7 @@ library;
 
 import 'dart:typed_data';
 
-import '../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'loop_gas.dart';
 
 /// END colour-band thresholds (m).

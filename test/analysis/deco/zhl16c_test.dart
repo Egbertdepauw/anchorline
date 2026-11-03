@@ -2,7 +2,7 @@ import 'dart:typed_data';
 import 'package:ccrlogger/analysis/deco/gas_pressures.dart';
 import 'package:ccrlogger/analysis/deco/zhl16c.dart';
 import 'package:ccrlogger/analysis/deco/replay_result.dart';
-import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'package:flutter_test/flutter_test.dart';
 
 SampleStub _flat(double depthM, int durationSec, int intervalMs,

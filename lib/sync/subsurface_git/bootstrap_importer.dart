@@ -52,8 +52,8 @@ import 'package:path/path.dart' as p;
 
 import '../../data/db/dive_dao.dart';
 import '../../data/db/dive_annotations_dao.dart';
-import '../../data/models/annotation.dart';
-import '../../shearwater/parser/dive_converter.dart' show ConvertedDive;
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/shearwater/parser/dive_converter.dart' show ConvertedDive;
 import 'credentials.dart';
 import 'format/subsurface_format.dart';
 import 'format/subsurface_parser.dart';

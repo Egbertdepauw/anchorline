@@ -18,9 +18,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
-import 'package:ccrlogger/data/models/annotation.dart';
-import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix;
-import 'package:ccrlogger/data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/sample_set.dart';
 import 'package:ccrlogger/sync/subsurface_git/credentials.dart';
 import 'package:ccrlogger/sync/subsurface_git/sync_orchestrator.dart';
 import 'package:flutter_test/flutter_test.dart';

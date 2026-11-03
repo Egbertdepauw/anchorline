@@ -1,5 +1,5 @@
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
-import 'package:ccrlogger/data/models/annotation.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../_helpers/powersync_test_helper.dart';

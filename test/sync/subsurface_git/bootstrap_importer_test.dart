@@ -11,8 +11,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:ccrlogger/data/models/annotation.dart';
-import 'package:ccrlogger/shearwater/parser/dive_converter.dart'
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/shearwater/parser/dive_converter.dart'
     show ConvertedDive;
 import 'package:ccrlogger/sync/subsurface_git/bootstrap_importer.dart';
 import 'package:ccrlogger/sync/subsurface_git/credentials.dart';

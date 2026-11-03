@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../data/models/annotation.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
 
 /// Editor for the per-dive `weights` list (the structured replacement
 /// for the legacy `weight_system` free-text field). Each row carries a

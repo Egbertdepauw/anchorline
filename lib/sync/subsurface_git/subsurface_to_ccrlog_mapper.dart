@@ -48,13 +48,13 @@ library;
 
 import 'dart:typed_data';
 
-import '../../data/models/annotation.dart';
-import '../../data/models/dive.dart';
-import '../../data/models/sample_set.dart';
-import '../../shearwater/parser/constants.dart';
-import '../../shearwater/parser/dive_converter.dart' show ConvertedDive;
-import '../../shearwater/parser/hardware.dart';
-import '../../shearwater/parser/parsed_dive.dart' show TankUsage;
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/data/models/dive.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/shearwater/parser/constants.dart';
+import 'package:subsurface_core/shearwater/parser/dive_converter.dart' show ConvertedDive;
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
+import 'package:subsurface_core/shearwater/parser/parsed_dive.dart' show TankUsage;
 import 'format/subsurface_format.dart';
 import 'format/subsurface_unit_parsing.dart';
 

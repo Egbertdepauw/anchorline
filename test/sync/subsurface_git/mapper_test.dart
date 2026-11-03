@@ -18,10 +18,10 @@
 import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
-import 'package:ccrlogger/data/models/annotation.dart';
-import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix, DiveTank;
-import 'package:ccrlogger/data/models/sample_set.dart';
-import 'package:ccrlogger/shearwater/parser/parsed_dive.dart' show TankUsage;
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix, DiveTank;
+import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/shearwater/parser/parsed_dive.dart' show TankUsage;
 import 'package:ccrlogger/sync/subsurface_git/format/subsurface_format.dart';
 import 'package:ccrlogger/sync/subsurface_git/format/subsurface_serializer.dart';
 import 'package:ccrlogger/sync/subsurface_git/mapper.dart';

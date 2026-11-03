@@ -17,7 +17,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../analysis/bailout/ascent_simulator.dart' show AscentStop;
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import 'stop_ladder_table.dart' show StopLadderTable;

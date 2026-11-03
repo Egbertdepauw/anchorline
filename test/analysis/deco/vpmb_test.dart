@@ -3,7 +3,7 @@ import 'package:ccrlogger/analysis/deco/vpmb.dart';
 import 'package:ccrlogger/analysis/deco/zhl16c.dart' show SampleStub;
 import 'package:ccrlogger/analysis/deco/replay_result.dart';
 import 'package:ccrlogger/analysis/deco/vpmb_constants.dart';
-import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'package:flutter_test/flutter_test.dart';
 
 SampleStub _flat(double depthM, int durationSec, int intervalMs) {

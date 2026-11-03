@@ -6,7 +6,7 @@ library;
 
 import 'dart:collection';
 
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'replay_result.dart';
 import 'vpmb.dart';
 import 'zhl16c.dart';

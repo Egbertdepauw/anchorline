@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/db/database.dart';
 import '../../../data/db/equipment_dao.dart';
-import '../../../shearwater/parser/hardware.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import '../../notifiers/equipment_notifiers.dart';
 import 'dive_computer_detail_screen.dart';
 

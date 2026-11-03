@@ -2,7 +2,7 @@ import 'package:ccrlogger/analysis/bailout/bailout_result.dart';
 import 'package:ccrlogger/analysis/bailout/tank_recommender.dart'
     show kAl40, kAl80, kTank12L300;
 import 'package:ccrlogger/analysis/bailout/team_bailout.dart';
-import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'package:flutter_test/flutter_test.dart';
 
 const _tx968 =

@@ -6,7 +6,7 @@
 /// so the bailout planner doesn't need to know about [DecoStep].
 library;
 
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import '../deco/deco_planner.dart' show planDeco;
 
 // ---------------------------------------------------------------------------

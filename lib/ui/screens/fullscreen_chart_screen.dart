@@ -14,8 +14,8 @@ import 'package:flutter/material.dart';
 
 import '../../analysis/deco/replay_result.dart';
 import '../../data/db/database.dart';
-import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
-import '../../data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix, DiveTank;
+import 'package:subsurface_core/data/models/sample_set.dart';
 import '../widgets/crosshair_overlay.dart';
 import '../widgets/crosshair_tooltip.dart';
 import '../widgets/profile_chart.dart';

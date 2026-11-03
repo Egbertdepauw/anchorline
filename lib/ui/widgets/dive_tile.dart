@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../data/db/database.dart';
-import '../../data/models/annotation.dart' as dom;
+import 'package:subsurface_core/data/models/annotation.dart' as dom;
 import '../components/numeric_readout.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';

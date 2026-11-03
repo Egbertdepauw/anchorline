@@ -10,7 +10,7 @@ library;
 
 import 'dart:math';
 
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 
 const double waterVapourPressureBar = 0.0627;
 

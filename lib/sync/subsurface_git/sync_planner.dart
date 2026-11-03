@@ -37,9 +37,9 @@ import 'format/subsurface_serializer.dart';
 import 'mapper.dart';
 
 import '../../data/db/database.dart' show Cylinder, Dive, DiveComputer;
-import '../../data/models/annotation.dart';
-import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
-import '../../data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix, DiveTank;
+import 'package:subsurface_core/data/models/sample_set.dart';
 
 /// Bundles one CCRLog dive with everything the mapper needs to emit it.
 ///

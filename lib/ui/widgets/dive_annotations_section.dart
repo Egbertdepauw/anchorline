@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/db/database.dart';
 import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/equipment_dao.dart';
-import '../../data/models/dive.dart';
+import 'package:subsurface_core/data/models/dive.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import '../screens/map_picker_screen.dart';

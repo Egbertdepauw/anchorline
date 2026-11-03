@@ -23,7 +23,7 @@
 ///   4. Tank picks come from the same [recommend] used for solo plans.
 library;
 
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'bailout_result.dart' show BailoutResult;
 import 'tank_recommender.dart' show TankRecommendation, TankSpec, recommend;
 

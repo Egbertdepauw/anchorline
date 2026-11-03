@@ -1,7 +1,7 @@
 /// Standard mix tables for the bailout planner. Per Track D spec.
 library;
 
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 
 const List<DiveGasMix> kNonGueBottomMixes = [
   DiveGasMix(oxygenPercent: 21, heliumPercent: 35, isDiluent: true),

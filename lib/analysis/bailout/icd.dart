@@ -18,7 +18,7 @@
 ///                 enough to make vestibular hits a real concern.
 library;
 
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'ascent_simulator.dart' show AscentStop;
 
 enum IcdSeverity { none, marginal, severe }

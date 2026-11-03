@@ -1,9 +1,9 @@
 import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart';
-import 'package:ccrlogger/data/models/dive.dart' show DiveTank;
-import 'package:ccrlogger/data/models/sample_set.dart';
-import 'package:ccrlogger/shearwater/parser/parsed_dive.dart' show TankUsage;
+import 'package:subsurface_core/data/models/dive.dart' show DiveTank;
+import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/shearwater/parser/parsed_dive.dart' show TankUsage;
 import 'package:ccrlogger/ui/widgets/trace_segmented_bar.dart' show TraceType;
 import 'package:ccrlogger/ui/widgets/crosshair_overlay.dart';
 import 'package:ccrlogger/ui/widgets/crosshair_tooltip.dart';

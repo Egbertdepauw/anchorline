@@ -2,8 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ccrlogger/shearwater/ble/protocol.dart';
-import 'package:ccrlogger/shearwater/parser/constants.dart';
-import 'package:ccrlogger/shearwater/parser/hardware.dart';
+import 'package:subsurface_core/shearwater/parser/constants.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Mock BLE I/O that replays a combined.txt trace.

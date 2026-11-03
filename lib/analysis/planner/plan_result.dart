@@ -1,7 +1,7 @@
 /// Result types for the dive-plan computation pipeline.
 library;
 
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import '../bailout/ascent_simulator.dart' show AscentStop;
 import '../bailout/bailout_result.dart' show BailoutResult;
 

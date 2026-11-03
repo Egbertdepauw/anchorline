@@ -20,7 +20,7 @@ import 'dart:convert';
 import 'package:powersync/powersync.dart' hide SyncStatus;
 
 import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
-import '../models/annotation.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
 
 /// Aggregated stats for one buddy across every dive that names them.
 /// `firstDiveTime`/`lastDiveTime` are Unix-seconds `dives.start_time`

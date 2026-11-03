@@ -1,5 +1,5 @@
-import 'package:ccrlogger/data/models/annotation.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:test/test.dart';
 
 void main() {
   final t = DateTime.utc(2026, 11, 2);
