@@ -10,12 +10,20 @@
 /// Layout: one column on phones; from [kAnalyzerWideBreakpoint] up, a
 /// grid like `docs/prototypes/solo-live.html` (readouts, mix and chart on
 /// the left, planning on the right).
+///
+/// "Log on OK" (#113): with the switch on and a real analyzer connected, a
+/// [UsbOkLogger] watches the session's lines, and an OK press on the SOLO
+/// saves an analysis (and prints its label) from the setup on the save card.
+/// The screen owns the logger: it exists only while the switch is on, a
+/// non-demo session is connected and there is a log to save to.
 library;
 
+import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 
 import '../../analysis/end.dart';
 import '../../analysis/gas_density.dart';
@@ -29,6 +37,7 @@ import '../../analyzer/transport/android_usb_transport.dart';
 import '../../analyzer/transport/demo_transport.dart';
 import '../../analyzer/transport/desktop_serial_transport.dart';
 import '../../analyzer/transport/serial_port_selection.dart';
+import '../../analyzer/usb_ok_logger.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../../labels/label_print_service.dart';
 import '../notifiers/settings_notifier.dart';
@@ -126,6 +135,36 @@ List<AnalyzerTransportOption> defaultAnalyzerTransportOptions() => [
         ),
     ];
 
+/// The [UsbOkLogger] the analyzer screen uses: saves go to [dao] under the
+/// id of the press (a press that was already saved is not saved twice), a
+/// label is printed through [printing], and an error that is not the diver's
+/// goes to Sentry.
+///
+/// The logger is built once per session, so whether a printer is set up is
+/// left to the print itself and to the save card, which says at each press
+/// whether it is ([LogOnOkSetup.printerConfigured]). A printer set up after
+/// the connect (through the card's link) is used from the next press.
+///
+/// [elapsed] and [tickInterval] are for tests; the screen leaves them out. A
+/// null [tickInterval] switches the timer off, so no OK would ever be seen.
+@visibleForTesting
+UsbOkLogger buildOkLogger({
+  required GasAnalysesDaoLike dao,
+  LabelPrintService? printing,
+  Duration Function()? elapsed,
+  Duration? tickInterval = const Duration(milliseconds: 200),
+}) =>
+    UsbOkLogger(
+      save: dao.addFromBridge,
+      markComplete: (id) => dao.setNeedsSignoff(id, false),
+      printLabel: printing == null
+          ? null
+          : (a, copies) => printing.printAnalysis(a, copies: copies),
+      elapsed: elapsed,
+      tickInterval: tickInterval,
+      onError: (e, s) => Sentry.captureException(e, stackTrace: s),
+    );
+
 class AnalyzerScreen extends StatefulWidget {
   const AnalyzerScreen({
     super.key,
@@ -135,6 +174,7 @@ class AnalyzerScreen extends StatefulWidget {
     this.analysesDao,
     this.blendTarget,
     this.labelPrinting,
+    this.okLoggerFactory,
   });
 
   final SettingsNotifier settings;
@@ -150,6 +190,12 @@ class AnalyzerScreen extends StatefulWidget {
   /// Cylinder label printing (#114): "Save & print" on the save card, or
   /// its "Set up label printer" link. Null hides both.
   final LabelPrintService? labelPrinting;
+
+  /// Injected for tests, which hold the logger and drive it with a manual
+  /// clock. When null the screen builds [buildOkLogger] with the real clock
+  /// and timer.
+  @visibleForTesting
+  final UsbOkLogger Function()? okLoggerFactory;
 
   /// Injected for tests. When null the screen owns its own controller.
   final AnalyzerController? controller;
@@ -174,18 +220,76 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   /// from. Null until a first session starts.
   bool? _sessionIsDemo;
 
+  /// The Log on OK logger while it is wanted, and the transport it watches.
+  UsbOkLogger? _okLogger;
+  AnalyzerTransport? _okTransport;
+
   @override
   void initState() {
     super.initState();
     _ownsController = widget.controller == null;
     _controller = widget.controller ?? AnalyzerController();
     _options = widget.transportOptions ?? defaultAnalyzerTransportOptions();
+    _controller.addListener(_syncOkLogger);
+    widget.settings.addListener(_syncOkLogger);
+  }
+
+  @override
+  void didUpdateWidget(AnalyzerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.settings != widget.settings) {
+      oldWidget.settings.removeListener(_syncOkLogger);
+      widget.settings.addListener(_syncOkLogger);
+    }
+    _syncOkLogger();
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_syncOkLogger);
+    widget.settings.removeListener(_syncOkLogger);
+    _stopOkLogger();
     if (_ownsController) _controller.dispose();
     super.dispose();
+  }
+
+  /// Whether Log on OK should be running now: the switch is on, there is a
+  /// log to save to, and the session that is connected is not the demo's.
+  bool get _okWanted =>
+      widget.settings.analyzerLogOnOk &&
+      widget.analysesDao != null &&
+      _sessionIsDemo == false &&
+      _controller.isConnected;
+
+  /// Builds and attaches the logger when Log on OK is wanted, and disposes
+  /// it when it no longer is or the session's transport changed. Cheap, as
+  /// the controller calls it on every reading. The card gets the logger in
+  /// the build that follows the notification.
+  void _syncOkLogger() {
+    final transport = _controller.transport;
+    if (!_okWanted || transport == null) {
+      _stopOkLogger();
+      return;
+    }
+    if (_okLogger != null && !identical(_okTransport, transport)) {
+      _stopOkLogger();
+    }
+    if (_okLogger != null) return;
+    final logger = widget.okLoggerFactory?.call() ??
+        buildOkLogger(dao: widget.analysesDao!, printing: widget.labelPrinting);
+    logger.attach(transport);
+    _okLogger = logger;
+    _okTransport = transport;
+  }
+
+  /// Detaches and disposes the logger. A press it is handling still
+  /// finishes and is saved.
+  void _stopOkLogger() {
+    final logger = _okLogger;
+    if (logger == null) return;
+    _okLogger = null;
+    _okTransport = null;
+    unawaited(logger.dispose());
   }
 
   Future<void> _toggleConnection() async {
@@ -316,6 +420,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         _connectionBar(),
         const SizedBox(height: Spacing.md),
         ..._banners(),
+        ..._logOnOkSwitch(),
         _GasReadoutCard.o2(reading: r, fontSize: 64),
         const SizedBox(height: Spacing.md),
         _GasReadoutCard.he(reading: r, fontSize: 64),
@@ -328,6 +433,28 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         ..._saveCard(),
       ],
     );
+  }
+
+  /// The "Log on OK" switch (#113), followed by a gap; empty without a log
+  /// to save to and for the demo source, whose readings are made up. The
+  /// switch is remembered on the device; the logger itself runs only while a
+  /// real session is connected ([_okWanted]).
+  List<Widget> _logOnOkSwitch() {
+    if (widget.analysesDao == null || _options[_selected].isDemo) {
+      return const [];
+    }
+    return [
+      SwitchListTile(
+        key: const ValueKey('analyzer-log-on-ok'),
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Log on OK'),
+        subtitle:
+            const Text('Press OK on the SOLO to save. Keep this screen open.'),
+        value: widget.settings.analyzerLogOnOk,
+        onChanged: widget.settings.setAnalyzerLogOnOk,
+      ),
+      const SizedBox(height: Spacing.sm),
+    ];
   }
 
   /// The "Save analysis" card (#111), preceded by a gap; empty without a
@@ -353,6 +480,9 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         modPpo2s: widget.settings.analyzerModPpo2s,
         blendTarget: widget.blendTarget,
         labelPrinting: printing,
+        okLogger: _okLogger,
+        initialAnalysedBy: widget.settings.analyzerAnalysedBy,
+        onAnalysedByChanged: widget.settings.setAnalyzerAnalysedBy,
         onSetUpPrinter: printing == null
             ? null
             : () => Navigator.of(context).push(MaterialPageRoute(
@@ -373,6 +503,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         _connectionBar(),
         const SizedBox(height: Spacing.lg),
         ..._banners(),
+        ..._logOnOkSwitch(),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

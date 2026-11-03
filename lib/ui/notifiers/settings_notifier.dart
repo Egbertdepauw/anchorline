@@ -42,6 +42,8 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kBlendFillTempC = 'blend_fill_temp_c';
   static const _kBlendSettledTempC = 'blend_settled_temp_c';
   static const _kAnalyzerModPpo2s = 'analyzer_mod_ppo2s';
+  static const _kAnalyzerLogOnOk = 'analyzer_log_on_ok';
+  static const _kAnalyzerAnalysedBy = 'analyzer_analysed_by';
   static const _kLabelUse14 = 'label_use_14_for_deeper_mixes';
   static const _kLabelPrinterId = 'label_printer_id';
   static const _kLabelPrinterName = 'label_printer_name';
@@ -114,6 +116,9 @@ class SettingsNotifier extends ChangeNotifier {
   double _blendSettledTempC = 18;
   // ── Gas analyzer ────────────────────────────────────────────────
   List<double> _analyzerModPpo2s = [...defaultAnalyzerModPpo2s];
+  // Log on OK over USB (device-local, never synced).
+  bool _analyzerLogOnOk = false;
+  String? _analyzerAnalysedBy;
   // ── Cylinder labels (device-local, never synced) ────────────────
   bool _labelUse14ForDeeperMixes = false;
   String? _labelPrinterId;
@@ -159,6 +164,14 @@ class SettingsNotifier extends ChangeNotifier {
 
   /// ppO2 limits (bar) the gas analyzer shows a MOD row for, ascending.
   List<double> get analyzerModPpo2s => List.unmodifiable(_analyzerModPpo2s);
+
+  /// Whether an OK press on the SOLO, over a USB cable, saves an analysis
+  /// while the analyzer screen is open (issue #113). Off by default.
+  bool get analyzerLogOnOk => _analyzerLogOnOk;
+
+  /// The name on the analyzer's save card, kept between sessions; null until
+  /// one has been typed.
+  String? get analyzerAnalysedBy => _analyzerAnalysedBy;
 
   /// Whether a cylinder label uses ppO2 1.4 instead of 1.6 for the MOD of a
   /// bailout/deco mix under 50 % O2.
@@ -281,6 +294,8 @@ class SettingsNotifier extends ChangeNotifier {
           aMod.map(double.tryParse).whereType<double>());
       if (parsed.isNotEmpty) _analyzerModPpo2s = parsed;
     }
+    _analyzerLogOnOk = prefs.getBool(_kAnalyzerLogOnOk) ?? false;
+    _analyzerAnalysedBy = prefs.getString(_kAnalyzerAnalysedBy);
     _labelUse14ForDeeperMixes = prefs.getBool(_kLabelUse14) ?? false;
     _labelPrinterId = prefs.getString(_kLabelPrinterId);
     _labelPrinterName = prefs.getString(_kLabelPrinterName);
@@ -608,6 +623,28 @@ class SettingsNotifier extends ChangeNotifier {
       _kAnalyzerModPpo2s,
       cleaned.map((v) => v.toString()).toList(),
     );
+  }
+
+  Future<void> setAnalyzerLogOnOk(bool v) async {
+    if (_analyzerLogOnOk == v) return;
+    _analyzerLogOnOk = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kAnalyzerLogOnOk, v);
+  }
+
+  /// Remembers the name typed on the save card. Blank means none.
+  Future<void> setAnalyzerAnalysedBy(String? v) async {
+    final name = v == null || v.trim().isEmpty ? null : v;
+    if (_analyzerAnalysedBy == name) return;
+    _analyzerAnalysedBy = name;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (name == null) {
+      await prefs.remove(_kAnalyzerAnalysedBy);
+    } else {
+      await prefs.setString(_kAnalyzerAnalysedBy, name);
+    }
   }
 
   Future<void> setLabelUse14ForDeeperMixes(bool v) async {
