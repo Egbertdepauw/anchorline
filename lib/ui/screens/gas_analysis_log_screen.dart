@@ -174,11 +174,13 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
   /// desired mix" opens the edit sheet; after a save the entry is read
   /// back as stored and checked again, with the copies already chosen.
   ///
-  /// The entry is read back after the copies prompt too, since it can be
-  /// edited or deleted (here or through sync) while the prompt is up. The
-  /// label is always of the entry as stored; a deleted entry is not
-  /// printed, and neither is one that needs sign-off by then (the SnackBar
-  /// says so). A Retry of a failed print reads it back again.
+  /// The entry is read back after every prompt (copies, the mismatch
+  /// dialog's "Print as ...", the edit sheet), since it can be edited or
+  /// deleted (here or through sync) while the prompt is up. The label is
+  /// always of the entry as stored; a deleted entry is not printed, and
+  /// neither is one that needs sign-off by then (the SnackBar says so). If
+  /// the mix or role changed while the mismatch dialog was up, it is graded
+  /// and asked about again. A Retry of a failed print reads it back again.
   Future<void> _reprint(GasAnalysis a) async {
     final service = widget.labelPrinting;
     // The guard goes up before the first await, so a double tap can't
@@ -195,12 +197,20 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
       while (entry.match?.level == MixMatchLevel.hard) {
         final choice = await showMixMismatchDialog(context, analysis: entry);
         if (!mounted || choice == MismatchChoice.cancel) return;
-        if (choice == MismatchChoice.printAnalysed) break;
-        if (!await _openEditSheet(entry)) return;
+        final printAnalysed = choice == MismatchChoice.printAnalysed;
+        if (!printAnalysed && !await _openEditSheet(entry)) return;
+        // The dialog or the sheet was up for a while: the entry can be
+        // flagged, deleted or changed (through sync) meanwhile.
         final stored = await _stored(entry.id);
         if (stored == null || !mounted) return;
         if (_refuseUnsigned(stored)) return;
+        // "Print as ..." answers for the mix and role the dialog showed.
+        // If they changed, the loop grades and asks again.
+        final answered = printAnalysed &&
+            stored.desiredMix == entry.desiredMix &&
+            stored.gasRole == entry.gasRole;
         entry = stored;
+        if (answered) break;
       }
       // The Retry may run after this screen is gone, so it reads through
       // the DAO, not the screen.

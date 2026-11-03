@@ -486,6 +486,82 @@ void main() {
         expect(find.byType(SnackBar), findsNothing);
         expect(_key('analysis-ean'), findsNothing);
       });
+
+      testWidgets('an entry deleted while the mismatch dialog is open prints '
+          'nothing', (tester) async {
+        final printer = FakeLabelPrinter();
+        final dao = FakeGasAnalysesDao(analyses: [ean()]);
+        await pump(tester,
+            GasAnalysisLogScreen(dao: dao, labelPrinting: _service(printer)));
+        await reprint(tester, 'ean');
+        expect(find.text(mismatchTitle), findsOneWidget);
+
+        await dao.softDelete('ean');
+        await tester.pumpAndSettle();
+        await tapAndSettle(tester, find.text('Print as EAN32'));
+
+        expect(printer.connects, 0);
+        expect(printer.printed, isEmpty);
+        expect(find.byType(SnackBar), findsNothing);
+      });
+
+      /// [ean] with its desired mix replaced, as an edit stores it.
+      GasAnalysisEdit eanEdit(DesiredMix mix) => GasAnalysisEdit(
+          desiredMix: mix,
+          gasRole: GasRole.bailout,
+          analysedBy: 'Egbert',
+          notes: null,
+          cylinderId: ean().cylinderId,
+          fillPressureBar: ean().fillPressureBar,
+          analysedFor: ean().analysedFor);
+
+      testWidgets('a desired mix changed while the mismatch dialog is open '
+          'is graded and asked about again', (tester) async {
+        final printer = FakeLabelPrinter();
+        final rendered = <CylinderLabel>[];
+        final dao = FakeGasAnalysesDao(analyses: [ean()]);
+        await pump(
+            tester,
+            GasAnalysisLogScreen(
+                dao: dao,
+                labelPrinting: _service(printer, rendered: rendered)));
+        await reprint(tester, 'ean');
+
+        // Changed through sync meanwhile: another hard mismatch.
+        await dao.update('ean', eanEdit(const DesiredMix(60, 0)));
+        await tester.pumpAndSettle();
+        await tapAndSettle(tester, find.text('Print as EAN32'));
+        expect(printer.printed, isEmpty, reason: 'asks about the new mix');
+        expect(find.text(mismatchTitle), findsOneWidget);
+
+        await tapAndSettle(tester, find.text('Print as EAN32'));
+        expect(printer.printed, hasLength(1));
+        expect(rendered.single.mixName, 'EAN32');
+      });
+
+      testWidgets('a desired mix changed to a milder mismatch while the '
+          'dialog is open prints that entry without asking again',
+          (tester) async {
+        final printer = FakeLabelPrinter();
+        final rendered = <CylinderLabel>[];
+        final dao = FakeGasAnalysesDao(analyses: [ean()]);
+        await pump(
+            tester,
+            GasAnalysisLogScreen(
+                dao: dao,
+                labelPrinting: _service(printer, rendered: rendered)));
+        await reprint(tester, 'ean', copies: 2);
+
+        // 2.9 off EAN35: red, no longer a hard mismatch. Up to red the
+        // label shows the desired name, so it is of the entry as stored now.
+        await dao.update('ean', eanEdit(const DesiredMix(35, 0)));
+        await tester.pumpAndSettle();
+        await tapAndSettle(tester, find.text('Print as EAN32'));
+
+        expect(find.text(mismatchTitle), findsNothing);
+        expect(printer.printed.single.$2, 2);
+        expect(rendered.single.mixName, 'EAN35');
+      });
     });
 
     testWidgets('a second tap while a reprint is under way does nothing',
@@ -900,6 +976,27 @@ void main() {
       await tester.enterText(_key('desired-mix-other-o2'), '32');
       await tapAndSettle(tester, _key('desired-mix-other-ok'));
       await tapAndSettle(tester, _key('analysis-edit-save'));
+
+      expect(find.text(kSignOffBeforePrintMessage), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
+      expect(printer.connects, 0);
+      expect(printer.printed, isEmpty);
+    });
+
+    testWidgets('an entry flagged while the mismatch dialog is open prints '
+        'nothing', (tester) async {
+      final printer = FakeLabelPrinter();
+      final dao = FakeGasAnalysesDao(analyses: [ean()]);
+      await pump(tester,
+          GasAnalysisLogScreen(dao: dao, labelPrinting: _service(printer)));
+      await reprint(tester, 'ean');
+      expect(find.text(mismatchTitle), findsOneWidget);
+
+      // Flagged through sync meanwhile.
+      await dao.setNeedsSignoff('ean', true);
+      await tester.pumpAndSettle();
+      expect(find.text(mismatchTitle), findsOneWidget);
+      await tapAndSettle(tester, find.text('Print as EAN32'));
 
       expect(find.text(kSignOffBeforePrintMessage), findsOneWidget);
       expect(find.text('Retry'), findsNothing);
