@@ -168,7 +168,7 @@ void main() {
     expect(lines.first, startsWith('"time","cylinder","diver","mix"'));
     expect(lines, hasLength(3));
     expect(lines[1], contains('"AL40 deco","Egbert","Tx21/35"'));
-    expect(lines[1], endsWith('"false","","bailout"'));
+    expect(lines[1], endsWith('"false","","bailout","","false"'));
   });
 
   testWidgets('empty log: message and export disabled', (tester) async {
@@ -518,14 +518,21 @@ void main() {
       const deleted = 'This analysis was deleted.';
       const changed = 'This analysis changed. Print it again from the log.';
 
-      /// [tx] with the stated fields replaced, as an edit stores them.
+      /// [tx] with the stated fields replaced, as an edit stores them. The
+      /// cylinder, fill pressure and analysed for stay as [tx] has them.
       GasAnalysisEdit txEdit({
         DesiredMix? mix = const DesiredMix(21, 35),
         GasRole role = GasRole.diluent,
         String? by = 'Egbert',
       }) =>
           GasAnalysisEdit(
-              desiredMix: mix, gasRole: role, analysedBy: by, notes: null);
+              desiredMix: mix,
+              gasRole: role,
+              analysedBy: by,
+              notes: null,
+              cylinderId: tx().cylinderId,
+              fillPressureBar: tx().fillPressureBar,
+              analysedFor: tx().analysedFor);
 
       /// Reprints 2 copies of `tx` on a printer that fails. Its Retry
       /// prints on [on].

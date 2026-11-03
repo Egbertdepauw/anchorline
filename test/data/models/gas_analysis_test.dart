@@ -116,6 +116,10 @@ void main() {
         notes: 'fill 3',
         desiredMix: const DesiredMix(21, 35),
         gasRole: GasRole.diluent,
+        needsSignoff: true,
+        captureSource: CaptureSource.bridgeOk,
+        bridgeRecordId: 'a1b2c3d4e5f6/1a2b3c4d-7',
+        analysedFor: 'Wendy',
       );
       final a = GasAnalysis.fromNew('id-1', n);
       expect(a.id, 'id-1');
@@ -134,6 +138,10 @@ void main() {
       expect(a.targetHePercent, 35);
       expect(a.desiredMix, const DesiredMix(21, 35));
       expect(a.gasRole, GasRole.diluent);
+      expect(a.needsSignoff, isTrue);
+      expect(a.captureSource, CaptureSource.bridgeOk);
+      expect(a.bridgeRecordId, 'a1b2c3d4e5f6/1a2b3c4d-7');
+      expect(a.analysedFor, 'Wendy');
     });
 
     test('no desired mix gives null targets and bailout by default', () {
@@ -150,11 +158,32 @@ void main() {
       expect(a.targetHePercent, isNull);
       expect(a.desiredMix, isNull);
       expect(a.gasRole, GasRole.bailout);
+      // A plain screen save: no flag, no bridge fields.
+      expect(a.needsSignoff, isFalse);
+      expect(a.captureSource, CaptureSource.screen);
+      expect(a.bridgeRecordId, isNull);
+      expect(a.analysedFor, isNull);
+    });
+  });
+
+  group('CaptureSource', () {
+    test('dbValue: a screen save stores null, the bridge stores bridge_ok',
+        () {
+      expect(CaptureSource.screen.dbValue, isNull);
+      expect(CaptureSource.bridgeOk.dbValue, 'bridge_ok');
+    });
+
+    test('fromDb: only bridge_ok is a bridge capture', () {
+      expect(CaptureSource.fromDb('bridge_ok'), CaptureSource.bridgeOk);
+      expect(CaptureSource.fromDb(null), CaptureSource.screen);
+      expect(CaptureSource.fromDb(''), CaptureSource.screen);
+      expect(CaptureSource.fromDb('screen'), CaptureSource.screen);
+      expect(CaptureSource.fromDb('something_new'), CaptureSource.screen);
     });
   });
 
   group('applyEdit', () {
-    test('changes only the four editable fields', () {
+    test('changes only the editable fields', () {
       final before = GasAnalysis(
         id: 'a',
         cylinderId: 'c1',
@@ -173,12 +202,19 @@ void main() {
         targetO2Percent: 18,
         targetHePercent: 45,
         gasRole: GasRole.bailout,
+        needsSignoff: true,
+        captureSource: CaptureSource.bridgeOk,
+        bridgeRecordId: 'a1b2c3d4e5f6/1a2b3c4d-7',
+        analysedFor: 'Wendy',
       );
       final after = before.applyEdit(const GasAnalysisEdit(
         desiredMix: DesiredMix(21, 35),
         gasRole: GasRole.diluent,
         analysedBy: 'Sam',
         notes: 'new',
+        cylinderId: 'c1', // the same cylinder
+        fillPressureBar: 210,
+        analysedFor: 'Alex',
       ));
 
       // Edited.
@@ -186,19 +222,93 @@ void main() {
       expect(after.gasRole, GasRole.diluent);
       expect(after.analysedBy, 'Sam');
       expect(after.notes, 'new');
-      // Untouched.
-      expect(after.id, 'a');
+      expect(after.fillPressureBar, 210);
+      expect(after.analysedFor, 'Alex');
+      // The same cylinder keeps its joined label.
       expect(after.cylinderId, 'c1');
       expect(after.cylinderLabel, 'S80 left');
       expect(after.cylinderDeleted, isTrue);
+      // Untouched.
+      expect(after.id, 'a');
       expect(after.analysedAt, DateTime.utc(2026, 10, 30, 18, 5));
       expect(after.o2Percent, 21.4);
       expect(after.hePercent, 34.6);
-      expect(after.fillPressureBar, 232.5);
       expect(after.tempC, 21.4);
       expect(after.baroHpa, 1013.2);
       expect(after.modPpo2s, [1.1, 1.4, 1.6]);
       expect(after.stable, isTrue);
+      expect(after.captureSource, CaptureSource.bridgeOk);
+      expect(after.bridgeRecordId, 'a1b2c3d4e5f6/1a2b3c4d-7');
+      // No sign-off asked for: the flag stays.
+      expect(after.needsSignoff, isTrue);
+    });
+
+    test('a different cylinder drops the joined label, null clears the link',
+        () {
+      final before = GasAnalysis(
+        id: 'a',
+        cylinderId: 'c1',
+        cylinderLabel: 'S80 left',
+        cylinderDeleted: true,
+        analysedAt: DateTime.utc(2026, 10, 30, 18, 5),
+        o2Percent: 32,
+        hePercent: 0,
+        stable: true,
+      );
+      GasAnalysisEdit edit(String? cylinderId) => GasAnalysisEdit(
+            desiredMix: null,
+            gasRole: GasRole.bailout,
+            analysedBy: null,
+            notes: null,
+            cylinderId: cylinderId,
+            fillPressureBar: null,
+            analysedFor: null,
+          );
+
+      final other = before.applyEdit(edit('c2'));
+      expect(other.cylinderId, 'c2');
+      expect(other.cylinderLabel, isNull);
+      expect(other.cylinderDeleted, isFalse);
+
+      final none = before.applyEdit(edit(null));
+      expect(none.cylinderId, isNull);
+      expect(none.cylinderLabel, isNull);
+      expect(none.cylinderDeleted, isFalse);
+      expect(none.cylinderDisplay, isNull);
+    });
+
+    test('signOff clears needsSignoff; without it the flag is kept', () {
+      GasAnalysisEdit edit({required bool signOff}) => GasAnalysisEdit(
+            desiredMix: null,
+            gasRole: GasRole.bailout,
+            analysedBy: null,
+            notes: null,
+            cylinderId: null,
+            fillPressureBar: null,
+            analysedFor: null,
+            signOff: signOff,
+          );
+      final flagged = GasAnalysis(
+        id: 'a',
+        analysedAt: DateTime.utc(2026, 10, 30, 18, 5),
+        o2Percent: 32,
+        hePercent: 0,
+        stable: true,
+        needsSignoff: true,
+      );
+
+      expect(flagged.applyEdit(edit(signOff: true)).needsSignoff, isFalse);
+      expect(flagged.applyEdit(edit(signOff: false)).needsSignoff, isTrue);
+      // Signing off an unflagged entry leaves it unflagged.
+      final plain = GasAnalysis(
+        id: 'b',
+        analysedAt: DateTime.utc(2026, 10, 30, 18, 5),
+        o2Percent: 32,
+        hePercent: 0,
+        stable: true,
+      );
+      expect(plain.applyEdit(edit(signOff: true)).needsSignoff, isFalse);
+      expect(plain.applyEdit(edit(signOff: false)).needsSignoff, isFalse);
     });
 
     test('an edit with no desired mix clears the targets', () {
@@ -208,6 +318,9 @@ void main() {
           gasRole: GasRole.bailout,
           analysedBy: null,
           notes: null,
+          cylinderId: null,
+          fillPressureBar: null,
+          analysedFor: null,
         ),
       );
       expect(after.targetO2Percent, isNull);

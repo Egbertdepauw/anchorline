@@ -4,7 +4,9 @@
 /// (`docs/prototypes/solo-live.html`):
 /// time, cylinder, diver, mix, o2, he, mod_1_1, mod_1_4, mod_1_6,
 /// pressure_bar, temp_c, stable, then desired_mix (the desired mix name,
-/// empty when none was set) and gas_role (`bailout` or `diluent`).
+/// empty when none was set), gas_role (`bailout` or `diluent`),
+/// analysed_for (who the gas is for, empty when not set) and needs_signoff
+/// (`true` while the entry waits for sign-off in the log).
 ///
 /// The three MOD columns are always at ppO2 1.1 / 1.4 / 1.6, whatever MOD
 /// set the diver had configured, so exports from different settings line
@@ -29,6 +31,8 @@ const gasAnalysisCsvHeader = <String>[
   'stable',
   'desired_mix',
   'gas_role',
+  'analysed_for',
+  'needs_signoff',
 ];
 
 /// ppO2 limits (bar) of the mod_1_1 / mod_1_4 / mod_1_6 columns.
@@ -60,6 +64,8 @@ String gasAnalysesToCsv(List<GasAnalysis> analyses) {
         a.stable ? 'true' : 'false',
         a.desiredMix?.name ?? '',
         a.gasRole.dbValue,
+        a.analysedFor ?? '',
+        a.needsSignoff ? 'true' : 'false',
       ],
   ];
   return '${rows.map((r) => r.map(_quote).join(',')).join('\n')}\n';

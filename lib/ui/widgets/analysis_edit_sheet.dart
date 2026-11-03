@@ -111,6 +111,10 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
           gasRole: _role,
           analysedBy: _blankToNull(_diver.text),
           notes: _blankToNull(_notes.text),
+          // Not editable here yet: pass the entry's own values through.
+          cylinderId: widget.analysis.cylinderId,
+          fillPressureBar: widget.analysis.fillPressureBar,
+          analysedFor: widget.analysis.analysedFor,
         ),
       );
     } catch (e) {

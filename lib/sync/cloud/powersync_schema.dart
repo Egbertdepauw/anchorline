@@ -113,6 +113,10 @@ const appSchema = Schema([
   // target_o2_percent / target_he_percent are the desired mix in whole
   // percents (null target O2 = none set); gas_role is 'diluent' or 'bailout'
   // (null = bailout/deco). Issue #114 (cylinder labels).
+  // needs_signoff is 0/1: the entry waits in the log for the diver to sign
+  // it off. capture_source is 'bridge_ok' for a capture made on the SOLO's OK
+  // press, null for a screen save; bridge_record_id is '<bridge>/<rid>';
+  // analysed_for is who the gas is for (free text). Issue #113.
   Table('gas_analyses', [
     Column.text('owner_id'),
     Column.text('cylinder_id'),
@@ -129,6 +133,10 @@ const appSchema = Schema([
     Column.integer('target_o2_percent'),
     Column.integer('target_he_percent'),
     Column.text('gas_role'),
+    Column.integer('needs_signoff'),
+    Column.text('capture_source'),
+    Column.text('bridge_record_id'),
+    Column.text('analysed_for'),
     Column.integer('created_at'),
     Column.integer('updated_at'),
     Column.integer('deleted_at'),
