@@ -77,3 +77,7 @@ supabase/.env.deploy.local
 # Sentry auth token for macos/scripts/upload_sentry_dsyms.sh. Local-only,
 # NEVER commit. sentry.env.example IS committed as the template.
 macos/scripts/sentry.env.local
+
+# Library packages inside the repo resolve their own dev deps; their
+# lockfiles are not committed (the app's pubspec.lock is).
+packages/*/pubspec.lock

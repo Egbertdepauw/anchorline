@@ -1,0 +1,17 @@
+name: subsurface_core
+description: >-
+  Subsurface git-format parser and serializer, the Anchorline <-> Subsurface
+  mappers, the sync planner, and the domain types they need. Pure Dart,
+  shared by the Anchorline app and the Anchorline server.
+publish_to: none
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  # sha256 for dive ids, site ids and the Subsurface deviceid derivative.
+  crypto: ^3.0.6
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0
