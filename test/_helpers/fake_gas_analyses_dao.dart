@@ -68,9 +68,7 @@ class FakeGasAnalysesDao implements GasAnalysesDaoLike {
     // cylinder changed (applyEdit drops the old label then).
     analyses[i] = edited.cylinderId == analyses[i].cylinderId
         ? edited
-        : _copy(edited,
-            needsSignoff: edited.needsSignoff,
-            cylinderLabel: _labelOf(edited.cylinderId));
+        : _withLabel(edited, _labelOf(edited.cylinderId));
     _changes.add(null);
   }
 
@@ -79,14 +77,12 @@ class FakeGasAnalysesDao implements GasAnalysesDaoLike {
     signoffChanges.add((id, needsSignoff));
     final i = analyses.indexWhere((a) => a.id == id);
     if (i < 0) return;
-    analyses[i] = _copy(analyses[i],
-        needsSignoff: needsSignoff, cylinderLabel: analyses[i].cylinderLabel);
+    analyses[i] = analyses[i].withNeedsSignoff(needsSignoff);
     _changes.add(null);
   }
 
-  /// [a] with the sign-off flag and the joined cylinder label replaced.
-  static GasAnalysis _copy(GasAnalysis a,
-          {required bool needsSignoff, required String? cylinderLabel}) =>
+  /// [a] with the joined cylinder label replaced.
+  static GasAnalysis _withLabel(GasAnalysis a, String? cylinderLabel) =>
       GasAnalysis(
         id: a.id,
         cylinderId: a.cylinderId,
@@ -105,7 +101,7 @@ class FakeGasAnalysesDao implements GasAnalysesDaoLike {
         targetO2Percent: a.targetO2Percent,
         targetHePercent: a.targetHePercent,
         gasRole: a.gasRole,
-        needsSignoff: needsSignoff,
+        needsSignoff: a.needsSignoff,
         captureSource: a.captureSource,
         bridgeRecordId: a.bridgeRecordId,
         analysedFor: a.analysedFor,

@@ -144,6 +144,22 @@ void main() {
       expect(r.rowId, bridgeRowId(_bridgeId, _rid));
     });
 
+    test('the source is carried into the analysis', () {
+      final r =
+          recordToAnalysis(
+                record: steady(21.0, 35.0),
+                bridgeId: 'usb',
+                setup: _full,
+                clock: _clock,
+                now: _now,
+                active: true,
+                source: CaptureSource.usbOk,
+              )
+              as SaveRecord;
+      expect(r.analysis.captureSource, CaptureSource.usbOk);
+      expect(r.analysis.bridgeRecordId, 'usb/$_rid');
+    });
+
     test('printing off: complete without a label', () {
       final r = _save(steady(21.0, 35.0), setup: _setup(printOnOk: false));
       expect(r.printLabel, isFalse);

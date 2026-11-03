@@ -5,15 +5,18 @@
 ///
 ///     <seconds since start> <wall clock> RX <hex-escaped line>
 ///     <seconds since start> <wall clock> GAP <seconds>
+///     <seconds since start> <wall clock> ERROR <what went wrong>
 ///
 /// A GAP line is printed when the silence ENDS, so it carries the time the
 /// data resumed and how long it had lasted. In the SOLO's suspend (OK) the
-/// held line is the last one before that silence.
+/// held line is the last one before that silence. An ERROR line is the USB
+/// cable going away (`OSError(6, 'Device not configured')`).
 library;
 
 import 'dart:io';
 
 import 'package:ccrlogger/analyzer/bridge/bridge_protocol.dart';
+import 'package:ccrlogger/analyzer/hold_detector.dart';
 
 /// One SOLO line as it arrived.
 class CapturedLine {
@@ -42,7 +45,10 @@ class SoloCaptureLog {
   final List<CapturedLine> lines;
   final List<CaptureGap> gaps;
 
-  const SoloCaptureLog(this.lines, this.gaps);
+  /// When each ERROR line was printed: the USB transport went away.
+  final List<Duration> errors;
+
+  const SoloCaptureLog(this.lines, this.gaps, [this.errors = const []]);
 }
 
 /// `<sec> <wall> <kind> <rest>`. The seconds are right-aligned, so leading
@@ -57,10 +63,12 @@ Duration _seconds(String s) =>
     Duration(milliseconds: (double.parse(s) * 1000).round());
 
 /// Unescapes `\xNN` in RX payloads and strips the trailing CR LF. Lines of
-/// other kinds (ERROR, MARK, STOP, ...) are skipped.
+/// other kinds (MARK, STOP, ...) are skipped; ERROR lines only give their
+/// time, in [SoloCaptureLog.errors].
 SoloCaptureLog readSoloCaptureLog(String path) {
   final lines = <CapturedLine>[];
   final gaps = <CaptureGap>[];
+  final errors = <Duration>[];
   for (final raw in File(path).readAsLinesSync()) {
     final m = _captureLine.firstMatch(raw);
     if (m == null) continue;
@@ -77,9 +85,52 @@ SoloCaptureLog readSoloCaptureLog(String path) {
         lines.add(CapturedLine(elapsed, text));
       case 'GAP':
         gaps.add(CaptureGap(elapsed, _seconds(payload.trim())));
+      case 'ERROR':
+        errors.add(elapsed);
     }
   }
-  return SoloCaptureLog(lines, gaps);
+  return SoloCaptureLog(lines, gaps, errors);
+}
+
+/// Plays [log] into [d] the way a live session would: time walks from zero
+/// in [step]s up to three seconds after the last line or error, so a silence
+/// at the end can still be seen. At each step every line and every error up
+/// to that time is delivered first, in the order they happened (a line as
+/// `addLine`, an error as `detached`), and then `tick` is called. Returns
+/// every hold `tick` produced.
+List<DetectedHold> replayCapture(
+  SoloCaptureLog log,
+  HoldDetector d, {
+  Duration step = const Duration(milliseconds: 100),
+}) {
+  final holds = <DetectedHold>[];
+  var line = 0;
+  var error = 0;
+  final lastEvent = [
+    if (log.lines.isNotEmpty) log.lines.last.elapsed,
+    if (log.errors.isNotEmpty) log.errors.last,
+  ].fold(Duration.zero, (a, b) => a > b ? a : b);
+  final end = lastEvent + const Duration(seconds: 3);
+  for (var t = Duration.zero; t <= end; t += step) {
+    while (true) {
+      final nextLine = line < log.lines.length ? log.lines[line].elapsed : null;
+      final nextError = error < log.errors.length ? log.errors[error] : null;
+      final lineDue = nextLine != null && nextLine <= t;
+      final errorDue = nextError != null && nextError <= t;
+      if (!lineDue && !errorDue) break;
+      // A line and an error at the same instant: the line came first.
+      if (lineDue && (!errorDue || nextLine <= nextError)) {
+        d.addLine(nextLine, log.lines[line].line);
+        line++;
+      } else {
+        d.detached();
+        error++;
+      }
+    }
+    final hold = d.tick(t);
+    if (hold != null) holds.add(hold);
+  }
+  return holds;
 }
 
 /// The record a bridge would build for [gap]: the held line is the last line

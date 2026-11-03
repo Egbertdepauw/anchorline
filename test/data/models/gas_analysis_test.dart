@@ -173,12 +173,76 @@ void main() {
       expect(CaptureSource.bridgeOk.dbValue, 'bridge_ok');
     });
 
-    test('fromDb: only bridge_ok is a bridge capture', () {
+    test('usb_ok round-trips', () {
+      expect(CaptureSource.usbOk.dbValue, 'usb_ok');
+      expect(CaptureSource.fromDb('usb_ok'), CaptureSource.usbOk);
+    });
+
+    test('fromDb: bridge_ok and usb_ok are captures, the rest screen saves',
+        () {
       expect(CaptureSource.fromDb('bridge_ok'), CaptureSource.bridgeOk);
       expect(CaptureSource.fromDb(null), CaptureSource.screen);
       expect(CaptureSource.fromDb(''), CaptureSource.screen);
       expect(CaptureSource.fromDb('screen'), CaptureSource.screen);
       expect(CaptureSource.fromDb('something_new'), CaptureSource.screen);
+    });
+  });
+
+  group('withNeedsSignoff', () {
+    test('changes only the flag', () {
+      final before = GasAnalysis(
+        id: 'a',
+        cylinderId: 'c1',
+        cylinderLabel: 'S80 left',
+        cylinderDeleted: true,
+        analysedBy: 'Egbert',
+        analysedAt: DateTime.utc(2026, 10, 30, 18, 5),
+        o2Percent: 21.4,
+        hePercent: 34.6,
+        fillPressureBar: 232.5,
+        tempC: 21.4,
+        baroHpa: 1013.2,
+        modPpo2s: const [1.1, 1.4, 1.6],
+        stable: true,
+        notes: 'old',
+        targetO2Percent: 18,
+        targetHePercent: 45,
+        gasRole: GasRole.diluent,
+        needsSignoff: true,
+        captureSource: CaptureSource.usbOk,
+        bridgeRecordId: 'usb/1a2b3c4d-7',
+        analysedFor: 'Wendy',
+      );
+      for (final value in [false, true]) {
+        final after = before.withNeedsSignoff(value);
+        expect(after.needsSignoff, value);
+        expect(after.id, before.id);
+        expect(after.cylinderId, before.cylinderId);
+        expect(after.cylinderLabel, before.cylinderLabel);
+        expect(after.cylinderDeleted, before.cylinderDeleted);
+        expect(after.analysedBy, before.analysedBy);
+        expect(after.analysedAt, before.analysedAt);
+        expect(after.o2Percent, before.o2Percent);
+        expect(after.hePercent, before.hePercent);
+        expect(after.fillPressureBar, before.fillPressureBar);
+        expect(after.tempC, before.tempC);
+        expect(after.baroHpa, before.baroHpa);
+        expect(after.modPpo2s, before.modPpo2s);
+        expect(after.stable, before.stable);
+        expect(after.notes, before.notes);
+        expect(after.targetO2Percent, before.targetO2Percent);
+        expect(after.targetHePercent, before.targetHePercent);
+        expect(after.gasRole, before.gasRole);
+        expect(after.captureSource, before.captureSource);
+        expect(after.bridgeRecordId, before.bridgeRecordId);
+        expect(after.analysedFor, before.analysedFor);
+      }
+    });
+
+    test('leaves the original alone', () {
+      final before = analysis();
+      before.withNeedsSignoff(true);
+      expect(before.needsSignoff, isFalse);
     });
   });
 

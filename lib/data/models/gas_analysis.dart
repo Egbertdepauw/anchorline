@@ -46,18 +46,26 @@ enum CaptureSource {
   screen,
 
   /// Captured by the SOLO bridge when the diver pressed OK.
-  bridgeOk;
+  bridgeOk,
+
+  /// Captured by the app itself when the diver pressed OK on a SOLO on a USB
+  /// cable (Log on OK over USB, the analyzer screen open).
+  usbOk;
 
   /// The `capture_source` column value: null for a screen save.
   String? get dbValue => switch (this) {
         CaptureSource.screen => null,
         CaptureSource.bridgeOk => 'bridge_ok',
+        CaptureSource.usbOk => 'usb_ok',
       };
 
   /// Lenient on read: null and unknown strings (a row from an older build or
   /// another device) all mean a screen save.
-  static CaptureSource fromDb(String? v) =>
-      v == 'bridge_ok' ? CaptureSource.bridgeOk : CaptureSource.screen;
+  static CaptureSource fromDb(String? v) => switch (v) {
+        'bridge_ok' => CaptureSource.bridgeOk,
+        'usb_ok' => CaptureSource.usbOk,
+        _ => CaptureSource.screen,
+      };
 }
 
 /// The role to preselect for a cylinder: diluent cylinders are diluent,
@@ -259,6 +267,32 @@ class GasAnalysis {
       analysedFor: e.analysedFor,
     );
   }
+
+  /// This analysis with only [needsSignoff] changed to [value]. The joined
+  /// cylinder label stays.
+  GasAnalysis withNeedsSignoff(bool value) => GasAnalysis(
+        id: id,
+        cylinderId: cylinderId,
+        cylinderLabel: cylinderLabel,
+        cylinderDeleted: cylinderDeleted,
+        analysedBy: analysedBy,
+        analysedAt: analysedAt,
+        o2Percent: o2Percent,
+        hePercent: hePercent,
+        fillPressureBar: fillPressureBar,
+        tempC: tempC,
+        baroHpa: baroHpa,
+        modPpo2s: modPpo2s,
+        stable: stable,
+        notes: notes,
+        targetO2Percent: targetO2Percent,
+        targetHePercent: targetHePercent,
+        gasRole: gasRole,
+        needsSignoff: value,
+        captureSource: captureSource,
+        bridgeRecordId: bridgeRecordId,
+        analysedFor: analysedFor,
+      );
 
   /// The desired mix, or null when none was set (no target O2).
   DesiredMix? get desiredMix {

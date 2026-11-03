@@ -156,7 +156,9 @@ class SaveRecord extends RecordOutcome {
 ///     mismatched; a pending print also flags it until the print succeeds.
 /// 10. The feedback, the first that fits: printed, not stable, mismatch,
 ///     late, no mix, no name, else saved.
-/// 11. The analysis itself.
+/// 11. The analysis itself, carrying [source] as its capture source
+///     ([CaptureSource.bridgeOk] for the ESP32 bridge, [CaptureSource.usbOk]
+///     for the app's own hold detector on a USB cable).
 RecordOutcome recordToAnalysis({
   required BridgeRecord record,
   required String bridgeId,
@@ -164,6 +166,7 @@ RecordOutcome recordToAnalysis({
   required BridgeClock clock,
   required DateTime now,
   required bool active,
+  CaptureSource source = CaptureSource.bridgeOk,
 }) {
   final rid = record.rid;
 
@@ -311,7 +314,7 @@ RecordOutcome recordToAnalysis({
       desiredMix: desiredMix,
       gasRole: gasRole,
       needsSignoff: needsSignoff,
-      captureSource: CaptureSource.bridgeOk,
+      captureSource: source,
       bridgeRecordId: '$bridgeId/$rid',
       analysedFor: analysedFor,
     ),
