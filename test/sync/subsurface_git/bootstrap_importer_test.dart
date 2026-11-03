@@ -116,6 +116,8 @@ class _FakeRepo extends SubsurfaceRepo {
 
 // ── Fixture-folder helpers ───────────────────────────────────────────
 
+// The fixtures moved into the package with the format tests; this importer
+// and its test are deleted in rollout step 5.
 const _fixturesRoot = 'packages/subsurface_core/test/fixtures/subsurface';
 
 Directory _tempDir(String prefix) {

@@ -11,8 +11,12 @@
 /// - `existingMaxDiveNumber` — highest Dive-NNN seen, so newly emitted
 ///   dives can allocate `existingMaxDiveNumber + 1`, +2, ...
 ///
-/// Tolerance: any single file that fails to parse is skipped (logged in
-/// debug builds via `assert`, otherwise silent). Missing fields on a
+/// Tolerance: any single file that fails to parse, or whose text is `null`
+/// (present but unreadable), is treated as a read failure: the top level
+/// comes back empty, a site is skipped, a `Dive-NNN` still counts by name
+/// with empty lines (so the planner aborts that dive rather than
+/// overwriting it), and a `Divecomputer` is still selected by name with no
+/// serial and empty lines. Missing fields on a
 /// Divecomputer (no Serial keyvalue, malformed folder name) just mean
 /// that dive can't ever match a CCRLog dive — that's fine, the planner
 /// will allocate a fresh Dive-NNN for it. We do not abort the snapshot
@@ -44,13 +48,14 @@ class RemoteSnapshot {
   /// Subsurface repo.
   ///
   /// [filesByPath]: every regular file of the repo, keyed by POSIX path
-  /// relative to the repo root, value = file text. Paths outside the
-  /// Subsurface layout (`.git/…`, anything else) are ignored.
+  /// relative to the repo root, value = file text, or `null` for a file
+  /// that is present but could not be read. Paths outside the Subsurface
+  /// layout (`.git/…`, anything else) are ignored.
   ///
-  /// Tolerates parse failures on individual files — those files are
-  /// silently skipped so a single bad fixture from a manually-imported
+  /// Tolerates parse failures and `null` texts on individual files — see
+  /// the class doc — so a single bad fixture from a manually-imported
   /// 2008 dive can't block today's sync.
-  static RemoteSnapshotData fromFiles(Map<String, String> filesByPath) {
+  static RemoteSnapshotData fromFiles(Map<String, String?> filesByPath) {
     // Sorted so that the `Divecomputer-NNN` fallback below is
     // deterministic whatever order the caller built the map in.
     final paths = filesByPath.keys.toList()..sort();
@@ -60,10 +65,10 @@ class RemoteSnapshot {
     // Dive-folder files, grouped per folder: `YYYY/MM/DD-Day-HH=MM=SS` ->
     // { file name -> text }.
     final folders =
-        <String, ({List<String> segments, Map<String, String> files})>{};
+        <String, ({List<String> segments, Map<String, String?> files})>{};
 
     for (final path in paths) {
-      final text = filesByPath[path]!;
+      final text = filesByPath[path];
       final segments = path.split('/');
       if (segments.length == 1 && segments[0] == '00-Subsurface') {
         topLevel = _readTopLevel(text);
@@ -110,7 +115,8 @@ class RemoteSnapshot {
 
   // ── 00-Subsurface ──────────────────────────────────────────────────
 
-  static List<SsLine> _readTopLevel(String text) {
+  static List<SsLine> _readTopLevel(String? text) {
+    if (text == null) return const [];
     try {
       return parseSubsurfaceFile(text, kind: SubsurfaceFileKind.top).lines;
     } catch (_) {
@@ -122,7 +128,8 @@ class RemoteSnapshot {
 
   /// Null when the file fails to parse: skip this site file; the planner
   /// will write a fresh one if CCRLog has dives at the same coordinates.
-  static List<SsLine>? _readSite(String text) {
+  static List<SsLine>? _readSite(String? text) {
+    if (text == null) return null;
     try {
       return parseSubsurfaceFile(text, kind: SubsurfaceFileKind.site).lines;
     } catch (_) {
@@ -145,11 +152,13 @@ class RemoteSnapshot {
   ///      `(serial, startTime)` lookup table.
   static ExistingRemoteDive? _readOneDiveFolder({
     required List<String> folderSegments,
-    required Map<String, String> files,
+    required Map<String, String?> files,
   }) {
     int? diveNumber;
     String? diveText;
     String? divecomputerText;
+    // Tracked apart from the text: a selected file can have a null text.
+    var hasDivecomputer = false;
     // [files] was filled in sorted key order, so "first" below is
     // deterministic.
     for (final entry in files.entries) {
@@ -163,8 +172,10 @@ class RemoteSnapshot {
       } else if (name == 'Divecomputer' || name.startsWith('Divecomputer-')) {
         // Prefer the bare `Divecomputer` if present; otherwise the
         // first `Divecomputer-NNN` in sorted order.
-        divecomputerText ??= entry.value;
-        if (name == 'Divecomputer') divecomputerText = entry.value;
+        if (!hasDivecomputer || name == 'Divecomputer') {
+          hasDivecomputer = true;
+          divecomputerText = entry.value;
+        }
       }
     }
     if (diveNumber == null) return null;

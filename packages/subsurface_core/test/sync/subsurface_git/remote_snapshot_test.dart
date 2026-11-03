@@ -166,5 +166,60 @@ void main() {
       expect(snap.existingDivesBySerialAndStart.keys.single,
           (serial: 0xb89641e4, startTime: t));
     });
+
+    test('unreadable Dive-NNN keeps its number and yields empty diveLines',
+        () {
+      final folder = '2026/04/04-Sat-13=30=15';
+      final files = <String, String?>{
+        '$folder/Dive-705': null,
+        '$folder/Divecomputer':
+            File('$_fixturesRoot/dives/$folder/Divecomputer').readAsStringSync(),
+      };
+      final snap = RemoteSnapshot.fromFiles(files);
+      final t = DateTime.utc(2026, 4, 4, 13, 30, 15).millisecondsSinceEpoch ~/
+          1000;
+      final dive =
+          snap.existingDivesBySerialAndStart[(serial: 0xb89641e4, startTime: t)];
+      expect(dive, isNotNull);
+      expect(dive!.diveNumber, 705);
+      expect(dive.diveLines, isEmpty);
+      expect(snap.existingMaxDiveNumber, 705);
+    });
+
+    test('unreadable Divecomputer is selected but has no serial', () {
+      final folder = '2026/04/04-Sat-13=30=15';
+      final files = <String, String?>{
+        '$folder/Dive-705':
+            File('$_fixturesRoot/dives/$folder/Dive-705').readAsStringSync(),
+        '$folder/Divecomputer': null,
+      };
+      final snap = RemoteSnapshot.fromFiles(files);
+      expect(snap.existingMaxDiveNumber, 705);
+      // No serial means no lookup key, as the old reader behaved.
+      expect(snap.existingDivesBySerialAndStart, isEmpty);
+    });
+
+    test('unreadable 00-Subsurface and Site files', () {
+      final snap = RemoteSnapshot.fromFiles(<String, String?>{
+        '00-Subsurface': null,
+        '01-Divesites/Site-0a9f7232': null,
+      });
+      expect(snap.existingTopLevel, isEmpty);
+      expect(snap.existingSites, isEmpty);
+    });
+
+    test('an unreadable bare Divecomputer is not replaced by Divecomputer-NNN',
+        () {
+      final folder = '2026/04/04-Sat-13=30=15';
+      final snap = RemoteSnapshot.fromFiles(<String, String?>{
+        '$folder/Dive-705':
+            File('$_fixturesRoot/dives/$folder/Dive-705').readAsStringSync(),
+        '$folder/Divecomputer': null,
+        '$folder/Divecomputer-001':
+            'model "Other"\nkeyvalue "Serial" "00000001"\n',
+      });
+      expect(snap.existingMaxDiveNumber, 705);
+      expect(snap.existingDivesBySerialAndStart, isEmpty);
+    });
   });
 }

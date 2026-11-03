@@ -101,7 +101,7 @@ class ExistingRemoteDive {
   /// The parsed lines of `<folder>/Dive-NNN` at scan time. The merge in
   /// the planner uses these as the existing baseline to substitute
   /// CCRLog-owned lines into. Empty list is valid (a Dive-NNN with no
-  /// content); null is not — populated via [RemoteSnapshot.read].
+  /// content); null is not — populated via [RemoteSnapshot.fromFiles].
   final List<SsLine> diveLines;
 
   /// Parsed lines of the existing `<folder>/Divecomputer` file. CCRLog

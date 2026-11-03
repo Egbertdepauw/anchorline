@@ -40,10 +40,12 @@ void main() {
     expect(await readRemoteRepoFiles(Directory('${tmp.path}/nope')), isEmpty);
   });
 
-  test('a file that is not valid UTF-8 is skipped', () async {
+  test('a file that is not valid UTF-8 is kept with a null value', () async {
     File(p.join(tmp.path, 'ok')).writeAsStringSync('x\n');
     File(p.join(tmp.path, 'bad')).writeAsBytesSync([0xff, 0xfe, 0x00, 0xc3]);
     final files = await readRemoteRepoFiles(tmp);
-    expect(files.keys, ['ok']);
+    expect(files.keys.toSet(), {'ok', 'bad'});
+    expect(files['bad'], isNull);
+    expect(files['ok'], 'x\n');
   });
 }

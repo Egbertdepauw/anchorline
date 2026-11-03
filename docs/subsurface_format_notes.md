@@ -1,7 +1,7 @@
 # Subsurface git-repo plain-text format — implementation notes
 
 This document captures non-obvious things we learned while building the
-Phase A parser/serializer at `lib/sync/subsurface_git/format/`. The official
+Phase A parser/serializer at `packages/subsurface_core/lib/sync/subsurface_git/format/`. The official
 "format spec" is the Subsurface source code; what's below is what we observed
 on a real cloned repo (~700 dives, ~195 sites, dives spanning 2004–2026,
 with Petrel 1/2/3, Perdix 2, Garmin Descent Mk1 and manually-added dives).
@@ -198,7 +198,7 @@ Things this layer does NOT do, but the next phase will need:
 
 ## Phase B notes (CCRLog → Subsurface mapper)
 
-The mapper at `lib/sync/subsurface_git/mapper.dart` defaulted on the
+The mapper at `packages/subsurface_core/lib/sync/subsurface_git/mapper.dart` defaulted on the
 following points; flagging them here so Phase D's first push exposes them
 quickly if any of them are wrong:
 
@@ -260,7 +260,7 @@ quickly if any of them are wrong:
 
 ## Phase B+ notes (Subsurface → CCRLog read-direction mapper)
 
-The mapper at `lib/sync/subsurface_git/subsurface_to_ccrlog_mapper.dart`
+The mapper at `packages/subsurface_core/lib/sync/subsurface_git/subsurface_to_ccrlog_mapper.dart`
 is the inverse of the write mapper above. It powers the
 "bootstrap-import" path that reads a user's existing Subsurface git repo
 and produces CCRLog `Dive` + `SampleSet` + `DiveAnnotation` + per-mix
