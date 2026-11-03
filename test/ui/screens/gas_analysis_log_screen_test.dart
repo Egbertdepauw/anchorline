@@ -94,6 +94,7 @@ void main() {
           String? label,
           bool stable = true,
           bool needsSignoff = false,
+          String? analysedBy = 'Egbert',
           int? targetO2,
           int? targetHe,
           GasRole gasRole = GasRole.bailout}) =>
@@ -101,7 +102,7 @@ void main() {
         id: id,
         cylinderId: cylinderId,
         cylinderLabel: label,
-        analysedBy: 'Egbert',
+        analysedBy: analysedBy,
         analysedAt: at,
         o2Percent: o2,
         hePercent: he,
@@ -230,7 +231,11 @@ void main() {
   Finder inTile(String id, Finder f) =>
       find.descendant(of: _key('analysis-$id'), matching: f);
 
+  /// Taps [f], scrolling it into view first: the edit sheet is taller than
+  /// the test's 800x600 screen.
   Future<void> tapAndSettle(WidgetTester tester, Finder f) async {
+    await tester.ensureVisible(f);
+    await tester.pumpAndSettle();
     await tester.tap(f);
     await tester.pumpAndSettle();
   }
@@ -1033,8 +1038,9 @@ void main() {
       expect(inSheet(_key('analysis-edit-role')), findsOneWidget);
       expect(inSheet(_key('analysis-edit-diver')), findsOneWidget);
       expect(inSheet(_key('analysis-edit-notes')), findsOneWidget);
-      // Only who analysed and the notes are typed: no measured-value input.
-      expect(inSheet(find.byType(EditableText)), findsNWidgets(2));
+      // Only what the diver states is typed (who analysed, fill pressure,
+      // for, notes): no measured-value input.
+      expect(inSheet(find.byType(EditableText)), findsNWidgets(4));
     });
 
     testWidgets('saving updates the four fields and refreshes the list',
@@ -1062,6 +1068,257 @@ void main() {
       expect(inTile('tx', find.textContaining('EdP')), findsOneWidget);
       // The measured values are as they were.
       expect(inTile('tx', find.text('Tx23/34')), findsOneWidget);
+    });
+
+    testWidgets('the sheet starts "analysed by" from the latest name in the '
+        'log', (tester) async {
+      final dao = FakeGasAnalysesDao(analyses: [
+        entry('newest', DateTime(2026, 10, 30), 32.1, 0, analysedBy: null),
+        entry('mid', DateTime(2026, 10, 29), 32.1, 0, analysedBy: '  '),
+        entry('older', DateTime(2026, 10, 28), 32.1, 0, analysedBy: 'Wendy'),
+        entry('oldest', DateTime(2026, 10, 27), 32.1, 0, analysedBy: 'Jan'),
+      ]);
+      await pump(tester, GasAnalysisLogScreen(dao: dao));
+      await tapAndSettle(tester, _key('analysis-newest'));
+      final diver = tester
+          .widget<TextField>(_key('analysis-edit-diver'))
+          .controller!
+          .text;
+      expect(diver, 'Wendy');
+    });
+
+    testWidgets('deleting from the sheet shows the deleted SnackBar',
+        (tester) async {
+      final dao = FakeGasAnalysesDao(analyses: [tx(), ean()]);
+      await pump(tester, GasAnalysisLogScreen(dao: dao));
+      await tapAndSettle(tester, find.text('Tx23/34'));
+      await tapAndSettle(tester, _key('analysis-edit-delete'));
+      expect(find.text('Delete this analysis?'), findsOneWidget);
+      await tapAndSettle(tester, _key('analysis-delete-confirm'));
+
+      expect(dao.deleted, ['tx']);
+      expect(_key('analysis-edit-sheet'), findsNothing);
+      expect(find.text('Deleted Tx23/34 analysis.'), findsOneWidget);
+      expect(_key('analysis-tx'), findsNothing);
+      expect(_key('analysis-ean'), findsOneWidget);
+    });
+
+    testWidgets('cancelling the delete leaves the list and the SnackBar alone',
+        (tester) async {
+      final dao = FakeGasAnalysesDao(analyses: [tx()]);
+      await pump(tester, GasAnalysisLogScreen(dao: dao));
+      await tapAndSettle(tester, find.text('Tx23/34'));
+      await tapAndSettle(tester, _key('analysis-edit-delete'));
+      await tapAndSettle(
+          tester,
+          find.descendant(
+              of: find.byType(AlertDialog), matching: find.text('Cancel')));
+      await tapAndSettle(tester, _key('analysis-edit-cancel'));
+
+      expect(dao.deleted, isEmpty);
+      expect(_key('analysis-tx'), findsOneWidget);
+      expect(find.textContaining('Deleted'), findsNothing);
+    });
+
+    testWidgets('a delete from the sheet replaces an old print failure',
+        (tester) async {
+      final printer = FakeLabelPrinter(failOnConnect: Exception('off'));
+      final dao = FakeGasAnalysesDao(analyses: [tx(), plain()]);
+      await pump(tester,
+          GasAnalysisLogScreen(dao: dao, labelPrinting: _service(printer)));
+      await reprint(tester, 'plain');
+      expect(find.text('Retry'), findsOneWidget);
+
+      await tapAndSettle(tester, find.text('Tx23/34'));
+      await tapAndSettle(tester, _key('analysis-edit-delete'));
+      await tapAndSettle(tester, _key('analysis-delete-confirm'));
+      expect(find.text('Deleted Tx23/34 analysis.'), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
+    });
+  });
+
+  group('sign off in the edit sheet', () {
+    /// Flagged, with a name and a desired mix the analysis matches: ready
+    /// to sign off.
+    GasAnalysis flagged({String id = 'f'}) => entry(
+        id, DateTime(2026, 10, 30, 18), 32.1, 0,
+        needsSignoff: true, targetO2: 32, targetHe: 0);
+
+    Finder sheetButton(String key) => _key(key);
+
+    testWidgets('Sign off clears the flag and prints nothing', (tester) async {
+      final printer = FakeLabelPrinter();
+      final dao = FakeGasAnalysesDao(analyses: [flagged()]);
+      await pump(tester,
+          GasAnalysisLogScreen(dao: dao, labelPrinting: _service(printer)));
+      expect(_key('analysis-needs-signoff-f'), findsOneWidget);
+
+      await tapAndSettle(tester, find.text('EAN32'));
+      await tapAndSettle(tester, sheetButton('analysis-edit-signoff'));
+
+      expect(dao.updated.single.$2.signOff, isTrue);
+      expect(_key('analysis-needs-signoff-f'), findsNothing);
+      expect(_key('analysis-log-signoff-count'), findsNothing);
+      // The print action is there now, and nothing was printed.
+      expect(_key('analysis-print-f'), findsOneWidget);
+      expect(_key('copies-dialog-print'), findsNothing);
+      expect(printer.printed, isEmpty);
+    });
+
+    testWidgets('signing off from the log prints when asked', (tester) async {
+      final printer = FakeLabelPrinter();
+      final rendered = <CylinderLabel>[];
+      final dao = FakeGasAnalysesDao(analyses: [flagged()]);
+      await pump(
+          tester,
+          GasAnalysisLogScreen(
+              dao: dao,
+              labelPrinting: _service(printer, rendered: rendered)));
+
+      await tapAndSettle(tester, find.text('EAN32'));
+      await tapAndSettle(tester, sheetButton('analysis-edit-signoff-print'));
+      expect(dao.updated.single.$2.signOff, isTrue);
+      // The usual copies prompt, then one print.
+      expect(_key('copies-dialog-print'), findsOneWidget);
+      expect(printer.printed, isEmpty);
+      await tapAndSettle(tester, _key('copies-inc'));
+      await tapAndSettle(tester, _key('copies-dialog-print'));
+
+      expect(printer.printed, hasLength(1));
+      expect(printer.printed.single.$2, 2);
+      expect(rendered.single.mixName, 'EAN32');
+      expect(find.text('Printed 2 labels.'), findsOneWidget);
+      expect(_key('analysis-needs-signoff-f'), findsNothing);
+    });
+
+    testWidgets('Sign off and print goes through the mismatch dialog',
+        (tester) async {
+      final printer = FakeLabelPrinter();
+      final rendered = <CylinderLabel>[];
+      // Desired 50/0 against 32.1/0: a hard mismatch.
+      final dao = FakeGasAnalysesDao(analyses: [
+        entry('f', DateTime(2026, 10, 30, 18), 32.1, 0,
+            needsSignoff: true, targetO2: 50, targetHe: 0),
+      ]);
+      await pump(
+          tester,
+          GasAnalysisLogScreen(
+              dao: dao,
+              labelPrinting: _service(printer, rendered: rendered)));
+      await tapAndSettle(tester, find.text('EAN32'));
+      await tapAndSettle(tester, sheetButton('analysis-edit-signoff-print'));
+      await tapAndSettle(tester, _key('copies-dialog-print'));
+
+      expect(find.text(mismatchTitle), findsOneWidget);
+      expect(printer.printed, isEmpty, reason: 'asks before printing');
+      await tapAndSettle(tester, find.text('Print as EAN32'));
+      expect(printer.printed, hasLength(1));
+      expect(rendered.single.mixName, 'EAN32');
+    });
+
+    testWidgets('cancelling the copies prompt after Sign off and print keeps '
+        'the sign-off and prints nothing', (tester) async {
+      final printer = FakeLabelPrinter();
+      final dao = FakeGasAnalysesDao(analyses: [flagged()]);
+      await pump(tester,
+          GasAnalysisLogScreen(dao: dao, labelPrinting: _service(printer)));
+      await tapAndSettle(tester, find.text('EAN32'));
+      await tapAndSettle(tester, sheetButton('analysis-edit-signoff-print'));
+      await tapAndSettle(tester, find.text('Cancel'));
+
+      expect(printer.printed, isEmpty);
+      expect(dao.analyses.single.needsSignoff, isFalse);
+      expect(_key('analysis-print-f'), findsOneWidget);
+    });
+
+    testWidgets('an entry flagged again after Sign off and print is not '
+        'printed', (tester) async {
+      final printer = FakeLabelPrinter();
+      final dao = _FlaggedOnEditDao(analyses: [flagged()]);
+      await pump(tester,
+          GasAnalysisLogScreen(dao: dao, labelPrinting: _service(printer)));
+      await tapAndSettle(tester, find.text('EAN32'));
+      await tapAndSettle(tester, sheetButton('analysis-edit-signoff-print'));
+
+      // Read back as flagged: refused, with no prompt for copies.
+      expect(find.text(kSignOffBeforePrintMessage), findsOneWidget);
+      expect(_key('copies-dialog-print'), findsNothing);
+      expect(find.text('Retry'), findsNothing);
+      expect(printer.connects, 0);
+      expect(printer.printed, isEmpty);
+    });
+
+    testWidgets('an entry deleted after Sign off and print is not printed',
+        (tester) async {
+      final printer = FakeLabelPrinter();
+      final dao = _DeletedOnEditDao(analyses: [flagged()]);
+      await pump(tester,
+          GasAnalysisLogScreen(dao: dao, labelPrinting: _service(printer)));
+      await tapAndSettle(tester, find.text('EAN32'));
+      await tapAndSettle(tester, sheetButton('analysis-edit-signoff-print'));
+
+      expect(_key('copies-dialog-print'), findsNothing);
+      expect(printer.connects, 0);
+      expect(printer.printed, isEmpty);
+    });
+
+    testWidgets('Sign off and print is offered only with a printer set up',
+        (tester) async {
+      final printer = FakeLabelPrinter();
+      for (final (name, service) in <(String, LabelPrintService?)>[
+        ('none', null),
+        ('not-configured', _service(printer, configured: false)),
+      ]) {
+        await pump(
+            tester,
+            GasAnalysisLogScreen(
+                key: ValueKey(name),
+                dao: FakeGasAnalysesDao(analyses: [flagged()]),
+                labelPrinting: service));
+        await tapAndSettle(tester, find.text('EAN32'));
+        expect(_key('analysis-edit-signoff'), findsOneWidget, reason: name);
+        expect(_key('analysis-edit-signoff-print'), findsNothing,
+            reason: name);
+        await tapAndSettle(tester, _key('analysis-edit-cancel'));
+      }
+
+      await pump(
+          tester,
+          GasAnalysisLogScreen(
+              key: const ValueKey('configured'),
+              dao: FakeGasAnalysesDao(analyses: [flagged()]),
+              labelPrinting: _service(printer)));
+      await tapAndSettle(tester, find.text('EAN32'));
+      expect(_key('analysis-edit-signoff-print'), findsOneWidget);
+    });
+
+    testWidgets('Save on a flagged entry keeps the badge', (tester) async {
+      final dao = FakeGasAnalysesDao(analyses: [flagged()]);
+      await pump(tester, GasAnalysisLogScreen(dao: dao));
+      await tapAndSettle(tester, find.text('EAN32'));
+      await tester.enterText(_key('analysis-edit-notes'), 'Later');
+      await tapAndSettle(tester, _key('analysis-edit-save'));
+      expect(dao.updated.single.$2.signOff, isFalse);
+      expect(_key('analysis-needs-signoff-f'), findsOneWidget);
+    });
+
+    testWidgets('a cylinder picked in the sheet shows in the log',
+        (tester) async {
+      final dao = FakeGasAnalysesDao(
+        cylinders: const [
+          CylinderChoice(
+              id: 'c9', label: 'AL80 stage', role: CylinderRole.bailout),
+        ],
+        analyses: [flagged()],
+      );
+      await pump(tester, GasAnalysisLogScreen(dao: dao));
+      await tapAndSettle(tester, find.text('EAN32'));
+      await tapAndSettle(tester, _key('analysis-edit-cylinder'));
+      await tapAndSettle(tester, find.text('AL80 stage').last);
+      await tester.enterText(_key('analysis-edit-pressure'), '207,5');
+      await tapAndSettle(tester, _key('analysis-edit-save'));
+      expect(inTile('f', find.textContaining('AL80 stage')), findsOneWidget);
+      expect(inTile('f', find.textContaining('208 bar')), findsOneWidget);
     });
   });
 

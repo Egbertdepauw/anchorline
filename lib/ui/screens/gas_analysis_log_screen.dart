@@ -5,13 +5,16 @@
 ///
 /// Cylinder labels (issue #114): each entry shows its desired mix and how
 /// far the analysis is off it, and a "DIL" marker for diluent. Tap an entry
-/// to edit what the diver stated (desired mix, gas role, analysed by,
-/// notes). With a label printer set up, each entry has a print action:
-/// copies, then the hard-mismatch warning when it applies, then the print.
+/// to edit what the diver stated (desired mix, gas role, analysed by, for,
+/// cylinder, fill pressure, notes), or to delete it. With a label printer
+/// set up, each entry has a print action: copies, then the hard-mismatch
+/// warning when it applies, then the print.
 ///
 /// An entry that needs sign-off (issue #113, Log on OK) carries a "Needs
-/// sign-off" badge and has no print action until it is signed off. A line
-/// above the list counts them, and a filter chip narrows the list to them.
+/// sign-off" badge and has no print action until it is signed off, which
+/// the edit sheet does ("Sign off", or "Sign off and print" through the
+/// print action's own checks). A line above the list counts them, and a
+/// filter chip narrows the list to them.
 library;
 
 import 'dart:async';
@@ -148,25 +151,51 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     return true;
   }
 
+  /// The name to start an empty "Analysed by" with: the newest non-blank
+  /// one in the loaded list.
+  String? _suggestedAnalysedBy() {
+    for (final a in _items ?? const <GasAnalysis>[]) {
+      final name = a.analysedBy?.trim();
+      if (name != null && name.isNotEmpty) return name;
+    }
+    return null;
+  }
+
   /// Opens the edit sheet for [a], offering the recent desired mixes of the
-  /// list. True when an edit was saved.
+  /// list. Returns what the sheet did; [AnalysisEditOutcome.cancelled] when
+  /// nothing changed.
   ///
-  /// A save also takes down the SnackBar that is up: a print failure's
-  /// Retry there was offered for the entry as it was before the edit.
-  Future<bool> _openEditSheet(GasAnalysis a) async {
+  /// Any change also takes down the SnackBar that is up: a print failure's
+  /// Retry there was offered for the entry as it was before the edit. A
+  /// delete says so, as the swipe does.
+  Future<AnalysisEditOutcome> _openEditSheet(GasAnalysis a) async {
     final messenger = ScaffoldMessenger.of(context);
-    final saved = await showAnalysisEditSheet(
+    final outcome = await showAnalysisEditSheet(
       context,
       dao: widget.dao,
       analysis: a,
       mixOptions: recentDesiredMixes(_items ?? const []),
+      suggestedAnalysedBy: _suggestedAnalysedBy(),
+      canPrint: widget.labelPrinting?.isConfigured == true,
     );
-    if (saved) messenger.hideCurrentSnackBar();
-    return saved;
+    if (outcome != AnalysisEditOutcome.cancelled) {
+      messenger.hideCurrentSnackBar();
+    }
+    if (outcome == AnalysisEditOutcome.deleted) _announceDeleted(messenger, a);
+    return outcome;
   }
 
+  /// Tapping an entry. "Sign off and print" prints the entry as stored after
+  /// the sign-off, through [_reprint] and its checks.
   Future<void> _edit(GasAnalysis a) async {
-    if (await _openEditSheet(a)) await _reload();
+    final outcome = await _openEditSheet(a);
+    if (outcome == AnalysisEditOutcome.cancelled) return;
+    final stored = await _stored(a.id);
+    if (outcome != AnalysisEditOutcome.signOffAndPrint) return;
+    // Deleted meanwhile, or flagged again (through sync): nothing to print.
+    // Say so now, not after the copies prompt.
+    if (stored == null || !mounted || _refuseUnsigned(stored)) return;
+    await _reprint(stored);
   }
 
   /// Prints the label of [a]: asks for copies, then, on a hard mismatch
@@ -198,7 +227,10 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
         final choice = await showMixMismatchDialog(context, analysis: entry);
         if (!mounted || choice == MismatchChoice.cancel) return;
         final printAnalysed = choice == MismatchChoice.printAnalysed;
-        if (!printAnalysed && !await _openEditSheet(entry)) return;
+        if (!printAnalysed &&
+            await _openEditSheet(entry) == AnalysisEditOutcome.cancelled) {
+          return;
+        }
         // The dialog or the sheet was up for a while: the entry can be
         // flagged, deleted or changed (through sync) meanwhile.
         final stored = await _stored(entry.id);
@@ -234,13 +266,18 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _items = [...?_items]..removeWhere((x) => x.id == a.id));
     await widget.dao.softDelete(a.id);
-    // Replaces what is up. A print failure stays until dismissed, so this
-    // would queue behind it unseen, and its Retry could be for this entry.
+    _announceDeleted(messenger, a);
+    await _reload();
+  }
+
+  /// "Deleted EAN32 analysis." Replaces what is up. A print failure stays
+  /// until dismissed, so this would queue behind it unseen, and its Retry
+  /// could be for this entry.
+  void _announceDeleted(ScaffoldMessengerState messenger, GasAnalysis a) {
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(content: Text('Deleted ${a.mixName} analysis.')),
     );
-    await _reload();
   }
 
   Future<void> _export() async {
