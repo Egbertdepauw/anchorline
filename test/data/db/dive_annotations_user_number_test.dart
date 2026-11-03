@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/models/annotation.dart';
 import 'package:ccrlogger/sync/cloud/powersync_schema.dart';
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:powersync/powersync.dart' hide SyncStatus;
@@ -62,7 +61,7 @@ void main() {
         () async {
       // Upsert a full annotation for dive 'c' with a site name.
       await dao.upsert(
-          _blank('c').copyWith(siteName: const Value('Test Site')));
+          _blank('c').copyWith(siteName: const Patch('Test Site')));
       final before = (await dao.getAnnotationsForDives(['c']))['c']!;
       expect(before.siteName, 'Test Site');
       expect(before.userDiveNumber, isNull);

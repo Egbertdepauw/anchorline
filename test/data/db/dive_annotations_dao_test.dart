@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
 import 'package:ccrlogger/data/models/annotation.dart';
 import 'package:ccrlogger/sync/cloud/powersync_schema.dart';
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:powersync/powersync.dart' hide SyncStatus;
@@ -165,11 +164,11 @@ void main() {
 
     test('upsert is idempotent on diveId and bumps version', () async {
       await dao
-          .upsert(_blank('dive_b').copyWith(siteName: const Value('first')));
+          .upsert(_blank('dive_b').copyWith(siteName: const Patch('first')));
       final v1 = (await dao.get('dive_b'))!.version;
 
       await dao
-          .upsert(_blank('dive_b').copyWith(siteName: const Value('second')));
+          .upsert(_blank('dive_b').copyWith(siteName: const Patch('second')));
       final got = (await dao.get('dive_b'))!;
 
       expect(got.siteName, 'second');

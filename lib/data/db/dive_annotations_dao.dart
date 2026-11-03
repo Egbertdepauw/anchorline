@@ -17,7 +17,6 @@ library;
 
 import 'dart:convert';
 
-import 'package:drift/drift.dart' show Value;
 import 'package:powersync/powersync.dart' hide SyncStatus;
 
 import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
@@ -549,7 +548,7 @@ class DiveAnnotationsDao {
       if (existing == null) continue;
       if (existing.siteName?.trim() != fromName) continue;
 
-      await upsert(existing.copyWith(siteName: Value(toName)));
+      await upsert(existing.copyWith(siteName: Patch(toName)));
       changed++;
     }
     return changed;
@@ -575,9 +574,9 @@ class DiveAnnotationsDao {
       if (existing.siteName?.trim() != target) continue;
 
       await upsert(existing.copyWith(
-        siteName: const Value(null),
-        siteLatitude: const Value(null),
-        siteLongitude: const Value(null),
+        siteName: const Patch(null),
+        siteLatitude: const Patch(null),
+        siteLongitude: const Patch(null),
       ));
       changed++;
     }
