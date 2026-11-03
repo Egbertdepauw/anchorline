@@ -43,6 +43,9 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Golden mismatch images that flutter_test writes next to a failing test.
+test/**/failures/
+
 # Symbolication related
 app.*.symbols
 
