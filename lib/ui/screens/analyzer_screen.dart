@@ -152,7 +152,7 @@ UsbOkLogger buildOkLogger({
   required GasAnalysesDaoLike dao,
   LabelPrintService? printing,
   Duration Function()? elapsed,
-  Duration? tickInterval = const Duration(milliseconds: 200),
+  Duration? tickInterval = kOkTickInterval,
 }) =>
     UsbOkLogger(
       save: dao.addFromBridge,
@@ -223,6 +223,11 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   /// The Log on OK logger while it is wanted, and the transport it watches.
   UsbOkLogger? _okLogger;
   AnalyzerTransport? _okTransport;
+
+  /// Keeps the save card, and so the setup the diver filled in, when the
+  /// window crosses [kAnalyzerWideBreakpoint] and the card moves to the other
+  /// layout.
+  final _saveCardKey = GlobalKey();
 
   @override
   void initState() {
@@ -474,6 +479,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
     return [
       const SizedBox(height: Spacing.md),
       AnalysisSaveCard(
+        key: _saveCardKey,
         dao: dao,
         reading: _controller.latest,
         stability: _controller.stability,

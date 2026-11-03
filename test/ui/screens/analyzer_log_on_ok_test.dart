@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ccrlogger/analyzer/analyzer_controller.dart';
+import 'package:ccrlogger/analyzer/stability.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
 import 'package:ccrlogger/analyzer/transport/demo_transport.dart';
 import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
@@ -10,6 +11,7 @@ import 'package:ccrlogger/label_printer/label_bitmap.dart';
 import 'package:ccrlogger/labels/label_print_service.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
+import 'package:ccrlogger/ui/widgets/analysis_save_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -217,6 +219,12 @@ Future<void> _setUp(WidgetTester tester) async {
   await tester.tap(_key('desired-mix-32-0'));
   await tester.pump();
   await tester.enterText(_key('analysis-diver'), 'EdP');
+  await tester.pump();
+}
+
+/// The keyboard's Done on the field being edited.
+Future<void> _done(WidgetTester tester) async {
+  await tester.testTextInput.receiveAction(TextInputAction.done);
   await tester.pump();
 }
 
@@ -602,6 +610,84 @@ void main() {
       expect(_resultText(tester), 'Saved EAN32');
     });
 
+    _test('Edit and Sign off uses up the per-cylinder fields',
+        (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await _setUp(tester);
+      await _pickCylinder(tester, 'S80 left');
+      await tester.enterText(_key('analysis-pressure'), '200');
+      await tester.enterText(_key('analysis-notes'), 'Topped up');
+      await tester.pump();
+
+      await h.feed(tester, 32.0, 0, seconds: 6);
+      await h.pressOk(tester);
+      // Needs sign-off: the fields stay.
+      expect(find.text('200'), findsOneWidget);
+
+      await tester.tap(_key('analysis-ok-edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(_key('analysis-edit-signoff'));
+      await tester.pumpAndSettle();
+
+      expect(_resultText(tester), 'Saved EAN32');
+      expect(find.text('200'), findsNothing);
+      expect(find.text('Topped up'), findsNothing);
+      expect(
+        tester
+            .widget<DropdownButtonFormField<String?>>(_key('analysis-cylinder'))
+            .initialValue,
+        isNull,
+      );
+      // And the rest of the setup stays.
+      expect(find.text('EdP'), findsOneWidget);
+    });
+
+    _test('Edit and Sign off leaves what was typed since', (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await _setUp(tester);
+      await tester.enterText(_key('analysis-pressure'), '200');
+      await tester.pump();
+
+      await h.feed(tester, 32.0, 0, seconds: 6);
+      await h.pressOk(tester);
+      // The next cylinder is already being filled in.
+      await tester.enterText(_key('analysis-pressure'), '180');
+      await tester.pump();
+
+      await tester.tap(_key('analysis-ok-edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(_key('analysis-edit-signoff'));
+      await tester.pumpAndSettle();
+
+      expect(_resultText(tester), 'Saved EAN32');
+      expect(find.text('180'), findsOneWidget);
+    });
+
+    _test('after an edit the result follows the entry as stored',
+        (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await _setUp(tester);
+      await h.feed(tester, 32.0, 0, seconds: 6);
+      await h.pressOk(tester);
+      expect(_resultText(tester), 'Needs sign-off: NOT STABLE');
+      final id = h.dao.addedFromBridge.single.$1;
+
+      await tester.tap(_key('analysis-ok-edit'));
+      await tester.pumpAndSettle();
+      // Meanwhile the entry is signed off from another screen.
+      await h.dao.setNeedsSignoff(id, false);
+      await tester.tap(_key('analysis-edit-save'));
+      await tester.pumpAndSettle();
+
+      expect(_resultText(tester), 'Saved EAN32');
+    });
+
     _test('Delete in the edit sheet clears the result', (tester, h) async {
       await h.pump(tester);
       await _switchOn(tester);
@@ -697,6 +783,111 @@ void main() {
     }, printer: true);
   });
 
+  group('the layout', () {
+    _test('crossing the wide breakpoint keeps the card and its setup',
+        (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await _setUp(tester);
+      await _pickCylinder(tester, 'Dil 3L'); // role: diluent
+      await tester.enterText(_key('analysis-for'), 'Anna');
+      await tester.pump();
+
+      Future<void> resize(Size size) async {
+        tester.view.physicalSize = size;
+        await tester.pump();
+        await tester.pump();
+      }
+
+      void expectSetupShown() {
+        expect(find.text('EdP'), findsOneWidget);
+        expect(find.text('Anna'), findsOneWidget);
+        expect(
+          tester.widget<ChoiceChip>(_key('desired-mix-32-0')).selected,
+          isTrue,
+        );
+        expect(
+          tester
+              .widget<SegmentedButton<GasRole>>(_key('analysis-gas-role'))
+              .selected,
+          {GasRole.diluent},
+        );
+        expect(_key('analysis-ok-hint'), findsOneWidget);
+      }
+
+      // Narrow to wide: the same card, so the setup is still on it and
+      // still the logger's.
+      await resize(const Size(1200, 3200));
+      expectSetupShown();
+      expect(h.logger!.setupProvider, isNotNull);
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+      expect(h.dao.addedFromBridge, hasLength(1));
+      var a = h.dao.addedFromBridge.last.$2;
+      expect(a.analysedBy, 'EdP');
+      expect(a.desiredMix, const DesiredMix(32, 0));
+      expect(a.gasRole, GasRole.diluent);
+      expect(a.analysedFor, 'Anna');
+      expect(_resultText(tester), 'Saved EAN32');
+      expectSetupShown();
+
+      // And back.
+      await resize(const Size(400, 3200));
+      expectSetupShown();
+      expect(_resultText(tester), 'Saved EAN32');
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+      expect(h.dao.addedFromBridge, hasLength(2));
+      a = h.dao.addedFromBridge.last.$2;
+      expect(a.analysedBy, 'EdP');
+      expect(a.desiredMix, const DesiredMix(32, 0));
+      expect(a.needsSignoff, isFalse);
+      expect(h.loggersBuilt, 1);
+    });
+
+    testWidgets('a disposed card leaves the setup of its successor alone',
+        (tester) async {
+      final dao = FakeGasAnalysesDao();
+      final logger = UsbOkLogger(
+        save: dao.addFromBridge,
+        markComplete: (id) => dao.setNeedsSignoff(id, false),
+        tickInterval: null,
+      );
+      Widget card(int n) => MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: AnalysisSaveCard(
+                  key: ValueKey('card-$n'),
+                  dao: dao,
+                  reading: null,
+                  stability: ReadingStability.noData,
+                  modPpo2s: const [1.4],
+                  okLogger: logger,
+                ),
+              ),
+            ),
+          );
+
+      await tester.pumpWidget(card(1));
+      final first = logger.setupProvider;
+      expect(first, isNotNull);
+
+      // A new State binds first; the old one is disposed at the end of the
+      // frame and must not take the new one's setup away.
+      await tester.pumpWidget(card(2));
+      expect(logger.setupProvider, isNotNull);
+      expect(logger.setupProvider, isNot(equals(first)));
+
+      // The last card going does clear it.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      expect(logger.setupProvider, isNull);
+      // Not awaited: closing the stream needs the real zone's microtasks.
+      unawaited(logger.dispose());
+      await tester.pump();
+    });
+  });
+
   group('stopping the logger', () {
     _test('switching off disposes the logger and brings Save back',
         (tester, h) async {
@@ -762,7 +953,7 @@ void main() {
       expect(h.settings.analyzerAnalysedBy, isNull);
 
       await tester.enterText(_key('analysis-diver'), 'EdP');
-      await tester.pump();
+      await _done(tester);
       expect(h.settings.analyzerAnalysedBy, 'EdP');
 
       // A new screen on the same settings starts from it.
@@ -780,13 +971,86 @@ void main() {
     _test('clearing the name forgets it', (tester, h) async {
       await h.pump(tester);
       await tester.enterText(_key('analysis-diver'), 'EdP');
-      await tester.pump();
+      await _done(tester);
       await tester.enterText(_key('analysis-diver'), '');
-      await tester.pump();
+      await _done(tester);
       expect(h.settings.analyzerAnalysedBy, isNull);
       final reloaded = SettingsNotifier();
       await reloaded.load();
       expect(reloaded.analyzerAnalysedBy, isNull);
+    });
+
+    _test('typing a name writes the setting once, not per keystroke',
+        (tester, h) async {
+      await h.pump(tester);
+      var writes = 0;
+      h.settings.addListener(() => writes++);
+
+      for (final typed in ['E', 'Ed', 'EdP']) {
+        await tester.enterText(_key('analysis-diver'), typed);
+        await tester.pump();
+      }
+      expect(writes, 0);
+      expect(h.settings.analyzerAnalysedBy, isNull);
+
+      await _done(tester);
+      expect(writes, 1);
+      expect(h.settings.analyzerAnalysedBy, 'EdP');
+
+      // Done again with nothing changed writes nothing.
+      await _done(tester);
+      expect(writes, 1);
+    });
+
+    _test('leaving the field writes the name', (tester, h) async {
+      await h.pump(tester);
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await tester.pump();
+      expect(h.settings.analyzerAnalysedBy, isNull);
+
+      await tester.tap(_key('analysis-for'));
+      await tester.pump();
+      expect(h.settings.analyzerAnalysedBy, 'EdP');
+    });
+
+    _test('an OK press writes the name it saved', (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      await _setUp(tester); // types the name, no Done
+      expect(h.settings.analyzerAnalysedBy, isNull);
+
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+      expect(h.dao.addedFromBridge.single.$2.analysedBy, 'EdP');
+      expect(h.settings.analyzerAnalysedBy, 'EdP');
+    });
+
+    _test('a manual Save writes the name', (tester, h) async {
+      await h.pump(tester);
+      await h.connect(tester);
+      await h.feed(tester, 32.0, 0, seconds: 3);
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await tester.pump();
+      expect(h.settings.analyzerAnalysedBy, isNull);
+
+      await tester.tap(_key('analysis-save'));
+      await tester.pumpAndSettle();
+      expect(h.settings.analyzerAnalysedBy, 'EdP');
+      await tester.tap(_key('analysis-save-anyway'));
+      await tester.pumpAndSettle();
+    });
+
+    _test('leaving the screen writes a name still being typed',
+        (tester, h) async {
+      await h.pump(tester);
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await tester.pump();
+      expect(h.settings.analyzerAnalysedBy, isNull);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      expect(h.settings.analyzerAnalysedBy, 'EdP');
     });
   });
 

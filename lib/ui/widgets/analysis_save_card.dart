@@ -99,6 +99,7 @@ class AnalysisSaveCard extends StatefulWidget {
 
 class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
   final _diver = TextEditingController();
+  final _diverFocus = FocusNode();
   final _for = TextEditingController();
   final _pressure = TextEditingController();
   final _notes = TextEditingController();
@@ -138,10 +139,19 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
   /// may already be typing for the next cylinder while the label prints.
   ({String? cylinderId, String pressure, String notes})? _takenByOk;
 
+  /// What [_takenByOk] was when [_okResult] came in: the fields that press
+  /// used, for a sign-off from the result row to use up. Null once used up.
+  ({String? cylinderId, String pressure, String notes})? _takenForResult;
+
+  /// The "Analysed by" the screen was last told, so it hears of a change once.
+  String? _toldAnalysedBy;
+
   @override
   void initState() {
     super.initState();
     _diver.text = widget.initialAnalysedBy ?? '';
+    _toldAnalysedBy = _analysedByNow;
+    _diverFocus.addListener(_onDiverFocus);
     _loadCylinders();
     _loadMixOptions();
     _bindLogger();
@@ -154,6 +164,7 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
       _unbindLogger(oldWidget.okLogger);
       _okResult = null;
       _takenByOk = null;
+      _takenForResult = null;
       _bindLogger();
     }
   }
@@ -184,6 +195,16 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
   @override
   void dispose() {
     _unbindLogger(widget.okLogger);
+    // A name still being typed (a touch outside the field doesn't end the
+    // edit on a phone). Told once the tree is done, not while it is torn
+    // down, because the screen listens to what it changes.
+    final told = widget.onAnalysedByChanged;
+    final name = _analysedByNow;
+    if (told != null && name != _toldAnalysedBy) {
+      scheduleMicrotask(() => told(name));
+    }
+    _diverFocus.removeListener(_onDiverFocus);
+    _diverFocus.dispose();
     _diver.dispose();
     _for.dispose();
     _pressure.dispose();
@@ -206,13 +227,36 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     // future, which never completes under the fake clock of widget tests.
     unawaited(_okSub?.cancel());
     _okSub = null;
-    logger?.setupProvider = null;
+    // Only this card's own: a card that took the logger over (the layout
+    // changed under a card with no key) has set its own by now.
+    if (logger != null && logger.setupProvider == _okSetup) {
+      logger.setupProvider = null;
+    }
+  }
+
+  /// The "Analysed by" text, null when blank.
+  String? get _analysedByNow => _blankToNull(_diver.text);
+
+  void _onDiverFocus() {
+    if (!_diverFocus.hasFocus) _tellAnalysedBy();
+  }
+
+  /// Tells the screen the name when it changed since it was last told: when
+  /// the edit ends (Done, leaving the field), when an OK press takes the
+  /// setup and when a Save is made. Not on every keystroke, as the screen
+  /// remembers it by writing a setting that the whole app listens to.
+  void _tellAnalysedBy() {
+    final name = _analysedByNow;
+    if (name == _toldAnalysedBy) return;
+    _toldAnalysedBy = name;
+    widget.onAnalysedByChanged?.call(name);
   }
 
   bool get _printReady => widget.labelPrinting?.isConfigured == true;
 
   /// The fields as they are now, for the OK press the logger is handling.
   OkSetup _okSetup() {
+    _tellAnalysedBy();
     final cylinderId =
         _cylinders.any((c) => c.id == _cylinderId) ? _cylinderId : null;
     _takenByOk =
@@ -241,19 +285,26 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
   /// "for", copies and print switch stay for the next cylinder.
   void _onOkResult(OkLogResult r) {
     if (!mounted) return;
-    final taken = _takenByOk;
     setState(() {
       _okResult = r;
-      if (r.complete && taken != null) {
-        final current =
-            _cylinders.any((c) => c.id == _cylinderId) ? _cylinderId : null;
-        if (current == taken.cylinderId) _cylinderId = null;
-        if (_pressure.text == taken.pressure) _pressure.clear();
-        if (_notes.text == taken.notes) _notes.clear();
-      }
+      _takenForResult = _takenByOk;
+      if (r.complete) _useUpTaken();
     });
     // Not awaited: the mix just used may be new to the chips.
     if (r.analysisId != null) unawaited(_loadMixOptions());
+  }
+
+  /// Clears the per-cylinder fields the shown result's press took, the ones
+  /// still as it took them. Call inside setState.
+  void _useUpTaken() {
+    final taken = _takenForResult;
+    _takenForResult = null;
+    if (taken == null) return;
+    final current =
+        _cylinders.any((c) => c.id == _cylinderId) ? _cylinderId : null;
+    if (current == taken.cylinderId) _cylinderId = null;
+    if (_pressure.text == taken.pressure) _pressure.clear();
+    if (_notes.text == taken.notes) _notes.clear();
   }
 
   static String? _blankToNull(String s) => s.trim().isEmpty ? null : s;
@@ -338,6 +389,7 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     // The guard goes up before the first await, so a second tap while a
     // dialog opens or the save runs can't save the reading twice.
     if (gas == null || _busy) return;
+    _tellAnalysedBy();
     setState(() => _saving = true);
     try {
       // Snapshot before any await: the reading keeps updating at 1 Hz.
@@ -443,10 +495,15 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     return saved;
   }
 
+  /// The stored entry [id], or null when it is gone.
+  Future<GasAnalysis?> _readStored(String id) async =>
+      (await widget.dao.list()).where((x) => x.id == id).firstOrNull;
+
   /// "Edit" on the result: the sheet on the entry as stored, so changes made
-  /// since (a sign-off from the log, a sync) are in it. Signing off here
-  /// turns the result into a plain "Saved". Printing after a sign-off is
-  /// left to the log, so the sheet does not offer it.
+  /// since (a sign-off from the log, a sync) are in it. Afterwards the result
+  /// follows the entry as stored: signed off, here or elsewhere, it is a
+  /// plain "Saved" and the press counts as complete. Printing after a
+  /// sign-off is left to the log, so the sheet does not offer it.
   Future<void> _editResult(OkLogResult r) async {
     final id = r.analysisId;
     if (id == null || _okBusy) return;
@@ -490,15 +547,34 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
         messenger.showSnackBar(
           SnackBar(content: Text('Deleted ${stored.mixName} analysis.')),
         );
-      } else if (outcome != AnalysisEditOutcome.saved &&
-          identical(_okResult, r)) {
-        // Signed off: nothing is left to do for this entry.
-        setState(() => _okResult = OkLogResult(
-              code: FeedbackCode.saved,
-              text: stored.mixName,
-              analysisId: id,
-              complete: true,
-            ));
+        return;
+      }
+      // The entry as the edit left it, not as it was opened.
+      final GasAnalysis? after;
+      try {
+        after = await _readStored(id);
+      } catch (e) {
+        debugPrint('Analysis save card: reading the edited entry failed: $e');
+        return;
+      }
+      if (!mounted || !identical(_okResult, r)) return;
+      if (after == null) {
+        setState(() => _okResult = null);
+      } else if (!r.complete && !after.needsSignoff) {
+        // Signed off: nothing is left to do for this entry, so its press
+        // counts as complete and uses up what it took.
+        final mixName = after.mixName;
+        setState(() {
+          _useUpTaken();
+          _okResult = OkLogResult(
+            code: r.code == FeedbackCode.printed
+                ? FeedbackCode.printed
+                : FeedbackCode.saved,
+            text: mixName,
+            analysisId: id,
+            complete: true,
+          );
+        });
       }
     } finally {
       if (mounted) setState(() => _okBusy = false);
@@ -655,13 +731,13 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
                 child: TextField(
                   key: const ValueKey('analysis-diver'),
                   controller: _diver,
+                  focusNode: _diverFocus,
                   textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(
                     labelText: 'Analysed by',
                     isDense: true,
                   ),
-                  onChanged: (v) => widget.onAnalysedByChanged
-                      ?.call(v.trim().isEmpty ? null : v),
+                  onSubmitted: (_) => _tellAnalysedBy(),
                 ),
               ),
               const SizedBox(width: Spacing.md),

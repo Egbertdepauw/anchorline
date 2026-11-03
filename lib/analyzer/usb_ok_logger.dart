@@ -26,6 +26,11 @@ import 'bridge/record_to_analysis.dart';
 import 'hold_detector.dart';
 import 'transport/analyzer_transport.dart';
 
+/// How often the logger asks the hold detector whether OK was pressed. The
+/// screen's logger uses this; a test passes null to drive [UsbOkLogger.tick]
+/// itself.
+const Duration kOkTickInterval = Duration(milliseconds: 200);
+
 /// What the diver set up for the next OK, and how many labels to print.
 typedef OkSetup = ({LogOnOkSetup setup, int copies});
 
@@ -81,7 +86,7 @@ class UsbOkLogger {
     Future<void> Function(GasAnalysis a, int copies)? printLabel,
     Duration Function()? elapsed,
     DateTime Function()? now,
-    Duration? tickInterval = const Duration(milliseconds: 200),
+    Duration? tickInterval = kOkTickInterval,
     void Function(Object error, StackTrace stack)? onError,
   }) : _save = save,
        _markComplete = markComplete,
