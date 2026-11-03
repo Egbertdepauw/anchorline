@@ -113,7 +113,9 @@ For every `.dart` file under `lib/` and `test/` of the app it resolves each `imp
 import 'dart:io';
 
 void main(List<String> args) {
-  final root = Directory(args.single).absolute.path.replaceAll(RegExp(r'/$'), '');
+  // resolveSymbolicLinksSync normalises `.` and trailing slashes; `.absolute`
+  // alone leaves `/repo/.`, which never prefix-matches a resolved import.
+  final root = Directory(args.single).resolveSymbolicLinksSync();
   final libRoot = '$root/lib/';
   final pkgLib = '$root/packages/subsurface_core/lib/';
   final re = RegExp(r"^(\s*(?:import|export)\s+)'([^']+)'", multiLine: true);
