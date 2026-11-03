@@ -1,3 +1,4 @@
+import 'package:ccrlogger/analysis/mix_match.dart';
 import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:powersync/powersync.dart' show PowerSyncDatabase;
@@ -8,13 +9,38 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   Future<void> insertCylinder(PowerSyncDatabase ps, String id, String label,
-          {int? deletedAt}) =>
+          {int? deletedAt, String role = 'bailout'}) =>
       ps.execute(
         'INSERT INTO cylinders (id, owner_id, label, role, volume_liters, '
         'working_pressure_bar, created_at, updated_at, deleted_at, version, '
         'sync_status) VALUES (?, ?, ?, ?, 11.0, 232, 0, 0, ?, 1, 0)',
-        [id, 'u1', label, 'bailout', deletedAt],
+        [id, 'u1', label, role, deletedAt],
       );
+
+  /// A row as an older build or another device could have written it: only
+  /// the columns that existed before the label fields, plus whatever the
+  /// test passes in [extra].
+  Future<void> insertRawAnalysis(PowerSyncDatabase ps, String id,
+      {Map<String, Object?> extra = const {}}) {
+    final cols = <String, Object?>{
+      'id': id,
+      'owner_id': 'u1',
+      'analysed_at': DateTime(2026, 10, 30, 18, 5).millisecondsSinceEpoch,
+      'o2_percent': 32.0,
+      'he_percent': 0.0,
+      'stable': 1,
+      'created_at': 0,
+      'updated_at': 0,
+      'version': 1,
+      'sync_status': 0,
+      ...extra,
+    };
+    return ps.execute(
+      'INSERT INTO gas_analyses (${cols.keys.join(', ')}) '
+      'VALUES (${List.filled(cols.length, '?').join(', ')})',
+      cols.values.toList(),
+    );
+  }
 
   NewGasAnalysis analysis({
     String? cylinderId,
@@ -22,6 +48,8 @@ void main() {
     double o2 = 21.4,
     double he = 34.6,
     bool stable = true,
+    DesiredMix? desiredMix,
+    GasRole gasRole = GasRole.bailout,
   }) =>
       NewGasAnalysis(
         cylinderId: cylinderId,
@@ -35,6 +63,8 @@ void main() {
         modPpo2s: const [1.1, 1.4, 1.6],
         stable: stable,
         notes: '',
+        desiredMix: desiredMix,
+        gasRole: gasRole,
       );
 
   test('add round-trips every stored field at full precision', () async {
@@ -140,5 +170,157 @@ void main() {
     final choices = await dao.listCylinderChoices();
     expect(choices.map((c) => c.id), ['a', 'b']);
     expect(choices.map((c) => c.label), ['al40', 'S80 b']);
+  });
+
+  test('listCylinderChoices returns the cylinder role', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    await insertCylinder(ps, 'a', 'al40'); // helper default: bailout
+    await insertCylinder(ps, 'b', 'D7', role: 'diluent');
+    final choices = await dao.listCylinderChoices();
+    expect(choices.map((c) => c.role), ['bailout', 'diluent']);
+    expect(gasRoleForCylinderRole(choices.last.role), GasRole.diluent);
+  });
+
+  test('add round-trips the desired mix and the gas role', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+
+    final id = await dao.add(analysis(
+      desiredMix: const DesiredMix(21, 35),
+      gasRole: GasRole.diluent,
+    ));
+    final a = (await dao.list()).single;
+    expect(a.desiredMix, const DesiredMix(21, 35));
+    expect(a.targetO2Percent, 21);
+    expect(a.targetHePercent, 35);
+    expect(a.gasRole, GasRole.diluent);
+    expect(a.match!.level, MixMatchLevel.match);
+
+    final row = await ps.get('SELECT * FROM gas_analyses WHERE id = ?', [id]);
+    expect(row['target_o2_percent'], 21);
+    expect(row['target_he_percent'], 35);
+    expect(row['gas_role'], 'diluent');
+  });
+
+  test('add without a desired mix stores null targets and bailout', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    final id = await dao.add(analysis());
+    final row = await ps.get('SELECT * FROM gas_analyses WHERE id = ?', [id]);
+    expect(row['target_o2_percent'], isNull);
+    expect(row['target_he_percent'], isNull);
+    expect(row['gas_role'], 'bailout');
+    final a = (await dao.list()).single;
+    expect(a.desiredMix, isNull);
+    expect(a.match, isNull);
+    expect(a.gasRole, GasRole.bailout);
+  });
+
+  test('update changes the editable fields and bumps version', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    final id = await dao.add(analysis(desiredMix: const DesiredMix(18, 45)));
+    // Make updated_at observably change even within the same millisecond.
+    await ps
+        .execute('UPDATE gas_analyses SET updated_at = 0 WHERE id = ?', [id]);
+
+    await dao.update(
+      id,
+      const GasAnalysisEdit(
+        desiredMix: DesiredMix(21, 35),
+        gasRole: GasRole.diluent,
+        analysedBy: '  Sam  ',
+        notes: ' topped up ',
+      ),
+    );
+
+    final a = (await dao.list()).single;
+    expect(a.desiredMix, const DesiredMix(21, 35));
+    expect(a.gasRole, GasRole.diluent);
+    expect(a.analysedBy, 'Sam'); // trimmed
+    expect(a.notes, 'topped up'); // trimmed
+
+    final row = await ps.get('SELECT * FROM gas_analyses WHERE id = ?', [id]);
+    expect(row['version'], 2);
+    expect(row['updated_at'], greaterThan(0));
+    expect(row['deleted_at'], isNull);
+    // Measured values are never touched.
+    expect(row['o2_percent'], 21.4);
+    expect(row['he_percent'], 34.6);
+    expect(row['fill_pressure_bar'], 232.5);
+    expect(row['analysed_at'],
+        DateTime(2026, 10, 30, 18, 5).millisecondsSinceEpoch);
+  });
+
+  test('update with blanks clears the desired mix, name and notes', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    final id = await dao.add(analysis(desiredMix: const DesiredMix(18, 45)));
+
+    await dao.update(
+      id,
+      const GasAnalysisEdit(
+        desiredMix: null,
+        gasRole: GasRole.bailout,
+        analysedBy: '   ',
+        notes: '',
+      ),
+    );
+
+    final a = (await dao.list()).single;
+    expect(a.desiredMix, isNull);
+    expect(a.analysedBy, isNull);
+    expect(a.notes, isNull);
+    final row = await ps.get('SELECT * FROM gas_analyses WHERE id = ?', [id]);
+    expect(row['target_o2_percent'], isNull);
+    expect(row['target_he_percent'], isNull);
+  });
+
+  test('update of an unknown id does nothing', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    final id = await dao.add(analysis());
+    await dao.update(
+      'nope',
+      const GasAnalysisEdit(
+        desiredMix: DesiredMix(32, 0),
+        gasRole: GasRole.diluent,
+        analysedBy: 'x',
+        notes: 'x',
+      ),
+    );
+    final row = await ps.get('SELECT * FROM gas_analyses WHERE id = ?', [id]);
+    expect(row['version'], 1);
+    expect(row['gas_role'], 'bailout');
+    expect(await ps.getAll('SELECT id FROM gas_analyses'), hasLength(1));
+  });
+
+  test('rows from older builds read as bailout with no desired mix', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    final t = DateTime(2026, 10, 30, 18, 5).millisecondsSinceEpoch;
+    // An unknown role string and null targets.
+    await insertRawAnalysis(ps, 'weird',
+        extra: {'gas_role': 'weird', 'analysed_at': t + 3});
+    // Null role and null targets (a row saved before the columns existed).
+    await insertRawAnalysis(ps, 'old', extra: {'analysed_at': t + 2});
+    // A target O2 with a null target He.
+    await insertRawAnalysis(ps, 'o2only',
+        extra: {'target_o2_percent': 32, 'analysed_at': t + 1});
+    // A target He with no target O2 is no desired mix at all.
+    await insertRawAnalysis(ps, 'heonly',
+        extra: {'target_he_percent': 35, 'analysed_at': t});
+
+    final byId = {for (final a in await dao.list()) a.id: a};
+    expect(byId, hasLength(4));
+    expect(byId['weird']!.gasRole, GasRole.bailout);
+    expect(byId['weird']!.desiredMix, isNull);
+    expect(byId['weird']!.match, isNull);
+    expect(byId['old']!.gasRole, GasRole.bailout);
+    expect(byId['old']!.desiredMix, isNull);
+    expect(byId['o2only']!.desiredMix, const DesiredMix(32, 0));
+    expect(byId['o2only']!.match!.level, MixMatchLevel.match);
+    expect(byId['heonly']!.desiredMix, isNull);
   });
 }

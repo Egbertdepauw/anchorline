@@ -16,6 +16,7 @@ class FakeGasAnalysesDao implements GasAnalysesDaoLike {
   final List<GasAnalysis> analyses;
   final List<NewGasAnalysis> added = [];
   final List<String> deleted = [];
+  final List<(String, GasAnalysisEdit)> updated = [];
   final _changes = StreamController<void>.broadcast();
 
   @override
@@ -23,21 +24,8 @@ class FakeGasAnalysesDao implements GasAnalysesDaoLike {
     added.add(a);
     final id = 'a${added.length}';
     final cyl = cylinders.where((c) => c.id == a.cylinderId);
-    analyses.add(GasAnalysis(
-      id: id,
-      cylinderId: a.cylinderId,
-      cylinderLabel: cyl.isEmpty ? null : cyl.first.label,
-      analysedBy: a.analysedBy,
-      analysedAt: a.analysedAt,
-      o2Percent: a.o2Percent,
-      hePercent: a.hePercent,
-      fillPressureBar: a.fillPressureBar,
-      tempC: a.tempC,
-      baroHpa: a.baroHpa,
-      modPpo2s: a.modPpo2s,
-      stable: a.stable,
-      notes: a.notes,
-    ));
+    analyses.add(GasAnalysis.fromNew(id, a,
+        cylinderLabel: cyl.isEmpty ? null : cyl.first.label));
     _changes.add(null);
     return id;
   }
@@ -50,6 +38,15 @@ class FakeGasAnalysesDao implements GasAnalysesDaoLike {
         .toList()
       ..sort((a, b) => b.analysedAt.compareTo(a.analysedAt));
     return out;
+  }
+
+  @override
+  Future<void> update(String id, GasAnalysisEdit edit) async {
+    updated.add((id, edit));
+    final i = analyses.indexWhere((a) => a.id == id);
+    if (i < 0) return;
+    analyses[i] = analyses[i].applyEdit(edit);
+    _changes.add(null);
   }
 
   @override

@@ -48,9 +48,9 @@
 		</dict>
 	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Anchorline needs Bluetooth to connect to your Shearwater dive computer and import dive logs.</string>
+	<string>Anchorline uses Bluetooth to import dive logs from your Shearwater dive computer and to print cylinder labels on a Bluetooth label printer.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Anchorline needs Bluetooth to connect to your Shearwater dive computer and import dive logs.</string>
+	<string>Anchorline uses Bluetooth to import dive logs from your Shearwater dive computer and to print cylinder labels on a Bluetooth label printer.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Anchorline uses your location to record where each dive happened.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

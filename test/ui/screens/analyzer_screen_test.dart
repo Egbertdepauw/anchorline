@@ -101,8 +101,9 @@ void main() {
     expect(rowText(tester, 'analyzer-mod-1.4'), contains('MOD @ ppO₂ 1.4'));
     expect(rowText(tester, 'analyzer-mod-1.6'), contains('MOD @ ppO₂ 1.6'));
     expect(rowText(tester, 'analyzer-mod-1.4'), isNot(contains('CCR dil')));
-    // (1.4 / 0.182 − 1) × 10 = 66.9 m
-    expect(rowText(tester, 'analyzer-mod-1.4'), contains('67 m'));
+    // (1.4 / 0.182 − 1) × 10 = 66.9 m, floored (not rounded to 67) so the
+    // screen agrees with the cylinder label.
+    expect(rowText(tester, 'analyzer-mod-1.4'), contains('66 m'));
     expect(rowText(tester, 'analyzer-temp'), contains('21.4 °C'));
     expect(rowText(tester, 'analyzer-baro'), contains('1013 hPa'));
 
@@ -114,6 +115,13 @@ void main() {
     expect(textOf(tester, 'analyzer-mix'), 'Tx18.2/45.1');
   });
 
+  test('exactly one built-in transport option is the demo source', () {
+    final demo =
+        defaultAnalyzerTransportOptions().where((o) => o.isDemo).toList();
+    expect(demo, hasLength(1));
+    expect(demo.single.label, 'Demo');
+  });
+
   testWidgets('hypoxic mix shows a minimum depth instead of surface',
       (tester) async {
     await pumpScreen(tester, await loadSettings(), targetO2: 10, targetHe: 70);
@@ -123,6 +131,19 @@ void main() {
     // (0.16 / 0.10 − 1) × 10 = 6 m
     expect(rowText(tester, 'analyzer-min-depth'), contains('6 m'));
     expect(rowText(tester, 'analyzer-min-depth'), isNot(contains('surface')));
+    await tester.tap(find.byKey(const ValueKey('analyzer-connect')));
+    await tester.pump();
+  });
+
+  testWidgets('an exact whole-metre MOD is not floored down a metre',
+      (tester) async {
+    // (1.4 / 0.2 - 1) * 10 is 59.99999999999999 in doubles; the true MOD of
+    // 20.0 % at 1.4 bar is exactly 60 m, as the label prints it.
+    await pumpScreen(tester, await loadSettings(), targetO2: 20, targetHe: 0);
+    await tester.tap(find.byKey(const ValueKey('analyzer-connect')));
+    await seconds(tester, 90);
+    expect(textOf(tester, 'analyzer-o2'), '20.0');
+    expect(rowText(tester, 'analyzer-mod-1.4'), contains('60 m'));
     await tester.tap(find.byKey(const ValueKey('analyzer-connect')));
     await tester.pump();
   });

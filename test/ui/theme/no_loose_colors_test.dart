@@ -7,7 +7,10 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-bool _allowed(String path) => path.startsWith('lib/ui/theme/');
+// lib/labels/render/ draws printed cylinder labels (#114): black ink on
+// white paper whatever the app theme, so its colours are fixed on purpose.
+bool _allowed(String path) =>
+    path.startsWith('lib/ui/theme/') || path.startsWith('lib/labels/render/');
 
 final _literal = RegExp(r'\bColor\(0x|\bColor\.from(ARGB|RGBO)?\(|'
     r'\bHSLColor\b|\bHSVColor\b|\bCupertinoColors\.');

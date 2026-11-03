@@ -42,6 +42,9 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kBlendFillTempC = 'blend_fill_temp_c';
   static const _kBlendSettledTempC = 'blend_settled_temp_c';
   static const _kAnalyzerModPpo2s = 'analyzer_mod_ppo2s';
+  static const _kLabelUse14 = 'label_use_14_for_deeper_mixes';
+  static const _kLabelPrinterId = 'label_printer_id';
+  static const _kLabelPrinterName = 'label_printer_name';
 
   /// Default ppO2 limits the gas analyzer shows a MOD for. 1.1 is the
   /// CCR diluent limit, 1.4 / 1.6 the usual OC bottom / deco limits.
@@ -111,6 +114,10 @@ class SettingsNotifier extends ChangeNotifier {
   double _blendSettledTempC = 18;
   // ── Gas analyzer ────────────────────────────────────────────────
   List<double> _analyzerModPpo2s = [...defaultAnalyzerModPpo2s];
+  // ── Cylinder labels (device-local, never synced) ────────────────
+  bool _labelUse14ForDeeperMixes = false;
+  String? _labelPrinterId;
+  String? _labelPrinterName;
 
   /// Id of the selected theme. Always a registered id.
   String get themeId => _themeId;
@@ -152,6 +159,15 @@ class SettingsNotifier extends ChangeNotifier {
 
   /// ppO2 limits (bar) the gas analyzer shows a MOD row for, ascending.
   List<double> get analyzerModPpo2s => List.unmodifiable(_analyzerModPpo2s);
+
+  /// Whether a cylinder label uses ppO2 1.4 instead of 1.6 for the MOD of a
+  /// bailout/deco mix under 50 % O2.
+  bool get labelUse14ForDeeperMixes => _labelUse14ForDeeperMixes;
+
+  /// The label printer saved on this device: its BLE id and the name shown
+  /// in Settings. Both null when none is set up.
+  String? get labelPrinterId => _labelPrinterId;
+  String? get labelPrinterName => _labelPrinterName;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -265,6 +281,9 @@ class SettingsNotifier extends ChangeNotifier {
           aMod.map(double.tryParse).whereType<double>());
       if (parsed.isNotEmpty) _analyzerModPpo2s = parsed;
     }
+    _labelUse14ForDeeperMixes = prefs.getBool(_kLabelUse14) ?? false;
+    _labelPrinterId = prefs.getString(_kLabelPrinterId);
+    _labelPrinterName = prefs.getString(_kLabelPrinterName);
 
     // `get` rather than `getString`: a value of the wrong type must fall
     // back to the default, not throw before the first frame.
@@ -589,6 +608,39 @@ class SettingsNotifier extends ChangeNotifier {
       _kAnalyzerModPpo2s,
       cleaned.map((v) => v.toString()).toList(),
     );
+  }
+
+  Future<void> setLabelUse14ForDeeperMixes(bool v) async {
+    if (_labelUse14ForDeeperMixes == v) return;
+    _labelUse14ForDeeperMixes = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kLabelUse14, v);
+  }
+
+  /// Saves the label printer for this device. [id] is the BLE id used to
+  /// reconnect; [name] is only for display.
+  Future<void> setLabelPrinter({
+    required String id,
+    required String name,
+  }) async {
+    if (_labelPrinterId == id && _labelPrinterName == name) return;
+    _labelPrinterId = id;
+    _labelPrinterName = name;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLabelPrinterId, id);
+    await prefs.setString(_kLabelPrinterName, name);
+  }
+
+  Future<void> forgetLabelPrinter() async {
+    if (_labelPrinterId == null && _labelPrinterName == null) return;
+    _labelPrinterId = null;
+    _labelPrinterName = null;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kLabelPrinterId);
+    await prefs.remove(_kLabelPrinterName);
   }
 
   /// Drops non-finite and out-of-range values, rounds to 0.01 bar,

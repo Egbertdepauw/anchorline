@@ -77,6 +77,10 @@ void main() {
       // bigint timestamps -> integer
       expect(col('dive_annotations', 'created_at').type, ColumnType.integer);
       expect(col('dive_computers', 'serial').type, ColumnType.integer);
+      // Cylinder label fields on gas_analyses (issue #114).
+      expect(col('gas_analyses', 'target_o2_percent').type, ColumnType.integer);
+      expect(col('gas_analyses', 'target_he_percent').type, ColumnType.integer);
+      expect(col('gas_analyses', 'gas_role').type, ColumnType.text);
     });
 
     test('no raw tables (everything is PowerSync-managed)', () {
