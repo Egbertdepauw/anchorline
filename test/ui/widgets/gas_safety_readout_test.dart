@@ -108,6 +108,41 @@ void main() {
     });
   });
 
+  // #143 floored this line; #145 replaced the floor with the stop rule.
+  group('gas editor shows the MOD as a stop depth (#143, #145)', () {
+    Future<String> modLineFor(WidgetTester tester, DivePlanGas gas) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: AppThemes.byId('miasma').themeData,
+        home: Scaffold(
+          body: PlanGasesEditor(
+            gases: [gas],
+            onAdd: (_) {},
+            onRemove: (_) {},
+            onReplace: (_, _) {},
+          ),
+        ),
+      ));
+      return tester.widget<Text>(find.textContaining('MOD ')).data!;
+    }
+
+    testWidgets('21 % trimix at 1.4 shows the 57 m stop', (tester) async {
+      // (1.4 / 0.21 − 1) × 10 = 56.67 m. The nearest stop is 57 m, where
+      // the gas is at 1.41, well under the 1.6 ceiling.
+      final text = await modLineFor(tester,
+          const DivePlanGas(oxygenPercent: 21, heliumPercent: 35, isDiluent: true));
+      expect(text, startsWith('MOD 57 m'));
+    });
+
+    testWidgets('20 % trimix at 1.4 shows 60 m despite FP noise',
+        (tester) async {
+      // (1.4 / 0.2 − 1) × 10 is 59.99999999999999 in doubles; it must
+      // still land on the 60 m stop.
+      final text = await modLineFor(tester,
+          const DivePlanGas(oxygenPercent: 20, heliumPercent: 40, isDiluent: true));
+      expect(text, startsWith('MOD 60 m'));
+    });
+  });
+
   testWidgets('idle readout text follows the theme textSecondary',
       (tester) async {
     final theme = AppThemes.byId('miasma');
