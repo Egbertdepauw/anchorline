@@ -792,9 +792,9 @@ Each step is its own issue and PR, and each one is useful on its own.
   back to Egbert with the meter readings.
 - **Background label rendering on iOS** (`Picture.toImage`). This is unverified, and printing from
   the pocket on iPhone depends on it.
-- **`StabilityDetector` thresholds are still untuned.** In the pocket an unstable reading doesn't
-  print, so thresholds that are too strict would mean many "NOT STABLE" results. Tune them with
-  real use; they are already named constants.
+- **`StabilityDetector` thresholds are still untuned.** Since decision 18 they no longer gate
+  printing, only the recorded `stable` flag and the screen's pill. Tune them with real use; they
+  are already named constants.
 - **No BLE bonding:** anyone nearby with a BLE app could connect, read lines, or send `ACK` (that
   would drop a record before the app saves it). The risk is low at a fill station. Bonding, or a
   per-bridge secret written at pairing, is a later hardening.
