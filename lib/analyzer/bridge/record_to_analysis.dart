@@ -24,6 +24,7 @@ import 'package:intl/intl.dart';
 
 import '../../analysis/gas_naming.dart';
 import '../../analysis/mix_match.dart';
+import '../../analysis/standard_mix_pick.dart';
 import '../../data/models/gas_analysis.dart';
 import '../protocol/solo_line_parser.dart';
 import '../stability.dart';
@@ -48,7 +49,9 @@ class LogOnOkSetup {
   const LogOnOkSetup({
     this.analysedBy,
     this.desiredMix,
-    this.gasRole = GasRole.bailout,
+    this.gasRole,
+    this.autoPickMix = false,
+    this.blendTarget,
     this.analysedFor,
     this.printOnOk = false,
     this.printerConfigured = false,
@@ -60,7 +63,18 @@ class LogOnOkSetup {
 
   final String? analysedBy;
   final DesiredMix? desiredMix;
-  final GasRole gasRole;
+
+  /// The tapped role, or a picked cylinder's known role. Null means follow
+  /// the mix: see [gasRoleForMix].
+  final GasRole? gasRole;
+
+  /// True while the diver has not picked or cleared a mix: each press then
+  /// gets the nearest standard mix of its own held reading ([pickDesiredMix]).
+  final bool autoPickMix;
+
+  /// The recent Blend target that is not used up. The auto pick prefers it
+  /// when it grades within orange.
+  final DesiredMix? blendTarget;
   final String? analysedFor;
 
   /// The diver wants a label printed on OK.
@@ -154,7 +168,11 @@ class SaveRecord extends RecordOutcome {
 ///     session runs ([active]).
 ///  6. The setup applies only to a live record. A late record is saved as
 ///     bailout with no name, mix, cylinder, pressure or notes; only
-///     [LogOnOkSetup.modPpo2s] always applies.
+///     [LogOnOkSetup.modPpo2s] always applies. The desired mix is the
+///     diver's pick, else (with [LogOnOkSetup.autoPickMix]) the nearest
+///     standard mix of this record's own held reading, only ever a match or
+///     orange. The role is the setup's, else follows that mix (or the
+///     reading when there is none).
 ///  7. The desired mix is graded against the measured gas.
 ///  8. Print only if live, the diver asked for it, a printer exists, there
 ///     is a name, and either there is no desired mix (the label then shows
@@ -246,8 +264,20 @@ RecordOutcome recordToAnalysis({
 
   // 6. The setup, for a live record only.
   final analysedBy = live ? _blankToNull(setup.analysedBy) : null;
-  final desiredMix = live ? setup.desiredMix : null;
-  final gasRole = live ? setup.gasRole : GasRole.bailout;
+  final desiredMix = live
+      ? (setup.desiredMix ??
+            (setup.autoPickMix
+                ? pickDesiredMix(
+                    o2Percent: o2,
+                    hePercent: he,
+                    blendTarget: setup.blendTarget,
+                  )?.mix
+                : null))
+      : null;
+  final gasRole = live
+      ? (setup.gasRole ??
+            gasRoleForMix(desiredMix?.o2Percent.toDouble() ?? o2))
+      : GasRole.bailout;
   final analysedFor = live ? setup.analysedFor : null;
   final cylinderId = live ? setup.cylinderId : null;
   final fillPressureBar = live ? setup.fillPressureBar : null;
