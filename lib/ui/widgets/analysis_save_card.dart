@@ -192,6 +192,10 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
       _takenForResult = null;
       _bindLogger();
     }
+    // The card outlives visits to the Blend tab: follow its target.
+    if (oldWidget.blendTarget != widget.blendTarget) {
+      unawaited(_loadMixOptions());
+    }
   }
 
   Future<void> _loadCylinders() async {

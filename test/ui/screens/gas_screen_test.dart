@@ -6,7 +6,7 @@ import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
 import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
-import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
+import 'package:ccrlogger/analyzer/transport/analyzer_transport_options.dart';
 import 'package:ccrlogger/ui/screens/gas_analysis_log_screen.dart';
 import 'package:ccrlogger/ui/screens/gas_screen.dart';
 import 'package:ccrlogger/ui/theme/safety_colors.dart';
@@ -196,6 +196,10 @@ void main() {
 
     await tester.enterText(_key('analysis-diver'), 'EdP');
     await tester.pump();
+    // Let go of the field: a focused field would keep its page alive by
+    // itself and hide a missing keep-alive.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
     await _tab(tester, 'gas-tab-log');
 
     await rig.feed(tester, 32.0, 0);
@@ -204,6 +208,25 @@ void main() {
     expect(rig.dao.addedFromBridge, hasLength(1));
     expect(rig.dao.addedFromBridge.single.$2.analysedBy, 'EdP');
     expect(rig.session.okLogger, same(logger));
+  });
+
+  _test('an OK press after Analyse, Blend, Log is still saved',
+      (tester, rig) async {
+    await rig.pump(tester, logOnOk: true);
+    await _tab(tester, 'gas-tab-analyse');
+    await rig.connect(tester);
+    await tester.enterText(_key('analysis-diver'), 'EdP');
+    await tester.pump();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    await _tab(tester, 'gas-tab-blend');
+    await _tab(tester, 'gas-tab-log');
+
+    await rig.feed(tester, 32.0, 0);
+    await rig.pressOk(tester);
+
+    expect(rig.dao.addedFromBridge, hasLength(1));
+    expect(rig.dao.addedFromBridge.single.$2.analysedBy, 'EdP');
   });
 
   _test('the anchor calls onHome', (tester, rig) async {
@@ -239,12 +262,18 @@ void main() {
     expect((dot.decoration! as BoxDecoration).color, SafetyColors.success);
   });
 
-  _test('the Analyse tab reads the Blend notifier live',
+  _test('the Analyse tab follows the Blend target set after it was built',
       (tester, rig) async {
     await rig.pump(tester);
     await _tab(tester, 'gas-tab-analyse');
-    final analyzer = tester.widget<AnalyzerScreen>(find.byType(AnalyzerScreen));
-    expect(analyzer.blend, same(rig.blend));
+    expect(_key('desired-mix-32-0'), findsNothing);
+
+    await _tab(tester, 'gas-tab-blend');
+    rig.blend.setTargetMix(32, 0);
+    await tester.pump();
+    await _tab(tester, 'gas-tab-analyse');
+
+    expect(_key('desired-mix-32-0'), findsOneWidget);
   });
 
   testWidgets('gasNavItem shows the dot only when connected and not selected',
