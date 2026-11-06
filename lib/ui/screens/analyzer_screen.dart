@@ -8,8 +8,10 @@
 /// Further transports (the BLE bridge, #113) plug in as extra
 /// [AnalyzerTransportOption]s in [defaultAnalyzerTransportOptions].
 ///
-/// Layout: one column on phones; from [kAnalyzerWideBreakpoint] up, readings,
-/// planning and trend on the left and the save section on the right.
+/// Layout: on phones one scrolling column with the save section's action bar
+/// pinned under it; from [kAnalyzerWideBreakpoint] up, the connection strip
+/// across the top, readings, planning and trend on the left, and the save
+/// section on the right with its action bar at the bottom of that column.
 ///
 /// The Analyse tab of the Gas destination: no app bar of its own.
 ///
@@ -31,6 +33,7 @@ import '../notifiers/analyzer_session.dart';
 import '../notifiers/blend_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/tokens.dart';
+import '../widgets/analysis_action_bar.dart';
 import '../widgets/analysis_save_card.dart';
 import '../widgets/analysis_save_controller.dart';
 import '../widgets/analyzer/connection_strip.dart';
@@ -85,6 +88,10 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   /// a save whose confirm dialog is open.
   final _saveCardKey = GlobalKey();
 
+  /// The same for the action bar: a save started from it keeps the context
+  /// of its confirm dialog when the layout changes.
+  final _actionBarKey = GlobalKey();
+
   @override
   void didUpdateWidget(AnalyzerScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -107,23 +114,16 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
     return ListenableBuilder(
       listenable: Listenable.merge(
           [_session, widget.settings, if (widget.blend != null) widget.blend!]),
+      // The save controller notifies while this builds (see
+      // [AnalysisSaveController.update]), so everything that listens to it,
+      // the action bar included, is built below here.
       builder: (context, _) {
         _syncSaveController();
         return LayoutBuilder(
-          builder: (context, constraints) {
-            final wide = constraints.maxWidth >= kAnalyzerWideBreakpoint;
-            return SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: Spacing.xl),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ConnectionStrip(session: _session),
-                  ConnectionNotices(session: _session),
-                  wide ? _wideLayout() : _narrowLayout(),
-                ],
-              ),
-            );
-          },
+          builder: (context, constraints) =>
+              constraints.maxWidth >= kAnalyzerWideBreakpoint
+                  ? _wideLayout()
+                  : _narrowLayout(),
         );
       },
     );
@@ -145,6 +145,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
       labelPrinting: _labelPrinting,
     );
     save
+      ..onBlendTargetUsed = widget.blend?.markRecentTargetUsed
       ..update(
         reading: _controller.latest,
         stability: _controller.stability,
@@ -187,45 +188,89 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
     );
   }
 
+  /// One scrolling column, with the action bar pinned under it.
   Widget _narrowLayout() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _band(wide: false),
-        _planning(wide: false),
-        TrendRow(controller: _controller),
-        ..._logOnOkSwitch(),
-        ..._saveCard(),
+        Expanded(
+          child: SingleChildScrollView(
+            key: const ValueKey('analyzer-scroll'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ConnectionStrip(session: _session),
+                ConnectionNotices(session: _session),
+                _band(wide: false),
+                _planning(wide: false),
+                TrendRow(controller: _controller),
+                ..._saveCard(),
+              ],
+            ),
+          ),
+        ),
+        ..._actionBar(),
       ],
     );
   }
 
-  /// The "Log on OK" switch (#113), followed by a gap; empty without a log
-  /// to save to and for the demo source, whose readings are made up (the
-  /// session's source while one is on, as for the session's Log on OK). The switch is
-  /// remembered on the device; the logger itself runs only while a real
+  /// The save section's action bar; empty while the section is not shown.
+  List<Widget> _actionBar() {
+    final save = _saveController;
+    if (save == null) return const [];
+    return [AnalysisActionBar(key: _actionBarKey, controller: save)];
+  }
+
+  /// Log on OK (#113) is offered: there is a log to save to and the source
+  /// is not the demo, whose readings are made up (the session's source while
+  /// one is on, as for the session's Log on OK).
+  bool get _offersLogOnOk => _analysesDao != null && !_session.sourceIsDemo;
+
+  /// The "Log on OK" switch, at the right of the save section's heading. It
+  /// is remembered on the device; the logger itself runs only while a real
   /// session is connected.
-  List<Widget> _logOnOkSwitch() {
-    if (_analysesDao == null || _session.sourceIsDemo) return const [];
-    // While the logger is watching and the SOLO has streamed and gone quiet,
-    // OK was pressed: say so in the switch's own subtitle, so nothing moves.
-    final held = _session.held;
-    return [
-      SwitchListTile(
-        key: const ValueKey('analyzer-log-on-ok'),
-        contentPadding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
-        title: const Text('Log on OK'),
-        subtitle: Text(
-          held
-              ? 'Held on the SOLO. Press OK there to measure again.'
-              : 'Press OK on the SOLO to save. Keep this screen open.',
-          key: const ValueKey('analyzer-log-on-ok-subtitle'),
+  Widget _logOnOkSwitch() {
+    final settings = widget.settings;
+    final on = settings.analyzerLogOnOk;
+    return InkWell(
+      onTap: () => settings.setAnalyzerLogOnOk(!on),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 44),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Log on OK',
+              style: AppTypography.body.copyWith(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: context.palette.textPrimary),
+            ),
+            const SizedBox(width: Spacing.xs),
+            Switch(
+              key: const ValueKey('analyzer-log-on-ok'),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              value: on,
+              onChanged: settings.setAnalyzerLogOnOk,
+            ),
+          ],
         ),
-        value: widget.settings.analyzerLogOnOk,
-        onChanged: widget.settings.setAnalyzerLogOnOk,
       ),
-      const SizedBox(height: Spacing.sm),
-    ];
+    );
+  }
+
+  /// While Log on OK is on, what to do, under the heading. While the logger
+  /// is watching and the SOLO has streamed and gone quiet, OK was pressed:
+  /// it says so.
+  Widget? _logOnOkNote() {
+    if (!widget.settings.analyzerLogOnOk) return null;
+    return Text(
+      _session.held
+          ? 'Held on the SOLO. Press OK there to measure again.'
+          : 'Press OK on the SOLO to save. Keep this screen open.',
+      key: const ValueKey('analyzer-log-on-ok-subtitle'),
+      style: AppTypography.caption.copyWith(color: context.palette.textMuted),
+    );
   }
 
   /// Whether the save card is shown; see [_saveCard].
@@ -236,8 +281,8 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
     return !(readingFromDemo ?? _session.options[_session.selected].isDemo);
   }
 
-  /// The "Save analysis" card (#111), preceded by a gap; empty without a
-  /// DAO, and for readings from the demo source (they are made up). It goes
+  /// The "Save analysis" section (#111); empty without a DAO, and for
+  /// readings from the demo source (they are made up). It goes
   /// by the session the reading came from ([AnalyzerSession.sessionIsDemo]), not the
   /// selected option, because a reading outlives its session and the diver
   /// can switch source in between. With no reading there is no session to
@@ -248,12 +293,11 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
     if (save == null) return const [];
     final printing = _labelPrinting;
     return [
-      const SizedBox(height: Spacing.md),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
-        child: AnalysisSaveCard(
+      AnalysisSaveCard(
         key: _saveCardKey,
         controller: save,
+        headingTrailing: _offersLogOnOk ? _logOnOkSwitch() : null,
+        headingNote: _offersLogOnOk ? _logOnOkNote() : null,
         onSetUpPrinter: printing == null
             ? null
             : () => Navigator.of(context).push(MaterialPageRoute(
@@ -262,34 +306,64 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
                     printing: printing,
                   ),
                 )),
-        ),
       ),
     ];
   }
 
+  /// The strip across the top; readings, planning and trend on the left
+  /// (about 60 %); the save section on the right with its action bar at the
+  /// bottom of the column.
   Widget _wideLayout() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final palette = context.palette;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        ConnectionStrip(session: _session),
+        ConnectionNotices(session: _session),
         Expanded(
-          flex: 3,
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _band(wide: true),
-              _planning(wide: true),
-              TrendRow(controller: _controller),
-            ],
-          ),
-        ),
-        Expanded(
-          flex: 2,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: Spacing.sm),
-              ..._logOnOkSwitch(),
-              ..._saveCard(),
+              Expanded(
+                flex: 3,
+                child: SingleChildScrollView(
+                  key: const ValueKey('analyzer-scroll'),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _band(wide: true),
+                      _planning(wide: true),
+                      TrendRow(controller: _controller),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(
+                        left: BorderSide(color: palette.surfaceRaised)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: SingleChildScrollView(
+                          key: const ValueKey('analyzer-save-scroll'),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              ..._saveCard(),
+                            ],
+                          ),
+                        ),
+                      ),
+                      ..._actionBar(),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),

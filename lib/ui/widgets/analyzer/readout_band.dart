@@ -63,8 +63,11 @@ class ReadoutBand extends StatelessWidget {
                   child: Text(
                     name,
                     key: const ValueKey('analyzer-mix'),
+                    // Line height 1.1, as in the mockup: the font's own
+                    // spacing costs the phone's height budget (spec §4.1).
                     style: AppTypography.display.copyWith(
                       fontSize: nameSize,
+                      height: 1.1,
                       fontWeight: FontWeight.w700,
                       color: palette.textPrimary,
                     ),
@@ -85,6 +88,7 @@ class ReadoutBand extends StatelessWidget {
               valueColor: palette.accentPrimary,
               valueSize: valueSize,
               centered: true,
+              tight: true,
             ),
             HeroStat(
               valueKey: const ValueKey('analyzer-he'),
@@ -94,6 +98,7 @@ class ReadoutBand extends StatelessWidget {
               valueColor: DataColors.helium,
               valueSize: valueSize,
               centered: true,
+              tight: true,
             ),
             HeroStat(
               valueKey: const ValueKey('analyzer-n2'),
@@ -102,6 +107,7 @@ class ReadoutBand extends StatelessWidget {
               label: 'N₂ BALANCE',
               valueSize: valueSize,
               centered: true,
+              tight: true,
             ),
           ]),
         ],

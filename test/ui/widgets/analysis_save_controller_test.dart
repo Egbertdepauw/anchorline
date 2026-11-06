@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:ccrlogger/analysis/standard_mix_pick.dart';
 import 'package:ccrlogger/analyzer/bridge/bridge_protocol.dart';
 import 'package:ccrlogger/analyzer/protocol/analyzer_reading.dart';
 import 'package:ccrlogger/analyzer/stability.dart';
@@ -62,15 +63,20 @@ void main() {
     await settings.load();
   });
 
-  /// A controller on [dao] with a stable EAN32 reading, its cylinders and
-  /// mixes loaded.
-  Future<AnalysisSaveController> make({DesiredMix? blendTarget}) async {
+  /// A controller on [dao] with a stable [reading] (EAN32), its cylinders
+  /// and mixes loaded.
+  Future<AnalysisSaveController> make({
+    DesiredMix? blendTarget,
+    DesiredMix? unusedBlendTarget,
+    AnalyzerReading reading = _ean32,
+  }) async {
     final c = AnalysisSaveController(dao: dao, settings: settings);
     addTearDown(c.dispose);
     c.update(
-      reading: _ean32,
+      reading: reading,
       stability: ReadingStability.stable,
       blendTarget: blendTarget,
+      unusedBlendTarget: unusedBlendTarget,
       connected: true,
     );
     await _settle();
@@ -92,12 +98,14 @@ void main() {
     c.setCopies(3);
     expect(told, greaterThanOrEqualTo(4), reason: 'listeners hear each pick');
     expect(c.desiredMix, const DesiredMix(32, 0));
-    expect(settings.analyzerAnalysedBy, isNull, reason: 'not per keystroke');
+    expect(c.mixIsAutomatic, isFalse);
 
     final s = c.okSetup();
     expect(s.copies, 3);
     expect(s.setup.cylinderId, 'c-s80');
+    // The diver's pick and tapped role go to every press as they are.
     expect(s.setup.desiredMix, const DesiredMix(32, 0));
+    expect(s.setup.autoPickMix, isFalse);
     expect(s.setup.gasRole, GasRole.diluent);
     expect(s.setup.analysedBy, 'EdP');
     expect(s.setup.analysedFor, 'Anna');
@@ -107,8 +115,74 @@ void main() {
     // No printer is set up, so nothing prints on OK.
     expect(s.setup.printerConfigured, isFalse);
     expect(s.setup.printOnOk, isFalse);
-    // An OK press taking the setup writes the name.
-    expect(settings.analyzerAnalysedBy, 'EdP');
+    // "Analysed by" is never written to the settings.
+    expect(settings.yourInitials, isNull);
+  });
+
+  test('an automatic pick is left to each press, with the unused target',
+      () async {
+    final c = await make(
+      blendTarget: const DesiredMix(21, 35),
+      unusedBlendTarget: const DesiredMix(21, 35),
+    );
+    expect(c.mixIsAutomatic, isTrue);
+    expect(c.desiredMix, const DesiredMix(32, 0));
+    expect(c.mixSource, MixPickSource.standard);
+
+    var s = c.okSetup().setup;
+    expect(s.autoPickMix, isTrue);
+    expect(s.desiredMix, isNull, reason: 'the press picks for its own line');
+    expect(s.blendTarget, const DesiredMix(21, 35));
+    expect(s.gasRole, isNull, reason: 'the press works it out from its mix');
+
+    // A cylinder with a known role decides it; one without leaves it open.
+    c.selectCylinder('c-dil');
+    expect(c.okSetup().setup.gasRole, GasRole.diluent);
+    c.selectCylinder('c-s80');
+    expect(c.okSetup().setup.gasRole, isNull);
+
+    // The diver's "no mix" is passed as no mix, not as automatic.
+    c.clearMix();
+    s = c.okSetup().setup;
+    expect(s.autoPickMix, isFalse);
+    expect(s.desiredMix, isNull);
+    expect(c.mixSource, isNull);
+  });
+
+  test('the automatic pick follows the reading; the Blend target first',
+      () async {
+    final c = await make(
+      reading: const AnalyzerReading(
+          o2: 20.6, he: 33.8, tempC: 21, baroHpa: 1013, raw: 'test'),
+      blendTarget: const DesiredMix(21, 35),
+      unusedBlendTarget: const DesiredMix(21, 35),
+    );
+    expect(c.desiredMix, const DesiredMix(21, 35));
+    expect(c.mixSource, MixPickSource.blendTarget);
+    expect(c.role, GasRole.diluent);
+
+    c.update(
+      reading: const AnalyzerReading(
+          o2: 49.2, he: 0, tempC: 21, baroHpa: 1013, raw: 'test'),
+      stability: ReadingStability.stable,
+      blendTarget: const DesiredMix(21, 35),
+      unusedBlendTarget: const DesiredMix(21, 35),
+      connected: true,
+    );
+    expect(c.desiredMix, const DesiredMix(50, 0));
+    expect(c.mixSource, MixPickSource.standard);
+    expect(c.role, GasRole.bailout);
+
+    // Nothing within orange: no pick.
+    c.update(
+      reading: const AnalyzerReading(
+          o2: 23.0, he: 30.0, tempC: 21, baroHpa: 1013, raw: 'test'),
+      stability: ReadingStability.stable,
+      connected: true,
+    );
+    expect(c.desiredMix, isNull);
+    expect(c.mixSource, isNull);
+    expect(c.mixIsAutomatic, isTrue);
   });
 
   test('a complete OK result uses up only the fields still as taken',
@@ -197,35 +271,51 @@ void main() {
     await _settle();
   });
 
-  test('a new Blend target reloads the mix options', () async {
-    dao.analyses.add(GasAnalysis(
-      id: 'l1',
-      analysedAt: DateTime(2026, 10, 30),
-      o2Percent: 32,
-      hePercent: 0,
-      stable: true,
-      targetO2Percent: 32,
-      targetHePercent: 0,
-    ));
+  test('the chips: the selected mix, the Blend target, then the log',
+      () async {
+    GasAnalysis logged(String id, int day, int o2, int he) => GasAnalysis(
+          id: id,
+          analysedAt: DateTime(2026, 10, day),
+          o2Percent: o2.toDouble(),
+          hePercent: he.toDouble(),
+          stable: true,
+          targetO2Percent: o2,
+          targetHePercent: he,
+        );
+    dao.analyses.addAll([
+      logged('l1', 30, 32, 0),
+      logged('l2', 29, 18, 45),
+      logged('l3', 28, 15, 55),
+    ]);
     final c = await make();
-    expect(c.mixOptions, [const DesiredMix(32, 0)]);
+    expect(c.mixOptions, [
+      const DesiredMix(32, 0),
+      const DesiredMix(18, 45),
+      const DesiredMix(15, 55),
+    ]);
 
+    // A new Blend target comes second, and the list stays at three.
     c.update(
       reading: _ean32,
       stability: ReadingStability.stable,
       blendTarget: const DesiredMix(21, 35),
       connected: true,
     );
-    await _settle();
-    expect(c.mixOptions, [const DesiredMix(21, 35), const DesiredMix(32, 0)]);
+    expect(c.mixOptions, [
+      const DesiredMix(32, 0),
+      const DesiredMix(21, 35),
+      const DesiredMix(18, 45),
+    ]);
   });
 
-  test('"Analysed by" and "Print label on OK" start from the settings',
-      () async {
-    await settings.setAnalyzerAnalysedBy('EdP');
+  test('"Analysed by", the fill pressure and "Print label on OK" start '
+      'from the settings', () async {
+    await settings.setYourInitials('EdP');
+    await settings.setAnalyzerFillPressureStartBar(200);
     await settings.setAnalyzerPrintOnOk(false);
     final c = await make();
     expect(c.analysedBy.text, 'EdP');
+    expect(c.fillPressure.text, '200');
     expect(c.printOnOk, isFalse);
 
     c.setPrintOnOk(true);

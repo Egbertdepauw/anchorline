@@ -45,6 +45,8 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kAnalyzerModPpo2s = 'analyzer_mod_ppo2s';
   static const _kAnalyzerLogOnOk = 'analyzer_log_on_ok';
   static const _kAnalyzerPrintOnOk = 'analyzer_print_on_ok';
+  // The name the old save card remembered; read once to start "Your
+  // initials" on a device that had none (see load()).
   static const _kAnalyzerAnalysedBy = 'analyzer_analysed_by';
   static const _kYourInitials = 'your_initials';
   static const _kAnalyzerFillPressureStart = 'analyzer_fill_pressure_start_bar';
@@ -126,7 +128,6 @@ class SettingsNotifier extends ChangeNotifier {
   // Log on OK over USB (device-local, never synced).
   bool _analyzerLogOnOk = false;
   bool _analyzerPrintOnOk = true;
-  String? _analyzerAnalysedBy;
   String? _yourInitials;
   double _analyzerFillPressureStartBar = kDefaultFillPressureStartBar;
   // ── Cylinder labels (device-local, never synced) ────────────────
@@ -182,10 +183,6 @@ class SettingsNotifier extends ChangeNotifier {
   /// Whether an OK press also prints the label, when a label printer is set
   /// up (issue #113). On by default.
   bool get analyzerPrintOnOk => _analyzerPrintOnOk;
-
-  /// The name on the analyzer's save card, kept between sessions; null until
-  /// one has been typed.
-  String? get analyzerAnalysedBy => _analyzerAnalysedBy;
 
   /// The diver's initials (device-local, never synced); they start the
   /// analyzer's "Analysed by" field. Null until set.
@@ -317,12 +314,12 @@ class SettingsNotifier extends ChangeNotifier {
     }
     _analyzerLogOnOk = prefs.getBool(_kAnalyzerLogOnOk) ?? false;
     _analyzerPrintOnOk = prefs.getBool(_kAnalyzerPrintOnOk) ?? true;
-    _analyzerAnalysedBy = prefs.getString(_kAnalyzerAnalysedBy);
     _yourInitials = prefs.getString(_kYourInitials);
-    if (_yourInitials == null && _analyzerAnalysedBy != null) {
+    final rememberedName = prefs.getString(_kAnalyzerAnalysedBy);
+    if (_yourInitials == null && rememberedName != null) {
       // Upgrade: the name remembered by the old save card becomes the initials.
-      _yourInitials = _analyzerAnalysedBy;
-      await prefs.setString(_kYourInitials, _yourInitials!);
+      _yourInitials = rememberedName;
+      await prefs.setString(_kYourInitials, rememberedName);
     }
     _analyzerFillPressureStartBar =
         prefs.getDouble(_kAnalyzerFillPressureStart) ??
@@ -670,20 +667,6 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kAnalyzerPrintOnOk, v);
-  }
-
-  /// Remembers the name typed on the save card. Blank means none.
-  Future<void> setAnalyzerAnalysedBy(String? v) async {
-    final name = v == null || v.trim().isEmpty ? null : v;
-    if (_analyzerAnalysedBy == name) return;
-    _analyzerAnalysedBy = name;
-    notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    if (name == null) {
-      await prefs.remove(_kAnalyzerAnalysedBy);
-    } else {
-      await prefs.setString(_kAnalyzerAnalysedBy, name);
-    }
   }
 
   /// Saves the diver's initials, trimmed. Blank means none.

@@ -107,6 +107,8 @@ void main() {
         find.byKey(const ValueKey('analysis-diver')), 'Egbert');
     await tester.enterText(
         find.byKey(const ValueKey('analysis-pressure')), '210,5');
+    await tester.tap(find.byKey(const ValueKey('analysis-add-note')));
+    await tester.pump();
     await tester.enterText(
         find.byKey(const ValueKey('analysis-notes')), 'Topped up');
     await disconnect(tester); // freeze the reading
@@ -125,9 +127,17 @@ void main() {
     expect(a.tempC, 21.4);
     expect(a.modPpo2s, isNotEmpty);
     expect(find.text('Saved Tx18/45 to the analysis log.'), findsOneWidget);
-    // Per-fill fields clear, cylinder + diver stay for the next fill.
+    // The note clears and the pressure starts over; cylinder and diver stay
+    // for the next fill.
     expect(find.text('Topped up'), findsNothing);
+    expect(find.text('230'), findsOneWidget);
     expect(find.text('Egbert'), findsOneWidget);
+    expect(
+        tester
+            .widget<DropdownButton<String?>>(
+                find.byKey(const ValueKey('analysis-cylinder')))
+            .value,
+        'c2');
   });
 
   testWidgets('a mistyped fill pressure says so and blocks Save',
@@ -252,10 +262,13 @@ void main() {
   testWidgets('a card that went away for a demo session comes back fresh',
       (tester) async {
     Finder key(String k) => find.byKey(ValueKey(k));
+    SharedPreferences.setMockInitialValues({'your_initials': 'EdP'});
     final dao = FakeGasAnalysesDao();
     await pumpScreen(tester, dao, options: demoAndBench());
     await pickSource(tester, 'Bench');
-    await tester.enterText(key('analysis-diver'), 'EdP');
+    await tester.enterText(key('analysis-diver'), 'JS');
+    await tester.tap(key('analysis-add-note'));
+    await tester.pump();
     await tester.enterText(key('analysis-notes'), 'Topped up');
     await tester.pump();
 
@@ -266,13 +279,14 @@ void main() {
     expect(key('analysis-save-card'), findsNothing);
     await disconnect(tester);
 
-    // Back on the bench: a new card, with the name remembered when the old
-    // one went and nothing else of its fill.
+    // Back on the bench: a new card, starting from "Your initials", with
+    // nothing of the old one's fill.
     await pickSource(tester, 'Bench');
     await connect(tester);
     await tester.pump();
     expect(key('analysis-save-card'), findsOneWidget);
     expect(find.text('EdP'), findsOneWidget);
+    expect(find.text('JS'), findsNothing);
     expect(find.text('Topped up'), findsNothing);
     await disconnect(tester);
   });
@@ -322,18 +336,20 @@ void main() {
     await tester.pump();
     await connect(tester);
     await seconds(tester, 90);
-    expect(mod16(), contains('75 m'));
-
-    await tester.tap(find.byKey(const ValueKey('desired-mix-18-45')));
-    await tester.pump();
+    // Tx18/45 is picked automatically (the Blend target).
     expect(mod16(), contains('77 m'));
 
-    // Saving clears the desired mix for the next cylinder, and the rows
-    // go back to the stop rule.
+    // The diver's "no mix": the rows go back to the stop rule.
+    await tester.tap(find.byKey(const ValueKey('desired-mix-18-45')));
+    await tester.pump();
+    expect(mod16(), contains('75 m'));
+
+    // Saving makes the pick automatic again for the next cylinder.
     await disconnect(tester);
     await tester.tap(saveButton());
     await tester.pump();
-    expect(mod16(), contains('75 m'));
+    expect(dao.added.single.desiredMix, isNull);
+    expect(mod16(), contains('77 m'));
   });
 
   testWidgets('wide layout also shows the save card', (tester) async {

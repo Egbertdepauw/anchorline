@@ -13,11 +13,11 @@ import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
 import 'package:ccrlogger/ui/theme/safety_colors.dart';
+import 'package:ccrlogger/ui/widgets/analysis_action_bar.dart';
 import 'package:ccrlogger/ui/widgets/analysis_save_card.dart';
 import 'package:ccrlogger/ui/widgets/analysis_save_controller.dart';
 import 'package:ccrlogger/ui/widgets/desired_mix_picker.dart';
 import 'package:ccrlogger/ui/widgets/label_printer_settings_section.dart';
-import 'package:ccrlogger/ui/widgets/mix_match_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -94,8 +94,9 @@ GasAnalysis _logged(String id, DateTime at, int o2, int he) => GasAnalysis(
 /// and given the reading of each.
 AnalysisSaveController? _controller;
 
-/// The card at phone width, in a scroll view like the analyzer screen's.
-/// [above] is empty space above the card, to push it below the fold.
+/// The save section at phone width, in a scroll view like the analyzer
+/// screen's, with the action bar pinned under it. [above] is empty space
+/// above the section, to push it below the fold.
 Future<void> _pump(
   WidgetTester tester, {
   required FakeGasAnalysesDao dao,
@@ -106,6 +107,7 @@ Future<void> _pump(
   VoidCallback? onSetUpPrinter,
   double above = 0,
   Size size = const Size(400, 1600),
+  double textScale = 1,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -132,19 +134,31 @@ Future<void> _pump(
     connected: true,
   );
   await tester.pumpWidget(MaterialApp(
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context)
+          .copyWith(textScaler: TextScaler.linear(textScale)),
+      child: child!,
+    ),
     home: Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(height: above),
-            AnalysisSaveCard(
-              controller: controller,
-              onSetUpPrinter: onSetUpPrinter,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(height: above),
+                  AnalysisSaveCard(
+                    controller: controller,
+                    onSetUpPrinter: onSetUpPrinter,
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
+          ),
+          AnalysisActionBar(controller: controller),
+        ],
       ),
     ),
   ));
@@ -174,6 +188,25 @@ Iterable<ChoiceChip> _pickedChips(WidgetTester tester) => tester
     .widgetList<ChoiceChip>(find.byType(ChoiceChip))
     .where((c) => c.selected);
 
+/// The key of the one selected mix chip, or null.
+String? _picked(WidgetTester tester) {
+  final picked = _pickedChips(tester);
+  return picked.isEmpty
+      ? null
+      : (picked.single.key! as ValueKey<String>).value;
+}
+
+/// The diver picks [mix] through "Other…".
+Future<void> _pickOther(WidgetTester tester, DesiredMix mix) async {
+  await _tapAndSettle(tester, _key('desired-mix-other'));
+  await tester.enterText(_key('desired-mix-other-o2'), '${mix.o2Percent}');
+  await tester.enterText(_key('desired-mix-other-he'), '${mix.hePercent}');
+  await tester.tap(_key('desired-mix-other-ok'));
+  await tester.pumpAndSettle();
+}
+
+Finder _verdict() => _key('analysis-verdict');
+
 /// The labels of the mix chips, "Other…" included, in order.
 List<String?> _chipLabels(WidgetTester tester) => tester
     .widgetList<Text>(find.descendant(
@@ -187,17 +220,34 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('mix chips', () {
-    testWidgets('Blend target first, then the log, no duplicate, none picked',
+    testWidgets('with no pick: Blend target first, then the log, no duplicate',
         (tester) async {
       final dao = FakeGasAnalysesDao(analyses: [
         _logged('l1', DateTime(2026, 10, 30), 32, 0),
         _logged('l2', DateTime(2026, 10, 29), 21, 35),
       ]);
-      await _pump(tester, dao: dao, blendTarget: const DesiredMix(21, 35));
+      // 23/30 is within orange of no standard mix.
+      await _pump(tester,
+          dao: dao,
+          reading: _reading(23.0, 30.0),
+          blendTarget: const DesiredMix(21, 35));
 
       expect(_chipLabels(tester), ['Tx21/35', 'EAN32', 'Other…']);
       expect(_pickedChips(tester), isEmpty);
-      expect(find.text('Mix (optional)'), findsOneWidget);
+      expect(_verdict(), findsNothing);
+    });
+
+    testWidgets('the automatic pick comes first', (tester) async {
+      final dao = FakeGasAnalysesDao(analyses: [
+        _logged('l1', DateTime(2026, 10, 30), 32, 0),
+      ]);
+      await _pump(tester,
+          dao: dao,
+          reading: _reading(49.2, 0),
+          blendTarget: const DesiredMix(21, 35));
+
+      expect(_chipLabels(tester), ['EAN50', 'Tx21/35', 'EAN32', 'Other…']);
+      expect(_picked(tester), 'desired-mix-50-0');
     });
   });
 
@@ -205,7 +255,8 @@ void main() {
     testWidgets('follows the cylinder, and the saved role follows the control',
         (tester) async {
       final dao = FakeGasAnalysesDao(cylinders: const [_dil, _o2]);
-      await _pump(tester, dao: dao);
+      // EAN50 by itself would be Bailout / deco.
+      await _pump(tester, dao: dao, reading: _reading(49.2, 0));
       expect(_role(tester), {GasRole.bailout});
 
       await _pickCylinder(tester, 'Dil 3L');
@@ -223,28 +274,33 @@ void main() {
     });
   });
 
-  group('match indicator', () {
-    testWidgets('appears once a mix is picked and follows the reading',
+  group('verdict', () {
+    testWidgets('says how the reading matches, in the match colour',
         (tester) async {
       final dao = FakeGasAnalysesDao();
-      await _pump(tester, dao: dao, blendTarget: const DesiredMix(21, 35));
-      expect(find.byType(MixMatchIndicator), findsNothing);
+      await _pump(tester, dao: dao);
+      expect(tester.widget<Text>(_verdict()).data,
+          'Matches Tx21/35, the nearest standard mix');
+      expect(tester.widget<Text>(_verdict()).style!.color,
+          SafetyColors.success);
 
-      await _tapAndSettle(tester, _key('desired-mix-21-35'));
-      expect(find.byType(MixMatchIndicator), findsOneWidget);
-      expect(find.text('Matches Tx21/35'), findsOneWidget);
-      expect(
-        tester.widget<Text>(find.text('Matches Tx21/35')).style!.color,
-        SafetyColors.success,
-      );
+      await _pump(tester, dao: dao, reading: _reading(22.5, 33.8));
+      expect(tester.widget<Text>(_verdict()).data,
+          'O2 1.5 off Tx21/35, the nearest standard mix');
+      expect(tester.widget<Text>(_verdict()).style!.color,
+          SafetyColors.warning);
+      // The two numbers are in the summary band, not repeated here.
+      expect(find.text('O2 22.5  He 33.8'), findsNothing);
+    });
 
-      await _pump(
-        tester,
-        dao: dao,
-        blendTarget: const DesiredMix(21, 35),
-        reading: _reading(22.5, 33.8),
-      );
-      expect(find.text('O2 1.5 off Tx21/35'), findsOneWidget);
+    testWidgets('a diver\'s pick has no suffix and may be red',
+        (tester) async {
+      final dao = FakeGasAnalysesDao();
+      await _pump(tester, dao: dao, reading: _reading(32.1, 0));
+      await _pickOther(tester, const DesiredMix(36, 0));
+      expect(tester.widget<Text>(_verdict()).data, 'O2 3.9 off EAN36');
+      expect(tester.widget<Text>(_verdict()).style!.color,
+          SafetyColors.danger);
     });
 
     testWidgets('is not built for a reading that is not a number',
@@ -252,7 +308,8 @@ void main() {
       final dao = FakeGasAnalysesDao();
       await _pump(tester, dao: dao, blendTarget: const DesiredMix(21, 35));
       await _tapAndSettle(tester, _key('desired-mix-21-35'));
-      expect(find.byType(MixMatchIndicator), findsOneWidget);
+      await _tapAndSettle(tester, _key('desired-mix-21-35'));
+      expect(_verdict(), findsOneWidget);
 
       await _pump(
         tester,
@@ -261,7 +318,7 @@ void main() {
         reading: _reading(double.nan, 33.8),
       );
       expect(tester.takeException(), isNull);
-      expect(find.byType(MixMatchIndicator), findsNothing);
+      expect(_verdict(), findsNothing);
     });
   });
 
@@ -289,7 +346,8 @@ void main() {
         ),
       );
 
-      await _tapAndSettle(tester, _key('desired-mix-21-35'));
+      // Tx21/35 is picked automatically.
+      expect(_picked(tester), 'desired-mix-21-35');
       await _pickCylinder(tester, 'Dil 3L');
       await _tapAndSettle(tester, _key('copies-inc'));
       expect(tester.widget<Text>(_key('copies-value')).data, '2');
@@ -408,8 +466,10 @@ void main() {
           blendTarget: mix,
           labelPrinting: _service([off, on], rendered: rendered),
         );
-        await _tapAndSettle(
-            tester, _key('desired-mix-${mix.o2Percent}-${mix.hePercent}'));
+        // The diver's pick, unless it is the automatic one already.
+        final chip = 'desired-mix-${mix.o2Percent}-${mix.hePercent}';
+        if (_picked(tester) != chip) await _tapAndSettle(tester, _key(chip));
+        expect(_picked(tester), chip);
         await _tapAndSettle(tester, _key('analysis-save-print'));
       }
 
@@ -485,12 +545,16 @@ void main() {
           reading: _reading(32.1, 0),
           blendTarget: const DesiredMix(50, 0),
           labelPrinting: _service([printer], rendered: rendered),
-          // A phone screen with the card below the fold, as on the
-          // analyzer screen.
+          // A phone screen with the section below the fold, as on a small
+          // phone.
           size: const Size(400, 500),
           above: 1200,
         );
         await _tapAndSettle(tester, _key('desired-mix-50-0'));
+        // Back to the top: the chips go out of view, the pinned bar stays.
+        await tester.drag(
+            find.byType(SingleChildScrollView), const Offset(0, 2000));
+        await tester.pumpAndSettle();
         await _tapAndSettle(tester, _key('analysis-save-print'));
         expect(find.text('Mix does not conform to analysis'), findsOneWidget);
         expect(dao.added, isEmpty, reason: 'the dialog comes before saving');
@@ -507,16 +571,18 @@ void main() {
       testWidgets('Change desired mix saves nothing and shows the mix chips',
           (tester) async {
         await tapSavePrint(tester);
-        expect(tester.getRect(find.byType(DesiredMixPicker)).top, isNegative,
-            reason: 'scrolled out of view to reach the button');
+        // The button is pinned; the chips are below the fold.
+        expect(tester.getRect(find.byType(DesiredMixPicker)).top,
+            greaterThan(500));
 
         await tester.tap(_key('mix-mismatch-change'));
         await tester.pumpAndSettle();
         expect(dao.added, isEmpty);
         expect(printer.printed, isEmpty);
         final picker = tester.getRect(find.byType(DesiredMixPicker));
+        final bar = tester.getRect(_key('analysis-action-bar'));
         expect(picker.top, greaterThanOrEqualTo(0));
-        expect(picker.bottom, lessThanOrEqualTo(500));
+        expect(picker.bottom, lessThanOrEqualTo(bar.top));
         // The desired mix stays picked, for the diver to change.
         expect(
           tester.widget<ChoiceChip>(_key('desired-mix-50-0')).selected,
@@ -609,7 +675,7 @@ void main() {
         blendTarget: const DesiredMix(21, 35),
         labelPrinting: _service([printer]),
       );
-      await _tapAndSettle(tester, _key('desired-mix-21-35'));
+      expect(_picked(tester), 'desired-mix-21-35');
       await _pickCylinder(tester, 'Dil 3L');
       await _tapAndSettle(tester, _key('analysis-save'));
 
@@ -647,18 +713,20 @@ void main() {
       final dao = FakeGasAnalysesDao(cylinders: const [_dil]);
       await _pump(tester, dao: dao, blendTarget: const DesiredMix(21, 35));
       await _pickCylinder(tester, 'Dil 3L');
-      await _tapAndSettle(tester, find.text('Bailout/deco'));
-      await _tapAndSettle(tester, _key('desired-mix-21-35'));
-      expect(find.byType(MixMatchIndicator), findsOneWidget);
+      await _tapAndSettle(tester, find.text('Bailout / deco'));
+      await _pickOther(tester, const DesiredMix(21, 33));
+      expect(_picked(tester), 'desired-mix-21-33');
 
       await _tapAndSettle(tester, _key('analysis-save'));
-      expect(dao.added.single.desiredMix, const DesiredMix(21, 35));
+      expect(dao.added.single.desiredMix, const DesiredMix(21, 33));
       expect(dao.added.single.gasRole, GasRole.bailout);
-      // A mix left picked would print its name on the next cylinder.
-      expect(_pickedChips(tester), isEmpty);
-      expect(find.byType(MixMatchIndicator), findsNothing);
+      // A mix left picked would print its name on the next cylinder: the
+      // pick is automatic again.
+      expect(_picked(tester), 'desired-mix-21-35');
+      expect(tester.widget<Text>(_verdict()).data,
+          'Matches Tx21/35, the nearest standard mix');
       expect(_role(tester), {GasRole.diluent},
-          reason: 'back to the Dil cylinder\'s default');
+          reason: 'back to the Dil cylinder\'s role');
     });
 
     testWidgets('Save & print prints the choices it saved, then starts fresh',
@@ -672,14 +740,14 @@ void main() {
         labelPrinting: _service([FakeLabelPrinter()], rendered: rendered),
       );
       await _pickCylinder(tester, 'Dil 3L');
-      await _tapAndSettle(tester, find.text('Bailout/deco'));
-      await _tapAndSettle(tester, _key('desired-mix-21-35'));
+      await _tapAndSettle(tester, find.text('Bailout / deco'));
+      await _pickOther(tester, const DesiredMix(21, 33));
 
       await _tapAndSettle(tester, _key('analysis-save-print'));
       // The desired name (the analysed gas is Tx21/34) and the flipped role.
-      expect(rendered.single.mixName, 'Tx21/35');
+      expect(rendered.single.mixName, 'Tx21/33');
       expect(rendered.single.kind, CylinderLabelKind.bailout);
-      expect(_pickedChips(tester), isEmpty);
+      expect(_picked(tester), 'desired-mix-21-35');
       expect(_role(tester), {GasRole.diluent});
     });
 
@@ -717,8 +785,8 @@ void main() {
       // The next cylinder, whose save fails.
       dao.fail = true;
       await _pickCylinder(tester, 'Dil 3L');
-      await _tapAndSettle(tester, find.text('Bailout/deco'));
-      await _tapAndSettle(tester, _key('desired-mix-21-35'));
+      await _tapAndSettle(tester, find.text('Bailout / deco'));
+      await _pickOther(tester, const DesiredMix(21, 33));
       await _tapAndSettle(tester, _key('analysis-save-print'));
 
       expect(find.text('Save failed: Exception: disk full'), findsOneWidget);
@@ -726,11 +794,8 @@ void main() {
       expect(find.text('Retry'), findsNothing);
       expect(dao.added, hasLength(1));
       expect(on.connects, 0);
-      expect(
-        tester.widget<ChoiceChip>(_key('desired-mix-21-35')).selected,
-        isTrue,
-      );
-      expect(find.byType(MixMatchIndicator), findsOneWidget);
+      expect(_picked(tester), 'desired-mix-21-33');
+      expect(_verdict(), findsOneWidget);
       expect(_role(tester), {GasRole.bailout});
     });
 
@@ -752,9 +817,10 @@ void main() {
 
       await _tapAndSettle(tester, _key('analysis-save'));
       expect(dao.added.single.desiredMix, const DesiredMix(25, 25));
-      // Newest first, right after the Blend target, and not picked.
+      // The automatic pick (also the Blend target), then the log's newest,
+      // not picked.
       expect(_chipLabels(tester), ['Tx21/35', 'Tx25/25', 'Other…']);
-      expect(_pickedChips(tester), isEmpty);
+      expect(_picked(tester), 'desired-mix-21-35');
 
       await _tapAndSettle(tester, _key('desired-mix-25-25'));
       expect(
@@ -788,7 +854,8 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(dao.added, hasLength(1));
       expect(printer.printed, hasLength(1));
-      expect(_chipLabels(tester), ['Tx21/35', 'Other…']);
+      // The automatic EAN32 and the Blend target; the log could not be read.
+      expect(_chipLabels(tester), ['EAN32', 'Tx21/35', 'Other…']);
       // Not swallowed silently.
       expect(logged.join(), contains('log unreadable'));
     });
@@ -806,6 +873,48 @@ void main() {
       expect(find.text('Saved Tx21/34 to the analysis log.'), findsOneWidget);
       expect(find.text('Printer not found'), findsNothing);
       expect(find.text('Retry'), findsNothing);
+    });
+  });
+
+  group('the section and its bar on a small phone', () {
+    // The test font is far wider than Inter, so this is harder than a phone.
+    for (final printer in [true, false]) {
+      testWidgets(
+          'no overflow at 320×568 and text scale 1.3 '
+          '(${printer ? 'printer' : 'no printer'})', (tester) async {
+        await _pump(
+          tester,
+          dao: FakeGasAnalysesDao(cylinders: const [_dil, _o2]),
+          reading: _reading(19.1, 43.0),
+          stability: ReadingStability.settling,
+          blendTarget: const DesiredMix(21, 35),
+          labelPrinting: _service([], configured: printer),
+          onSetUpPrinter: () {},
+          size: const Size(320, 568),
+          textScale: 1.3,
+        );
+        await _tapAndSettle(tester, _key('analysis-add-note'));
+        await _pickCylinder(tester, 'Dil 3L');
+        expect(tester.takeException(), isNull);
+        expect(_key('analysis-unstable-hint'), findsOneWidget);
+        expect(_key('analysis-save-print'),
+            printer ? findsOneWidget : findsNothing);
+        expect(_key('analysis-setup-printer'),
+            printer ? findsNothing : findsOneWidget);
+      });
+    }
+
+    testWidgets('the "Saved" SnackBar floats clear of the action bar',
+        (tester) async {
+      await _pump(tester, dao: FakeGasAnalysesDao(), size: const Size(400, 800));
+      await _tapAndSettle(tester, _key('analysis-save'));
+      expect(find.text('Saved Tx21/34 to the analysis log.'), findsOneWidget);
+      // The bar's own surface, inside the SnackBar's margin.
+      final snack = tester.getRect(find
+          .descendant(of: find.byType(SnackBar), matching: find.byType(Material))
+          .first);
+      final bar = tester.getRect(_key('analysis-action-bar'));
+      expect(snack.bottom, lessThanOrEqualTo(bar.top));
     });
   });
 

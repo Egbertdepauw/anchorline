@@ -58,6 +58,10 @@ class CopiesStepper extends StatelessWidget {
   final int value;
   final ValueChanged<int> onChanged;
 
+  /// 44 pt targets on every platform (the desktop density would shrink
+  /// them).
+  static const _target = BoxConstraints(minWidth: 44, minHeight: 44);
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -66,6 +70,8 @@ class CopiesStepper extends StatelessWidget {
         IconButton(
           key: const ValueKey('copies-dec'),
           tooltip: 'Fewer copies',
+          constraints: _target,
+          visualDensity: VisualDensity.standard,
           icon: const Icon(Icons.remove),
           onPressed: value > _kMinCopies ? () => onChanged(value - 1) : null,
         ),
@@ -81,6 +87,8 @@ class CopiesStepper extends StatelessWidget {
         IconButton(
           key: const ValueKey('copies-inc'),
           tooltip: 'More copies',
+          constraints: _target,
+          visualDensity: VisualDensity.standard,
           icon: const Icon(Icons.add),
           onPressed:
               value < kMaxLabelCopies ? () => onChanged(value + 1) : null,
@@ -157,27 +165,35 @@ class _CopiesDialogState extends State<_CopiesDialog> {
 /// Otherwise it prints the analysis as read, so a "Print as …" the diver
 /// already confirmed still prints without asking again. Without [reload],
 /// Retry prints [analysis] as given.
+///
+/// [snackBarMargin], when given, places the result's floating SnackBars
+/// (and those of its Retries), e.g. clear of a pinned action bar.
 Future<void> printWithFeedback(
   BuildContext context, {
   required LabelPrintService service,
   required GasAnalysis analysis,
   required int copies,
   Future<GasAnalysis?> Function()? reload,
+  EdgeInsetsGeometry? snackBarMargin,
 }) {
   return _printAndReport(
     ScaffoldMessenger.of(context),
-    _PrintRequest(service, copies, reload),
+    _PrintRequest(service, copies, reload, snackBarMargin),
     analysis,
   );
 }
 
 /// What a print, and each of its Retries, prints with.
 class _PrintRequest {
-  const _PrintRequest(this.service, this.copies, this.reload);
+  const _PrintRequest(this.service, this.copies, this.reload, this.margin);
 
   final LabelPrintService service;
   final int copies;
   final Future<GasAnalysis?> Function()? reload;
+
+  /// The margin of the floating SnackBars that report it, or null for the
+  /// theme's.
+  final EdgeInsetsGeometry? margin;
 }
 
 Future<void> _printAndReport(
@@ -203,6 +219,7 @@ Future<void> _printAndReport(
   _report(
     messenger,
     message,
+    margin: request.margin,
     retry: failed ? () => _retry(messenger, request, analysis) : null,
   );
 }
@@ -224,27 +241,29 @@ Future<void> _retry(
     _report(
       messenger,
       _kPrintFailed,
+      margin: request.margin,
       retry: () => _retry(messenger, request, failed),
     );
     return;
   }
   if (current == null) {
-    _report(messenger, _kDeleted);
+    _report(messenger, _kDeleted, margin: request.margin);
   } else if (current.desiredMix != failed.desiredMix ||
       current.gasRole != failed.gasRole) {
     // The label's name, depths and kind follow these. The diver decides
     // again, from the log, whether to print the entry as it is now.
-    _report(messenger, _kChanged);
+    _report(messenger, _kChanged, margin: request.margin);
   } else {
     await _printAndReport(messenger, request, current);
   }
 }
 
 /// Shows [message] in place of the SnackBar that is up, with a "Retry"
-/// action when [retry] is given.
+/// action when [retry] is given. A [margin] floats it there.
 void _report(
   ScaffoldMessengerState messenger,
   String message, {
+  EdgeInsetsGeometry? margin,
   Future<void> Function()? retry,
 }) {
   // The messenger lives above the screens, so it normally outlives the one
@@ -257,6 +276,8 @@ void _report(
   messenger.showSnackBar(
     SnackBar(
       content: Text(message),
+      behavior: margin == null ? null : SnackBarBehavior.floating,
+      margin: margin,
       // A SnackBar with an action stays until dismissed, so it needs a way
       // to be (there is no swipe on desktop).
       showCloseIcon: retry != null,

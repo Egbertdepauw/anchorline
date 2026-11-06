@@ -201,38 +201,47 @@ class _PlanningGridState extends State<PlanningGrid> {
       style: AppTypography.caption.copyWith(color: palette.textMuted),
     );
 
+    // The heading row is the ⓘ's 44 pt target high, and takes the place of
+    // the section's 10 pt top padding (spec §4.1 height budget).
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Spacing.lg, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(Spacing.lg, 0, Spacing.lg, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'PLANNING',
-                  style: AppTypography.label.copyWith(
-                    color: palette.accentPrimary,
-                    letterSpacing: 1.4,
-                    fontWeight: FontWeight.w600,
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'PLANNING',
+                    style: AppTypography.label.copyWith(
+                      color: palette.accentPrimary,
+                      letterSpacing: 1.4,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-              if (!widget.wide)
-                IconButton(
-                  key: const ValueKey('analyzer-planning-info'),
-                  tooltip: 'About these numbers',
-                  constraints:
-                      const BoxConstraints(minWidth: 44, minHeight: 44),
-                  padding: EdgeInsets.zero,
-                  iconSize: 18,
-                  color: palette.textMuted,
-                  icon: const Icon(Icons.info_outline),
-                  onPressed: () => setState(() => _showNote = !_showNote),
-                ),
-            ],
+                if (!widget.wide)
+                  IconButton(
+                    key: const ValueKey('analyzer-planning-info'),
+                    tooltip: 'About these numbers',
+                    constraints:
+                        const BoxConstraints(minWidth: 44, minHeight: 44),
+                    style: const ButtonStyle(
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.standard,
+                    ),
+                    padding: EdgeInsets.zero,
+                    iconSize: 18,
+                    color: palette.textMuted,
+                    icon: const Icon(Icons.info_outline),
+                    onPressed: () => setState(() => _showNote = !_showNote),
+                  ),
+              ],
+            ),
           ),
-          const SizedBox(height: Spacing.xs),
+          const SizedBox(height: 2),
           LayoutBuilder(builder: (context, c) {
             final w = (c.maxWidth - 3 * _gap) / 4;
             return Wrap(
@@ -288,12 +297,13 @@ class _PlanningTile extends StatelessWidget {
           ]),
           style: TextStyle(
             fontSize: 10,
+            height: 1.0,
             letterSpacing: 0.8,
             fontWeight: FontWeight.w600,
             color: palette.textSecondary,
           ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 4),
         FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
@@ -310,8 +320,10 @@ class _PlanningTile extends StatelessWidget {
                   ),
                 ),
             ]),
+            // Line height 1, as in the mockup (spec §4.1 height budget).
             style: AppTypography.readoutMd.copyWith(
               fontSize: 17,
+              height: 1.0,
               fontWeight: FontWeight.w600,
               color: valueColor ?? palette.textPrimary,
             ),

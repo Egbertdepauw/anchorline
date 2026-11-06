@@ -15,6 +15,7 @@ class HeroStat extends StatelessWidget {
     this.valueSize = 22,
     this.centered = false,
     this.valueKey,
+    this.tight = false,
   });
 
   final String value;
@@ -29,9 +30,15 @@ class HeroStat extends StatelessWidget {
   /// Goes on the value [Text].
   final Key? valueKey;
 
+  /// Sets the value and the label on their font size (line height 1), as
+  /// the mockups do, rather than on the fonts' own, taller line spacing.
+  /// The Analyse tab needs it to fit a phone.
+  final bool tight;
+
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final lineHeight = tight ? 1.0 : null;
     return Column(
       crossAxisAlignment:
           centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
@@ -52,6 +59,7 @@ class HeroStat extends StatelessWidget {
                   softWrap: false,
                   style: AppTypography.readoutLg.copyWith(
                       fontSize: valueSize,
+                      height: lineHeight,
                       color: valueColor ?? palette.textPrimary)),
               if (unit != null) ...[
                 const SizedBox(width: 2),
@@ -70,6 +78,7 @@ class HeroStat extends StatelessWidget {
             textAlign: centered ? TextAlign.center : TextAlign.start,
             style: TextStyle(
                 fontSize: 10,
+                height: lineHeight,
                 letterSpacing: 1.2,
                 fontWeight: FontWeight.w600,
                 color: palette.textSecondary)),
