@@ -1,0 +1,378 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Settings tabs</title>
+<style>body{margin:0;padding:32px;background:#1d1d1f;color:#f5f5f7;font-family:system-ui,-apple-system,sans-serif}
+h2{font-size:24px;margin:0 0 6px} h3{font-size:18px;margin:32px 0 6px} .subtitle{color:#a1a1a6;max-width:960px;margin:0 0 24px;line-height:1.45}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  .al-row { display:flex; flex-wrap:wrap; gap:28px; align-items:flex-start; }
+  .al-col { display:flex; flex-direction:column; gap:10px; }
+  .al-cap { font: 600 14px/1.3 Inter, system-ui, sans-serif; max-width:393px; }
+  .al-cap small { display:block; font-weight:400; opacity:.75; margin-top:2px; }
+
+  .al { --bg:#0A1518; --card:#142028; --raised:#1F2E38; --bezel:#2A3A45;
+        --t1:#E0E8EC; --t2:#A0AEB6; --t3:#6B7D88; --acc:#C97B3A; --he:#5BC0EB;
+        --ok:#4ADE80; --warn:#F39C12; --bad:#E74C3C; --caution:#F59E0B; --over:#DC2626;
+        width:393px; height:852px; border-radius:46px; border:9px solid #2b2f33;
+        background:var(--bg); color:var(--t1); overflow:hidden; position:relative;
+        font: 400 14px/1.35 Inter, system-ui, sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+  .al * { box-sizing:border-box; }
+  .al .mono { font-family:'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .al .sb { height:59px; padding-top:8px; display:flex; justify-content:space-between; align-items:center; padding:0 28px; font:600 15px Inter; }
+  .al .ab { height:52px; display:flex; align-items:center; gap:14px; padding:0 8px 0 14px; }
+  .al .ab .t { font:600 19px Inter; flex:1; letter-spacing:-.2px; }
+  .al .ic { width:40px; height:40px; display:grid; place-items:center; color:var(--t2); font-size:20px; }
+  .al .body { position:absolute; top:96px; bottom:98px; left:0; right:0; overflow-y:auto; }
+  .al .lab { font:600 10px/1 Inter; letter-spacing:1.2px; color:var(--t2); text-transform:uppercase; }
+  .al .lab.m { color:var(--t3); }
+
+  /* connection strip */
+  .al .conn { height:36px; display:flex; align-items:center; gap:8px; padding:0 8px 0 16px; background:var(--card); border-top:1px solid var(--raised); border-bottom:1px solid var(--raised); font-size:13px; color:var(--t2); }
+  .al .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); }
+  .al .conn .sp { flex:1; }
+  .al .tbtn { color:var(--acc); font:600 13px Inter; padding:6px 10px; }
+
+  /* hero band, like the dive summary */
+  .al .hero { background:var(--raised); padding:12px 16px 12px; }
+  .al .hero .top { display:flex; align-items:center; justify-content:space-between; }
+  .al .mix { font:700 26px/1.1 Inter; letter-spacing:-.4px; }
+  .al .pill { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px; font:700 11px Inter; letter-spacing:1.2px; }
+  .al .pill.ok { color:var(--ok); background:rgba(74,222,128,.15); }
+  .al .pill.ok::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--ok); }
+  .al .stats { display:flex; margin-top:10px; }
+  .al .stat { flex:1; text-align:center; }
+  .al .stat + .stat { border-left:1px solid var(--bezel); }
+  .al .stat .v { font:600 30px/1 'JetBrains Mono', monospace; font-variant-numeric:tabular-nums; }
+  .al .stat .v span { font-size:13px; color:var(--t2); margin-left:2px; font-weight:500; }
+  .al .stat .lab { margin-top:6px; }
+
+  /* planning grid */
+  .al .sec { padding:12px 16px; border-bottom:1px solid var(--raised); }
+  .al .sech { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .al .sech .lab { color:var(--acc); }
+  .al .grid { display:grid; grid-template-columns: repeat(4, 1fr); row-gap:12px; column-gap:8px; }
+  .al .cell .lab { font-size:9.5px; letter-spacing:.8px; color:var(--t3); }
+  .al .cell .v { font:600 17px/1 'JetBrains Mono', monospace; margin-top:5px; font-variant-numeric:tabular-nums; }
+  .al .cell .v small { font-size:11px; color:var(--t2); font-weight:500; }
+  .al .tag { color:var(--acc); font-weight:700; }
+  .al .foot { font-size:10.5px; color:var(--t3); margin-top:10px; }
+
+  /* trend, collapsed */
+  .al .trend { height:38px; display:flex; align-items:center; gap:10px; padding:0 16px; border-bottom:1px solid var(--raised); color:var(--t2); font-size:13px; }
+  .al .trend svg { flex:none; }
+  .al .trend .sp { flex:1; }
+
+  /* save form */
+  .al .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .al .chip { padding:6px 10px; border-radius:2px; border:1px solid var(--bezel); background:var(--raised); font:500 13px Inter; color:var(--t1); }
+  .al .chip.sel { border-color:var(--acc); background:rgba(201,123,58,.18); color:var(--t1); }
+  .al .chip.sel::before { content:'✓ '; color:var(--acc); }
+  .al .verdict { margin-top:7px; font:500 12px Inter; color:var(--ok); display:flex; align-items:center; gap:6px; }
+  .al .verdict::before { content:''; width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .al .seg { display:flex; border:1px solid var(--bezel); border-radius:2px; overflow:hidden; margin-top:10px; height:36px; }
+  .al .seg div { flex:1; display:grid; place-items:center; font:500 13px Inter; color:var(--t2); }
+  .al .seg div + div { border-left:1px solid var(--bezel); }
+  .al .seg .on { background:rgba(201,123,58,.18); color:var(--t1); }
+  .al .two { display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:8px; }
+  .al .fld { background:var(--card); border:1px solid var(--bezel); border-radius:2px; padding:5px 10px 6px; height:44px; }
+  .al .fld .l { font-size:10.5px; color:var(--t3); }
+  .al .fld .x { font-size:14px; margin-top:1px; display:flex; justify-content:space-between; }
+  .al .fld .x .u { color:var(--t3); }
+  .al .fld .x.ph { color:var(--t3); }
+  .al .more { margin-top:8px; font:600 13px Inter; color:var(--acc); padding:4px 0; }
+
+  /* bottom action bar */
+  .al .bar { position:absolute; left:0; right:0; bottom:0; height:98px; background:var(--card); border-top:1px solid var(--bezel); padding:10px 16px 0; }
+  .al .btns { display:flex; gap:8px; align-items:center; }
+  .al .btn { height:44px; border-radius:2px; display:grid; place-items:center; font:600 14px Inter; }
+  .al .btn.o { border:1px solid var(--bezel); color:var(--acc); flex:0 0 84px; }
+  .al .btn.f { background:var(--acc); color:#0A1518; flex:1; }
+  .al .step { flex:0 0 auto; display:flex; align-items:center; border:1px solid var(--bezel); border-radius:2px; height:44px; }
+  .al .step b { width:30px; text-align:center; color:var(--t2); font-weight:500; font-size:18px; }
+  .al .step i { font-style:normal; width:22px; text-align:center; font:600 15px 'JetBrains Mono', monospace; }
+  .al .home { position:absolute; bottom:8px; left:50%; transform:translateX(-50%); width:134px; height:5px; border-radius:3px; background:#E0E8EC; opacity:.6; }
+
+  /* Log on OK variants */
+  .al .okstat { display:flex; align-items:center; gap:10px; height:44px; padding:0 12px; border-radius:2px; background:rgba(201,123,58,.12); border:1px solid rgba(201,123,58,.55); }
+  .al .pulse { width:10px; height:10px; border-radius:50%; background:var(--acc); box-shadow:0 0 0 4px rgba(201,123,58,.25); flex:none; }
+  .al .okstat .tx { flex:1; font:600 13.5px Inter; }
+  .al .okstat .tx small { display:block; font:400 11.5px Inter; color:var(--t2); margin-top:1px; }
+  .al .stop { font:600 13px Inter; color:var(--t1); border:1px solid var(--bezel); border-radius:2px; padding:6px 10px; background:var(--raised); }
+  .al .result { display:flex; align-items:center; gap:8px; margin-top:10px; padding:8px 10px; background:var(--card); border:1px solid var(--raised); border-left:3px solid var(--ok); border-radius:2px; font-size:13px; }
+  .al .result .sp { flex:1; }
+  .al .result a { color:var(--acc); font-weight:600; }
+  .al .swrow { display:flex; align-items:center; justify-content:space-between; margin-top:10px; font-size:13px; color:var(--t1); }
+  .al .sw { width:40px; height:24px; border-radius:12px; background:var(--acc); position:relative; }
+  .al .sw::after { content:''; position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%; background:#0A1518; }
+  .al .sechint { font-size:11.5px; color:var(--t3); margin:-4px 0 8px; }
+  .al .armbtn { flex:0 0 auto; height:44px; padding:0 12px; border:1px solid var(--bezel); border-radius:2px; display:flex; align-items:center; gap:7px; font:600 13px Inter; color:var(--t1); }
+  .al .armbtn::before { content:''; width:9px; height:9px; border-radius:50%; border:2px solid var(--acc); }
+</style>
+<style>
+  /* top tab bar in place of the app bar */
+  .al .tabs { height:56px; display:flex; align-items:stretch; border-bottom:1px solid var(--raised); padding:0 4px; }
+  .al .tabs div { flex:1; display:flex; align-items:center; justify-content:center; gap:7px; color:var(--t2); font:600 14px Inter; position:relative; }
+  .al .tabs div.on { color:var(--acc); }
+  .al .tabs div.on::after { content:''; position:absolute; left:14px; right:14px; bottom:0; height:2px; background:var(--acc); }
+  .al .tabs .ti { font-size:15px; }
+  .al .tabs .live { width:7px; height:7px; border-radius:50%; background:var(--ok); margin-left:-2px; }
+  .al .body.t { top:115px; }
+  .al .tabs .anc { flex:0 0 42px; display:grid; place-items:center; color:var(--acc); font-size:19px; border-right:1px solid var(--raised); margin:10px 2px 10px 0; }
+  .al .tabs.lbl div { font-size:12.5px; }
+  .al .body.t.hasnav { bottom:90px; }
+  .al .body.t.hasnav.withbar { bottom:154px; }
+  .al .bar.abovenav { bottom:90px; height:64px; padding-top:10px; border-bottom:0; }
+  .al .nav { position:absolute; left:0; right:0; bottom:0; height:90px; background:var(--card); border-top:1px solid var(--bezel); display:flex; padding:6px 4px 0; }
+  .al .nav div { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; font:500 10.5px Inter; color:var(--t3); }
+  .al .nav div b { font-size:19px; font-weight:400; line-height:24px; }
+  .al .nav div.on { color:var(--acc); }
+  .al .info { width:16px; height:16px; border-radius:50%; border:1.3px solid var(--t3); color:var(--t3); display:inline-grid; place-items:center; font:700 10px Inter; }
+
+  /* Blend */
+  .al .bhero { background:var(--raised); padding:12px 16px 12px; }
+  .al .bhero .top { display:flex; align-items:baseline; gap:10px; }
+  .al .bhero .to { color:var(--t2); font-size:14px; }
+  .al .bhero .ok2 { margin-left:auto; }
+  .al .steps { display:flex; margin-top:12px; }
+  .al .steps .st { flex:1; text-align:center; }
+  .al .steps .st + .st { border-left:1px solid var(--bezel); }
+  .al .steps .v { font:600 24px/1 'JetBrains Mono', monospace; }
+  .al .steps .v span { font-size:12px; color:var(--t2); margin-left:2px; font-weight:500; }
+  .al .steps .lab { margin-top:6px; }
+  .al .steps .sub { font:500 11px 'JetBrains Mono', monospace; color:var(--t3); margin-top:3px; }
+  .al .costln { display:flex; justify-content:space-between; margin-top:12px; padding-top:9px; border-top:1px solid var(--bezel); font:500 12px 'JetBrains Mono', monospace; color:var(--t2); }
+  .al .costln b { color:var(--t1); font-weight:600; }
+  .al .four { display:grid; grid-template-columns: 1fr 1fr 1.25fr 1fr; gap:8px; margin-top:8px; }
+  .al .three { display:grid; grid-template-columns: 1fr 1fr 1.3fr; gap:8px; margin-top:8px; }
+  .al .optrow { height:40px; display:flex; align-items:center; gap:10px; padding:0 16px; color:var(--t2); font-size:13px; border-top:1px solid var(--raised); }
+  .al .optrow .sp { flex:1; }
+  .al .optrow .val { color:var(--t3); font-size:12px; }
+
+  /* Log */
+  .al .tool { display:flex; align-items:center; gap:6px; padding:10px 12px 10px 16px; border-bottom:1px solid var(--raised); }
+  .al .tool .sp { flex:1; }
+  .al .fchip { padding:5px 10px; border:1px solid var(--bezel); border-radius:2px; font:500 12.5px Inter; color:var(--t2); }
+  .al .fchip.on { border-color:var(--acc); background:rgba(201,123,58,.18); color:var(--t1); }
+  .al .fchip.warn { border-color:rgba(243,156,18,.6); color:var(--warn); }
+  .al .row { display:flex; align-items:center; gap:10px; padding:9px 8px 9px 12px; border-left:3px solid var(--acc); border-bottom:1px solid var(--raised); }
+  .al .row.bo { border-left-color:#3A6477; }
+  .al .row .main { flex:1; min-width:0; }
+  .al .row .l1 { display:flex; align-items:baseline; gap:7px; }
+  .al .row .role { font:600 11px Inter; letter-spacing:.8px; color:var(--acc); }
+  .al .row.bo .role { color:#7FA7BA; }
+  .al .row .name { font:600 15px 'JetBrains Mono', monospace; }
+  .al .row .date { margin-left:auto; font-size:11px; color:var(--t3); white-space:nowrap; }
+  .al .row .l2 { font:500 12px 'JetBrains Mono', monospace; color:var(--t2); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .al .row .l3 { font-size:11.5px; margin-top:2px; }
+  .al .row .pr { width:36px; height:36px; display:grid; place-items:center; color:var(--t2); font-size:17px; }
+  .al .row .so { font:600 10.5px Inter; color:var(--warn); border:1px solid rgba(243,156,18,.6); padding:1px 5px; border-radius:2px; }
+  .al .daysep { padding:8px 16px 4px; font:600 10px Inter; letter-spacing:1.2px; color:var(--t3); text-transform:uppercase; }
+  .al .body.withbar .hero { padding:10px 16px; }
+  .al .body.withbar .stats { margin-top:8px; }
+  .al .body.withbar .sec { padding:10px 16px; }
+  .al .body.withbar .trend { height:30px; }
+  .al .body.withbar .conn { height:32px; }
+  .al .body.withbar .stats { margin-top:6px; }
+  .al .body.withbar .fld { height:40px; padding-top:3px; }
+</style>
+<style>
+  .al .tabs.lbl div { font:600 13px Inter; gap:0; }
+  .al .tabs.lbl div.on::after { left:8px; right:8px; }
+  .al .srow { display:flex; align-items:center; gap:12px; min-height:48px; padding:6px 0; border-top:1px solid var(--raised); }
+  .al .sech + .srow { border-top:0; }
+  .al .srow .lt { flex:1; min-width:0; }
+  .al .srow .lt div { font-size:14px; color:var(--t1); }
+  .al .srow .lt small { display:block; font-size:11.5px; color:var(--t3); margin-top:1px; line-height:1.3; }
+  .al .sw.off { background:var(--bezel); }
+  .al .sw.off::after { right:auto; left:3px; background:var(--t2); }
+  .al .nf { min-width:72px; height:34px; padding:0 8px; display:flex; align-items:center; justify-content:flex-end; gap:4px; background:var(--card); border:1px solid var(--bezel); border-radius:2px; font:500 14px 'JetBrains Mono', monospace; }
+  .al .nf span { color:var(--t3); font:400 12px Inter; }
+  .al .sstep { display:flex; align-items:center; border:1px solid var(--bezel); border-radius:2px; height:34px; }
+  .al .sstep b { width:30px; text-align:center; color:var(--t2); font-weight:500; font-size:17px; }
+  .al .sstep i { font-style:normal; min-width:30px; text-align:center; font:600 14px 'JetBrains Mono', monospace; }
+  .al .sstep em { font-style:normal; font:400 11px Inter; color:var(--t3); padding-right:8px; }
+  .al .ddn { height:34px; padding:0 10px; display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--bezel); border-radius:2px; font-size:13px; }
+  .al .themes { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
+  .al .th { border:1px solid var(--bezel); border-radius:2px; padding:7px 8px; background:var(--card); }
+  .al .th.on { border-color:var(--acc); background:rgba(201,123,58,.12); }
+  .al .th .n { font-size:12.5px; display:flex; justify-content:space-between; }
+  .al .th .s { display:flex; gap:3px; margin-top:6px; }
+  .al .th .s i { flex:1; height:10px; border-radius:1px; }
+  .al .pchip { display:inline-flex; align-items:center; gap:6px; padding:5px 8px; border:1px solid var(--bezel); border-radius:2px; background:var(--raised); font:600 13px 'JetBrains Mono', monospace; }
+  .al .pchip b { color:var(--t3); font:400 12px Inter; }
+  .al .sbtn { height:34px; padding:0 12px; display:inline-grid; place-items:center; border:1px solid var(--bezel); border-radius:2px; color:var(--acc); font:600 13px Inter; }
+  .al .sbtn.f { background:var(--acc); color:#0A1518; border-color:var(--acc); }
+  .al .danger { color:var(--bad); }
+  .al .ahero { background:var(--raised); padding:18px 16px 14px; text-align:center; }
+  .al .logo { width:56px; height:56px; margin:0 auto 8px; border-radius:12px; background:#0A1418; border:1px solid var(--bezel); display:grid; place-items:center; color:var(--acc); font:700 26px Inter; }
+  .al .aname { font:700 22px Inter; letter-spacing:-.3px; }
+  .al .atag { color:var(--t2); font-size:12.5px; margin-top:2px; }
+</style></head><body>
+
+<h2>Settings: five tabs instead of one long list</h2>
+<p class="subtitle">Same top row as Gas (anchor + tabs); labels only, because five icons would not explain themselves. Each tab groups its settings under the dive screen's section headings. Every setting from today has a home; nothing is dropped.</p>
+
+<div class="al-row">
+
+  <!-- General -->
+  <div class="al-col">
+    <div class="al-cap">General<small>Look of the app, your initials, and how dive profiles are drawn.</small></div>
+    <div class="al">
+      <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="tabs lbl"><span class="anc">⚓</span><div class="on">General</div><div>Planning</div><div>Gas</div><div>Sync</div><div>About</div></div>
+      <div class="body t hasnav">
+        <div class="sec">
+          <div class="sech"><span class="lab">Theme</span></div>
+          <div class="themes">
+            <div class="th on"><div class="n">Wreck <span style="color:var(--acc)">✓</span></div><div class="s"><i style="background:#0A1518"></i><i style="background:#1F2E38"></i><i style="background:#C97B3A"></i><i style="background:#E0E8EC"></i></div></div>
+            <div class="th"><div class="n">Ethereal</div><div class="s"><i style="background:#060B1E"></i><i style="background:#252E56"></i><i style="background:#7D82D9"></i><i style="background:#FFCEAD"></i></div></div>
+            <div class="th"><div class="n">Retro 82</div><div class="s"><i style="background:#05182E"></i><i style="background:#134E5A"></i><i style="background:#FAA968"></i><i style="background:#F6DCAC"></i></div></div>
+            <div class="th"><div class="n">Catppuccin</div><div class="s"><i style="background:#1E1E2E"></i><i style="background:#45475A"></i><i style="background:#89B4FA"></i><i style="background:#CDD6F4"></i></div></div>
+            <div class="th"><div class="n">Hackerman</div><div class="s"><i style="background:#0B0C16"></i><i style="background:#1F253A"></i><i style="background:#82FB9C"></i><i style="background:#DDF7FF"></i></div></div>
+            <div class="th"><div class="n">Miasma</div><div class="s"><i style="background:#222222"></i><i style="background:#383838"></i><i style="background:#78824B"></i><i style="background:#C2C2B0"></i></div></div>
+          </div>
+        </div>
+        <div class="sec">
+          <div class="sech"><span class="lab">You</span></div>
+          <div class="srow"><div class="lt"><div>Your initials</div><small>Fills "Analysed by" and goes on cylinder labels</small></div><span class="nf" style="font-family:Inter">EdP</span></div>
+        </div>
+        <div class="sec">
+          <div class="sech"><span class="lab">Dive profile</span></div>
+          <div class="srow"><div class="lt"><div>Colour by ascent speed</div><small>Depth trace turns red above 9 m/min</small></div><span class="sw"></span></div>
+          <div class="srow"><div class="lt"><div>Watermark</div><small>Behind the profile; 0 hides it</small></div><span class="sstep"><b>−</b><i>8</i><em>%</em><b>+</b></span></div>
+          <div class="srow"><div class="lt"><div>Count O₂ as narcotic in END</div><small>Off: only N₂ counts</small></div><span class="sw"></span></div>
+        </div>
+      </div>
+      <div class="nav"><div><b>⛵</b>Dives</div><div><b>▤</b>Plan</div><div><b>⚗</b>Gas</div><div><b>ᛒ</b>Import</div><div><b>⚙</b>Equipment</div><div class="on"><b>☰</b>Settings</div></div>
+      <div class="home"></div>
+    </div>
+  </div>
+
+  <!-- Planning -->
+  <div class="al-col">
+    <div class="al-cap">Planning<small>The bailout planner's numbers. Sliders become steppers, so a value is one tap off, not a drag.</small></div>
+    <div class="al">
+      <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="tabs lbl"><span class="anc">⚓</span><div>General</div><div class="on">Planning</div><div>Gas</div><div>Sync</div><div>About</div></div>
+      <div class="body t hasnav">
+        <div class="sec">
+          <div class="sech"><span class="lab">Bailout breathing rate (SAC)</span></div>
+          <div class="srow"><div class="lt"><div>Bottom phase</div><small>Until the first gas switch or half pressure</small></div><span class="sstep"><b>−</b><i>20</i><em>L/min</em><b>+</b></span></div>
+          <div class="srow"><div class="lt"><div>Deco phase</div><small>From the first deco stop to the surface</small></div><span class="sstep"><b>−</b><i>15</i><em>L/min</em><b>+</b></span></div>
+        </div>
+        <div class="sec">
+          <div class="sech"><span class="lab">Ascent rate</span></div>
+          <div class="srow"><div class="lt"><div>To the first stop</div></div><span class="sstep"><b>−</b><i>9</i><em>m/min</em><b>+</b></span></div>
+          <div class="srow"><div class="lt"><div>Between stops</div></div><span class="sstep"><b>−</b><i>3</i><em>m/min</em><b>+</b></span></div>
+        </div>
+        <div class="sec" style="border-bottom:0">
+          <div class="sech"><span class="lab">Your bailout kit</span></div>
+          <div class="srow"><div class="lt"><div>Diluent is bailout-capable</div><small>GUE / D7 style. Off: 2–3 L diluent, plan a bottom-mix stage</small></div><span class="sw off"></span></div>
+          <div class="srow"><div class="lt"><div>6.8 L / 300 bar stage</div><small>Use it in bailout volumes</small></div><span class="sw"></span></div>
+          <div class="srow"><div class="lt"><div>12 L / 300 bar stage</div><small>Use it in bailout volumes</small></div><span class="sw off"></span></div>
+        </div>
+      </div>
+      <div class="nav"><div><b>⛵</b>Dives</div><div><b>▤</b>Plan</div><div><b>⚗</b>Gas</div><div><b>ᛒ</b>Import</div><div><b>⚙</b>Equipment</div><div class="on"><b>☰</b>Settings</div></div>
+      <div class="home"></div>
+    </div>
+  </div>
+
+  <!-- Gas -->
+  <div class="al-col">
+    <div class="al-cap">Gas<small>Blending, the analyzer and the label printer, in the order of the Gas tabs. MOD limits become chips instead of a comma list.</small></div>
+    <div class="al">
+      <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="tabs lbl"><span class="anc">⚓</span><div>General</div><div>Planning</div><div class="on">Gas</div><div>Sync</div><div>About</div></div>
+      <div class="body t hasnav">
+        <div class="sec">
+          <div class="sech"><span class="lab">Blending prices</span></div>
+          <div class="srow"><div class="lt"><div>Oxygen</div></div><span class="nf">0.010<span>/ L</span></span></div>
+          <div class="srow"><div class="lt"><div>Helium</div></div><span class="nf">0.035<span>/ L</span></span></div>
+          <div class="srow"><div class="lt"><div>Top-off fill fee</div><small>Air or nitrox, per fill</small></div><span class="nf">5.00</span></div>
+        </div>
+        <div class="sec">
+          <div class="sech"><span class="lab">Blend tab starts with</span></div>
+          <div class="srow"><div class="lt"><div>Top-off gas</div></div><span class="ddn">Air ▾</span></div>
+          <div class="srow"><div class="lt"><div>Fill order</div></div><span class="ddn">He → O₂ → top-off ▾</span></div>
+          <div class="srow"><div class="lt"><div>Real-gas maths (Z)</div><small>Off: ideal gas</small></div><span class="sw"></span></div>
+          <div class="srow"><div class="lt"><div>Fill / settled temp</div></div><span style="display:flex;gap:6px"><span class="nf" style="min-width:58px">20<span>°C</span></span><span class="nf" style="min-width:58px">20<span>°C</span></span></span></div>
+        </div>
+        <div class="sec">
+          <div class="sech"><span class="lab">Analyzer</span></div>
+          <div class="srow" style="align-items:flex-start"><div class="lt"><div>MOD rows at ppO₂</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="pchip">1.1 <b>✕</b></span><span class="pchip">1.4 <b>✕</b></span><span class="pchip">1.6 <b>✕</b></span><span class="pchip" style="color:var(--acc);font-family:Inter">+ Add</span></div></div></div>
+          <div class="srow"><div class="lt"><div>Fill pressure starts at</div></div><span class="nf">230<span>bar</span></span></div>
+        </div>
+        <div class="sec" style="border-bottom:0">
+          <div class="sech"><span class="lab">Label printer</span></div>
+          <div class="srow"><div class="lt"><div>Phomemo M110</div><small>Set up on this device</small></div><span class="sbtn">Test</span><span class="sbtn" style="color:var(--t2)">Forget</span></div>
+          <div class="srow"><div class="lt"><div>Use 1.4 for deeper mixes</div><small>MOD at ppO₂ 1.4 below 50 % O₂. Off: 1.6 for all</small></div><span class="sw off"></span></div>
+        </div>
+      </div>
+      <div class="nav"><div><b>⛵</b>Dives</div><div><b>▤</b>Plan</div><div><b>⚗</b>Gas</div><div><b>ᛒ</b>Import</div><div><b>⚙</b>Equipment</div><div class="on"><b>☰</b>Settings</div></div>
+      <div class="home"></div>
+    </div>
+  </div>
+
+  <!-- Sync -->
+  <div class="al-col">
+    <div class="al-cap">Sync<small>Your account, Subsurface Cloud, and the repair tools that used to sit under "Diagnostics" and "Danger zone".</small></div>
+    <div class="al">
+      <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="tabs lbl"><span class="anc">⚓</span><div>General</div><div>Planning</div><div>Gas</div><div class="on">Sync</div><div>About</div></div>
+      <div class="body t hasnav">
+        <div class="sec">
+          <div class="sech"><span class="lab">Anchorline account</span></div>
+          <div class="srow"><div class="lt"><div>egbert@despaankamer.nl</div><small style="color:var(--ok)">● Synced 2 minutes ago</small></div><span class="sbtn" style="color:var(--t2)">Sign out</span></div>
+        </div>
+        <div class="sec">
+          <div class="sech"><span class="lab">Subsurface Cloud</span></div>
+          <div class="fld"><div class="l">Subsurface email</div><div class="x">egbert@…</div></div>
+          <div class="fld" style="margin-top:8px"><div class="l">Password</div><div class="x">•••••••••• <span class="u">👁</span></div></div>
+          <div class="srow" style="border-top:0; margin-top:4px"><div class="lt"><small>Last pushed 5 Nov, 21:14</small></div><span class="sbtn">Import</span><span class="sbtn f">Sync now</span></div>
+        </div>
+        <div class="sec" style="border-bottom:0">
+          <div class="sech"><span class="lab">Repair</span></div>
+          <div class="srow"><div class="lt"><div>Re-assign dives to this account</div><small>For dives imported while signed out or under another account</small></div><span style="color:var(--t3)">›</span></div>
+          <div class="srow"><div class="lt"><div>Push stuck uploads</div><small>When "Syncing…" never finishes</small></div><span style="color:var(--t3)">›</span></div>
+          <div class="srow"><div class="lt"><div class="danger">Reset local data</div><small>Wipes this device; cloud data stays and syncs back</small></div><span style="color:var(--t3)">›</span></div>
+        </div>
+      </div>
+      <div class="nav"><div><b>⛵</b>Dives</div><div><b>▤</b>Plan</div><div><b>⚗</b>Gas</div><div><b>ᛒ</b>Import</div><div><b>⚙</b>Equipment</div><div class="on"><b>☰</b>Settings</div></div>
+      <div class="home"></div>
+    </div>
+  </div>
+
+  <!-- About -->
+  <div class="al-col">
+    <div class="al-cap">About<small>Version, build, date and author in the dive screen's summary band. The BLE debug log moves here as support.</small></div>
+    <div class="al">
+      <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="tabs lbl"><span class="anc">⚓</span><div>General</div><div>Planning</div><div>Gas</div><div>Sync</div><div class="on">About</div></div>
+      <div class="body t hasnav">
+        <div class="ahero">
+          <div class="logo">⚓</div>
+          <div class="aname">Anchorline</div>
+          <div class="atag">Dive log and analysis for CCR divers</div>
+          <div class="stats" style="margin-top:16px">
+            <div class="stat"><div class="v" style="font-size:20px">1.1.0</div><div class="lab">Version</div></div>
+            <div class="stat"><div class="v" style="font-size:20px">43</div><div class="lab">Build</div></div>
+            <div class="stat" style="flex:1.5"><div class="v" style="font-size:18px;white-space:nowrap;padding-top:2px">6 Nov 2026</div><div class="lab">Date</div></div>
+          </div>
+        </div>
+        <div class="sec">
+          <div class="srow" style="border-top:0"><div class="lt"><div>Author</div></div><span style="color:var(--t2)">Egbert de Pauw</span></div>
+          <div class="srow"><div class="lt"><div>Channel</div></div><span style="color:var(--t2)">Release</span></div>
+          <div class="srow"><div class="lt"><div>Licence</div></div><span style="color:var(--t2)">GPLv2</span></div>
+        </div>
+        <div class="sec" style="border-bottom:0">
+          <div class="sech"><span class="lab">Support</span></div>
+          <div class="srow"><div class="lt"><div>Share Bluetooth debug log</div><small>Protocol events and timings only, no dive data</small></div><span style="color:var(--t3)">›</span></div>
+        </div>
+      </div>
+      <div class="nav"><div><b>⛵</b>Dives</div><div><b>▤</b>Plan</div><div><b>⚗</b>Gas</div><div><b>ᛒ</b>Import</div><div><b>⚙</b>Equipment</div><div class="on"><b>☰</b>Settings</div></div>
+      <div class="home"></div>
+    </div>
+  </div>
+
+</div>
+
+</body></html>
