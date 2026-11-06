@@ -9,9 +9,11 @@ import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport_options.dart';
 import 'package:ccrlogger/ui/screens/gas_analysis_log_screen.dart';
 import 'package:ccrlogger/ui/screens/gas_screen.dart';
+import 'package:ccrlogger/ui/theme/app_themes.dart';
 import 'package:ccrlogger/ui/theme/safety_colors.dart';
 import 'package:ccrlogger/ui/theme/tokens.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -68,7 +70,8 @@ class _Rig {
   UsbOkLogger? logger;
   int homeTaps = 0;
 
-  Future<void> pump(WidgetTester tester, {bool logOnOk = false}) async {
+  Future<void> pump(WidgetTester tester,
+      {bool logOnOk = false, ThemeData? theme}) async {
     tester.view.physicalSize = const Size(600, 3200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -92,6 +95,7 @@ class _Rig {
       ),
     );
     await tester.pumpWidget(MaterialApp(
+      theme: theme,
       home: GasScreen(
         blend: blend,
         settings: settings,
@@ -260,6 +264,28 @@ void main() {
     expect(rig.session.okRunning, isFalse);
     final dot = tester.widget<Container>(_key('gas-tab-analyse-dot'));
     expect((dot.decoration! as BoxDecoration).color, SafetyColors.success);
+  });
+
+  _test('on a 393 pt phone the Analyse label shows in full beside its dot',
+      (tester, rig) async {
+    // The app's theme, so the label is set in Inter as on a device (the
+    // default test font is far wider).
+    await rig.pump(tester, theme: AppThemes.byId(null).themeData);
+    await _tab(tester, 'gas-tab-analyse');
+    await rig.connect(tester);
+    expect(_key('gas-tab-analyse-dot'), findsOneWidget);
+    tester.view.physicalSize = const Size(393, 852);
+    await tester.pumpAndSettle();
+
+    // The test font (Ahem) is far wider than Inter, so a TextPainter cannot
+    // say whether the word fits. In Inter / Roboto 14 sp medium "Analyse" is
+    // about 52 pt; the label must be given at least 58 pt beside the icon and
+    // the dot. (With the default 16 pt tab padding it got about 45 pt and
+    // showed "Analy…".)
+    final label = find.descendant(
+        of: _key('gas-tab-analyse'), matching: find.text('Analyse'));
+    final paragraph = tester.renderObject<RenderParagraph>(label);
+    expect(paragraph.size.width, greaterThanOrEqualTo(58));
   });
 
   _test('the Analyse tab follows the Blend target set after it was built',

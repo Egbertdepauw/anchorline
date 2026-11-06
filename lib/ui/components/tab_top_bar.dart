@@ -42,7 +42,16 @@ class TabTopBar extends StatelessWidget implements PreferredSizeWidget {
               ),
               const SizedBox(width: Spacing.sm),
               Container(width: 1, height: 28, color: palette.surfaceRaised),
-              Expanded(child: TabBar(tabs: tabs)),
+              // Tight label padding: with three tabs on a 393 pt phone, the default
+              // 16 pt on each side leaves "Analyse" too little room beside its
+              // status dot.
+              Expanded(
+                child: TabBar(
+                  tabs: tabs,
+                  labelPadding:
+                      const EdgeInsets.symmetric(horizontal: Spacing.xs),
+                ),
+              ),
             ],
           ),
         ),

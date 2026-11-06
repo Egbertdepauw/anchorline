@@ -70,7 +70,7 @@ void main() {
   }
 
   Future<void> disconnect(WidgetTester tester) async {
-    await tester.tap(find.byKey(const ValueKey('analyzer-connect')));
+    await tester.tap(find.byKey(const ValueKey('analyzer-disconnect')));
     await tester.pump();
   }
 

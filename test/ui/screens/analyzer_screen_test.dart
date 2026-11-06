@@ -80,8 +80,8 @@ void main() {
     await pumpScreen(tester, await loadSettings());
     await tester.tap(find.byKey(const ValueKey('analyzer-connect')));
     await tester.pump();
-    expect(find.text('Connected · Demo'), findsOneWidget);
-    expect(find.text('Disconnect'), findsOneWidget);
+    expect(find.textContaining('SOLO connected · Demo'), findsOneWidget);
+    expect(find.byKey(const ValueKey('analyzer-disconnect')), findsOneWidget);
 
     await seconds(tester, 1);
     expect(textOf(tester, 'analyzer-o2'), matches(RegExp(r'^\d+\.\d$')));
@@ -94,27 +94,27 @@ void main() {
     expect(textOf(tester, 'analyzer-o2'), '18.2');
     expect(textOf(tester, 'analyzer-he'), '45.1');
     expect(textOf(tester, 'analyzer-mix'), 'Tx18.2/45.1');
-    expect(find.text('N₂ balance 36.7 %'), findsOneWidget);
+    expect(textOf(tester, 'analyzer-n2'), '36.7');
     expect(find.byKey(const ValueKey('analyzer-no-data-hint')), findsNothing);
 
     // Normoxic trimix: breathable at the surface.
     expect(rowText(tester, 'analyzer-min-depth'), contains('surface'));
     // MOD rows follow the default ppO2 set; 1.1 is the CCR diluent row.
-    expect(rowText(tester, 'analyzer-mod-1.1'), contains('CCR dil'));
-    expect(rowText(tester, 'analyzer-mod-1.1'), contains('MOD @ ppO₂ 1.1'));
-    expect(rowText(tester, 'analyzer-mod-1.4'), contains('MOD @ ppO₂ 1.4'));
-    expect(rowText(tester, 'analyzer-mod-1.6'), contains('MOD @ ppO₂ 1.6'));
-    expect(rowText(tester, 'analyzer-mod-1.4'), isNot(contains('CCR dil')));
+    expect(rowText(tester, 'analyzer-mod-1.1'), contains('DIL'));
+    expect(rowText(tester, 'analyzer-mod-1.1'), contains('MOD 1.1'));
+    expect(rowText(tester, 'analyzer-mod-1.4'), contains('MOD 1.4'));
+    expect(rowText(tester, 'analyzer-mod-1.6'), contains('MOD 1.6'));
+    expect(rowText(tester, 'analyzer-mod-1.4'), isNot(contains('DIL')));
     // (1.4 / 0.182 − 1) × 10 = 66.9 m: the nearest 3 m stop, 66, as the
     // cylinder label shows it (#145).
     expect(rowText(tester, 'analyzer-mod-1.4'), contains('66 m'));
     expect(rowText(tester, 'analyzer-temp'), contains('21.4 °C'));
     expect(rowText(tester, 'analyzer-baro'), contains('1013 hPa'));
 
-    await tester.tap(find.byKey(const ValueKey('analyzer-connect')));
+    await tester.tap(find.byKey(const ValueKey('analyzer-disconnect')));
     await tester.pump();
     expect(find.text('Not connected'), findsOneWidget);
-    expect(find.text('Connect'), findsOneWidget);
+    expect(find.byKey(const ValueKey('analyzer-connect')), findsOneWidget);
     // Last reading stays visible after disconnecting.
     expect(textOf(tester, 'analyzer-mix'), 'Tx18.2/45.1');
   });
@@ -135,7 +135,7 @@ void main() {
     // (0.16 / 0.10 − 1) × 10 = 6 m
     expect(rowText(tester, 'analyzer-min-depth'), contains('6 m'));
     expect(rowText(tester, 'analyzer-min-depth'), isNot(contains('surface')));
-    await tester.tap(find.byKey(const ValueKey('analyzer-connect')));
+    await tester.tap(find.byKey(const ValueKey('analyzer-disconnect')));
     await tester.pump();
   });
 
@@ -148,7 +148,7 @@ void main() {
     await seconds(tester, 90);
     expect(textOf(tester, 'analyzer-o2'), '20.0');
     expect(rowText(tester, 'analyzer-mod-1.4'), contains('60 m'));
-    await tester.tap(find.byKey(const ValueKey('analyzer-connect')));
+    await tester.tap(find.byKey(const ValueKey('analyzer-disconnect')));
     await tester.pump();
   });
 
@@ -163,7 +163,7 @@ void main() {
     await tester.pump();
     // N2 only: 76.92 × (0.367 / 0.79) − 10 = 26 m.
     expect(rowText(tester, 'analyzer-end'), contains('26 m'));
-    await tester.tap(find.byKey(const ValueKey('analyzer-connect')));
+    await tester.tap(find.byKey(const ValueKey('analyzer-disconnect')));
     await tester.pump();
   });
 
@@ -174,7 +174,7 @@ void main() {
     expect(find.byKey(const ValueKey('analyzer-mod-1.2')), findsOneWidget);
     expect(find.byKey(const ValueKey('analyzer-mod-1.3')), findsOneWidget);
     expect(find.byKey(const ValueKey('analyzer-mod-1.1')), findsNothing);
-    expect(find.text('CCR dil', findRichText: true), findsNothing);
+    expect(find.text('DIL', findRichText: true), findsNothing);
   });
 
   testWidgets('wide layout renders without overflow', (tester) async {
@@ -184,7 +184,7 @@ void main() {
     await seconds(tester, 5);
     expect(tester.takeException(), isNull);
     expect(find.text('SETTLING'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('analyzer-connect')));
+    await tester.tap(find.byKey(const ValueKey('analyzer-disconnect')));
     await tester.pump();
   });
 }

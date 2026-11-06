@@ -187,9 +187,15 @@ class _Harness {
     await tester.pumpAndSettle();
   }
 
-  /// The Connect / Disconnect button.
+  /// The Connect button of the strip.
   Future<void> connect(WidgetTester tester) async {
     await tester.tap(_key('analyzer-connect'));
+    await tester.pump();
+  }
+
+  /// The strip's Disconnect button.
+  Future<void> disconnect(WidgetTester tester) async {
+    await tester.tap(_key('analyzer-disconnect'));
     await tester.pump();
   }
 
@@ -1343,7 +1349,7 @@ void main() {
       await h.connect(tester);
       expect(h.loggersBuilt, 1);
 
-      await h.connect(tester); // the button now says Disconnect
+      await h.disconnect(tester);
       await tester.pump();
       expect(h.loggerClosed, isTrue);
       expect(_key('analysis-save'), findsOneWidget);
@@ -1400,7 +1406,7 @@ void main() {
       await h.pump(tester);
       await _switchOn(tester);
       await h.connect(tester);
-      await h.connect(tester); // Disconnect
+      await h.disconnect(tester);
       await tester.pump();
       expect(h.awake, [true, false]);
       await h.connect(tester);
