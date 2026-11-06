@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:ccrlogger/analyzer/transport/demo_transport.dart';
+import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
 import 'package:flutter/material.dart';
@@ -28,21 +29,23 @@ void main() {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(MaterialApp(
-      home: AnalyzerScreen(
-        settings: settings,
-        controller: fakeClockAnalyzerController(tester),
-        transportOptions: [
-          AnalyzerTransportOption(
-            label: 'Demo',
-            create: () => DemoAnalyzerTransport(
-              targetO2: targetO2,
-              targetHe: targetHe,
-              random: Random(11),
-            ),
+    final session = AnalyzerSession(
+      settings: settings,
+      controller: fakeClockAnalyzerController(tester),
+      transportOptions: [
+        AnalyzerTransportOption(
+          label: 'Demo',
+          create: () => DemoAnalyzerTransport(
+            targetO2: targetO2,
+            targetHe: targetHe,
+            random: Random(11),
           ),
-        ],
-      ),
+        ),
+      ],
+    );
+    addTearDown(session.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: AnalyzerScreen(settings: settings, session: session),
     ));
   }
 

@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../../analysis/blending/gas_blender.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../../labels/label_print_service.dart';
+import '../notifiers/analyzer_session.dart';
 import '../notifiers/blend_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import 'analyzer_screen.dart';
@@ -26,12 +27,16 @@ class BlendScreen extends StatefulWidget {
     super.key,
     required this.notifier,
     required this.settings,
+    required this.analyzerSession,
     this.analysesDao,
     this.labelPrinting,
   });
 
   final BlendNotifier notifier;
   final SettingsNotifier settings;
+
+  /// The analyzer connection, handed to the analyzer screen.
+  final AnalyzerSession analyzerSession;
 
   /// Cylinder analysis log (#111), handed to the analyzer screen.
   final GasAnalysesDaoLike? analysesDao;
@@ -62,6 +67,7 @@ class _BlendScreenState extends State<BlendScreen> {
                 MaterialPageRoute(
                   builder: (_) => AnalyzerScreen(
                     settings: widget.settings,
+                    session: widget.analyzerSession,
                     analysesDao: widget.analysesDao,
                     // Read when the analyzer opens: the mix being blended
                     // now, if the diver used the Blend tab recently.

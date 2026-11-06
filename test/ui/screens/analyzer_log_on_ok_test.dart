@@ -11,6 +11,7 @@ import 'package:ccrlogger/data/models/equipment.dart';
 import 'package:ccrlogger/label_printer/label_bitmap.dart';
 import 'package:ccrlogger/label_printer/label_printer.dart';
 import 'package:ccrlogger/labels/label_print_service.dart';
+import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
 import 'package:ccrlogger/ui/widgets/analysis_save_card.dart';
@@ -113,6 +114,7 @@ class _Harness {
   bool printerSetUp = true;
   late SettingsNotifier settings;
   late AnalyzerController controller;
+  late AnalyzerSession session;
 
   /// The transport of the latest session.
   _FakeSolo? solo;
@@ -142,38 +144,43 @@ class _Harness {
       settings = SettingsNotifier();
       await settings.load();
     }
+    session = AnalyzerSession(
+      settings: settings,
+      analysesDao: withDao ? dao : null,
+      labelPrinting: printing,
+      controller: controller = AnalyzerController(elapsed: fakeElapsed(tester)),
+      keepAwake: (on) async => awake.add(on),
+      transportOptions: [
+        AnalyzerTransportOption(
+          label: 'Bench',
+          create: () => solo = _FakeSolo(),
+        ),
+        AnalyzerTransportOption(
+          label: 'Demo',
+          isDemo: true,
+          create: () => DemoAnalyzerTransport(),
+        ),
+      ],
+      okLoggerFactory: () {
+        loggersBuilt++;
+        loggerClosed = false;
+        final l = buildOkLogger(
+          dao: dao,
+          printing: printing,
+          elapsed: fakeElapsed(tester),
+          tickInterval: null,
+        );
+        l.results.listen((_) {}, onDone: () => loggerClosed = true);
+        return logger = l;
+      },
+    );
     await tester.pumpWidget(MaterialApp(
       home: AnalyzerScreen(
         settings: settings,
+        session: session,
         analysesDao: withDao ? dao : null,
-        controller: controller =
-            AnalyzerController(elapsed: fakeElapsed(tester)),
         blendTarget: const DesiredMix(32, 0),
         labelPrinting: printing,
-        keepAwake: (on) async => awake.add(on),
-        transportOptions: [
-          AnalyzerTransportOption(
-            label: 'Bench',
-            create: () => solo = _FakeSolo(),
-          ),
-          AnalyzerTransportOption(
-            label: 'Demo',
-            isDemo: true,
-            create: () => DemoAnalyzerTransport(),
-          ),
-        ],
-        okLoggerFactory: () {
-          loggersBuilt++;
-          loggerClosed = false;
-          final l = buildOkLogger(
-            dao: dao,
-            printing: printing,
-            elapsed: fakeElapsed(tester),
-            tickInterval: null,
-          );
-          l.results.listen((_) {}, onDone: () => loggerClosed = true);
-          return logger = l;
-        },
       ),
     ));
     await tester.pumpAndSettle();
@@ -185,10 +192,11 @@ class _Harness {
     await tester.pump();
   }
 
-  /// Leaves the screen and stops the controller's timers, which the test
-  /// binding insists on at the end of a test.
+  /// Leaves the screen, ends the session and stops the controller's timers,
+  /// which the test binding insists on at the end of a test.
   Future<void> end(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox());
+    session.dispose();
     controller.dispose();
   }
 
@@ -1353,7 +1361,7 @@ void main() {
       expect(_resultText(tester), 'Saved EAN32');
     });
 
-    _test('leaving the screen disposes the logger', (tester, h) async {
+    _test('leaving the screen leaves the logger running', (tester, h) async {
       await h.pump(tester);
       await _switchOn(tester);
       await h.connect(tester);
@@ -1361,7 +1369,9 @@ void main() {
 
       await tester.pumpWidget(const MaterialApp(home: SizedBox()));
       await tester.pump();
-      expect(h.loggerClosed, isTrue);
+      expect(h.loggerClosed, isFalse);
+      expect(h.loggersBuilt, 1);
+      expect(h.controller.isConnected, isTrue);
     });
   });
 
@@ -1396,13 +1406,13 @@ void main() {
       expect(h.awake, [true, false, true]);
     });
 
-    _test('leaving the screen releases it', (tester, h) async {
+    _test('leaving the screen keeps it', (tester, h) async {
       await h.pump(tester);
       await _switchOn(tester);
       await h.connect(tester);
       await tester.pumpWidget(const MaterialApp(home: SizedBox()));
       await tester.pump();
-      expect(h.awake, [true, false]);
+      expect(h.awake, [true]);
     });
 
     _test('a demo session never takes it', (tester, h) async {

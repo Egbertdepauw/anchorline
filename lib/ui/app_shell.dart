@@ -42,6 +42,7 @@ import '../sync/subsurface_git/bootstrap_importer.dart';
 import '../sync/subsurface_git/credentials.dart';
 import '../sync/subsurface_git/dao_subsurface_sync_data_source.dart';
 import '../sync/subsurface_git/sync_orchestrator.dart';
+import 'notifiers/analyzer_session.dart';
 import 'notifiers/blend_notifier.dart';
 import 'notifiers/dive_list_notifier.dart';
 import 'notifiers/dive_plan_notifier.dart';
@@ -109,6 +110,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final DivePlansDao _divePlansDao;
   late final GasAnalysesDao _gasAnalysesDao;
   late final LabelPrintService _labelPrintService;
+  late final AnalyzerSession _analyzerSession;
   late final DivePlanNotifier _divePlanNotifier;
   late final BlendNotifier _blendNotifier;
   late final ImportNotifier _importNotifier;
@@ -191,6 +193,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       printerId: () => widget.settingsNotifier.labelPrinterId,
       use14ForDeeperMixes: () =>
           widget.settingsNotifier.labelUse14ForDeeperMixes,
+    );
+    _analyzerSession = AnalyzerSession(
+      settings: widget.settingsNotifier,
+      analysesDao: _gasAnalysesDao,
+      labelPrinting: _labelPrintService,
     );
     _divePlanNotifier = DivePlanNotifier(
       dao: _divePlansDao,
@@ -304,6 +311,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _diveListNotifier.dispose();
     _divePlanNotifier.dispose();
     _blendNotifier.dispose();
+    _analyzerSession.dispose();
     _importNotifier.dispose();
     _watermarkSuppressors.dispose();
     super.dispose();
@@ -545,6 +553,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                         BlendScreen(
                           notifier: _blendNotifier,
                           settings: widget.settingsNotifier,
+                          analyzerSession: _analyzerSession,
                           analysesDao: _gasAnalysesDao,
                           labelPrinting: _labelPrintService,
                         ),

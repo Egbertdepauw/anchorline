@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:ccrlogger/analyzer/transport/demo_transport.dart';
 import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
+import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
 import 'package:ccrlogger/ui/screens/gas_analysis_log_screen.dart';
@@ -32,22 +33,28 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final settings = await loadSettings();
+    final session = AnalyzerSession(
+      settings: settings,
+      analysesDao: dao,
+      controller: fakeClockAnalyzerController(tester),
+      transportOptions: options ?? [
+        AnalyzerTransportOption(
+          label: 'Demo',
+          isDemo: isDemo,
+          create: () => DemoAnalyzerTransport(
+            targetO2: 18.2,
+            targetHe: 45.1,
+            random: Random(11),
+          ),
+        ),
+      ],
+    );
+    addTearDown(session.dispose);
     await tester.pumpWidget(MaterialApp(
       home: AnalyzerScreen(
         settings: settings,
+        session: session,
         analysesDao: dao,
-        controller: fakeClockAnalyzerController(tester),
-        transportOptions: options ?? [
-          AnalyzerTransportOption(
-            label: 'Demo',
-            isDemo: isDemo,
-            create: () => DemoAnalyzerTransport(
-              targetO2: 18.2,
-              targetHe: 45.1,
-              random: Random(11),
-            ),
-          ),
-        ],
       ),
     ));
     await tester.pump();
@@ -269,22 +276,29 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final settings = await loadSettings();
+    final dao = FakeGasAnalysesDao();
+    final session = AnalyzerSession(
+      settings: settings,
+      analysesDao: dao,
+      controller: fakeClockAnalyzerController(tester),
+      transportOptions: [
+        AnalyzerTransportOption(
+          label: 'Bench',
+          create: () => DemoAnalyzerTransport(
+            targetO2: 18.2,
+            targetHe: 45.1,
+            random: Random(11),
+          ),
+        ),
+      ],
+    );
+    addTearDown(session.dispose);
     await tester.pumpWidget(MaterialApp(
       home: AnalyzerScreen(
         settings: settings,
-        analysesDao: FakeGasAnalysesDao(),
+        session: session,
+        analysesDao: dao,
         blendTarget: const DesiredMix(18, 45),
-        controller: fakeClockAnalyzerController(tester),
-        transportOptions: [
-          AnalyzerTransportOption(
-            label: 'Bench',
-            create: () => DemoAnalyzerTransport(
-              targetO2: 18.2,
-              targetHe: 45.1,
-              random: Random(11),
-            ),
-          ),
-        ],
       ),
     ));
     await tester.pump();

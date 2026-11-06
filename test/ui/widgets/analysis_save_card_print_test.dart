@@ -9,6 +9,7 @@ import 'package:ccrlogger/label_printer/label_bitmap.dart';
 import 'package:ccrlogger/labels/cylinder_label.dart';
 import 'package:ccrlogger/labels/label_print_service.dart';
 import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
+import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
 import 'package:ccrlogger/ui/screens/blend_screen.dart';
@@ -805,18 +806,26 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final settings = await loadSettings();
+      final dao = FakeGasAnalysesDao();
+      final session = AnalyzerSession(
+        settings: settings,
+        analysesDao: dao,
+        labelPrinting: labelPrinting,
+        transportOptions: [
+          AnalyzerTransportOption(
+            label: 'Bench',
+            create: () => DemoAnalyzerTransport(),
+          ),
+        ],
+      );
+      addTearDown(session.dispose);
       await tester.pumpWidget(MaterialApp(
         home: AnalyzerScreen(
           settings: settings,
-          analysesDao: FakeGasAnalysesDao(),
+          session: session,
+          analysesDao: dao,
           blendTarget: blendTarget,
           labelPrinting: labelPrinting,
-          transportOptions: [
-            AnalyzerTransportOption(
-              label: 'Bench',
-              create: () => DemoAnalyzerTransport(),
-            ),
-          ],
         ),
       ));
       await tester.pumpAndSettle();
@@ -849,10 +858,13 @@ void main() {
       final notifier = BlendNotifier(settings: settings);
       notifier.setTargetMix(21, 35);
       final printing = _service([FakeLabelPrinter()]);
+      final session = AnalyzerSession(settings: settings);
+      addTearDown(session.dispose);
       await tester.pumpWidget(MaterialApp(
         home: BlendScreen(
           notifier: notifier,
           settings: settings,
+          analyzerSession: session,
           analysesDao: FakeGasAnalysesDao(),
           labelPrinting: printing,
         ),

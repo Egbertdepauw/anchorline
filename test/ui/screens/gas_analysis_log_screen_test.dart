@@ -9,6 +9,7 @@ import 'package:ccrlogger/data/models/equipment.dart';
 import 'package:ccrlogger/label_printer/label_bitmap.dart';
 import 'package:ccrlogger/labels/cylinder_label.dart';
 import 'package:ccrlogger/labels/label_print_service.dart';
+import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
 import 'package:ccrlogger/ui/screens/equipment/cylinder_detail_screen.dart';
@@ -1370,19 +1371,28 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       final settings = SettingsNotifier();
       await settings.load();
+      final dao = FakeGasAnalysesDao(analyses: [tx()]);
+      final printing = _service(FakeLabelPrinter());
+      final session = AnalyzerSession(
+        settings: settings,
+        analysesDao: dao,
+        labelPrinting: printing,
+        controller: fakeClockAnalyzerController(tester),
+        transportOptions: [
+          AnalyzerTransportOption(
+            label: 'Bench',
+            create: () => DemoAnalyzerTransport(
+                targetO2: 21, targetHe: 35, random: Random(1)),
+          ),
+        ],
+      );
+      addTearDown(session.dispose);
       await tester.pumpWidget(MaterialApp(
         home: AnalyzerScreen(
           settings: settings,
-          analysesDao: FakeGasAnalysesDao(analyses: [tx()]),
-          labelPrinting: _service(FakeLabelPrinter()),
-          controller: fakeClockAnalyzerController(tester),
-          transportOptions: [
-            AnalyzerTransportOption(
-              label: 'Bench',
-              create: () => DemoAnalyzerTransport(
-                  targetO2: 21, targetHe: 35, random: Random(1)),
-            ),
-          ],
+          session: session,
+          analysesDao: dao,
+          labelPrinting: printing,
         ),
       ));
       await tester.pump();

@@ -18,13 +18,7 @@
 /// non-demo session is connected and there is a log to save to.
 library;
 
-import 'dart:async' show unawaited;
-import 'dart:io' show Platform;
-
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
-import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../analysis/end.dart';
 import '../../analysis/gas_density.dart';
@@ -35,15 +29,10 @@ import '../../analyzer/analyzer_controller.dart';
 import '../../analyzer/protocol/analyzer_reading.dart';
 import '../../analyzer/stability.dart';
 import '../../analyzer/transport/analyzer_transport.dart';
-import '../../analyzer/transport/android_usb_transport.dart';
-import '../../analyzer/transport/demo_transport.dart';
-import '../../analyzer/transport/desktop_serial_transport.dart';
-import '../../analyzer/transport/serial_port_selection.dart';
-import '../../analyzer/usb_ok_logger.dart';
 import '../../data/db/gas_analyses_dao.dart';
-import '../../label_printer/label_printer.dart' show LabelPrinterException;
 import '../../labels/cylinder_label.dart';
 import '../../labels/label_print_service.dart';
+import '../notifiers/analyzer_session.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/data_colors.dart';
 import '../theme/safety_colors.dart';
@@ -51,8 +40,9 @@ import '../theme/tokens.dart';
 import '../widgets/analysis_save_card.dart';
 import '../widgets/analyzer_live_chart.dart';
 import '../widgets/label_printer_settings_section.dart';
-import '../widgets/serial_port_picker_dialog.dart';
 import 'gas_analysis_log_screen.dart';
+
+export '../../analyzer/transport/analyzer_transport_options.dart';
 
 /// Width from which the screen switches to the two-column grid.
 const double kAnalyzerWideBreakpoint = 840;
@@ -63,164 +53,20 @@ const double kAnalyzerReferencePpo2 = 1.4;
 /// ppO2 (bar) labelled "CCR dil": the max ppO2 on a rebreather diluent.
 const double kAnalyzerCcrDiluentPpo2 = 1.1;
 
-/// A transport the diver can pick on the analyzer screen.
-class AnalyzerTransportOption {
-  const AnalyzerTransportOption({
-    required this.label,
-    required this.create,
-    this.note,
-    this.choose,
-    this.isDemo = false,
-  });
-
-  final String label;
-
-  /// True for the built-in simulator. Its readings are made up, so the
-  /// screen offers no way to save them to the gas analysis log.
-  final bool isDemo;
-
-  /// One short line shown under the source picker while this option is
-  /// selected, or null.
-  final String? note;
-
-  /// Builds a fresh transport for one session. The controller owns and
-  /// disposes it.
-  final AnalyzerTransport Function() create;
-
-  /// Optional interactive variant of [create] (e.g. a port picker), used
-  /// by the Connect button when set. Returns null when the diver cancels.
-  final Future<AnalyzerTransport?> Function(BuildContext context)? choose;
-}
-
-/// Port picked in the last desktop USB session, preselected next time.
-String? _lastSerialPort;
-
-/// Desktop USB serial (#108). Only offered on macOS/Windows/Linux, so
-/// mobile and web never touch the dart:ffi serial code.
-bool get _hasDesktopSerial =>
-    !kIsWeb &&
-    (defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.linux);
-
-/// The transports available on this platform: desktop USB serial (#108)
-/// on macOS/Windows/Linux, USB OTG on Android (#109), and the demo
-/// simulator everywhere.
-List<AnalyzerTransportOption> defaultAnalyzerTransportOptions() => [
-      if (_hasDesktopSerial)
-        AnalyzerTransportOption(
-          label: 'USB',
-          create: () => DesktopSerialTransport(
-            portPath: _lastSerialPort ??
-                preselectSerialPort(listDesktopSerialPorts()) ??
-                '',
-          ),
-          choose: (context) async {
-            final port = await showSerialPortPicker(
-              context,
-              listPorts: listDesktopSerialPorts,
-              previous: _lastSerialPort,
-            );
-            if (port == null) return null;
-            _lastSerialPort = port;
-            return DesktopSerialTransport(portPath: port);
-          },
-        ),
-      AnalyzerTransportOption(
-        label: 'Demo',
-        isDemo: true,
-        create: () => DemoAnalyzerTransport(),
-      ),
-      if (!kIsWeb && Platform.isAndroid)
-        AnalyzerTransportOption(
-          label: 'USB (Android)',
-          create: () => AndroidUsbTransport(),
-          note: 'The phone powers the analyzer over the USB OTG cable.',
-        ),
-    ];
-
-/// The [UsbOkLogger] the analyzer screen uses: saves go to [dao] under the
-/// id of the press (a press that was already saved is not saved twice), a
-/// label is printed through [printing], and an error that is not the diver's
-/// goes to Sentry.
-///
-/// The logger is built once per session, so whether a printer is set up is
-/// left to the print itself and to the save card, which says at each press
-/// whether it is ([LogOnOkSetup.printerConfigured]). A printer set up after
-/// the connect (through the card's link) is used from the next press.
-///
-/// A [LabelPrinterException] (printer off or not found, cover open, no
-/// labels) is the diver's situation, not a bug: the card already says the
-/// press needs a sign-off, so it is not reported.
-///
-/// [elapsed], [tickInterval] and [report] are for tests; the screen leaves
-/// them out. A null [tickInterval] switches the timer off, so no OK would
-/// ever be seen.
-@visibleForTesting
-UsbOkLogger buildOkLogger({
-  required GasAnalysesDaoLike dao,
-  LabelPrintService? printing,
-  Duration Function()? elapsed,
-  Duration? tickInterval = kOkTickInterval,
-  void Function(Object error, StackTrace stack)? report,
-}) =>
-    UsbOkLogger(
-      save: dao.addFromBridge,
-      markComplete: (id) => dao.setNeedsSignoff(id, false),
-      printLabel: printing == null
-          ? null
-          : (a, copies) => printing.printAnalysis(a, copies: copies),
-      elapsed: elapsed,
-      tickInterval: tickInterval,
-      onError: (e, s) {
-        if (e is LabelPrinterException) return;
-        (report ?? (e, s) => Sentry.captureException(e, stackTrace: s))(e, s);
-      },
-    );
-
-/// Whether the source in use is the demo's. While a session is on it is the
-/// session's ([sessionIsDemo], recorded when it started), because that is what
-/// Log on OK goes by; otherwise it is the option selected in the picker.
-@visibleForTesting
-bool analyzerSourceIsDemo({
-  required bool inSession,
-  required bool? sessionIsDemo,
-  required bool selectedIsDemo,
-}) =>
-    inSession && sessionIsDemo != null ? sessionIsDemo : selectedIsDemo;
-
-/// Switches the platform wakelock on or off. Log on OK holds it while it is
-/// watching the SOLO: once the display sleeps, the system idles and App Nap
-/// (macOS) throttles the app, the stream of lines stops being seen and an OK
-/// press goes unnoticed. Errors are swallowed: unsupported targets no-op, and
-/// tests can hit MissingPluginException.
-Future<void> _setWakelock(bool enable) async {
-  try {
-    if (enable) {
-      await WakelockPlus.enable();
-    } else {
-      await WakelockPlus.disable();
-    }
-  } catch (e) {
-    debugPrint('Wakelock ${enable ? 'enable' : 'disable'} failed '
-        '(non-fatal): $e');
-  }
-}
-
 class AnalyzerScreen extends StatefulWidget {
   const AnalyzerScreen({
     super.key,
     required this.settings,
-    this.controller,
-    this.transportOptions,
+    required this.session,
     this.analysesDao,
     this.blendTarget,
     this.labelPrinting,
-    this.okLoggerFactory,
-    this.keepAwake,
   });
 
   final SettingsNotifier settings;
+
+  /// The analyzer connection and Log on OK, owned by the app shell.
+  final AnalyzerSession session;
 
   /// Cylinder analysis log (#111). When null the save card and the log
   /// action are hidden.
@@ -234,44 +80,13 @@ class AnalyzerScreen extends StatefulWidget {
   /// its "Set up label printer" link. Null hides both.
   final LabelPrintService? labelPrinting;
 
-  /// Injected for tests, which hold the logger and drive it with a manual
-  /// clock. When null the screen builds [buildOkLogger] with the real clock
-  /// and timer.
-  @visibleForTesting
-  final UsbOkLogger Function()? okLoggerFactory;
-
-  /// Injected for tests, which record when the screen asks to stay awake
-  /// (true) and lets go (false). When null the screen uses the platform
-  /// wakelock.
-  @visibleForTesting
-  final Future<void> Function(bool awake)? keepAwake;
-
-  /// Injected for tests. When null the screen owns its own controller.
-  final AnalyzerController? controller;
-
-  /// Defaults to [defaultAnalyzerTransportOptions].
-  final List<AnalyzerTransportOption>? transportOptions;
-
   @override
   State<AnalyzerScreen> createState() => _AnalyzerScreenState();
 }
 
 class _AnalyzerScreenState extends State<AnalyzerScreen> {
-  late final AnalyzerController _controller;
-  late final bool _ownsController;
-  late final List<AnalyzerTransportOption> _options;
-  int _selected = 0;
-
-  /// Whether the session that produced the current reading was the demo
-  /// source, recorded when the session starts. The controller keeps the last
-  /// reading after a disconnect and the Source picker is free again, so the
-  /// selected option alone says nothing about where a frozen reading came
-  /// from. Null until a first session starts.
-  bool? _sessionIsDemo;
-
-  /// The Log on OK logger while it is wanted, and the transport it watches.
-  UsbOkLogger? _okLogger;
-  AnalyzerTransport? _okTransport;
+  AnalyzerSession get _session => widget.session;
+  AnalyzerController get _controller => _session.controller;
 
   /// Keeps the save card, and so the setup the diver filled in, when the
   /// window crosses [kAnalyzerWideBreakpoint] and the card moves to the other
@@ -282,94 +97,11 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   /// label's depth rule (issue #145). Only used while the card is shown.
   DesiredMix? _desiredMix;
 
-  @override
-  void initState() {
-    super.initState();
-    _ownsController = widget.controller == null;
-    _controller = widget.controller ?? AnalyzerController();
-    _options = widget.transportOptions ?? defaultAnalyzerTransportOptions();
-    _controller.addListener(_syncOkLogger);
-    widget.settings.addListener(_syncOkLogger);
-  }
-
-  @override
-  void didUpdateWidget(AnalyzerScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.settings != widget.settings) {
-      oldWidget.settings.removeListener(_syncOkLogger);
-      widget.settings.addListener(_syncOkLogger);
-    }
-    _syncOkLogger();
-  }
-
-  @override
-  void dispose() {
-    _controller.removeListener(_syncOkLogger);
-    widget.settings.removeListener(_syncOkLogger);
-    _stopOkLogger();
-    if (_ownsController) _controller.dispose();
-    super.dispose();
-  }
-
-  /// Whether Log on OK should be running now: the switch is on, there is a
-  /// log to save to, and the session that is connected is not the demo's.
-  bool get _okWanted =>
-      widget.settings.analyzerLogOnOk &&
-      widget.analysesDao != null &&
-      _sessionIsDemo == false &&
-      _controller.isConnected;
-
-  /// Builds and attaches the logger when Log on OK is wanted, and disposes
-  /// it when it no longer is or the session's transport changed. Cheap, as
-  /// the controller calls it on every reading. The card gets the logger in
-  /// the build that follows the notification.
-  void _syncOkLogger() {
-    final transport = _controller.transport;
-    if (!_okWanted || transport == null) {
-      _stopOkLogger();
-      return;
-    }
-    if (_okLogger != null && !identical(_okTransport, transport)) {
-      _stopOkLogger();
-    }
-    if (_okLogger != null) return;
-    final logger = widget.okLoggerFactory?.call() ??
-        buildOkLogger(dao: widget.analysesDao!, printing: widget.labelPrinting);
-    logger.attach(transport);
-    _okLogger = logger;
-    _okTransport = transport;
-    unawaited((widget.keepAwake ?? _setWakelock)(true));
-  }
-
-  /// Detaches and disposes the logger. A press it is handling still
-  /// finishes and is saved.
-  void _stopOkLogger() {
-    final logger = _okLogger;
-    if (logger == null) return;
-    _okLogger = null;
-    _okTransport = null;
-    unawaited(logger.dispose());
-    unawaited((widget.keepAwake ?? _setWakelock)(false));
-  }
-
   Future<void> _toggleConnection() async {
     if (_controller.isBusy) {
-      await _controller.disconnect();
+      await _session.disconnect();
     } else {
-      final option = _options[_selected];
-      final choose = option.choose;
-      final transport =
-          choose != null ? await choose(context) : option.create();
-      if (transport == null) return;
-      if (!mounted) {
-        await transport.dispose();
-        return;
-      }
-      // Before connecting: the controller clears the old reading as it
-      // starts, and the new session's readings can arrive during connect.
-      // If the connect fails there is no reading, so the flag isn't used.
-      setState(() => _sessionIsDemo = option.isDemo);
-      await _controller.connect(transport);
+      await _session.connectSelected(context);
     }
   }
 
@@ -399,7 +131,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         ],
       ),
       body: ListenableBuilder(
-        listenable: Listenable.merge([_controller, widget.settings]),
+        listenable: Listenable.merge([_session, widget.settings]),
         builder: (context, _) => LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= kAnalyzerWideBreakpoint;
@@ -421,16 +153,17 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         Expanded(
           child: DropdownButtonFormField<int>(
             key: const ValueKey('analyzer-transport'),
-            initialValue: _selected,
+            initialValue: _session.selected,
             decoration: const InputDecoration(
               labelText: 'Source',
               isDense: true,
             ),
             items: [
-              for (var i = 0; i < _options.length; i++)
-                DropdownMenuItem(value: i, child: Text(_options[i].label)),
+              for (var i = 0; i < _session.options.length; i++)
+                DropdownMenuItem(
+                    value: i, child: Text(_session.options[i].label)),
             ],
-            onChanged: busy ? null : (i) => setState(() => _selected = i ?? 0),
+            onChanged: busy ? null : (i) => _session.select(i ?? 0),
           ),
         ),
         const SizedBox(width: Spacing.md),
@@ -445,7 +178,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
 
   List<Widget> _banners() {
     final out = <Widget>[];
-    final note = _options[_selected].note;
+    final note = _session.options[_session.selected].note;
     if (note != null) {
       out.add(Text(
         note,
@@ -503,20 +236,14 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
 
   /// The "Log on OK" switch (#113), followed by a gap; empty without a log
   /// to save to and for the demo source, whose readings are made up (the
-  /// session's source while one is on, as for [_okWanted]). The switch is
+  /// session's source while one is on, as for the session's Log on OK). The switch is
   /// remembered on the device; the logger itself runs only while a real
   /// session is connected.
   List<Widget> _logOnOkSwitch() {
-    final demo = analyzerSourceIsDemo(
-      inSession: _controller.isBusy,
-      sessionIsDemo: _sessionIsDemo,
-      selectedIsDemo: _options[_selected].isDemo,
-    );
-    if (widget.analysesDao == null || demo) return const [];
+    if (widget.analysesDao == null || _session.sourceIsDemo) return const [];
     // While the logger is watching and the SOLO has streamed and gone quiet,
     // OK was pressed: say so in the switch's own subtitle, so nothing moves.
-    final held =
-        _okLogger != null && _controller.hasHadData && _controller.noDataHint;
+    final held = _session.held;
     return [
       SwitchListTile(
         key: const ValueKey('analyzer-log-on-ok'),
@@ -539,8 +266,8 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   bool get _showsSaveCard {
     if (widget.analysesDao == null) return false;
     final readingFromDemo =
-        _controller.latest == null ? null : _sessionIsDemo;
-    return !(readingFromDemo ?? _options[_selected].isDemo);
+        _controller.latest == null ? null : _session.sessionIsDemo;
+    return !(readingFromDemo ?? _session.options[_session.selected].isDemo);
   }
 
   /// The desired mix the MOD rows are judged against: the save card's,
@@ -549,7 +276,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
 
   /// The "Save analysis" card (#111), preceded by a gap; empty without a
   /// DAO, and for readings from the demo source (they are made up). It goes
-  /// by the session the reading came from ([_sessionIsDemo]), not the
+  /// by the session the reading came from ([AnalyzerSession.sessionIsDemo]), not the
   /// selected option, because a reading outlives its session and the diver
   /// can switch source in between. With no reading there is no session to
   /// ask (nothing yet, or a connect that failed), so the selected option
@@ -568,7 +295,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         modPpo2s: widget.settings.analyzerModPpo2s,
         blendTarget: widget.blendTarget,
         labelPrinting: printing,
-        okLogger: _okLogger,
+        okLogger: _session.okLogger,
         initialAnalysedBy: widget.settings.analyzerAnalysedBy,
         onAnalysedByChanged: widget.settings.setAnalyzerAnalysedBy,
         initialPrintOnOk: widget.settings.analyzerPrintOnOk,
