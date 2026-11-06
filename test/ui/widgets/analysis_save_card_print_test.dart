@@ -12,7 +12,6 @@ import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
-import 'package:ccrlogger/ui/screens/blend_screen.dart';
 import 'package:ccrlogger/ui/theme/safety_colors.dart';
 import 'package:ccrlogger/ui/widgets/analysis_save_card.dart';
 import 'package:ccrlogger/ui/widgets/desired_mix_picker.dart';
@@ -819,13 +818,16 @@ void main() {
         ],
       );
       addTearDown(session.dispose);
+      final blend = BlendNotifier(settings: settings);
+      if (blendTarget != null) {
+        blend
+          ..setTargetMix(blendTarget.o2Percent, blendTarget.hePercent)
+          ..setTargetPressure(200);
+      }
       await tester.pumpWidget(MaterialApp(
-        home: AnalyzerScreen(
-          settings: settings,
-          session: session,
-          analysesDao: dao,
-          blendTarget: blendTarget,
-          labelPrinting: labelPrinting,
+        home: Scaffold(
+          body: AnalyzerScreen(
+              settings: settings, session: session, blend: blend),
         ),
       ));
       await tester.pumpAndSettle();
@@ -850,32 +852,6 @@ void main() {
       );
       await _tapAndSettle(tester, _key('analysis-setup-printer'));
       expect(find.byType(LabelPrinterSettingsScreen), findsOneWidget);
-    });
-
-    testWidgets('Blend passes its recent target and the printer on',
-        (tester) async {
-      final settings = await loadSettings();
-      final notifier = BlendNotifier(settings: settings);
-      notifier.setTargetMix(21, 35);
-      final printing = _service([FakeLabelPrinter()]);
-      final session = AnalyzerSession(settings: settings);
-      addTearDown(session.dispose);
-      await tester.pumpWidget(MaterialApp(
-        home: BlendScreen(
-          notifier: notifier,
-          settings: settings,
-          analyzerSession: session,
-          analysesDao: FakeGasAnalysesDao(),
-          labelPrinting: printing,
-        ),
-      ));
-      await tester.tap(find.byKey(const Key('blend-open-analyzer')));
-      await tester.pumpAndSettle();
-
-      final analyzer =
-          tester.widget<AnalyzerScreen>(find.byType(AnalyzerScreen));
-      expect(analyzer.blendTarget, const DesiredMix(21, 35));
-      expect(analyzer.labelPrinting, same(printing));
     });
   });
 }

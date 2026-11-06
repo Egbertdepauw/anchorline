@@ -3,9 +3,9 @@ import 'dart:math';
 import 'package:ccrlogger/analyzer/transport/demo_transport.dart';
 import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
 import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
+import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
-import 'package:ccrlogger/ui/screens/gas_analysis_log_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,10 +51,8 @@ void main() {
     );
     addTearDown(session.dispose);
     await tester.pumpWidget(MaterialApp(
-      home: AnalyzerScreen(
-        settings: settings,
-        session: session,
-        analysesDao: dao,
+      home: Scaffold(
+        body: AnalyzerScreen(settings: settings, session: session),
       ),
     ));
     await tester.pump();
@@ -78,10 +76,9 @@ void main() {
 
   Finder saveButton() => find.byKey(const ValueKey('analysis-save'));
 
-  testWidgets('no DAO: no save card and no log action', (tester) async {
+  testWidgets('no DAO: no save card', (tester) async {
     await pumpScreen(tester, null);
     expect(find.byKey(const ValueKey('analysis-save-card')), findsNothing);
-    expect(find.byKey(const ValueKey('analyzer-open-log')), findsNothing);
   });
 
   testWidgets('save is disabled until a reading arrives', (tester) async {
@@ -188,14 +185,6 @@ void main() {
     expect(find.textContaining('(not stable)'), findsOneWidget);
   });
 
-  testWidgets('app-bar action opens the analysis log', (tester) async {
-    await pumpScreen(tester, FakeGasAnalysesDao());
-    await tester.tap(find.byKey(const ValueKey('analyzer-open-log')));
-    await tester.pumpAndSettle();
-    expect(find.byType(GasAnalysisLogScreen), findsOneWidget);
-    expect(find.textContaining('No analyses saved yet'), findsOneWidget);
-  });
-
   testWidgets('demo source: no save card, so demo readings never reach the log',
       (tester) async {
     await pumpScreen(tester, FakeGasAnalysesDao(), isDemo: true);
@@ -293,12 +282,13 @@ void main() {
       ],
     );
     addTearDown(session.dispose);
+    final blend = BlendNotifier(settings: settings)
+      ..setTargetMix(18, 45)
+      ..setTargetPressure(200);
     await tester.pumpWidget(MaterialApp(
-      home: AnalyzerScreen(
-        settings: settings,
-        session: session,
-        analysesDao: dao,
-        blendTarget: const DesiredMix(18, 45),
+      home: Scaffold(
+        body: AnalyzerScreen(
+            settings: settings, session: session, blend: blend),
       ),
     ));
     await tester.pump();

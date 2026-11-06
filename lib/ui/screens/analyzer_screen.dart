@@ -11,11 +11,14 @@
 /// grid like `docs/prototypes/solo-live.html` (readouts, mix and chart on
 /// the left, planning on the right).
 ///
-/// "Log on OK" (#113): with the switch on and a real analyzer connected, a
-/// [UsbOkLogger] watches the session's lines, and an OK press on the SOLO
-/// saves an analysis (and prints its label) from the setup on the save card.
-/// The screen owns the logger: it exists only while the switch is on, a
-/// non-demo session is connected and there is a log to save to.
+/// The Analyse tab of the Gas destination: no app bar of its own.
+///
+/// "Log on OK" (#113): with the switch on and a real analyzer connected, the
+/// shell-owned [AnalyzerSession] runs a logger that watches the session's
+/// lines, and an OK press on the SOLO saves an analysis (and prints its
+/// label) from the setup on the save card. The session, not this screen,
+/// owns the connection and the logger, so they outlive the screen; the
+/// save card only hands the logger the setup to save with.
 library;
 
 import 'package:flutter/material.dart';
@@ -33,6 +36,7 @@ import '../../data/db/gas_analyses_dao.dart';
 import '../../labels/cylinder_label.dart';
 import '../../labels/label_print_service.dart';
 import '../notifiers/analyzer_session.dart';
+import '../notifiers/blend_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/data_colors.dart';
 import '../theme/safety_colors.dart';
@@ -40,7 +44,6 @@ import '../theme/tokens.dart';
 import '../widgets/analysis_save_card.dart';
 import '../widgets/analyzer_live_chart.dart';
 import '../widgets/label_printer_settings_section.dart';
-import 'gas_analysis_log_screen.dart';
 
 export '../../analyzer/transport/analyzer_transport_options.dart';
 
@@ -58,9 +61,7 @@ class AnalyzerScreen extends StatefulWidget {
     super.key,
     required this.settings,
     required this.session,
-    this.analysesDao,
-    this.blendTarget,
-    this.labelPrinting,
+    this.blend,
   });
 
   final SettingsNotifier settings;
@@ -68,17 +69,9 @@ class AnalyzerScreen extends StatefulWidget {
   /// The analyzer connection and Log on OK, owned by the app shell.
   final AnalyzerSession session;
 
-  /// Cylinder analysis log (#111). When null the save card and the log
-  /// action are hidden.
-  final GasAnalysesDaoLike? analysesDao;
-
-  /// The Blend tab's recent target (#114), offered first as the desired
-  /// mix on the save card.
-  final DesiredMix? blendTarget;
-
-  /// Cylinder label printing (#114): "Save & print" on the save card, or
-  /// its "Set up label printer" link. Null hides both.
-  final LabelPrintService? labelPrinting;
+  /// The Blend tab's notifier, read live: its recent target (#114) is
+  /// offered first as the desired mix on the save card.
+  final BlendNotifier? blend;
 
   @override
   State<AnalyzerScreen> createState() => _AnalyzerScreenState();
@@ -87,6 +80,8 @@ class AnalyzerScreen extends StatefulWidget {
 class _AnalyzerScreenState extends State<AnalyzerScreen> {
   AnalyzerSession get _session => widget.session;
   AnalyzerController get _controller => _session.controller;
+  GasAnalysesDaoLike? get _analysesDao => _session.analysesDao;
+  LabelPrintService? get _labelPrinting => _session.labelPrinting;
 
   /// Keeps the save card, and so the setup the diver filled in, when the
   /// window crosses [kAnalyzerWideBreakpoint] and the card moves to the other
@@ -107,41 +102,29 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Gas analyzer'),
-        actions: [
-          if (widget.analysesDao != null)
-            IconButton(
-              key: const ValueKey('analyzer-open-log'),
-              tooltip: 'Analysis log',
-              icon: const Icon(Icons.history),
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => GasAnalysisLogScreen(
-                  dao: widget.analysesDao!,
-                  labelPrinting: widget.labelPrinting,
+    return ListenableBuilder(
+      listenable: Listenable.merge(
+          [_session, widget.settings, if (widget.blend != null) widget.blend!]),
+      builder: (context, _) => LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= kAnalyzerWideBreakpoint;
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(
+                Spacing.lg, Spacing.md, Spacing.lg, Spacing.xl),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Task 7 replaces this with the connection card.
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _StatusIndicator(controller: _controller),
                 ),
-              )),
+                const SizedBox(height: Spacing.md),
+                wide ? _wideLayout() : _narrowLayout(),
+              ],
             ),
-          ListenableBuilder(
-            listenable: _controller,
-            builder: (context, _) => _StatusIndicator(controller: _controller),
-          ),
-          const SizedBox(width: Spacing.md),
-        ],
-      ),
-      body: ListenableBuilder(
-        listenable: Listenable.merge([_session, widget.settings]),
-        builder: (context, _) => LayoutBuilder(
-          builder: (context, constraints) {
-            final wide = constraints.maxWidth >= kAnalyzerWideBreakpoint;
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(
-                  Spacing.lg, Spacing.md, Spacing.lg, Spacing.xl),
-              child: wide ? _wideLayout() : _narrowLayout(),
-            );
-          },
-        ),
+          );
+        },
       ),
     );
   }
@@ -240,7 +223,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   /// remembered on the device; the logger itself runs only while a real
   /// session is connected.
   List<Widget> _logOnOkSwitch() {
-    if (widget.analysesDao == null || _session.sourceIsDemo) return const [];
+    if (_analysesDao == null || _session.sourceIsDemo) return const [];
     // While the logger is watching and the SOLO has streamed and gone quiet,
     // OK was pressed: say so in the switch's own subtitle, so nothing moves.
     final held = _session.held;
@@ -264,7 +247,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
 
   /// Whether the save card is shown; see [_saveCard].
   bool get _showsSaveCard {
-    if (widget.analysesDao == null) return false;
+    if (_analysesDao == null) return false;
     final readingFromDemo =
         _controller.latest == null ? null : _session.sessionIsDemo;
     return !(readingFromDemo ?? _session.options[_session.selected].isDemo);
@@ -282,9 +265,9 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   /// ask (nothing yet, or a connect that failed), so the selected option
   /// decides.
   List<Widget> _saveCard() {
-    final dao = widget.analysesDao;
+    final dao = _analysesDao;
     if (dao == null || !_showsSaveCard) return const [];
-    final printing = widget.labelPrinting;
+    final printing = _labelPrinting;
     return [
       const SizedBox(height: Spacing.md),
       AnalysisSaveCard(
@@ -293,7 +276,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         reading: _controller.latest,
         stability: _controller.stability,
         modPpo2s: widget.settings.analyzerModPpo2s,
-        blendTarget: widget.blendTarget,
+        blendTarget: widget.blend?.recentTarget(),
         labelPrinting: printing,
         okLogger: _session.okLogger,
         initialAnalysedBy: widget.settings.analyzerAnalysedBy,

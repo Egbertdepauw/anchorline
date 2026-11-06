@@ -1,4 +1,3 @@
-import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/blend_screen.dart';
@@ -14,14 +13,10 @@ void main() {
     final settings = SettingsNotifier();
     await settings.load();
     final notifier = BlendNotifier(settings: settings);
-    final session = AnalyzerSession(settings: settings);
-    addTearDown(session.dispose);
     expect(notifier.targetOxygenPercent, 18);
     await tester.pumpWidget(MaterialApp(
-      home: BlendScreen(
-        notifier: notifier,
-        settings: settings,
-        analyzerSession: session,
+      home: Scaffold(
+        body: BlendScreen(notifier: notifier, settings: settings),
       ),
     ));
     await tester.enterText(
@@ -38,14 +33,10 @@ void main() {
     final settings = SettingsNotifier();
     await settings.load();
     final notifier = BlendNotifier(settings: settings);
-    final session = AnalyzerSession(settings: settings);
-    addTearDown(session.dispose);
     expect(notifier.targetPressureBar, 230);
     await tester.pumpWidget(MaterialApp(
-      home: BlendScreen(
-        notifier: notifier,
-        settings: settings,
-        analyzerSession: session,
+      home: Scaffold(
+        body: BlendScreen(notifier: notifier, settings: settings),
       ),
     ));
     await tester.enterText(
@@ -55,25 +46,5 @@ void main() {
     await tester.pump();
     expect(notifier.targetPressureBar, 210,
         reason: 'typing into the target pressure field must update the notifier');
-  });
-
-  testWidgets('labelled "Analyze gas" button opens the gas analyzer',
-      (tester) async {
-    final settings = SettingsNotifier();
-    await settings.load();
-    final notifier = BlendNotifier(settings: settings);
-    final session = AnalyzerSession(settings: settings);
-    addTearDown(session.dispose);
-    await tester.pumpWidget(MaterialApp(
-      home: BlendScreen(
-        notifier: notifier,
-        settings: settings,
-        analyzerSession: session,
-      ),
-    ));
-    expect(find.text('Analyze gas'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('blend-open-analyzer')));
-    await tester.pumpAndSettle();
-    expect(find.text('Gas analyzer'), findsOneWidget);
   });
 }

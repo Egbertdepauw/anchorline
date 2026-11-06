@@ -72,6 +72,12 @@ class AnalyzerSession extends ChangeNotifier {
   bool _disposed = false;
 
   AnalyzerController get controller => _controller;
+
+  /// The log Log on OK and the save card save to; null hides both.
+  GasAnalysesDaoLike? get analysesDao => _analysesDao;
+
+  /// Cylinder label printing; null hides the print actions.
+  LabelPrintService? get labelPrinting => _labelPrinting;
   List<AnalyzerTransportOption> get options => _options;
   int get selected => _selected;
   bool? get sessionIsDemo => _sessionIsDemo;

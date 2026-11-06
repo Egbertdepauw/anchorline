@@ -12,6 +12,7 @@ import 'package:ccrlogger/label_printer/label_bitmap.dart';
 import 'package:ccrlogger/label_printer/label_printer.dart';
 import 'package:ccrlogger/labels/label_print_service.dart';
 import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
+import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
 import 'package:ccrlogger/ui/widgets/analysis_save_card.dart';
@@ -174,13 +175,13 @@ class _Harness {
         return logger = l;
       },
     );
+    final blend = BlendNotifier(settings: settings)
+      ..setTargetMix(32, 0)
+      ..setTargetPressure(200);
     await tester.pumpWidget(MaterialApp(
-      home: AnalyzerScreen(
-        settings: settings,
-        session: session,
-        analysesDao: withDao ? dao : null,
-        blendTarget: const DesiredMix(32, 0),
-        labelPrinting: printing,
+      home: Scaffold(
+        body: AnalyzerScreen(
+            settings: settings, session: session, blend: blend),
       ),
     ));
     await tester.pumpAndSettle();

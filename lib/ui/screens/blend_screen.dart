@@ -12,12 +12,8 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../analysis/blending/gas_blender.dart';
-import '../../data/db/gas_analyses_dao.dart';
-import '../../labels/label_print_service.dart';
-import '../notifiers/analyzer_session.dart';
 import '../notifiers/blend_notifier.dart';
 import '../notifiers/settings_notifier.dart';
-import 'analyzer_screen.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../../analysis/gas_naming.dart';
@@ -27,22 +23,10 @@ class BlendScreen extends StatefulWidget {
     super.key,
     required this.notifier,
     required this.settings,
-    required this.analyzerSession,
-    this.analysesDao,
-    this.labelPrinting,
   });
 
   final BlendNotifier notifier;
   final SettingsNotifier settings;
-
-  /// The analyzer connection, handed to the analyzer screen.
-  final AnalyzerSession analyzerSession;
-
-  /// Cylinder analysis log (#111), handed to the analyzer screen.
-  final GasAnalysesDaoLike? analysesDao;
-
-  /// Cylinder label printing (#114), handed to the analyzer screen.
-  final LabelPrintService? labelPrinting;
 
   @override
   State<BlendScreen> createState() => _BlendScreenState();
@@ -51,41 +35,12 @@ class BlendScreen extends StatefulWidget {
 class _BlendScreenState extends State<BlendScreen> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Blend'),
-        actions: [
-          // Labelled, not icon-only: a bare icon didn't read as
-          // "open the gas analyzer" to testers.
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: TextButton.icon(
-              key: const Key('blend-open-analyzer'),
-              icon: const Icon(Icons.science_outlined),
-              label: const Text('Analyze gas'),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => AnalyzerScreen(
-                    settings: widget.settings,
-                    session: widget.analyzerSession,
-                    analysesDao: widget.analysesDao,
-                    // Read when the analyzer opens: the mix being blended
-                    // now, if the diver used the Blend tab recently.
-                    blendTarget: widget.notifier.recentTarget(),
-                    labelPrinting: widget.labelPrinting,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      // Tap anywhere outside an input field to dismiss the keyboard.
-      // iOS's numeric keyboard has no Return key, so without this the
-      // user can't get the keyboard out of the way to reach the bottom
-      // nav. `translucent` makes hit-testing still pass through to
-      // children (cards / chips / dropdowns / switch).
-      body: GestureDetector(
+    // Tap anywhere outside an input field to dismiss the keyboard.
+    // iOS's numeric keyboard has no Return key, so without this the
+    // user can't get the keyboard out of the way to reach the bottom
+    // nav. `translucent` makes hit-testing still pass through to
+    // children (cards / chips / dropdowns / switch).
+    return GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: () => FocusScope.of(context).unfocus(),
         child: ListenableBuilder(
@@ -156,7 +111,6 @@ class _BlendScreenState extends State<BlendScreen> {
           ),
           ),
         ),
-      ),
     );
   }
 }

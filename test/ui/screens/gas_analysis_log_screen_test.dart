@@ -11,9 +11,11 @@ import 'package:ccrlogger/labels/cylinder_label.dart';
 import 'package:ccrlogger/labels/label_print_service.dart';
 import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
+import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
 import 'package:ccrlogger/ui/screens/equipment/cylinder_detail_screen.dart';
 import 'package:ccrlogger/ui/screens/gas_analysis_log_screen.dart';
+import 'package:ccrlogger/ui/screens/gas_screen.dart';
 import 'package:ccrlogger/ui/theme/safety_colors.dart';
 import 'package:ccrlogger/ui/widgets/mix_match_indicator.dart';
 import 'package:drift/native.dart';
@@ -1366,7 +1368,7 @@ void main() {
   });
 
   group('wiring', () {
-    testWidgets('the analyzer passes its label printing to the log',
+    testWidgets('the Gas destination passes its label printing to the log',
         (tester) async {
       SharedPreferences.setMockInitialValues({});
       final settings = SettingsNotifier();
@@ -1388,15 +1390,17 @@ void main() {
       );
       addTearDown(session.dispose);
       await tester.pumpWidget(MaterialApp(
-        home: AnalyzerScreen(
+        home: GasScreen(
+          blend: BlendNotifier(settings: settings),
           settings: settings,
           session: session,
           analysesDao: dao,
           labelPrinting: printing,
+          onHome: () {},
         ),
       ));
       await tester.pump();
-      await tapAndSettle(tester, _key('analyzer-open-log'));
+      await tapAndSettle(tester, _key('gas-tab-log'));
       expect(_key('analysis-print-tx'), findsOneWidget);
     });
 

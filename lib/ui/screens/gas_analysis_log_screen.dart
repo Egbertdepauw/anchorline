@@ -63,6 +63,7 @@ class GasAnalysisLogScreen extends StatefulWidget {
     this.cylinderLabel,
     this.shareCsv = shareCsvFile,
     this.labelPrinting,
+    this.embedded = false,
   });
 
   final GasAnalysesDaoLike dao;
@@ -78,6 +79,10 @@ class GasAnalysisLogScreen extends StatefulWidget {
   /// Reprints an entry's label. With a printer set up each entry gets a
   /// print action; without one, or when null, none.
   final LabelPrintService? labelPrinting;
+
+  /// Shown as the Gas destination's Log tab: no app bar of its own, and the
+  /// Export button sits in a row at the top of the list.
+  final bool embedded;
 
   @override
   State<GasAnalysisLogScreen> createState() => _GasAnalysisLogScreenState();
@@ -303,25 +308,40 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     final title = widget.cylinderId == null
         ? 'Analysis log'
         : 'Analyses · ${widget.cylinderLabel ?? 'Cylinder'}';
+    final body = items == null
+        ? const Center(child: CircularProgressIndicator())
+        : items.isEmpty
+            ? _empty(context)
+            : _list(context, items);
+    if (widget.embedded) {
+      return Column(
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
+              child: _exportButton(items),
+            ),
+          ),
+          Expanded(child: body),
+        ],
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
-        actions: [
-          IconButton(
-            key: const ValueKey('analysis-log-export'),
-            tooltip: 'Export CSV',
-            icon: const Icon(Icons.ios_share),
-            onPressed: items == null || items.isEmpty ? null : _export,
-          ),
-        ],
+        actions: [_exportButton(items)],
       ),
-      body: items == null
-          ? const Center(child: CircularProgressIndicator())
-          : items.isEmpty
-              ? _empty(context)
-              : _list(context, items),
+      body: body,
     );
   }
+
+  Widget _exportButton(List<GasAnalysis>? items) => IconButton(
+        key: const ValueKey('analysis-log-export'),
+        tooltip: 'Export CSV',
+        icon: const Icon(Icons.ios_share),
+        onPressed: items == null || items.isEmpty ? null : _export,
+      );
 
   Widget _list(BuildContext context, List<GasAnalysis> items) {
     final needSignoff = items.where((a) => a.needsSignoff).length;

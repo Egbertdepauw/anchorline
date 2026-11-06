@@ -48,7 +48,7 @@ import 'notifiers/dive_list_notifier.dart';
 import 'notifiers/dive_plan_notifier.dart';
 import 'notifiers/import_notifier.dart';
 import 'notifiers/settings_notifier.dart';
-import 'screens/blend_screen.dart';
+import 'screens/gas_screen.dart';
 import 'screens/buddies_list_screen.dart';
 import 'screens/dive_list_screen.dart';
 import 'screens/dive_plan_screen.dart';
@@ -398,7 +398,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     return ListenableBuilder(
       listenable: _diveListNotifier,
       builder: (context, _) => Scaffold(
-      appBar: isLandscape
+      appBar: isLandscape || _currentIndex == 2 || _currentIndex == 5
           ? null
           : (_currentIndex == 0 && _diveListNotifier.selectionMode
               ? _buildSelectionAppBar(context)
@@ -550,12 +550,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           notifier: _divePlanNotifier,
                           settings: widget.settingsNotifier,
                         ),
-                        BlendScreen(
-                          notifier: _blendNotifier,
+                        GasScreen(
+                          blend: _blendNotifier,
                           settings: widget.settingsNotifier,
-                          analyzerSession: _analyzerSession,
+                          session: _analyzerSession,
                           analysesDao: _gasAnalysesDao,
                           labelPrinting: _labelPrintService,
+                          onHome: _goHome,
                         ),
                         ImportScreen(
                           notifier: _importNotifier,
@@ -593,33 +594,38 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           ),
         ],
       ),
-      bottomNavigationBar: isLandscape ? null : BottomNavigationBar(
+      bottomNavigationBar: isLandscape ? null : ListenableBuilder(
+        // The Gas item's dot follows the analyzer connection.
+        listenable: _analyzerSession,
+        builder: (context, _) => BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
         type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
+        items: [
+          const BottomNavigationBarItem(
             icon: Icon(Icons.scuba_diving),
             label: 'Dives',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.event_note_outlined),
             label: 'Plan',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.science_outlined),
-            label: 'Blend',
+          gasNavItem(
+            connected: _analyzerSession.controller.isConnected,
+            okRunning: _analyzerSession.okRunning,
+            selected: _currentIndex == 2,
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: 'Import'),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: 'Import'),
+          const BottomNavigationBarItem(
             icon: Icon(Icons.build_outlined),
             label: 'Equipment',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),
             label: 'Settings',
           ),
         ],
+      ),
       ),
     ));
   }

@@ -34,7 +34,8 @@ void main() {
     addTearDown(session.dispose);
 
     await tester.pumpWidget(MaterialApp(
-      home: AnalyzerScreen(settings: settings, session: session),
+      home: Scaffold(
+          body: AnalyzerScreen(settings: settings, session: session)),
     ));
 
     expect(find.byKey(const ValueKey('analyzer-transport-note')),
