@@ -6,6 +6,7 @@ import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
 import 'package:ccrlogger/ui/theme/app_themes.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -327,6 +328,50 @@ void main() {
       expect(_key('analyzer-planning-footnote'), findsOneWidget);
       expect(_key('analyzer-planning-info'), findsNothing);
     });
+  });
+
+  for (final width in [320.0, 375.0]) {
+    testWidgets('hero values are not ellipsized at $width pt wide',
+        (tester) async {
+      await pump(tester, size: Size(width, 900));
+      await connect(tester);
+      await stream(tester, '100.0', '0.0', 2);
+      for (final k in ['analyzer-o2', 'analyzer-he', 'analyzer-n2']) {
+        final p = tester.renderObject<RenderParagraph>(_key(k));
+        expect(p.didExceedMaxLines, isFalse, reason: '$k with 100.0');
+      }
+      expect(textOf(tester, 'analyzer-o2'), '100.0');
+      solo.emit(_line('***.*', '***.*'));
+      await tester.pump();
+      for (final k in ['analyzer-o2', 'analyzer-he', 'analyzer-n2']) {
+        final p = tester.renderObject<RenderParagraph>(_key(k));
+        expect(p.didExceedMaxLines, isFalse, reason: '$k sensor error');
+        expect(textOf(tester, k), '***.*');
+      }
+      // Each value (scaled to fit) stays inside the screen.
+      for (final k in ['analyzer-o2', 'analyzer-he', 'analyzer-n2']) {
+        expect(tester.getTopLeft(_key(k)).dx, greaterThanOrEqualTo(0));
+        expect(tester.getTopRight(_key(k)).dx, lessThanOrEqualTo(width));
+      }
+      await end(tester);
+    });
+  }
+
+  testWidgets('the planning info button and strip buttons are 44 pt targets',
+      (tester) async {
+    await pump(tester);
+    expect(tester.getSize(_key('analyzer-planning-info')).width,
+        greaterThanOrEqualTo(44));
+    expect(tester.getSize(_key('analyzer-planning-info')).height,
+        greaterThanOrEqualTo(44));
+    final connectSize = tester.getSize(_key('analyzer-connect'));
+    expect(connectSize.width, greaterThanOrEqualTo(44));
+    expect(connectSize.height, 32);
+    await connect(tester);
+    final dis = tester.getSize(_key('analyzer-disconnect'));
+    expect(dis.width, greaterThanOrEqualTo(44));
+    expect(dis.height, 32);
+    await end(tester);
   });
 
   testWidgets('the trend starts collapsed and opens on tap', (tester) async {

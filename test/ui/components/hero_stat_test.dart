@@ -1,6 +1,7 @@
 import 'package:ccrlogger/ui/components/hero_stat.dart';
 import 'package:ccrlogger/ui/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 Widget _wrap(Widget child) => MaterialApp(
@@ -32,5 +33,32 @@ void main() {
     expect(find.byType(VerticalDivider), findsNWidgets(2));
     expect(find.text('A'), findsOneWidget);
     expect(find.text('C'), findsOneWidget);
+  });
+
+  testWidgets('HeroStat scales a too-wide value down; a fitting one keeps its size',
+      (tester) async {
+    Future<double> widthFor(double slot, String value) async {
+      await tester.pumpWidget(_wrap(Center(
+        child: SizedBox(
+          width: slot,
+          child: HeroStat(
+              value: value,
+              label: 'L',
+              valueSize: 30,
+              valueKey: const ValueKey('v')),
+        ),
+      )));
+      final p = tester.renderObject<RenderParagraph>(find.byKey(const ValueKey('v')));
+      expect(p.didExceedMaxLines, isFalse);
+      // On screen, after the FittedBox's scale.
+      final f = find.byKey(const ValueKey('v'));
+      return tester.getTopRight(f).dx - tester.getTopLeft(f).dx;
+    }
+
+    final natural = await widthFor(400, '100.0');
+    final squeezed = await widthFor(60, '100.0');
+    // Same text layout, drawn smaller: the box is scaled, not truncated.
+    expect(squeezed, lessThanOrEqualTo(60.01));
+    expect(natural, greaterThan(60));
   });
 }

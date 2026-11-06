@@ -36,31 +36,34 @@ class HeroStat extends StatelessWidget {
       crossAxisAlignment:
           centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment:
-              centered ? MainAxisAlignment.center : MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Flexible(
-              child: Text(value,
+        // The value and its unit scale down to fit the column instead of
+        // being ellipsized; a value that fits renders at [valueSize].
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: centered ? Alignment.center : Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(value,
                   key: valueKey,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
                   style: AppTypography.readoutLg.copyWith(
                       fontSize: valueSize,
                       color: valueColor ?? palette.textPrimary)),
-            ),
-            if (unit != null) ...[
-              const SizedBox(width: 2),
-              Text(unit!,
-                  style: TextStyle(
-                      fontFamily: 'JetBrainsMono',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: palette.textSecondary)),
+              if (unit != null) ...[
+                const SizedBox(width: 2),
+                Text(unit!,
+                    style: TextStyle(
+                        fontFamily: 'JetBrainsMono',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: palette.textSecondary)),
+              ],
             ],
-          ],
+          ),
         ),
         const SizedBox(height: 6),
         Text(label,

@@ -59,9 +59,10 @@ class ConnectionStrip extends StatelessWidget {
               TextButton(
                 key: const ValueKey('analyzer-disconnect'),
                 style: TextButton.styleFrom(
-                  minimumSize: const Size(0, 28),
+                  minimumSize: const Size(44, 32),
                   padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.standard,
                 ),
                 onPressed: session.disconnect,
                 child: const Text('Disconnect'),
@@ -72,9 +73,10 @@ class ConnectionStrip extends StatelessWidget {
               FilledButton(
                 key: const ValueKey('analyzer-connect'),
                 style: FilledButton.styleFrom(
-                  minimumSize: const Size(0, 28),
+                  minimumSize: const Size(44, 32),
                   padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.standard,
                 ),
                 onPressed: () => session.connectSelected(context),
                 child: const Text('Connect'),

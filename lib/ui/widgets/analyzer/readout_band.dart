@@ -44,11 +44,8 @@ class ReadoutBand extends StatelessWidget {
         ? (100 - o2 - he).toStringAsFixed(1)
         : (o2 == null ? '--.-' : '***.*');
 
-    // The values stay readable at large text scales by cancelling the scale
-    // on the big numbers (they are large already).
-    final scale = MediaQuery.textScalerOf(context).scale(1);
-    final valueSize = (wide ? 44.0 : 30.0) / (scale > 1 ? scale : 1);
-    final nameSize = (wide ? 34.0 : 26.0) / (scale > 1 ? scale : 1);
+    final valueSize = wide ? 44.0 : 30.0;
+    final nameSize = wide ? 34.0 : 26.0;
 
     return Container(
       color: palette.surfaceRaised,

@@ -222,9 +222,8 @@ class _PlanningGridState extends State<PlanningGrid> {
                 IconButton(
                   key: const ValueKey('analyzer-planning-info'),
                   tooltip: 'About these numbers',
-                  visualDensity: VisualDensity.compact,
                   constraints:
-                      const BoxConstraints(minWidth: 44, minHeight: 32),
+                      const BoxConstraints(minWidth: 44, minHeight: 44),
                   padding: EdgeInsets.zero,
                   iconSize: 18,
                   color: palette.textMuted,
