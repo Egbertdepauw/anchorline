@@ -18,7 +18,8 @@
 /// lines, and an OK press on the SOLO saves an analysis (and prints its
 /// label) from the setup on the save card. The session, not this screen,
 /// owns the connection and the logger, so they outlive the screen; the
-/// save card only hands the logger the setup to save with.
+/// save card's [AnalysisSaveController] only hands the logger the setup to
+/// save with.
 library;
 
 import 'package:flutter/material.dart';
@@ -31,6 +32,7 @@ import '../notifiers/blend_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/tokens.dart';
 import '../widgets/analysis_save_card.dart';
+import '../widgets/analysis_save_controller.dart';
 import '../widgets/analyzer/connection_strip.dart';
 import '../widgets/analyzer/planning_grid.dart';
 import '../widgets/analyzer/readout_band.dart';
@@ -72,37 +74,95 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   GasAnalysesDaoLike? get _analysesDao => _session.analysesDao;
   LabelPrintService? get _labelPrinting => _session.labelPrinting;
 
-  /// Keeps the save card, and so the setup the diver filled in, when the
-  /// window crosses [kAnalyzerWideBreakpoint] and the card moves to the other
-  /// layout.
+  /// The save card's form: the setup the diver filled in and its save
+  /// logic. Non-null while the card is shown; see [_syncSaveController].
+  AnalysisSaveController? _saveController;
+
+  /// Keeps the save card's widgets when the window crosses
+  /// [kAnalyzerWideBreakpoint] and the card moves to the other layout. The
+  /// setup itself is in [_saveController]; the key keeps what lives in the
+  /// widgets, such as the focus of a field being typed in and the context of
+  /// a save whose confirm dialog is open.
   final _saveCardKey = GlobalKey();
 
-  /// The desired mix picked on the save card, so the MOD rows follow the
-  /// label's depth rule (issue #145). Only used while the card is shown.
-  DesiredMix? _desiredMix;
+  @override
+  void didUpdateWidget(AnalyzerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The form saves to the session's log with the settings it was made
+    // with; another session or settings get a form of their own.
+    if (!identical(oldWidget.session, widget.session) ||
+        !identical(oldWidget.settings, widget.settings)) {
+      _retireSaveController();
+    }
+  }
+
+  @override
+  void dispose() {
+    _saveController?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: Listenable.merge(
           [_session, widget.settings, if (widget.blend != null) widget.blend!]),
-      builder: (context, _) => LayoutBuilder(
-        builder: (context, constraints) {
-          final wide = constraints.maxWidth >= kAnalyzerWideBreakpoint;
-          return SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: Spacing.xl),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ConnectionStrip(session: _session),
-                ConnectionNotices(session: _session),
-                wide ? _wideLayout() : _narrowLayout(),
-              ],
-            ),
-          );
-        },
-      ),
+      builder: (context, _) {
+        _syncSaveController();
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= kAnalyzerWideBreakpoint;
+            return SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: Spacing.xl),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ConnectionStrip(session: _session),
+                  ConnectionNotices(session: _session),
+                  wide ? _wideLayout() : _narrowLayout(),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
+  }
+
+  /// Keeps [_saveController] in step with the screen, on every build: made
+  /// when the save card is shown, retired when it goes away (so a card shown
+  /// again starts fresh, from the remembered name), and told the reading,
+  /// the Blend target, the connection and the Log on OK logger.
+  void _syncSaveController() {
+    final dao = _analysesDao;
+    if (dao == null || !_showsSaveCard) {
+      _retireSaveController();
+      return;
+    }
+    final save = _saveController ??= AnalysisSaveController(
+      dao: dao,
+      settings: widget.settings,
+      labelPrinting: _labelPrinting,
+    );
+    save
+      ..update(
+        reading: _controller.latest,
+        stability: _controller.stability,
+        blendTarget: widget.blend?.recentTarget(),
+        unusedBlendTarget: widget.blend?.unusedRecentTarget(),
+        connected: _controller.isConnected,
+      )
+      ..bindLogger(_session.okLogger);
+  }
+
+  /// Lets go of [_saveController]; the next build makes a new one if the
+  /// card is shown. It is disposed after the frame, as the card that shows
+  /// it stays in the tree until then.
+  void _retireSaveController() {
+    final old = _saveController;
+    if (old == null) return;
+    _saveController = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
   }
 
   Widget _band({required bool wide}) => ReadoutBand(
@@ -111,12 +171,21 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         wide: wide,
       );
 
-  Widget _planning({required bool wide}) => PlanningGrid(
+  /// The MOD rows are judged against the desired mix picked on the save
+  /// card, while the card is shown, so they follow the label's depth rule
+  /// (issue #145).
+  Widget _planning({required bool wide}) {
+    final save = _saveController;
+    return ListenableBuilder(
+      listenable: Listenable.merge([?save]),
+      builder: (_, _) => PlanningGrid(
         reading: _controller.latest,
         settings: widget.settings,
-        desired: _planningDesired,
+        desired: save?.desiredMix,
         wide: wide,
-      );
+      ),
+    );
+  }
 
   Widget _narrowLayout() {
     return Column(
@@ -167,10 +236,6 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
     return !(readingFromDemo ?? _session.options[_session.selected].isDemo);
   }
 
-  /// The desired mix the MOD rows are judged against: the save card's,
-  /// while the card is shown.
-  DesiredMix? get _planningDesired => _showsSaveCard ? _desiredMix : null;
-
   /// The "Save analysis" card (#111), preceded by a gap; empty without a
   /// DAO, and for readings from the demo source (they are made up). It goes
   /// by the session the reading came from ([AnalyzerSession.sessionIsDemo]), not the
@@ -179,8 +244,8 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   /// ask (nothing yet, or a connect that failed), so the selected option
   /// decides.
   List<Widget> _saveCard() {
-    final dao = _analysesDao;
-    if (dao == null || !_showsSaveCard) return const [];
+    final save = _saveController;
+    if (save == null) return const [];
     final printing = _labelPrinting;
     return [
       const SizedBox(height: Spacing.md),
@@ -188,20 +253,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
         padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
         child: AnalysisSaveCard(
         key: _saveCardKey,
-        dao: dao,
-        reading: _controller.latest,
-        stability: _controller.stability,
-        modPpo2s: widget.settings.analyzerModPpo2s,
-        blendTarget: widget.blend?.recentTarget(),
-        labelPrinting: printing,
-        okLogger: _session.okLogger,
-        initialAnalysedBy: widget.settings.analyzerAnalysedBy,
-        onAnalysedByChanged: widget.settings.setAnalyzerAnalysedBy,
-        initialPrintOnOk: widget.settings.analyzerPrintOnOk,
-        onPrintOnOkChanged: widget.settings.setAnalyzerPrintOnOk,
-        onDesiredMixChanged: (m) {
-          if (mounted) setState(() => _desiredMix = m);
-        },
+        controller: save,
         onSetUpPrinter: printing == null
             ? null
             : () => Navigator.of(context).push(MaterialPageRoute(

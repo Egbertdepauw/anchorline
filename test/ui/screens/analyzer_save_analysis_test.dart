@@ -249,6 +249,34 @@ void main() {
     expect(dao.added.single.o2Percent, 18.2);
   });
 
+  testWidgets('a card that went away for a demo session comes back fresh',
+      (tester) async {
+    Finder key(String k) => find.byKey(ValueKey(k));
+    final dao = FakeGasAnalysesDao();
+    await pumpScreen(tester, dao, options: demoAndBench());
+    await pickSource(tester, 'Bench');
+    await tester.enterText(key('analysis-diver'), 'EdP');
+    await tester.enterText(key('analysis-notes'), 'Topped up');
+    await tester.pump();
+
+    // The demo's readings are made up, so the card goes away.
+    await pickSource(tester, 'Demo');
+    await connect(tester);
+    await seconds(tester, 2);
+    expect(key('analysis-save-card'), findsNothing);
+    await disconnect(tester);
+
+    // Back on the bench: a new card, with the name remembered when the old
+    // one went and nothing else of its fill.
+    await pickSource(tester, 'Bench');
+    await connect(tester);
+    await tester.pump();
+    expect(key('analysis-save-card'), findsOneWidget);
+    expect(find.text('EdP'), findsOneWidget);
+    expect(find.text('Topped up'), findsNothing);
+    await disconnect(tester);
+  });
+
   testWidgets('the MOD rows follow the desired mix picked on the save card',
       (tester) async {
     // 18.2 % at 1.6 is 77.9 m. With no desired mix that is a stop: 78 m

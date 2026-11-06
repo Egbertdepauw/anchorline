@@ -14,6 +14,7 @@ import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
 import 'package:ccrlogger/ui/theme/safety_colors.dart';
 import 'package:ccrlogger/ui/widgets/analysis_save_card.dart';
+import 'package:ccrlogger/ui/widgets/analysis_save_controller.dart';
 import 'package:ccrlogger/ui/widgets/desired_mix_picker.dart';
 import 'package:ccrlogger/ui/widgets/label_printer_settings_section.dart';
 import 'package:ccrlogger/ui/widgets/mix_match_indicator.dart';
@@ -89,6 +90,10 @@ GasAnalysis _logged(String id, DateTime at, int o2, int he) => GasAnalysis(
       targetHePercent: he,
     );
 
+/// The controller of the test's card: made by the first [_pump] of a test,
+/// and given the reading of each.
+AnalysisSaveController? _controller;
+
 /// The card at phone width, in a scroll view like the analyzer screen's.
 /// [above] is empty space above the card, to push it below the fold.
 Future<void> _pump(
@@ -105,6 +110,27 @@ Future<void> _pump(
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
+  var controller = _controller;
+  if (controller == null) {
+    final settings = SettingsNotifier();
+    await settings.setAnalyzerModPpo2s(const [1.4, 1.6]);
+    controller = _controller = AnalysisSaveController(
+      dao: dao,
+      settings: settings,
+      labelPrinting: labelPrinting,
+      now: () => DateTime(2026, 10, 31, 9),
+    );
+    addTearDown(() {
+      controller!.dispose();
+      _controller = null;
+    });
+  }
+  controller.update(
+    reading: reading ?? _tx2135,
+    stability: stability,
+    blendTarget: blendTarget,
+    connected: true,
+  );
   await tester.pumpWidget(MaterialApp(
     home: Scaffold(
       body: SingleChildScrollView(
@@ -114,14 +140,8 @@ Future<void> _pump(
           children: [
             SizedBox(height: above),
             AnalysisSaveCard(
-              dao: dao,
-              reading: reading ?? _tx2135,
-              stability: stability,
-              modPpo2s: const [1.4, 1.6],
-              blendTarget: blendTarget,
-              labelPrinting: labelPrinting,
+              controller: controller,
               onSetUpPrinter: onSetUpPrinter,
-              now: () => DateTime(2026, 10, 31, 9),
             ),
           ],
         ),

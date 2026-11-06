@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:ccrlogger/analyzer/analyzer_controller.dart';
 import 'package:ccrlogger/analyzer/bridge/record_to_analysis.dart';
-import 'package:ccrlogger/analyzer/stability.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
 import 'package:ccrlogger/analyzer/transport/demo_transport.dart';
 import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
@@ -15,7 +14,6 @@ import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
-import 'package:ccrlogger/ui/widgets/analysis_save_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1035,45 +1033,32 @@ void main() {
       expect(mod16(), contains('38 m'));
     });
 
-    testWidgets('a disposed card leaves the setup of its successor alone',
-        (tester) async {
-      final dao = FakeGasAnalysesDao();
-      final logger = UsbOkLogger(
-        save: dao.addFromBridge,
-        markComplete: (id) => dao.setNeedsSignoff(id, false),
-        tickInterval: null,
-      );
-      Widget card(int n) => MaterialApp(
-            home: Scaffold(
-              body: SingleChildScrollView(
-                child: AnalysisSaveCard(
-                  key: ValueKey('card-$n'),
-                  dao: dao,
-                  reading: null,
-                  stability: ReadingStability.noData,
-                  modPpo2s: const [1.4],
-                  okLogger: logger,
-                ),
-              ),
-            ),
-          );
-
-      await tester.pumpWidget(card(1));
-      final first = logger.setupProvider;
+    // The card's form is the screen's: a screen made anew has a form of
+    // its own (analysis_save_controller_test has the same for the forms).
+    _test('a disposed screen leaves the setup of its successor alone',
+        (tester, h) async {
+      await h.pump(tester);
+      await _switchOn(tester);
+      await h.connect(tester);
+      final first = h.logger!.setupProvider;
       expect(first, isNotNull);
 
       // A new State binds first; the old one is disposed at the end of the
       // frame and must not take the new one's setup away.
-      await tester.pumpWidget(card(2));
-      expect(logger.setupProvider, isNotNull);
-      expect(logger.setupProvider, isNot(equals(first)));
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnalyzerScreen(
+              key: const ValueKey('screen-2'),
+              settings: h.settings,
+              session: h.session),
+        ),
+      ));
+      expect(h.logger!.setupProvider, isNotNull);
+      expect(h.logger!.setupProvider, isNot(equals(first)));
 
-      // The last card going does clear it.
+      // The last screen going does clear it.
       await tester.pumpWidget(const MaterialApp(home: SizedBox()));
-      expect(logger.setupProvider, isNull);
-      // Not awaited: closing the stream needs the real zone's microtasks.
-      unawaited(logger.dispose());
-      await tester.pump();
+      expect(h.logger!.setupProvider, isNull);
     });
   });
 
