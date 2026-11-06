@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../analysis/fill_pressure.dart';
 import '../theme/app_themes.dart';
 import '../widgets/map_tile_sources.dart' show MapLayerStyle;
 import '../widgets/trace_segmented_bar.dart' show TraceType;
@@ -45,6 +46,11 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kAnalyzerLogOnOk = 'analyzer_log_on_ok';
   static const _kAnalyzerPrintOnOk = 'analyzer_print_on_ok';
   static const _kAnalyzerAnalysedBy = 'analyzer_analysed_by';
+  static const _kYourInitials = 'your_initials';
+  static const _kAnalyzerFillPressureStart = 'analyzer_fill_pressure_start_bar';
+
+  /// Where the analyzer's "Fill pressure" starts when a cylinder is saved.
+  static const double kDefaultFillPressureStartBar = 230;
   static const _kLabelUse14 = 'label_use_14_for_deeper_mixes';
   static const _kLabelPrinterId = 'label_printer_id';
   static const _kLabelPrinterName = 'label_printer_name';
@@ -121,6 +127,8 @@ class SettingsNotifier extends ChangeNotifier {
   bool _analyzerLogOnOk = false;
   bool _analyzerPrintOnOk = true;
   String? _analyzerAnalysedBy;
+  String? _yourInitials;
+  double _analyzerFillPressureStartBar = kDefaultFillPressureStartBar;
   // ── Cylinder labels (device-local, never synced) ────────────────
   bool _labelUse14ForDeeperMixes = false;
   String? _labelPrinterId;
@@ -178,6 +186,13 @@ class SettingsNotifier extends ChangeNotifier {
   /// The name on the analyzer's save card, kept between sessions; null until
   /// one has been typed.
   String? get analyzerAnalysedBy => _analyzerAnalysedBy;
+
+  /// The diver's initials (device-local, never synced); they start the
+  /// analyzer's "Analysed by" field. Null until set.
+  String? get yourInitials => _yourInitials;
+
+  /// The pressure in bar the analyzer's "Fill pressure" field starts at.
+  double get analyzerFillPressureStartBar => _analyzerFillPressureStartBar;
 
   /// Whether a cylinder label uses ppO2 1.4 instead of 1.6 for the MOD of a
   /// bailout/deco mix under 50 % O2.
@@ -303,6 +318,15 @@ class SettingsNotifier extends ChangeNotifier {
     _analyzerLogOnOk = prefs.getBool(_kAnalyzerLogOnOk) ?? false;
     _analyzerPrintOnOk = prefs.getBool(_kAnalyzerPrintOnOk) ?? true;
     _analyzerAnalysedBy = prefs.getString(_kAnalyzerAnalysedBy);
+    _yourInitials = prefs.getString(_kYourInitials);
+    if (_yourInitials == null && _analyzerAnalysedBy != null) {
+      // Upgrade: the name remembered by the old save card becomes the initials.
+      _yourInitials = _analyzerAnalysedBy;
+      await prefs.setString(_kYourInitials, _yourInitials!);
+    }
+    _analyzerFillPressureStartBar =
+        prefs.getDouble(_kAnalyzerFillPressureStart) ??
+            kDefaultFillPressureStartBar;
     _labelUse14ForDeeperMixes = prefs.getBool(_kLabelUse14) ?? false;
     _labelPrinterId = prefs.getString(_kLabelPrinterId);
     _labelPrinterName = prefs.getString(_kLabelPrinterName);
@@ -660,6 +684,32 @@ class SettingsNotifier extends ChangeNotifier {
     } else {
       await prefs.setString(_kAnalyzerAnalysedBy, name);
     }
+  }
+
+  /// Saves the diver's initials, trimmed. Blank means none.
+  Future<void> setYourInitials(String? v) async {
+    final t = v?.trim();
+    final initials = t == null || t.isEmpty ? null : t;
+    if (_yourInitials == initials) return;
+    _yourInitials = initials;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (initials == null) {
+      await prefs.remove(_kYourInitials);
+    } else {
+      await prefs.setString(_kYourInitials, initials);
+    }
+  }
+
+  /// Sets where the analyzer's fill pressure starts. A value that is not a
+  /// valid pressure (see [parseFillPressure]) is ignored.
+  Future<void> setAnalyzerFillPressureStartBar(double bar) async {
+    if (!parseFillPressure(bar.toString()).valid) return;
+    if (_analyzerFillPressureStartBar == bar) return;
+    _analyzerFillPressureStartBar = bar;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kAnalyzerFillPressureStart, bar);
   }
 
   Future<void> setLabelUse14ForDeeperMixes(bool v) async {

@@ -610,4 +610,55 @@ void main() {
       expect(prefs.getString('app_theme'), 'wreck');
     });
   });
+  group('device settings: initials and fill pressure start', () {
+    test('your initials migrate from analyzer_analysed_by when unset',
+        () async {
+      SharedPreferences.setMockInitialValues({'analyzer_analysed_by': 'EdP'});
+      final s = SettingsNotifier();
+      await s.load();
+      expect(s.yourInitials, 'EdP');
+      expect(
+          (await SharedPreferences.getInstance()).getString('your_initials'),
+          'EdP');
+    });
+
+    test('an existing your_initials is not overwritten', () async {
+      SharedPreferences.setMockInitialValues(
+          {'analyzer_analysed_by': 'EdP', 'your_initials': 'JS'});
+      final s = SettingsNotifier();
+      await s.load();
+      expect(s.yourInitials, 'JS');
+      expect(
+          (await SharedPreferences.getInstance()).getString('your_initials'),
+          'JS');
+    });
+
+    test('setYourInitials trims and a blank clears', () async {
+      SharedPreferences.setMockInitialValues({});
+      final s = SettingsNotifier();
+      await s.load();
+      await s.setYourInitials(' EdP ');
+      expect(s.yourInitials, 'EdP');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('your_initials'), 'EdP');
+      await s.setYourInitials('  ');
+      expect(s.yourInitials, isNull);
+      expect(prefs.getString('your_initials'), isNull);
+    });
+
+    test('fill pressure start defaults to 230 and persists', () async {
+      SharedPreferences.setMockInitialValues({});
+      final s = SettingsNotifier();
+      await s.load();
+      expect(s.analyzerFillPressureStartBar, 230.0);
+      await s.setAnalyzerFillPressureStartBar(200);
+      expect(s.analyzerFillPressureStartBar, 200.0);
+      final reloaded = SettingsNotifier();
+      await reloaded.load();
+      expect(reloaded.analyzerFillPressureStartBar, 200.0);
+      await reloaded.setAnalyzerFillPressureStartBar(-5);
+      await reloaded.setAnalyzerFillPressureStartBar(double.nan);
+      expect(reloaded.analyzerFillPressureStartBar, 200.0);
+    });
+  });
 }
