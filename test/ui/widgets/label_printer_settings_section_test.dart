@@ -270,23 +270,16 @@ void main() {
       await tester.pumpWidget(rig.section);
       expect(find.text('Use 1.4 for deeper mixes'), findsOneWidget);
       expect(
-        find.text('MOD at ppO₂ 1.4 for mixes below 50 % O₂. '
-            'Off: 1.6 for all mixes.'),
+        find.text('MOD at ppO₂ 1.4 below 50 % O₂. Off: 1.6 for all'),
         findsOneWidget,
       );
-      expect(
-        tester.widget<SwitchListTile>(_key('label-printer-use14')).value,
-        isFalse,
-      );
+      expect(tester.widget<Switch>(_key('label-printer-use14')).value, isFalse);
 
       await tester.tap(_key('label-printer-use14'));
       await tester.pumpAndSettle();
 
       expect(rig.settings.labelUse14ForDeeperMixes, isTrue);
-      expect(
-        tester.widget<SwitchListTile>(_key('label-printer-use14')).value,
-        isTrue,
-      );
+      expect(tester.widget<Switch>(_key('label-printer-use14')).value, isTrue);
 
       await tester.tap(_key('label-printer-use14'));
       await tester.pumpAndSettle();
@@ -481,33 +474,37 @@ void main() {
       addTearDown(tester.view.reset);
     }
 
-    testWidgets('hides the label printer section without labelPrinting',
+    testWidgets('hides the label printer group without labelPrinting',
         (tester) async {
       tallView(tester);
       final rig = await _Rig.build();
-      await tester.pumpWidget(
-        MaterialApp(home: SettingsScreen(notifier: rig.settings)),
-      );
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(notifier: rig.settings, onHome: () {}),
+      ));
+      await tester.tap(_key('settings-tab-gas'));
+      await tester.pumpAndSettle();
 
-      expect(find.text('Gas analyzer', skipOffstage: false), findsOneWidget);
-      expect(find.text('Label printer', skipOffstage: false), findsNothing);
-      expect(find.byType(LabelPrinterSettingsSection, skipOffstage: false),
-          findsNothing);
+      expect(find.text('ANALYZER'), findsOneWidget);
+      expect(find.text('LABEL PRINTER'), findsNothing);
+      expect(find.byType(LabelPrinterSettingsSection), findsNothing);
     });
 
-    testWidgets('shows it after "Gas analyzer" when labelPrinting is set',
+    testWidgets('shows it on the Gas tab, after Analyzer, when labelPrinting is set',
         (tester) async {
       tallView(tester);
       final rig = await _Rig.build();
       await tester.pumpWidget(MaterialApp(
         home: SettingsScreen(
           notifier: rig.settings,
+          onHome: () {},
           labelPrinting: rig.service,
         ),
       ));
+      await tester.tap(_key('settings-tab-gas'));
+      await tester.pumpAndSettle();
 
-      final analyzer = tester.getTopLeft(find.text('Gas analyzer'));
-      final heading = tester.getTopLeft(find.text('Label printer'));
+      final analyzer = tester.getTopLeft(find.text('ANALYZER'));
+      final heading = tester.getTopLeft(find.text('LABEL PRINTER'));
       expect(heading.dy, greaterThan(analyzer.dy));
       expect(find.byType(LabelPrinterSettingsSection), findsOneWidget);
       expect(_key('label-printer-find'), findsOneWidget);

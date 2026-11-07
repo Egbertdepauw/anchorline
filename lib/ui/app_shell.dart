@@ -575,6 +575,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                         ),
                         SettingsScreen(
                           notifier: widget.settingsNotifier,
+                          onHome: _goHome,
                           authService: widget.authService,
                           syncStatusSource: _syncStatusSource,
                           db: widget.db,

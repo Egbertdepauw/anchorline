@@ -2,7 +2,7 @@
 /// Bluetooth label printer, print a test label, forget the printer, and the
 /// "Use 1.4 for deeper mixes" switch.
 ///
-/// [LabelPrinterSettingsSection] sits in Settings after "Gas analyzer" and is
+/// [LabelPrinterSettingsSection] sits in Settings, on the Gas tab, and is
 /// also what [LabelPrinterSettingsScreen] shows on its own, for the "Set up
 /// label printer" link on the analyzer screen.
 library;
@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../../label_printer/label_printer.dart';
 import '../../labels/label_print_service.dart';
+import '../components/setting_row.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/tokens.dart';
 import 'label_print_controls.dart';
@@ -22,7 +23,7 @@ const String _kScanFailed = 'Bluetooth scan failed';
 const String _kPrintFailed = 'Printing failed';
 
 /// The label printer settings, without a heading: the host provides one
-/// (Settings has a "Label printer" heading, the screen has a title).
+/// (the Gas tab has a "Label printer" heading, the screen has a title).
 class LabelPrinterSettingsSection extends StatelessWidget {
   const LabelPrinterSettingsSection({
     super.key,
@@ -43,14 +44,15 @@ class LabelPrinterSettingsSection extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ListTile(
-              leading: const Icon(Icons.print_outlined),
-              title: Text(
-                configured ? (settings.labelPrinterName ?? id) : _kNoPrinter,
-              ),
+            SettingRow(
+              title: configured
+                  ? (settings.labelPrinterName ?? id)
+                  : _kNoPrinter,
+              helper: configured ? 'Set up on this device' : null,
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
+              padding: const EdgeInsets.fromLTRB(
+                  Spacing.lg, 0, Spacing.lg, Spacing.sm),
               child: Wrap(
                 spacing: Spacing.sm,
                 runSpacing: Spacing.sm,
@@ -73,15 +75,20 @@ class LabelPrinterSettingsSection extends StatelessWidget {
                 ],
               ),
             ),
-            SwitchListTile(
-              key: const ValueKey('label-printer-use14'),
-              title: const Text('Use 1.4 for deeper mixes'),
-              subtitle: const Text(
-                'MOD at ppO₂ 1.4 for mixes below 50 % O₂. '
-                'Off: 1.6 for all mixes.',
+            Divider(
+                height: 1,
+                thickness: 1,
+                color: context.palette.surfaceRaised),
+            SettingRow(
+              title: 'Use 1.4 for deeper mixes',
+              helper: 'MOD at ppO₂ 1.4 below 50 % O₂. Off: 1.6 for all',
+              onTap: () => settings.setLabelUse14ForDeeperMixes(
+                  !settings.labelUse14ForDeeperMixes),
+              control: Switch(
+                key: const ValueKey('label-printer-use14'),
+                value: settings.labelUse14ForDeeperMixes,
+                onChanged: settings.setLabelUse14ForDeeperMixes,
               ),
-              value: settings.labelUse14ForDeeperMixes,
-              onChanged: settings.setLabelUse14ForDeeperMixes,
             ),
           ],
         );
