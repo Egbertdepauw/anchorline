@@ -49,7 +49,7 @@ disabled. Include it for any build you intend to distribute.
 flutter build windows --release `
   --build-number=<N> --build-name=<x.y.z> `
   --dart-define-from-file=dart_defines.json `
-  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=website --dart-define=APP_VERSION=<x.y.z> --dart-define=APP_BUILD=<N>
+  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=website --dart-define=APP_VERSION=<x.y.z> --dart-define=APP_BUILD=<N> --dart-define=APP_BUILD_DATE=<yyyy-MM-dd>
 ```
 
 The last four defines label the build (Settings → Version, Sentry release).

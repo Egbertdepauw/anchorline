@@ -536,20 +536,16 @@ void main() {
   });
 
   group('About', () {
-    testWidgets('keeps the version, the BLE log action and the footer',
+    testWidgets('keeps the version, the BLE log action and the logo',
         (tester) async {
       final s = await _plain();
       await _pump(tester, s, null);
       await _tab(tester, 'about');
-      expect(find.text('Version'), findsWidgets);
       // Tests do not pass BUILD_CHANNEL, so this is the local-build label.
-      expect(find.text('Development build'), findsOneWidget);
+      expect(_k('about-dev-build'), findsOneWidget);
       expect(find.text('Share Bluetooth debug log'), findsOneWidget);
-      expect(_k('settings-share-ble-log'), findsOneWidget);
-      expect(
-        tester.getTopLeft(find.text('Development build')).dy,
-        lessThan(tester.getTopLeft(find.text('Anchorline')).dy),
-      );
+      expect(_k('about-share-ble-log'), findsOneWidget);
+      expect(_k('about-logo'), findsOneWidget);
     });
   });
 }

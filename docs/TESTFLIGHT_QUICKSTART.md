@@ -52,7 +52,7 @@ want a fresh one:
 
 ```bash
 flutter build ipa --release \
-  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=app_store --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N>
+  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=app_store --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N> --dart-define=APP_BUILD_DATE=<yyyy-MM-dd>
 ```
 
 `<V>+<N>` is the `version:` in `pubspec.yaml`. The four defines label the

@@ -7,7 +7,6 @@ import 'package:powersync/powersync.dart' hide SyncStatus, Column;
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
-import '../../build_info.dart';
 import '../../data/db/database.dart';
 import '../../data/db/dive_dao.dart';
 import '../../dev/fixture_seeder.dart';
@@ -22,11 +21,10 @@ import '../../sync/subsurface_git/bootstrap_importer.dart';
 import '../../sync/subsurface_git/credentials.dart';
 import '../../sync/subsurface_git/sync_orchestrator.dart';
 import '../dev/widgetbook_screen.dart';
-import '../components/setting_row.dart';
 import '../components/tab_top_bar.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/app_themes.dart';
-import '../theme/tokens.dart';
+import 'settings/about_tab.dart';
 import 'settings/general_tab.dart';
 import 'settings/gas_tab.dart';
 import 'settings/planning_tab.dart';
@@ -158,7 +156,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPushStuck: _drainQueueManually,
                 onReset: canReset ? _confirmAndResetLocalData : null,
               ),
-              _AboutTab(onShareBleLog: _shareBleDebugLog),
+              AboutTab(
+                onShareBleLog: _shareBleDebugLog,
+                onLongPressLogo: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const WidgetbookScreen()),
+                ),
+              ),
             ],
           ),
         ),
@@ -811,50 +814,4 @@ class _SettingsTab extends StatelessWidget {
   Widget build(BuildContext context) => Tab(
         child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
       );
-}
-
-/// About. Until the real About tab lands this holds what the old Settings
-/// list had at its end: the version, the Bluetooth debug log, and the
-/// "Anchorline" footer whose long-press opens Widgetbook.
-class _AboutTab extends StatelessWidget {
-  const _AboutTab({required this.onShareBleLog});
-
-  final VoidCallback onShareBleLog;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      children: [
-        SettingsGroup(
-          title: 'Version',
-          children: [
-            SettingRow(title: 'Version', helper: BuildInfo.label),
-          ],
-        ),
-        SettingsGroup(
-          title: 'Support',
-          children: [
-            SettingRow(
-              key: const ValueKey('settings-share-ble-log'),
-              title: 'Share Bluetooth debug log',
-              helper: 'Protocol events and timings only, no dive data',
-              onTap: onShareBleLog,
-            ),
-          ],
-        ),
-        Padding(
-          padding: const EdgeInsets.all(Spacing.lg),
-          child: GestureDetector(
-            onLongPress: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const WidgetbookScreen()),
-            ),
-            child: Text(
-              'Anchorline',
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }
