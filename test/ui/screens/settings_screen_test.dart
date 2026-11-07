@@ -386,6 +386,15 @@ void main() {
       expect(_k('settings-mod-ppo2-1.4-remove'), findsNothing);
     });
 
+    testWidgets('the chip remove target is at least 44 x 44', (tester) async {
+      await open(tester);
+      for (final p in ['1.1', '1.4', '1.6']) {
+        final size = tester.getSize(_k('settings-mod-ppo2-$p-remove'));
+        expect(size.width, greaterThanOrEqualTo(44), reason: p);
+        expect(size.height, greaterThanOrEqualTo(44), reason: p);
+      }
+    });
+
     testWidgets('the add dialog accepts 0.2 to 2.0 only and rounds to two decimals',
         (tester) async {
       final s = await open(tester);

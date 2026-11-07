@@ -282,10 +282,12 @@ class _ModChips extends StatelessWidget {
                     // quick taps must both land.
                     onTap: () => notifier.setAnalyzerModPpo2s(
                         notifier.analyzerModPpo2s.where((l) => l != p)),
-                    radius: 18,
+                    radius: 22,
+                    // 44 pt hit area; the chip stays 36 pt high and the
+                    // target overhangs it vertically.
                     child: SizedBox(
-                      width: 36,
-                      height: 36,
+                      width: 44,
+                      height: 44,
                       child: Icon(Icons.close,
                           size: 14, color: palette.textMuted),
                     ),
