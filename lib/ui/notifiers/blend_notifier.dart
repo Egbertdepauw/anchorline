@@ -210,10 +210,12 @@ class BlendNotifier extends ChangeNotifier {
   DesiredMix? unusedRecentTarget() => _targetUsed ? null : recentTarget();
 
   /// Marks the current target as used by a saved analysis. The next Blend
-  /// edit clears it.
+  /// edit clears it. Listeners hear of it, so the Analyse tab stops offering
+  /// the target also when the sign-off that used it was on the Log tab.
   Future<void> markRecentTargetUsed() async {
     if (_targetUsed) return;
     _targetUsed = true;
+    if (!_disposed) notifyListeners();
     await _storeTargetUsed(true);
   }
 

@@ -380,6 +380,16 @@ void main() {
       expect(n.recentTarget(), const DesiredMix(21, 35));
     });
 
+    test('marking the target used notifies, once', () async {
+      final n = await newNotifier();
+      n.setTargetMix(21, 35);
+      var notified = 0;
+      n.addListener(() => notified++);
+      await n.markRecentTargetUsed();
+      await n.markRecentTargetUsed();
+      expect(notified, 1);
+    });
+
     test('any Blend edit clears the used mark', () async {
       final n = await newNotifier();
       n.setTargetMix(21, 35);

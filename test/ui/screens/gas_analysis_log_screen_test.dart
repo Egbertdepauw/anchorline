@@ -1509,6 +1509,78 @@ void main() {
       expect(_key('analysis-edit-signoff-print'), findsOneWidget);
     });
 
+    group('the Blend target', () {
+      /// A Blend tab whose recent, unused target is [o2]/[he].
+      Future<BlendNotifier> blendTo(int o2, int he) async {
+        SharedPreferences.setMockInitialValues({});
+        final settings = SettingsNotifier();
+        await settings.load();
+        final blend = BlendNotifier(settings: settings)..setTargetMix(o2, he);
+        addTearDown(blend.dispose);
+        expect(blend.unusedRecentTarget(), DesiredMix(o2, he));
+        return blend;
+      }
+
+      testWidgets('Sign off of the target uses it up', (tester) async {
+        final blend = await blendTo(32, 0);
+        final dao = FakeGasAnalysesDao(analyses: [flagged()]);
+        await pump(tester, GasAnalysisLogScreen(dao: dao, blend: blend));
+        await tapAndSettle(tester, find.text('EAN32'));
+        await tapAndSettle(tester, _key('analysis-edit-signoff'));
+        expect(dao.updated.single.$2.signOff, isTrue);
+        expect(blend.unusedRecentTarget(), isNull);
+        expect(blend.recentTarget(), const DesiredMix(32, 0));
+      });
+
+      testWidgets('Sign off and print of the target uses it up',
+          (tester) async {
+        final blend = await blendTo(32, 0);
+        final printer = FakeLabelPrinter();
+        final dao = FakeGasAnalysesDao(analyses: [flagged()]);
+        await pump(
+            tester,
+            GasAnalysisLogScreen(
+                dao: dao, blend: blend, labelPrinting: _service(printer)));
+        await tapAndSettle(tester, find.text('EAN32'));
+        await tapAndSettle(tester, _key('analysis-edit-signoff-print'));
+        await tapAndSettle(tester, _key('copies-dialog-print'));
+        expect(printer.printed, hasLength(1));
+        expect(blend.unusedRecentTarget(), isNull);
+      });
+
+      testWidgets('Sign off of another mix leaves the target unused',
+          (tester) async {
+        final blend = await blendTo(21, 35);
+        final dao = FakeGasAnalysesDao(analyses: [flagged()]);
+        await pump(tester, GasAnalysisLogScreen(dao: dao, blend: blend));
+        await tapAndSettle(tester, find.text('EAN32'));
+        await tapAndSettle(tester, _key('analysis-edit-signoff'));
+        expect(blend.unusedRecentTarget(), const DesiredMix(21, 35));
+      });
+
+      testWidgets('Save without signing off leaves the target unused',
+          (tester) async {
+        final blend = await blendTo(32, 0);
+        final dao = FakeGasAnalysesDao(analyses: [flagged()]);
+        await pump(tester, GasAnalysisLogScreen(dao: dao, blend: blend));
+        await tapAndSettle(tester, find.text('EAN32'));
+        await tester.enterText(_key('analysis-edit-notes'), 'Later');
+        await tapAndSettle(tester, _key('analysis-edit-save'));
+        expect(_key('analysis-needs-signoff-f'), findsOneWidget);
+        expect(blend.unusedRecentTarget(), const DesiredMix(32, 0));
+      });
+
+      testWidgets('an entry flagged again on sign-off leaves the target '
+          'unused', (tester) async {
+        final blend = await blendTo(32, 0);
+        final dao = _FlaggedOnEditDao(analyses: [flagged()]);
+        await pump(tester, GasAnalysisLogScreen(dao: dao, blend: blend));
+        await tapAndSettle(tester, find.text('EAN32'));
+        await tapAndSettle(tester, _key('analysis-edit-signoff'));
+        expect(blend.unusedRecentTarget(), const DesiredMix(32, 0));
+      });
+    });
+
     testWidgets('Save on a flagged entry keeps the badge', (tester) async {
       final dao = FakeGasAnalysesDao(analyses: [flagged()]);
       await pump(tester, GasAnalysisLogScreen(dao: dao));
@@ -1574,6 +1646,51 @@ void main() {
       await tester.pump();
       await tapAndSettle(tester, _key('gas-tab-log'));
       expect(_key('analysis-print-tx'), findsOneWidget);
+    });
+
+    testWidgets('the Gas destination passes its Blend tab to the log',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final settings = SettingsNotifier();
+      await settings.load();
+      final blend = BlendNotifier(settings: settings)..setTargetMix(32, 0);
+      final dao = FakeGasAnalysesDao(analyses: [
+        entry('f', DateTime(2026, 10, 30, 18), 32.1, 0,
+            needsSignoff: true, targetO2: 32, targetHe: 0),
+      ]);
+      final session = AnalyzerSession(
+        settings: settings,
+        analysesDao: dao,
+        blend: blend,
+        controller: fakeClockAnalyzerController(tester),
+        transportOptions: [
+          AnalyzerTransportOption(
+            label: 'Bench',
+            create: () => DemoAnalyzerTransport(
+                targetO2: 21, targetHe: 35, random: Random(1)),
+          ),
+        ],
+      );
+      addTearDown(session.dispose);
+      await tester.pumpWidget(MaterialApp(
+        home: GasScreen(
+          blend: blend,
+          settings: settings,
+          session: session,
+          analysesDao: dao,
+          onHome: () {},
+        ),
+      ));
+      await tester.pump();
+      await tapAndSettle(tester, _key('gas-tab-log'));
+      expect(
+          tester
+              .widget<GasAnalysisLogScreen>(find.byType(GasAnalysisLogScreen))
+              .blend,
+          same(blend));
+      await tapAndSettle(tester, find.text('EAN32'));
+      await tapAndSettle(tester, _key('analysis-edit-signoff'));
+      expect(blend.unusedRecentTarget(), isNull);
     });
 
     testWidgets('a cylinder in Equipment passes its label printing to the log',

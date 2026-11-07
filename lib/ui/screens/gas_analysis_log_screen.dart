@@ -35,6 +35,7 @@ import '../../analysis/mix_match.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../../data/models/gas_analysis_csv.dart';
 import '../../labels/label_print_service.dart';
+import '../notifiers/blend_notifier.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../widgets/analysis_edit_sheet.dart';
@@ -69,6 +70,7 @@ class GasAnalysisLogScreen extends StatefulWidget {
     this.shareCsv = shareCsvFile,
     this.labelPrinting,
     this.embedded = false,
+    this.blend,
   });
 
   final GasAnalysesDaoLike dao;
@@ -88,6 +90,11 @@ class GasAnalysisLogScreen extends StatefulWidget {
   /// Shown as the Gas destination's Log tab: no app bar of its own, and the
   /// Export button sits in a row at the top of the list.
   final bool embedded;
+
+  /// The Gas destination's Blend tab, whose target a sign-off here can use
+  /// up (one blend is one cylinder). The screen pushed from Equipment has
+  /// none.
+  final BlendNotifier? blend;
 
   @override
   State<GasAnalysisLogScreen> createState() => _GasAnalysisLogScreenState();
@@ -203,11 +210,29 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     final outcome = await _openEditSheet(a);
     if (outcome == AnalysisEditOutcome.cancelled) return;
     final stored = await _stored(a.id);
+    if (outcome == AnalysisEditOutcome.signedOff ||
+        outcome == AnalysisEditOutcome.signOffAndPrint) {
+      _useBlendTarget(stored);
+    }
     if (outcome != AnalysisEditOutcome.signOffAndPrint) return;
     // Deleted meanwhile, or flagged again (through sync): nothing to print.
     // Say so now, not after the copies prompt.
     if (stored == null || !mounted || _refuseUnsigned(stored)) return;
     await _reprint(stored);
+  }
+
+  /// A sign-off completes the save of an OK press: when the entry, as
+  /// stored after it, has the Blend target that is still unused as its
+  /// desired mix, it uses the target up (one blend is one cylinder, spec
+  /// §4.3), as a sign-off on the Analyse tab's result row does. Nothing
+  /// when it was deleted or flagged again meanwhile.
+  void _useBlendTarget(GasAnalysis? signedOff) {
+    final blend = widget.blend;
+    final target = blend?.unusedRecentTarget();
+    if (blend == null || target == null) return;
+    if (signedOff == null || signedOff.needsSignoff) return;
+    if (signedOff.desiredMix != target) return;
+    unawaited(blend.markRecentTargetUsed());
   }
 
   /// Prints the label of [a]: asks for copies, then, on a hard mismatch
