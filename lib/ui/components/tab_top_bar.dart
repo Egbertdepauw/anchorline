@@ -27,16 +27,27 @@ class TabTopBar extends StatelessWidget implements PreferredSizeWidget {
           child: Row(
             children: [
               const SizedBox(width: Spacing.sm),
-              InkResponse(
-                key: const ValueKey('tab-top-bar-home'),
-                onTap: onHome,
-                radius: 24,
-                child: const SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: Center(
-                    child: AnchorlineLogo(
-                        mark: AnchorlineMark.icon, size: 24),
+              // Read as "Home, button", not as the logo's "Anchorline".
+              Semantics(
+                button: true,
+                label: 'Home',
+                child: Tooltip(
+                  message: 'Home',
+                  excludeFromSemantics: true,
+                  child: InkResponse(
+                    key: const ValueKey('tab-top-bar-home'),
+                    onTap: onHome,
+                    radius: 24,
+                    child: const SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Center(
+                        child: ExcludeSemantics(
+                          child: AnchorlineLogo(
+                              mark: AnchorlineMark.icon, size: 24),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),

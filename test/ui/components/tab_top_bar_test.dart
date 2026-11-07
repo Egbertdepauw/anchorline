@@ -25,6 +25,25 @@ void main() {
     expect(taps, 1);
   });
 
+  testWidgets('the anchor reads as a Home button', (tester) async {
+    final semantics = tester.ensureSemantics();
+    var taps = 0;
+    await tester.pumpWidget(_wrap(() => taps++));
+    expect(
+      tester.getSemantics(find.byKey(const ValueKey('tab-top-bar-home'))),
+      matchesSemantics(
+        label: 'Home',
+        isButton: true,
+        hasTapAction: true,
+        hasFocusAction: true,
+        isFocusable: true,
+      ),
+    );
+    await tester.tap(find.bySemanticsLabel('Home'));
+    expect(taps, 1);
+    semantics.dispose();
+  });
+
   testWidgets('renders the tab labels', (tester) async {
     await tester.pumpWidget(_wrap(() {}));
     expect(find.text('Analyse'), findsOneWidget);
