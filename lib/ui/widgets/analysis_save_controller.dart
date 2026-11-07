@@ -113,9 +113,10 @@ class AnalysisSaveController extends ChangeNotifier {
   /// The analyzer is connected.
   bool get connected => _connected;
 
-  /// Called after a complete save of the Blend target, manual or by an OK
-  /// press, so the target is used up (one blend is one cylinder). The
-  /// screen sets it to `BlendNotifier.markRecentTargetUsed`.
+  /// Called after a complete manual save of the Blend target, or the
+  /// sign-off of an OK press of it, so the target is used up (one blend is
+  /// one cylinder). An OK press that saves complete is marked by the
+  /// session. The screen sets it to `BlendNotifier.markRecentTargetUsed`.
   VoidCallback? onBlendTargetUsed;
 
   /// Takes the screen's live values and re-evaluates the automatic mix pick
@@ -672,34 +673,40 @@ class AnalysisSaveController extends ChangeNotifier {
   }
 
   /// Keeps the outcome of an OK press. One that saved complete uses up the
-  /// per-cylinder fields, and the Blend target when the entry has it; a
-  /// press that needs sign-off leaves them, so OK on the same cylinder again
-  /// still has them. The name, desired mix, tapped role, "for", copies and
-  /// print switch stay for the next cylinder.
+  /// per-cylinder fields; a press that needs sign-off leaves them, so OK on
+  /// the same cylinder again still has them. The name, desired mix, tapped
+  /// role, "for", copies and print switch stay for the next cylinder.
+  ///
+  /// Marking the Blend target used is the session's (`AnalyzerSession`),
+  /// which hears every press to the end, also one that finishes after Stop
+  /// or Disconnect when this form no longer listens. Here the press that
+  /// held the target only lets go of it ([_releaseTarget]).
   void _onOkResult(OkLogResult r) {
     if (_disposed) return;
     _okResult = r;
     _takenForResult = _takenBy(r);
     if (r.complete) _useUpTaken();
     final id = r.analysisId;
-    final heldTarget = _targetOfferedTo != null &&
-        identical(r.setupUsed?.setup, _targetOfferedTo);
-    if (r.complete && id != null && _unusedBlendTarget != null) {
-      unawaited(_useTargetIfSaved(id, releasing: heldTarget));
-    } else if (heldTarget) {
-      _targetOfferedTo = null;
+    if (_targetOfferedTo != null &&
+        identical(r.setupUsed?.setup, _targetOfferedTo)) {
+      if (r.complete && id != null) {
+        unawaited(_releaseTarget(id));
+      } else {
+        // Not saved complete: the target is still unused.
+        _targetOfferedTo = null;
+      }
     }
     notifyListeners();
     // Not awaited: the mix just used may be new to the chips.
     if (id != null) unawaited(_loadMixOptions());
   }
 
-  /// A complete OK save whose entry, read back as stored, has the Blend
-  /// target as its desired mix uses the target up. With [releasing] the
-  /// press held the target ([_targetOfferedTo]), and lets go of it once
-  /// this is known.
-  Future<void> _useTargetIfSaved(String id, {required bool releasing}) async {
-    final held = releasing ? _targetOfferedTo : null;
+  /// The press that held the Blend target saved complete: its entry is read
+  /// back, and then the target is let go of. When the entry has the target,
+  /// this form stops offering it at once, not only from the screen's next
+  /// build, which brings the session's used mark.
+  Future<void> _releaseTarget(String id) async {
+    final held = _targetOfferedTo;
     GasAnalysis? stored;
     try {
       stored = await _readStored(id);
@@ -707,13 +714,13 @@ class AnalysisSaveController extends ChangeNotifier {
       debugPrint('Analysis save card: reading the OK entry failed: $e');
     }
     if (_disposed) return;
-    final target = _blendTarget;
+    final target = _unusedBlendTarget;
     if (stored != null && target != null && stored.desiredMix == target) {
-      _useBlendTarget();
+      _unusedBlendTarget = null;
+      _autoPick = _pickFor(usableGas);
+      notifyListeners();
     }
-    if (held != null && identical(_targetOfferedTo, held)) {
-      _targetOfferedTo = null;
-    }
+    if (identical(_targetOfferedTo, held)) _targetOfferedTo = null;
   }
 
   /// The per-cylinder fields [r]'s own press took, or null when it did not

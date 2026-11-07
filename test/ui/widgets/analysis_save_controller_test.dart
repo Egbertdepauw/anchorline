@@ -268,8 +268,8 @@ void main() {
           setupUsed: setup,
         );
 
-    test('a complete result whose entry has the target uses it up',
-        () async {
+    test('a complete result whose entry has the target stops offering it; '
+        'the session marks it used', () async {
       final c = await make(blendTarget: target, unusedBlendTarget: target);
       var used = 0;
       c.onBlendTargetUsed = () => used++;
@@ -280,9 +280,11 @@ void main() {
       expect(first.setup.blendTarget, target);
       await stored('a1', target);
       logger.send(complete(first, 'a1'));
+      // Held until the entry is read back.
+      expect(c.okSetup().setup.blendTarget, isNull);
       await _settle();
 
-      expect(used, 1);
+      expect(used, 0, reason: 'the OK path is marked by AnalyzerSession');
       expect(c.unusedBlendTarget, isNull);
       expect(c.okSetup().setup.blendTarget, isNull);
     });

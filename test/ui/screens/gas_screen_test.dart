@@ -82,6 +82,7 @@ class _Rig {
     session = AnalyzerSession(
       settings: settings,
       analysesDao: dao,
+      blend: blend,
       controller: controller = AnalyzerController(elapsed: fakeElapsed(tester)),
       keepAwake: (_) async {},
       transportOptions: [

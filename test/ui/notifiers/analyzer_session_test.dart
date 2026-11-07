@@ -2,8 +2,12 @@ import 'dart:async';
 
 import 'package:ccrlogger/analyzer/analyzer_controller.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
+import 'package:ccrlogger/analyzer/bridge/record_to_analysis.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport_options.dart';
+import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
+import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
 import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
+import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -59,6 +63,13 @@ class _Rig {
   late AnalyzerController controller;
   late AnalyzerSession session;
   late BuildContext context;
+  late BlendNotifier blend;
+
+  /// The logger the session built last.
+  UsbOkLogger? logger;
+
+  /// While set, a label print waits for it, like a slow printer.
+  Completer<void>? printGate;
 
   Future<void> start(
     WidgetTester tester, {
@@ -69,16 +80,20 @@ class _Rig {
     settings = SettingsNotifier();
     await settings.load();
     if (logOnOk) await settings.setAnalyzerLogOnOk(true);
+    blend = BlendNotifier(settings: settings);
     controller = AnalyzerController(elapsed: fakeElapsed(tester));
     session = AnalyzerSession(
       settings: settings,
       analysesDao: withDao ? dao : null,
       controller: controller,
       keepAwake: (on) async => awake.add(on),
+      blend: blend,
       okLoggerFactory: () {
         loggersBuilt++;
-        return buildOkLogger(
-          dao: dao,
+        return logger = UsbOkLogger(
+          save: dao.addFromBridge,
+          markComplete: (id) => dao.setNeedsSignoff(id, false),
+          printLabel: (a, copies) async => printGate?.future,
           elapsed: fakeElapsed(tester),
           tickInterval: null,
         );
@@ -117,6 +132,24 @@ class _Rig {
   Future<void> end() async {
     if (!_sessionDisposed) session.dispose();
     controller.dispose();
+    blend.dispose();
+  }
+
+  /// [seconds] of readings, two lines a second, on the test clock.
+  Future<void> feed(WidgetTester tester, double o2, double he,
+      {int seconds = 25}) async {
+    for (var i = 0; i < seconds * 2; i++) {
+      solos.last.emitLine(_line(o2, he));
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+  }
+
+  /// The SOLO goes quiet for 2.2 s, as it does on OK; the test ticks the
+  /// logger by hand.
+  Future<void> pressOk(WidgetTester tester) async {
+    await tester.pump(const Duration(milliseconds: 2200));
+    logger!.tick();
+    await tester.pump();
   }
 }
 
@@ -282,6 +315,117 @@ void main() {
 
       await r.settings.setAnalyzerLogOnOk(false);
       expect(r.session.held, isFalse, reason: 'no logger, nothing held');
+    });
+  });
+
+  group('the Blend target on OK', () {
+    const target = DesiredMix(19, 40);
+
+    /// The save card's setup for every press: named, the mix picked per
+    /// press with the unused target, a label wanted.
+    void setUpPresses(_Rig r, {String? name = 'EdP'}) {
+      r.logger!.setupProvider = () => (
+            setup: LogOnOkSetup(
+              analysedBy: name,
+              autoPickMix: true,
+              blendTarget: r.blend.unusedRecentTarget(),
+              printOnOk: true,
+              printerConfigured: true,
+            ),
+            copies: 1,
+          );
+    }
+
+    /// A press of the target's gas whose label is still printing.
+    Future<void> pressWhilePrinting(WidgetTester tester, _Rig r) async {
+      r.printGate = Completer<void>();
+      await r.feed(tester, 19.6, 40.2);
+      await r.pressOk(tester);
+      expect(r.dao.addedFromBridge.single.$2.desiredMix, target);
+      expect(r.blend.unusedRecentTarget(), target, reason: 'still printing');
+    }
+
+    _test('Stop during the print still marks the target used',
+        (tester, r) async {
+      await r.start(tester);
+      r.blend.setTargetMix(19, 40);
+      await r.session.connectSelected(r.context);
+      setUpPresses(r);
+      await pressWhilePrinting(tester, r);
+
+      // Stop: the logger goes, its press goes on printing.
+      await r.settings.setAnalyzerLogOnOk(false);
+      expect(r.session.okLogger, isNull);
+      var told = 0;
+      r.session.addListener(() => told++);
+
+      r.printGate!.complete();
+      await tester.pumpAndSettle();
+      expect(r.dao.analyses.single.needsSignoff, isFalse, reason: 'complete');
+      expect(r.blend.unusedRecentTarget(), isNull);
+      expect(r.blend.recentTarget(), target);
+      expect(told, greaterThan(0), reason: 'the card hears of it');
+    });
+
+    _test('Disconnect during the print still marks the target used',
+        (tester, r) async {
+      await r.start(tester);
+      r.blend.setTargetMix(19, 40);
+      await r.session.connectSelected(r.context);
+      setUpPresses(r);
+      await pressWhilePrinting(tester, r);
+
+      await r.session.disconnect();
+      expect(r.session.okLogger, isNull);
+      r.printGate!.complete();
+      await tester.pumpAndSettle();
+      expect(r.dao.analyses.single.needsSignoff, isFalse);
+      expect(r.blend.unusedRecentTarget(), isNull);
+    });
+
+    _test('a press that needs sign-off leaves the target unused',
+        (tester, r) async {
+      await r.start(tester);
+      r.blend.setTargetMix(19, 40);
+      await r.session.connectSelected(r.context);
+      // No name: saved for sign-off, no label.
+      setUpPresses(r, name: null);
+      await r.feed(tester, 19.6, 40.2);
+      await r.pressOk(tester);
+      await tester.pumpAndSettle();
+      expect(r.dao.addedFromBridge.single.$2.desiredMix, target);
+      expect(r.dao.analyses.single.needsSignoff, isTrue);
+      expect(r.blend.unusedRecentTarget(), target);
+    });
+
+    _test('a complete press of another mix leaves the target unused',
+        (tester, r) async {
+      await r.start(tester);
+      r.blend.setTargetMix(19, 40);
+      await r.session.connectSelected(r.context);
+      setUpPresses(r);
+      await r.feed(tester, 20.6, 33.8);
+      await r.pressOk(tester);
+      await tester.pumpAndSettle();
+      expect(r.dao.analyses.single.desiredMix, const DesiredMix(21, 35));
+      expect(r.dao.analyses.single.needsSignoff, isFalse);
+      expect(r.blend.unusedRecentTarget(), target);
+    });
+
+    _test('a disposed session stops listening to a press still printing',
+        (tester, r) async {
+      await r.start(tester);
+      r.blend.setTargetMix(19, 40);
+      await r.session.connectSelected(r.context);
+      setUpPresses(r);
+      await pressWhilePrinting(tester, r);
+
+      r.disposeSession();
+      r.printGate!.complete();
+      await tester.pumpAndSettle();
+      // The press itself finished; the session, gone, marks nothing.
+      expect(r.dao.analyses.single.needsSignoff, isFalse);
+      expect(r.blend.unusedRecentTarget(), target);
     });
   });
 }

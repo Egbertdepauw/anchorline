@@ -194,16 +194,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       use14ForDeeperMixes: () =>
           widget.settingsNotifier.labelUse14ForDeeperMixes,
     );
-    _analyzerSession = AnalyzerSession(
-      settings: widget.settingsNotifier,
-      analysesDao: _gasAnalysesDao,
-      labelPrinting: _labelPrintService,
-    );
-    _divePlanNotifier = DivePlanNotifier(
-      dao: _divePlansDao,
-      settings: widget.settingsNotifier,
-    );
-    _divePlanNotifier.load();
     _blendNotifier = BlendNotifier(settings: widget.settingsNotifier);
     // Restores the Blend tab's target mix and pressure. Not awaited: the tab
     // shows its defaults until it lands. A failure (say a stored value of the
@@ -213,6 +203,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         debugPrint('Blend target restore failed: $e\n$st');
       }),
     );
+    // Log on OK uses up the Blend target, so the session gets the notifier.
+    _analyzerSession = AnalyzerSession(
+      settings: widget.settingsNotifier,
+      analysesDao: _gasAnalysesDao,
+      labelPrinting: _labelPrintService,
+      blend: _blendNotifier,
+    );
+    _divePlanNotifier = DivePlanNotifier(
+      dao: _divePlansDao,
+      settings: widget.settingsNotifier,
+    );
+    _divePlanNotifier.load();
     _importNotifier = ImportNotifier(
       dao: _diveDao,
       importStateDao: _importStateDao,
@@ -310,8 +312,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _syncHealthService.dispose();
     _diveListNotifier.dispose();
     _divePlanNotifier.dispose();
-    _blendNotifier.dispose();
+    // The session first: it uses the Blend notifier for Log on OK.
     _analyzerSession.dispose();
+    _blendNotifier.dispose();
     _importNotifier.dispose();
     _watermarkSuppressors.dispose();
     super.dispose();

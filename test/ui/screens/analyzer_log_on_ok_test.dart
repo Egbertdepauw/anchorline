@@ -149,10 +149,14 @@ class _Harness {
       settings = SettingsNotifier();
       await settings.load();
     }
+    blend = BlendNotifier(settings: settings)
+      ..setTargetMix(32, 0)
+      ..setTargetPressure(200);
     session = AnalyzerSession(
       settings: settings,
       analysesDao: withDao ? dao : null,
       labelPrinting: printing,
+      blend: blend,
       controller: controller = AnalyzerController(elapsed: fakeElapsed(tester)),
       keepAwake: (on) async => awake.add(on),
       transportOptions: [
@@ -179,9 +183,6 @@ class _Harness {
         return logger = l;
       },
     );
-    blend = BlendNotifier(settings: settings)
-      ..setTargetMix(32, 0)
-      ..setTargetPressure(200);
     await tester.pumpWidget(MaterialApp(
       theme: theme,
       home: Scaffold(
@@ -928,6 +929,35 @@ void main() {
       expect(h.dao.addedFromBridge.last.$2.desiredMix,
           isNot(const DesiredMix(19, 40)));
     });
+
+    _test('Stop while the Blend target\'s label prints still marks it used',
+        (tester, h) async {
+      final gate = Completer<void>();
+      h.fakePrinter = FakeLabelPrinter(printGate: gate);
+      await h.pump(tester);
+      h.blend.setTargetMix(19, 40);
+      await h.connect(tester);
+      await _start(tester);
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await tester.pump();
+
+      // The last cylinder of the batch: OK, then Stop while it prints.
+      await h.feed(tester, 19.6, 40.2);
+      await h.pressOk(tester);
+      expect(h.fakePrinter!.printed, hasLength(1));
+      await _stop(tester);
+      expect(h.loggerClosed, isFalse, reason: 'its press still prints');
+      expect(h.blend.unusedRecentTarget(), const DesiredMix(19, 40));
+
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(h.dao.analyses.single.needsSignoff, isFalse);
+      expect(h.dao.analyses.single.desiredMix, const DesiredMix(19, 40));
+      expect(h.blend.unusedRecentTarget(), isNull);
+      // A manual save of the same gas no longer gets the target's name.
+      expect(find.textContaining('the Blend target'), findsNothing);
+      expect(find.textContaining('the nearest standard mix'), findsNothing);
+    }, printer: true);
 
     _test('a press queued behind the Blend target\'s save does not get it',
         (tester, h) async {
