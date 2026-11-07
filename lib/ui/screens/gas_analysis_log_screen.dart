@@ -315,19 +315,23 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     final title = widget.cylinderId == null
         ? 'Analysis log'
         : 'Analyses · ${widget.cylinderLabel ?? 'Cylinder'}';
-    final body = items == null
+    final list = items == null
         ? const Center(child: CircularProgressIndicator())
         : items.isEmpty
             ? _empty(context)
             : _list(context, items);
-    if (widget.embedded) {
-      return Column(
-        children: [
-          _toolRow(context, items),
-          Expanded(child: body),
-        ],
-      );
-    }
+    // The one place the tool row is built. The Log tab always has it, for
+    // Export; the pushed screen has Export in its app bar, so it has the
+    // row only while there are entries to filter.
+    final body = widget.embedded || (items != null && items.isNotEmpty)
+        ? Column(
+            children: [
+              _toolRow(context, items),
+              Expanded(child: list),
+            ],
+          )
+        : list;
+    if (widget.embedded) return body;
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
@@ -347,7 +351,7 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
   Widget _list(BuildContext context, List<GasAnalysis> items) {
     final shown = _shown(items);
     final rows = _rows(shown);
-    final list = ListView.builder(
+    return ListView.builder(
       itemCount: rows.length,
       itemBuilder: (context, i) {
         final row = rows[i];
@@ -355,12 +359,6 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
             ? _dayHeader(context, row)
             : _tile(context, row as GasAnalysis);
       },
-    );
-    return Column(
-      children: [
-        _toolRow(context, items),
-        Expanded(child: list),
-      ],
     );
   }
 
@@ -405,9 +403,9 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
         ),
       );
 
-  /// The filter chips (only while an entry needs sign-off) and, on the
-  /// Log tab, Export at the right. The screen pushed from Equipment has
-  /// Export in its app bar.
+  /// The filter chips ("All n" while there are entries, "Needs sign-off n"
+  /// while one needs it) and, on the Log tab, Export at the right. The
+  /// screen pushed from Equipment has Export in its app bar.
   Widget _toolRow(BuildContext context, List<GasAnalysis>? items) {
     final flagged = items?.where((a) => a.needsSignoff).length ?? 0;
     return Padding(

@@ -198,6 +198,41 @@ void main() {
         isNull);
   });
 
+  testWidgets('the embedded log with entries has one tool row',
+      (tester) async {
+    await pump(
+        tester,
+        Scaffold(
+          body: GasAnalysisLogScreen(
+            dao: FakeGasAnalysesDao(analyses: [
+              entry('a1', DateTime(2026, 10, 30, 18), 32.1, 0),
+            ]),
+            embedded: true,
+          ),
+        ));
+    expect(_key('analysis-log-filter-all'), findsOneWidget);
+    expect(_key('analysis-log-export'), findsOneWidget);
+    expect(find.text('All 1'), findsOneWidget);
+  });
+
+  testWidgets('the pushed log has its chips in the body and Export in the '
+      'app bar', (tester) async {
+    await pump(tester, GasAnalysisLogScreen(dao: seeded()));
+    expect(_key('analysis-log-filter-all'), findsOneWidget);
+    expect(_key('analysis-log-export'), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byType(AppBar), matching: _key('analysis-log-export')),
+        findsOneWidget);
+  });
+
+  testWidgets('the pushed log with no entries has no tool row',
+      (tester) async {
+    await pump(tester, GasAnalysisLogScreen(dao: FakeGasAnalysesDao()));
+    expect(_key('analysis-log-filter-all'), findsNothing);
+    expect(_key('analysis-log-export'), findsOneWidget);
+  });
+
   testWidgets('a save elsewhere refreshes the list', (tester) async {
     final dao = FakeGasAnalysesDao();
     await pump(tester, GasAnalysisLogScreen(dao: dao));
