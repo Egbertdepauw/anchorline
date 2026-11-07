@@ -46,7 +46,7 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kAnalyzerLogOnOk = 'analyzer_log_on_ok';
   static const _kAnalyzerPrintOnOk = 'analyzer_print_on_ok';
   // The name the old save card remembered; read once to start "Your
-  // initials" on a device that had none (see load()).
+  // initials" on a device that had none, then removed (see load()).
   static const _kAnalyzerAnalysedBy = 'analyzer_analysed_by';
   static const _kYourInitials = 'your_initials';
   static const _kAnalyzerFillPressureStart = 'analyzer_fill_pressure_start_bar';
@@ -314,12 +314,18 @@ class SettingsNotifier extends ChangeNotifier {
     }
     _analyzerLogOnOk = prefs.getBool(_kAnalyzerLogOnOk) ?? false;
     _analyzerPrintOnOk = prefs.getBool(_kAnalyzerPrintOnOk) ?? true;
-    _yourInitials = prefs.getString(_kYourInitials);
+    _yourInitials = _initialsOrNull(prefs.getString(_kYourInitials));
     final rememberedName = prefs.getString(_kAnalyzerAnalysedBy);
-    if (_yourInitials == null && rememberedName != null) {
-      // Upgrade: the name remembered by the old save card becomes the initials.
-      _yourInitials = rememberedName;
-      await prefs.setString(_kYourInitials, rememberedName);
+    if (rememberedName != null) {
+      // Upgrade, once: the name remembered by the old save card becomes the
+      // initials, unless they are set already. The old key goes, so
+      // initials cleared later stay cleared.
+      final migrated = _initialsOrNull(rememberedName);
+      if (_yourInitials == null && migrated != null) {
+        _yourInitials = migrated;
+        await prefs.setString(_kYourInitials, migrated);
+      }
+      await prefs.remove(_kAnalyzerAnalysedBy);
     }
     _analyzerFillPressureStartBar =
         prefs.getDouble(_kAnalyzerFillPressureStart) ??
@@ -669,10 +675,15 @@ class SettingsNotifier extends ChangeNotifier {
     await prefs.setBool(_kAnalyzerPrintOnOk, v);
   }
 
+  /// [v] trimmed; null when that is blank.
+  static String? _initialsOrNull(String? v) {
+    final t = v?.trim();
+    return t == null || t.isEmpty ? null : t;
+  }
+
   /// Saves the diver's initials, trimmed. Blank means none.
   Future<void> setYourInitials(String? v) async {
-    final t = v?.trim();
-    final initials = t == null || t.isEmpty ? null : t;
+    final initials = _initialsOrNull(v);
     if (_yourInitials == initials) return;
     _yourInitials = initials;
     notifyListeners();

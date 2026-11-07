@@ -633,6 +633,57 @@ void main() {
           'JS');
     });
 
+    test('migrated initials that are cleared stay cleared on the next load',
+        () async {
+      SharedPreferences.setMockInitialValues({'analyzer_analysed_by': 'EdP'});
+      final s = SettingsNotifier();
+      await s.load();
+      expect(s.yourInitials, 'EdP');
+      await s.setYourInitials('');
+      expect(s.yourInitials, isNull);
+
+      final reloaded = SettingsNotifier();
+      await reloaded.load();
+      expect(reloaded.yourInitials, isNull);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('your_initials'), isNull);
+      expect(prefs.containsKey('analyzer_analysed_by'), isFalse);
+    });
+
+    test('the old name is migrated trimmed', () async {
+      SharedPreferences.setMockInitialValues(
+          {'analyzer_analysed_by': '  EdP '});
+      final s = SettingsNotifier();
+      await s.load();
+      expect(s.yourInitials, 'EdP');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('your_initials'), 'EdP');
+      expect(prefs.containsKey('analyzer_analysed_by'), isFalse);
+    });
+
+    test('a whitespace-only old name migrates to no initials', () async {
+      SharedPreferences.setMockInitialValues({'analyzer_analysed_by': '   '});
+      final s = SettingsNotifier();
+      await s.load();
+      expect(s.yourInitials, isNull);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('your_initials'), isNull);
+      expect(prefs.containsKey('analyzer_analysed_by'), isFalse);
+    });
+
+    test('a stored your_initials is trimmed, and a blank one is none',
+        () async {
+      SharedPreferences.setMockInitialValues({'your_initials': ' JS '});
+      final s = SettingsNotifier();
+      await s.load();
+      expect(s.yourInitials, 'JS');
+
+      SharedPreferences.setMockInitialValues({'your_initials': '  '});
+      final blank = SettingsNotifier();
+      await blank.load();
+      expect(blank.yourInitials, isNull);
+    });
+
     test('setYourInitials trims and a blank clears', () async {
       SharedPreferences.setMockInitialValues({});
       final s = SettingsNotifier();
