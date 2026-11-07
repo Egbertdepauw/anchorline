@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:ccrlogger/analyzer/analyzer_controller.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
 import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
+import 'package:ccrlogger/label_printer/label_bitmap.dart';
+import 'package:ccrlogger/labels/label_print_service.dart';
 import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
@@ -12,6 +14,7 @@ import 'package:ccrlogger/ui/screens/gas_screen.dart';
 import 'package:ccrlogger/ui/theme/app_themes.dart';
 import 'package:ccrlogger/ui/theme/safety_colors.dart';
 import 'package:ccrlogger/ui/theme/tokens.dart';
+import 'package:ccrlogger/ui/widgets/desired_mix_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../_helpers/fake_elapsed.dart';
 import '../../_helpers/fake_gas_analyses_dao.dart';
+import '../../_helpers/fake_label_printer.dart';
 
 Finder _key(String k) => find.byKey(ValueKey(k));
 
@@ -71,8 +75,11 @@ class _Rig {
   int homeTaps = 0;
 
   Future<void> pump(WidgetTester tester,
-      {bool logOnOk = false, ThemeData? theme}) async {
-    tester.view.physicalSize = const Size(600, 3200);
+      {bool logOnOk = false,
+      ThemeData? theme,
+      Size size = const Size(600, 3200),
+      LabelPrintService? labelPrinting}) async {
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     settings = SettingsNotifier();
@@ -82,6 +89,7 @@ class _Rig {
     session = AnalyzerSession(
       settings: settings,
       analysesDao: dao,
+      labelPrinting: labelPrinting,
       blend: blend,
       controller: controller = AnalyzerController(elapsed: fakeElapsed(tester)),
       keepAwake: (_) async {},
@@ -102,6 +110,7 @@ class _Rig {
         settings: settings,
         session: session,
         analysesDao: dao,
+        labelPrinting: labelPrinting,
         onHome: () => homeTaps++,
       ),
     ));
@@ -328,5 +337,48 @@ void main() {
     await _tab(tester, 'gas-tab-log');
     expect(find.byType(AppBar), findsNothing);
     expect(_key('analysis-log-export'), findsOneWidget);
+  });
+
+  _test('"Change desired mix" on the wide layout stays on the Analyse tab',
+      (tester, rig) async {
+    // A Mac at the bench, or an iPhone in landscape: the save card is the
+    // right-hand column.
+    const size = Size(1200, 800);
+    await rig.pump(
+      tester,
+      size: size,
+      labelPrinting: LabelPrintService(
+        render: (label) async => LabelBitmap.blank(384, 240),
+        printerFor: (_) => FakeLabelPrinter(),
+        scanner: FakeLabelPrinterScanner(),
+        printerId: () => 'dev-1',
+        use14ForDeeperMixes: () => false,
+      ),
+    );
+    rig.blend.setTargetMix(50, 0);
+    await tester.pump();
+    await _tab(tester, 'gas-tab-analyse');
+    await rig.connect(tester);
+    await rig.feed(tester, 32.0, 0);
+    // EAN50 against a 32 % reading: a hard mismatch.
+    await tester.tap(_key('desired-mix-50-0'));
+    await tester.pumpAndSettle();
+    await tester.tap(_key('analysis-save-print'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mix does not conform to analysis'), findsOneWidget);
+
+    await tester.tap(_key('mix-mismatch-change'));
+    await tester.pumpAndSettle();
+
+    final tabs =
+        DefaultTabController.of(tester.element(find.byType(TabBarView)));
+    expect(tabs.index, 1, reason: 'still on Analyse');
+    expect(rig.dao.added, isEmpty);
+    final picker = tester.getRect(find.byType(DesiredMixPicker));
+    final bar = tester.getRect(_key('analysis-action-bar'));
+    expect(picker.left, greaterThanOrEqualTo(0));
+    expect(picker.right, lessThanOrEqualTo(size.width));
+    expect(picker.top, greaterThanOrEqualTo(0));
+    expect(picker.bottom, lessThanOrEqualTo(bar.top));
   });
 }

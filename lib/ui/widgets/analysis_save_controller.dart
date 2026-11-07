@@ -480,10 +480,18 @@ class AnalysisSaveController extends ChangeNotifier {
     if (choice == MismatchChoice.changeMix) {
       final mixRow = mixRowKey.currentContext;
       if (mixRow != null && mixRow.mounted) {
-        await Scrollable.ensureVisible(
-          mixRow,
-          duration: const Duration(milliseconds: 300),
-        );
+        // Only the column the card scrolls in. [Scrollable.ensureVisible]
+        // scrolls every scrollable around it, the Gas tabs' page view too:
+        // on the wide layout, where the card is the right-hand column,
+        // that turned the page over to the Log tab.
+        final row = mixRow.findRenderObject();
+        final column = Scrollable.maybeOf(mixRow, axis: Axis.vertical);
+        if (row != null && column != null) {
+          await column.position.ensureVisible(
+            row,
+            duration: const Duration(milliseconds: 300),
+          );
+        }
       }
     }
     return choice == MismatchChoice.printAnalysed;
