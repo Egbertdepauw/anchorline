@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/material.dart' as material show Column;
 import 'package:powersync/powersync.dart' hide SyncStatus;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -481,10 +480,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             ),
         ],
       )),
-      body: material.Column(
-        children: [
-          SyncHealthBanner(service: _syncHealthService),
-          Expanded(
+      body: SyncHealthBannerColumn(
+        service: _syncHealthService,
             // Lets media surfaces anywhere in the IndexedStack — including
             // routes pushed onto the Dives tab's nested Navigator — find
             // the suppression counter and zero the watermark while mounted.
@@ -595,8 +592,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 },
               ),
             ),
-          ),
-        ],
       ),
       bottomNavigationBar: isLandscape ? null : ListenableBuilder(
         // The Gas item's dot follows the analyzer connection.

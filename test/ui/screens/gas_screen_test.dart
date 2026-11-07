@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:ccrlogger/analyzer/analyzer_controller.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
 import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
+import 'package:ccrlogger/sync/cloud/sync_health_service.dart';
 import 'package:ccrlogger/label_printer/label_bitmap.dart';
 import 'package:ccrlogger/labels/label_print_service.dart';
 import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
@@ -10,11 +11,13 @@ import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport_options.dart';
 import 'package:ccrlogger/ui/screens/gas_analysis_log_screen.dart';
+import 'package:ccrlogger/ui/components/tab_top_bar.dart';
 import 'package:ccrlogger/ui/screens/gas_screen.dart';
 import 'package:ccrlogger/ui/theme/app_themes.dart';
 import 'package:ccrlogger/ui/theme/safety_colors.dart';
 import 'package:ccrlogger/ui/theme/tokens.dart';
 import 'package:ccrlogger/ui/widgets/desired_mix_picker.dart';
+import 'package:ccrlogger/ui/widgets/sync_health_banner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
@@ -64,6 +67,23 @@ class _FakeSolo implements AnalyzerTransport {
   Future<void> dispose() async {}
 }
 
+/// A sync-health RPC that reports one slot holding [retainedMb] of WAL.
+class _FakeHealthClient implements SyncHealthClient {
+  _FakeHealthClient(this.retainedMb);
+
+  final int retainedMb;
+
+  @override
+  Future<List<SyncHealthSlot>> fetch() async => [
+        SyncHealthSlot(
+          slotName: 'powersync_test',
+          active: true,
+          walStatus: 'reserved',
+          retainedMb: retainedMb,
+        ),
+      ];
+}
+
 class _Rig {
   late SettingsNotifier settings;
   late BlendNotifier blend;
@@ -78,7 +98,8 @@ class _Rig {
       {bool logOnOk = false,
       ThemeData? theme,
       Size size = const Size(600, 3200),
-      LabelPrintService? labelPrinting}) async {
+      LabelPrintService? labelPrinting,
+      Widget Function(Widget gas)? around}) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -103,16 +124,17 @@ class _Rig {
         tickInterval: null,
       ),
     );
+    final gas = GasScreen(
+      blend: blend,
+      settings: settings,
+      session: session,
+      analysesDao: dao,
+      labelPrinting: labelPrinting,
+      onHome: () => homeTaps++,
+    );
     await tester.pumpWidget(MaterialApp(
       theme: theme,
-      home: GasScreen(
-        blend: blend,
-        settings: settings,
-        session: session,
-        analysesDao: dao,
-        labelPrinting: labelPrinting,
-        onHome: () => homeTaps++,
-      ),
+      home: around == null ? gas : around(gas),
     ));
     await tester.pumpAndSettle();
   }
@@ -380,5 +402,64 @@ void main() {
     expect(picker.right, lessThanOrEqualTo(size.width));
     expect(picker.top, greaterThanOrEqualTo(0));
     expect(picker.bottom, lessThanOrEqualTo(bar.top));
+  });
+
+  group('under the sync-health banner', () {
+    // An iPhone's status bar.
+    const inset = 59.0;
+
+    /// The Gas destination as the shell lays it out: no shell app bar, the
+    /// banner column as its body.
+    Widget shell(SyncHealthService health, Widget gas) => Scaffold(
+          body: SyncHealthBannerColumn(service: health, child: gas),
+        );
+
+    _test('a showing banner takes the status-bar inset, and the top bar '
+        'starts right under it', (tester, rig) async {
+      final health = SyncHealthService(_FakeHealthClient(300));
+      addTearDown(health.dispose);
+      await health.refresh();
+      tester.view.padding = const FakeViewPadding(top: inset);
+      await rig.pump(tester, around: (gas) => shell(health, gas));
+
+      final banner = tester.getRect(find.byType(SyncHealthBanner));
+      final bar = tester.getRect(find.byType(TabTopBar));
+      expect(banner.top, 0);
+      expect(banner.height, greaterThan(inset));
+      expect(bar.top, banner.bottom);
+      expect(bar.height, 56, reason: 'no second inset');
+    });
+
+    _test('with the banner hidden the top bar takes the inset itself',
+        (tester, rig) async {
+      // Never polled: nothing to show.
+      final health = SyncHealthService(_FakeHealthClient(300));
+      addTearDown(health.dispose);
+      tester.view.padding = const FakeViewPadding(top: inset);
+      await rig.pump(tester, around: (gas) => shell(health, gas));
+
+      expect(tester.getSize(find.byType(SyncHealthBanner)).height, 0);
+      final bar = tester.getRect(find.byType(TabTopBar));
+      expect(bar.top, 0);
+      expect(bar.height, 56 + inset);
+    });
+
+    _test('the banner showing later keeps the tab state and drops the inset',
+        (tester, rig) async {
+      final health = SyncHealthService(_FakeHealthClient(300));
+      addTearDown(health.dispose);
+      tester.view.padding = const FakeViewPadding(top: inset);
+      await rig.pump(tester, around: (gas) => shell(health, gas));
+      await _tab(tester, 'gas-tab-log');
+
+      await health.refresh();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GasAnalysisLogScreen), findsOneWidget,
+          reason: 'still on the Log tab');
+      final banner = tester.getRect(find.byType(SyncHealthBanner));
+      expect(tester.getRect(find.byType(TabTopBar)).top, banner.bottom);
+      expect(tester.getSize(find.byType(TabTopBar)).height, 56);
+    });
   });
 }
