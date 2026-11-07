@@ -106,8 +106,11 @@ class _BlendScreenState extends State<BlendScreen> {
                                 'blend-target-chip-${m.o2Percent}-${m.hePercent}'),
                             label: m.name,
                             selected: m == target,
-                            onTap: () =>
-                                n.setTargetMix(m.o2Percent, m.hePercent),
+                            onTap: () {
+                              // Release a focused field so it refreshes.
+                              FocusScope.of(context).unfocus();
+                              n.setTargetMix(m.o2Percent, m.hePercent);
+                            },
                           ),
                       ]),
                       const SizedBox(height: Spacing.sm),
@@ -186,7 +189,10 @@ class _BlendScreenState extends State<BlendScreen> {
                             'blend-topoff-chip-${m.o2Percent}-${m.hePercent}'),
                         label: m.name,
                         selected: m == topoff,
-                        onTap: () => n.setTopoff(m.o2Percent, m.hePercent),
+                        onTap: () {
+                          FocusScope.of(context).unfocus();
+                          n.setTopoff(m.o2Percent, m.hePercent);
+                        },
                       ),
                     _MixChip(
                       key: const ValueKey('blend-topoff-other'),
@@ -573,7 +579,7 @@ class _PlanBand extends StatelessWidget {
                 onTap: () => _showCost(context, r.cost),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(
-                      minHeight: 32, minWidth: 44),
+                      minHeight: 44, minWidth: 44),
                   child: Align(
                     alignment: Alignment.topRight,
                     child: Padding(

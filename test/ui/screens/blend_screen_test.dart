@@ -238,4 +238,22 @@ void main() {
       expect(tester.takeException(), isNull, reason: def.id);
     }
   });
+
+  testWidgets('a chip tap refreshes a focused field', (tester) async {
+    final n = await pumpBlend(tester);
+    final o2 = find.descendant(of: k('tgt-o2'), matching: find.byType(TextField));
+    final he = find.descendant(of: k('tgt-he'), matching: find.byType(TextField));
+    await tester.enterText(o2, '30');
+    await tester.pump();
+    await tester.tap(k('blend-target-chip-15-55'));
+    await tester.pump();
+    expect(n.targetOxygenPercent, 15);
+    expect(tester.widget<TextField>(o2).controller!.text, '15');
+    expect(tester.widget<TextField>(he).controller!.text, '55');
+  });
+
+  testWidgets('the cost hit area is at least 44 pt high', (tester) async {
+    await pumpBlend(tester, setup: tx2135);
+    expect(tester.getSize(k('blend-cost')).height, greaterThanOrEqualTo(44));
+  });
 }
