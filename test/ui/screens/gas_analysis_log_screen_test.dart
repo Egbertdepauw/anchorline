@@ -16,8 +16,8 @@ import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
 import 'package:ccrlogger/ui/screens/equipment/cylinder_detail_screen.dart';
 import 'package:ccrlogger/ui/screens/gas_analysis_log_screen.dart';
 import 'package:ccrlogger/ui/screens/gas_screen.dart';
+import 'package:ccrlogger/ui/theme/app_themes.dart';
 import 'package:ccrlogger/ui/theme/safety_colors.dart';
-import 'package:ccrlogger/ui/widgets/mix_match_indicator.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -132,17 +132,14 @@ void main() {
   testWidgets('lists newest first with whole-number mix names',
       (tester) async {
     await pump(tester, GasAnalysisLogScreen(dao: seeded()));
-    final titles = tester
-        .widgetList<ListTile>(find.byType(ListTile))
-        .map((t) => (t.title as Text).data)
-        .toList();
-    expect(titles, ['Tx21/35', 'EAN32']);
+    expect(find.byType(Dismissible), findsNWidgets(2));
+    expect(tester.getTopLeft(find.text('Tx21/35')).dy,
+        lessThan(tester.getTopLeft(find.text('EAN32')).dy));
     expect(find.textContaining('AL40 deco'), findsOneWidget);
     expect(find.textContaining('Egbert'), findsNWidgets(2));
     expect(find.textContaining('200 bar'), findsNWidgets(2));
-    // Stable flag: one warning (not stable), one check.
-    expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    // Stable flag: only the unstable entry says so.
+    expect(find.text('Saved before stable'), findsOneWidget);
   });
 
   testWidgets('per-cylinder view filters and titles by cylinder',
@@ -152,7 +149,7 @@ void main() {
         GasAnalysisLogScreen(
             dao: seeded(), cylinderId: 'c1', cylinderLabel: 'S80 left'));
     expect(find.text('Analyses · S80 left'), findsOneWidget);
-    expect(find.byType(ListTile), findsOneWidget);
+    expect(find.byType(Dismissible), findsOneWidget);
     expect(find.text('EAN32'), findsOneWidget);
   });
 
@@ -256,36 +253,146 @@ void main() {
   const mismatchTitle = 'Mix does not conform to analysis';
 
   group('tile', () {
-    testWidgets('shows the desired mix and how far the analysis is off it',
-        (tester) async {
+    testWidgets('rows lead with the analysed name and say the desired mix '
+        'in line 3', (tester) async {
+      final e = entry('m', DateTime(2026, 10, 30, 18, 5), 20.6, 33.8,
+          targetO2: 21, targetHe: 35, gasRole: GasRole.diluent);
+      await pump(tester,
+          GasAnalysisLogScreen(dao: FakeGasAnalysesDao(analyses: [e])));
+      expect(inTile('m', find.text('Tx21/34')), findsOneWidget);
+      expect(inTile('m', find.text('Matches Tx21/35')), findsOneWidget);
+      // Line 2: the measured numbers to one decimal, pressure and name.
+      expect(inTile('m', find.text('20.6 / 33.8 · 200 bar · Egbert')),
+          findsOneWidget);
+      expect(inTile('m', find.text('18:05')), findsOneWidget);
+      expect(inTile('m', find.textContaining('Desired')), findsNothing);
+    });
+
+    testWidgets('an orange entry says how far it is off', (tester) async {
       await pump(tester,
           GasAnalysisLogScreen(dao: FakeGasAnalysesDao(analyses: [tx()])));
       expect(inTile('tx', find.text('Tx23/34')), findsOneWidget);
-      expect(inTile('tx', find.text('Desired Tx21/35')), findsOneWidget);
-      expect(inTile('tx', find.byType(MixMatchIndicator)), findsOneWidget);
       expect(inTile('tx', find.text('O2 1.5 off Tx21/35')), findsOneWidget);
     });
 
-    testWidgets('an entry without a desired mix shows neither',
+    testWidgets('an entry without a desired mix has no line 3',
         (tester) async {
       await pump(tester,
           GasAnalysisLogScreen(dao: FakeGasAnalysesDao(analyses: [plain()])));
       expect(inTile('plain', find.text('EAN32')), findsOneWidget);
-      expect(inTile('plain', find.textContaining('Desired')), findsNothing);
-      expect(inTile('plain', find.byType(MixMatchIndicator)), findsNothing);
+      expect(inTile('plain', find.textContaining('Matches')), findsNothing);
+      expect(inTile('plain', find.textContaining(' off ')), findsNothing);
+      expect(inTile('plain', find.text('Saved before stable')), findsNothing);
     });
 
-    testWidgets('a diluent entry has a DIL marker, a bailout entry none',
-        (tester) async {
+    testWidgets('an unstable entry says Saved before stable', (tester) async {
+      final e = entry('u', DateTime(2026, 10, 30, 18, 5), 21, 35,
+          stable: false, targetO2: 21, targetHe: 35);
+      await pump(tester,
+          GasAnalysisLogScreen(dao: FakeGasAnalysesDao(analyses: [e])));
+      final text = find.text('Saved before stable');
+      expect(inTile('u', text), findsOneWidget);
+      expect(tester.widget<Text>(text).style?.color, SafetyColors.warning);
+      expect(inTile('u', find.text('Matches Tx21/35')), findsOneWidget);
+    });
+
+    testWidgets('the role tag says DIL or BO and an entry with no name says '
+        'so', (tester) async {
+      final noName = entry('nn', DateTime(2026, 10, 28, 9), 32, 0,
+          analysedBy: null);
       await pump(
           tester,
           GasAnalysisLogScreen(
-              dao: FakeGasAnalysesDao(analyses: [tx(), plain()])));
-      expect(_key('analysis-dil-tx'), findsOneWidget);
-      expect(find.descendant(
-              of: _key('analysis-dil-tx'), matching: find.text('DIL')),
+              dao: FakeGasAnalysesDao(analyses: [tx(), plain(), noName])));
+      expect(
+          find.descendant(
+              of: _key('analysis-role-tx'), matching: find.text('DIL')),
           findsOneWidget);
-      expect(_key('analysis-dil-plain'), findsNothing);
+      expect(
+          find.descendant(
+              of: _key('analysis-role-plain'), matching: find.text('BO')),
+          findsOneWidget);
+      expect(inTile('nn', find.textContaining('no name')), findsOneWidget);
+    });
+
+    testWidgets('a note shows as an icon on line 1', (tester) async {
+      final e = GasAnalysis(
+        id: 'n',
+        analysedAt: DateTime(2026, 10, 30, 18, 5),
+        o2Percent: 32,
+        hePercent: 0,
+        stable: true,
+        notes: 'Topped up',
+      );
+      await pump(tester,
+          GasAnalysisLogScreen(dao: FakeGasAnalysesDao(analyses: [e])));
+      expect(_key('analysis-notes-n'), findsOneWidget);
+      expect(_key('analysis-notes-tx'), findsNothing);
+    });
+
+    testWidgets('day separators group entries', (tester) async {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day, 9);
+      final yesterday = today.subtract(const Duration(days: 1));
+      final es = [
+        entry('t1', today.add(const Duration(hours: 2)), 32, 0),
+        entry('t2', today, 36, 0),
+        entry('y1', yesterday, 50, 0),
+        entry('o1', DateTime(2026, 9, 1, 10), 21, 35),
+      ];
+      await pump(tester,
+          GasAnalysisLogScreen(dao: FakeGasAnalysesDao(analyses: es)));
+      String key(DateTime d) =>
+          'analysis-day-${d.year.toString().padLeft(4, '0')}-'
+          '${d.month.toString().padLeft(2, '0')}-'
+          '${d.day.toString().padLeft(2, '0')}';
+      expect(find.descendant(of: _key(key(today)), matching: find.text('TODAY')),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: _key(key(yesterday)), matching: find.text('YESTERDAY')),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: _key('analysis-day-2026-09-01'),
+              matching: find.text('1 SEP 2026')),
+          findsOneWidget);
+      // One header per day, not per entry.
+      expect(find.byWidgetPredicate((w) =>
+              w.key is ValueKey &&
+              (w.key as ValueKey).value.toString().startsWith('analysis-day-')),
+          findsNWidgets(3));
+      // t1 and t2 sit under the same header, above yesterday's.
+      expect(tester.getTopLeft(_key(key(today))).dy,
+          lessThan(tester.getTopLeft(find.text('EAN36')).dy));
+      expect(tester.getTopLeft(find.text('EAN36')).dy,
+          lessThan(tester.getTopLeft(_key(key(yesterday))).dy));
+    });
+
+    testWidgets('the bailout edge uses a palette colour in every theme',
+        (tester) async {
+      for (final theme in AppThemes.all) {
+        await tester.pumpWidget(MaterialApp(
+          key: ValueKey(theme.id),
+          theme: theme.themeData,
+          home: GasAnalysisLogScreen(
+              dao: FakeGasAnalysesDao(analyses: [tx(), plain()])),
+        ));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: theme.id);
+        Color edge(String id) {
+          final box = tester.widget<Container>(find
+              .descendant(
+                  of: _key('analysis-$id'), matching: find.byType(Container))
+              .first);
+          return ((box.decoration as BoxDecoration).border as Border)
+              .left
+              .color;
+        }
+
+        expect(edge('tx'), theme.palette.accentPrimary, reason: theme.id);
+        expect(edge('plain'), theme.palette.textMuted, reason: theme.id);
+      }
     });
 
     testWidgets('the busiest tile fits a phone', (tester) async {
@@ -314,7 +421,7 @@ void main() {
             labelPrinting: _service(FakeLabelPrinter()),
           ));
       // A layout overflow would have failed the pump.
-      expect(_key('analysis-dil-busy'), findsOneWidget);
+      expect(_key('analysis-role-busy'), findsOneWidget);
       expect(inTile('busy', find.text('O2 7.6, He 26.6 off Tx18/45')),
           findsOneWidget);
       expect(_key('analysis-print-busy'), findsOneWidget);
@@ -457,7 +564,7 @@ void main() {
         expect(printer.printed.single.$2, 3);
         expect(rendered.single.mixName, 'EAN32');
         // The list shows the edit.
-        expect(inTile('ean', find.text('Desired EAN32')), findsOneWidget);
+        expect(inTile('ean', find.text('Matches EAN32')), findsOneWidget);
       });
 
       testWidgets('cancelling the edit prints nothing', (tester) async {
@@ -788,7 +895,6 @@ void main() {
   });
 
   group('needs sign-off', () {
-    const countKey = 'analysis-log-signoff-count';
     const filterKey = 'analysis-log-signoff-filter';
 
     /// Two flagged entries (newest) and one that is not.
@@ -800,9 +906,9 @@ void main() {
         ]);
 
     int tiles(WidgetTester tester) =>
-        tester.widgetList(find.byType(ListTile)).length;
+        tester.widgetList(find.byType(Dismissible)).length;
 
-    testWidgets('a flagged entry shows the badge and no print action',
+    testWidgets('a flagged entry shows the badge and a faded print action',
         (tester) async {
       await pump(
           tester,
@@ -824,7 +930,7 @@ void main() {
           of: _key('analysis-needs-signoff-a1'),
           matching: find.text('Needs sign-off')));
       expect(label.style?.color, SafetyColors.warning);
-      expect(_key('analysis-print-a1'), findsNothing);
+      expect(_key('analysis-print-a1'), findsOneWidget);
 
       // An entry that is signed off keeps its print action, and no badge.
       expect(_key('analysis-needs-signoff-a2'), findsNothing);
@@ -860,37 +966,58 @@ void main() {
           ));
       // A layout overflow would have failed the pump.
       expect(_key('analysis-needs-signoff-busy'), findsOneWidget);
-      expect(_key('analysis-dil-busy'), findsOneWidget);
-      expect(_key(countKey), findsOneWidget);
+      expect(_key('analysis-role-busy'), findsOneWidget);
       expect(_key(filterKey), findsOneWidget);
-      expect(_key('analysis-print-busy'), findsNothing);
+      expect(_key('analysis-print-busy'), findsOneWidget);
     });
 
-    testWidgets('the count line counts flagged entries and filters to them',
+    testWidgets("a flagged entry's print button is faded and explains on tap",
         (tester) async {
+      final printer = FakeLabelPrinter();
+      await pump(
+          tester,
+          GasAnalysisLogScreen(
+            dao: FakeGasAnalysesDao(analyses: [
+              entry('a1', DateTime(2026, 10, 30, 18), 32.2, 0,
+                  needsSignoff: true),
+              entry('a2', DateTime(2026, 10, 29, 18), 50.3, 0),
+            ]),
+            labelPrinting: _service(printer),
+          ));
+      Opacity fade(String id) => tester.widget<Opacity>(find.ancestor(
+          of: _key('analysis-print-$id'), matching: find.byType(Opacity)));
+      expect(fade('a1').opacity, 0.35);
+      expect(fade('a2').opacity, 1);
+
+      await tapAndSettle(tester, _key('analysis-print-a1'));
+      expect(find.text(kSignOffBeforePrintMessage), findsOneWidget);
+      // No copies prompt, nothing printed.
+      expect(_key('copies-dialog-print'), findsNothing);
+      expect(printer.printed, isEmpty);
+    });
+
+    testWidgets('the sign-off chip filters, and All restores', (tester) async {
       await pump(tester, GasAnalysisLogScreen(dao: twoFlagged()));
-      expect(tester.widget<Text>(_key(countKey)).data,
-          '2 analyses need sign-off');
       expect(find.descendant(
-              of: _key(filterKey), matching: find.text('Show only these')),
+              of: _key(filterKey), matching: find.text('Needs sign-off 2')),
           findsOneWidget);
+      expect(tester.widget<FilterChip>(_key('analysis-log-filter-all')).selected,
+          isTrue);
       expect(tiles(tester), 3);
 
       await tapAndSettle(tester, _key(filterKey));
       expect(tiles(tester), 2);
       expect(_key('analysis-ok'), findsNothing);
       expect(tester.widget<FilterChip>(_key(filterKey)).selected, isTrue);
-      // The count stays what it is: the filter doesn't hide the line.
-      expect(tester.widget<Text>(_key(countKey)).data,
-          '2 analyses need sign-off');
+      // The count stays what it is: the filter doesn't hide the chip.
+      expect(find.text('Needs sign-off 2'), findsOneWidget);
 
-      await tapAndSettle(tester, _key(filterKey));
+      await tapAndSettle(tester, _key('analysis-log-filter-all'));
       expect(tiles(tester), 3);
       expect(tester.widget<FilterChip>(_key(filterKey)).selected, isFalse);
     });
 
-    testWidgets('one flagged entry: "1 analysis needs sign-off"',
-        (tester) async {
+    testWidgets('the chip counts one flagged entry', (tester) async {
       await pump(
           tester,
           GasAnalysisLogScreen(
@@ -899,14 +1026,13 @@ void main() {
                 needsSignoff: true),
             entry('ok', DateTime(2026, 10, 28, 18), 50.3, 0),
           ])));
-      expect(tester.widget<Text>(_key(countKey)).data,
-          '1 analysis needs sign-off');
+      expect(find.text('Needs sign-off 1'), findsOneWidget);
     });
 
-    testWidgets('no flagged entries: no count line', (tester) async {
+    testWidgets('no flagged entries: no chips', (tester) async {
       await pump(tester, GasAnalysisLogScreen(dao: seeded()));
-      expect(_key(countKey), findsNothing);
       expect(_key(filterKey), findsNothing);
+      expect(_key('analysis-log-filter-all'), findsNothing);
       expect(find.textContaining('sign-off'), findsNothing);
       expect(tiles(tester), 2);
     });
@@ -921,13 +1047,12 @@ void main() {
       // Signed off elsewhere, one at a time.
       await dao.setNeedsSignoff('f1', false);
       await tester.pumpAndSettle();
-      expect(tester.widget<Text>(_key(countKey)).data,
-          '1 analysis needs sign-off');
+      expect(find.text('Needs sign-off 1'), findsOneWidget);
       expect(tiles(tester), 1);
 
       await dao.setNeedsSignoff('f2', false);
       await tester.pumpAndSettle();
-      expect(_key(countKey), findsNothing);
+      expect(_key(filterKey), findsNothing);
       expect(tiles(tester), 3, reason: 'nothing left to filter to');
 
       // Flagged again later: the old filter does not come back by itself.
@@ -1050,7 +1175,7 @@ void main() {
         (tester) async {
       final dao = FakeGasAnalysesDao(analyses: [tx(), ean()]);
       await pump(tester, GasAnalysisLogScreen(dao: dao));
-      expect(_key('analysis-dil-tx'), findsOneWidget);
+      expect(_key('analysis-role-tx'), findsOneWidget);
 
       await tapAndSettle(tester, find.text('Tx23/34'));
       await tapAndSettle(tester, _key('desired-mix-50-0'));
@@ -1066,8 +1191,11 @@ void main() {
       expect(edit.analysedBy, 'EdP');
       expect(edit.notes, 'Topped up');
       expect(_key('analysis-edit-sheet'), findsNothing);
-      expect(_key('analysis-dil-tx'), findsNothing);
-      expect(inTile('tx', find.text('Desired EAN50')), findsOneWidget);
+      expect(
+          find.descendant(
+              of: _key('analysis-role-tx'), matching: find.text('BO')),
+          findsOneWidget);
+      expect(inTile('tx', find.textContaining('off EAN50')), findsOneWidget);
       expect(inTile('tx', find.textContaining('EdP')), findsOneWidget);
       // The measured values are as they were.
       expect(inTile('tx', find.text('Tx23/34')), findsOneWidget);
