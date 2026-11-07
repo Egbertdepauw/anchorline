@@ -39,6 +39,9 @@ class BlendNotifier extends ChangeNotifier {
   static const _kTargetPressureBar = 'blend_target_pressure_bar';
   // The time of the last edit of any Blend input, not only the target.
   static const _kLastEditedAt = 'blend_target_edited_at';
+  // One blend is one cylinder: set once a complete save used the target,
+  // cleared by the next Blend edit.
+  static const _kTargetUsed = 'blend_target_used';
 
   /// How long after the diver last edited a Blend input the target still
   /// counts as "the mix they are blending" for [recentTarget].
@@ -65,6 +68,7 @@ class BlendNotifier extends ChangeNotifier {
   // pressure in this session. A loadTarget that finishes after that must
   // not overwrite their edit, or the edit time.
   bool _editedThisSession = false;
+  bool _targetUsed = false;
   bool _mixEditedThisSession = false;
   bool _pressureEditedThisSession = false;
   bool _disposed = false;
@@ -200,6 +204,21 @@ class BlendNotifier extends ChangeNotifier {
     return DesiredMix(_targetOxygenPercent, _targetHeliumPercent);
   }
 
+  /// [recentTarget], unless a complete save has already used it. The
+  /// analyzer picks from this, so one blend isn't offered to a second
+  /// cylinder; the chips keep using [recentTarget].
+  DesiredMix? unusedRecentTarget() => _targetUsed ? null : recentTarget();
+
+  /// Marks the current target as used by a saved analysis. The next Blend
+  /// edit clears it. Listeners hear of it, so the Analyse tab stops offering
+  /// the target also when the sign-off that used it was on the Log tab.
+  Future<void> markRecentTargetUsed() async {
+    if (_targetUsed) return;
+    _targetUsed = true;
+    if (!_disposed) notifyListeners();
+    await _storeTargetUsed(true);
+  }
+
   /// Restores the target saved on this device. Call it once at startup; it
   /// needn't be awaited. Anything the diver changed before it finishes is
   /// kept. The edit time is restored as stored, not reset to now.
@@ -220,6 +239,7 @@ class BlendNotifier extends ChangeNotifier {
     final editedAtMs = prefs.getInt(_kLastEditedAt);
     if (!_editedThisSession && editedAtMs != null) {
       _lastEditedAt = DateTime.fromMillisecondsSinceEpoch(editedAtMs);
+      _targetUsed = prefs.getBool(_kTargetUsed) ?? false;
     }
     _markDirty();
   }
@@ -229,6 +249,8 @@ class BlendNotifier extends ChangeNotifier {
   /// the device. Fire-and-forget, like SettingsNotifier's setters.
   void _markEdited() {
     _editedThisSession = true;
+    _targetUsed = false;
+    unawaited(_storeTargetUsed(false));
     final editedAt = _lastEditedAt = _now();
     unawaited(_storeEditedAt(editedAt));
   }
@@ -238,6 +260,11 @@ class BlendNotifier extends ChangeNotifier {
   Future<void> _storeEditedAt(DateTime editedAt) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kLastEditedAt, editedAt.millisecondsSinceEpoch);
+  }
+
+  Future<void> _storeTargetUsed(bool used) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kTargetUsed, used);
   }
 
   Future<void> _storeTargetMix(int o2, int he) async {

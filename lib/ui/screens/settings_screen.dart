@@ -3,12 +3,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:powersync/powersync.dart' hide SyncStatus, Column;
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
-import '../../build_info.dart';
 import '../../data/db/database.dart';
 import '../../data/db/dive_dao.dart';
 import '../../dev/fixture_seeder.dart';
@@ -23,12 +21,14 @@ import '../../sync/subsurface_git/bootstrap_importer.dart';
 import '../../sync/subsurface_git/credentials.dart';
 import '../../sync/subsurface_git/sync_orchestrator.dart';
 import '../dev/widgetbook_screen.dart';
+import '../components/tab_top_bar.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/app_themes.dart';
-import '../theme/tokens.dart';
-import '../widgets/label_printer_settings_section.dart';
-import '../widgets/subsurface_sync_section.dart';
-import '../widgets/theme_picker.dart';
+import 'settings/about_tab.dart';
+import 'settings/general_tab.dart';
+import 'settings/gas_tab.dart';
+import 'settings/planning_tab.dart';
+import 'settings/sync_tab.dart';
 
 class SettingsScreen extends StatefulWidget {
   final SettingsNotifier notifier;
@@ -70,9 +70,13 @@ class SettingsScreen extends StatefulWidget {
   /// on in every build; kept as a parameter so tests can hide the section.
   final bool showThemePicker;
 
+  /// The anchor in the top bar: back to the home screen.
+  final VoidCallback onHome;
+
   const SettingsScreen({
     super.key,
     required this.notifier,
+    required this.onHome,
     this.authService,
     this.syncStatusSource,
     this.db,
@@ -108,530 +112,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = widget.authService;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      // Tap-outside-to-dismiss + drag-to-dismiss for the numeric
-      // keyboard. Several settings rows (blender prices, OC SAC,
-      // temps, etc.) open the number pad which has no Return key on
-      // iOS — without this the diver gets trapped behind the keyboard.
-      body: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: ListenableBuilder(
-        listenable: widget.notifier,
-        builder: (context, _) {
-          return ListView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              children: [
-          if (auth != null)
-            ListenableBuilder(
-              listenable: auth,
-              builder: (_, _) => _AccountSection(
-                authService: auth,
+    final canReset = widget.db != null && widget.powerSyncDb != null;
+    return DefaultTabController(
+      length: 5,
+      child: Scaffold(
+        appBar: TabTopBar(
+          onHome: widget.onHome,
+          tabs: const [
+            _SettingsTab(key: ValueKey('settings-tab-general'), label: 'General'),
+            _SettingsTab(
+                key: ValueKey('settings-tab-planning'), label: 'Planning'),
+            _SettingsTab(key: ValueKey('settings-tab-gas'), label: 'Gas'),
+            _SettingsTab(key: ValueKey('settings-tab-sync'), label: 'Sync'),
+            _SettingsTab(key: ValueKey('settings-tab-about'), label: 'About'),
+          ],
+        ),
+        // Tap-outside-to-dismiss + drag-to-dismiss for the numeric
+        // keyboard. Several settings rows (blender prices, temps, fill
+        // pressure) open the number pad which has no Return key on iOS —
+        // without this the diver gets trapped behind the keyboard.
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: TabBarView(
+            children: [
+              GeneralTab(
+                notifier: widget.notifier,
+                showThemePicker: widget.showThemePicker,
+              ),
+              PlanningTab(notifier: widget.notifier),
+              GasSettingsTab(
+                notifier: widget.notifier,
+                labelPrinting: widget.labelPrinting,
+              ),
+              SyncTab(
+                authService: widget.authService,
                 syncStatusSource: widget.syncStatusSource,
+                subsurfaceOrchestrator: widget.subsurfaceOrchestrator,
+                subsurfaceCredentials: widget.subsurfaceCredentials,
+                diveDao: widget.diveDao,
+                subsurfaceBootstrapImporter: widget.subsurfaceBootstrapImporter,
+                onReassign: _forceStampOwnerId,
+                onPushStuck: _drainQueueManually,
+                onReset: canReset ? _confirmAndResetLocalData : null,
               ),
-            ),
-          if (widget.showThemePicker) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: Text(
-                'Appearance',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-            ),
-            ThemePicker(notifier: widget.notifier),
-            const Divider(height: 32),
-          ],
-          SwitchListTile(
-            title: const Text('Use speed coloured graph'),
-            subtitle: const Text(
-                'Colour the depth trace by vertical speed (red above 9 m/min)'),
-            value: widget.notifier.useSpeedColoredGraph,
-            onChanged: (v) => widget.notifier.setUseSpeedColoredGraph(v),
-          ),
-          ListenableBuilder(
-            listenable: widget.notifier,
-            builder: (context, _) {
-              return SwitchListTile(
-                title: const Text('Count O₂ as narcotic in END'),
-                subtitle: const Text(
-                    'On: N₂ + O₂ both count (TDI/IANTD/US-Navy). Off: only N₂ counts (GUE/DIR).'),
-                value: widget.notifier.endCountsOxygen,
-                onChanged: (v) => widget.notifier.setEndCountsOxygen(v),
-              );
-            },
-          ),
-          ListenableBuilder(
-            listenable: widget.notifier,
-            builder: (context, _) {
-              final value = widget.notifier.watermarkOpacity;
-              return ListTile(
-                title: const Text('Watermark opacity'),
-                subtitle: Text(value == 0
-                    ? 'Hidden'
-                    : '${(value * 100).toStringAsFixed(0)}%'),
-                trailing: SizedBox(
-                  width: 180,
-                  child: Slider(
-                    value: value,
-                    min: 0,
-                    max: 0.20,
-                    divisions: 20,
-                    onChanged: (v) => widget.notifier.setWatermarkOpacity(v),
-                  ),
-                ),
-              );
-            },
-          ),
-          const Divider(height: 32),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Text(
-              'Bailout planning',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-          ),
-          ListTile(
-            title: const Text('Bailout SAC — bottom phase'),
-            subtitle: Text(
-                '${widget.notifier.bailoutSacBottom} L/min — used until ascent slows at first switch or half-pressure'),
-            trailing: SizedBox(
-              width: 160,
-              child: Slider(
-                value: widget.notifier.bailoutSacBottom.toDouble(),
-                min: 10,
-                max: 60,
-                divisions: 50,
-                onChanged: (v) =>
-                    widget.notifier.setBailoutSacBottom(v.round()),
-              ),
-            ),
-          ),
-          ListTile(
-            title: const Text('Bailout SAC — deco phase'),
-            subtitle: Text(
-                '${widget.notifier.bailoutSacDeco} L/min — used from first deco stop to surface'),
-            trailing: SizedBox(
-              width: 160,
-              child: Slider(
-                value: widget.notifier.bailoutSacDeco.toDouble(),
-                min: 10,
-                max: 60,
-                divisions: 50,
-                onChanged: (v) =>
-                    widget.notifier.setBailoutSacDeco(v.round()),
-              ),
-            ),
-          ),
-          ListTile(
-            title: const Text('Ascent rate — fast (bottom to first stop)'),
-            subtitle: Text(
-                '${widget.notifier.bailoutAscentRateFast} m/min — used from depth to first deco stop'),
-            trailing: SizedBox(
-              width: 160,
-              child: Slider(
-                value: widget.notifier.bailoutAscentRateFast.toDouble(),
-                min: 3,
-                max: 30,
-                divisions: 27,
-                onChanged: (v) =>
-                    widget.notifier.setBailoutAscentRateFast(v.round()),
-              ),
-            ),
-          ),
-          ListTile(
-            title: const Text('Ascent rate — slow (deco stops)'),
-            subtitle: Text(
-                '${widget.notifier.bailoutAscentRateSlow} m/min — used between deco stops and to the surface'),
-            trailing: SizedBox(
-              width: 160,
-              child: Slider(
-                value: widget.notifier.bailoutAscentRateSlow.toDouble(),
-                min: 3,
-                max: 30,
-                divisions: 27,
-                onChanged: (v) =>
-                    widget.notifier.setBailoutAscentRateSlow(v.round()),
-              ),
-            ),
-          ),
-          SwitchListTile(
-            title: const Text('Diluent is bailout-capable (GUE / D7 config)'),
-            subtitle: const Text(
-                'Off: assumes 2–3 L diluent, recommends a bottom-mix BO cylinder. '
-                'On: assumes diluent is sized for OC bailout.'),
-            value: widget.notifier.gueDiluentConfig,
-            onChanged: (v) => widget.notifier.setGueDiluentConfig(v),
-          ),
-          SwitchListTile(
-            title: const Text('6.8 L / 300 bar stage available'),
-            subtitle: const Text(
-                'Include a 6.8 L 300 bar stage when computing bailout gas volumes.'),
-            value: widget.notifier.tank68L300Available,
-            onChanged: (v) => widget.notifier.setTank68L300Available(v),
-          ),
-          SwitchListTile(
-            title: const Text('12 L / 300 bar stage available'),
-            subtitle: const Text(
-                'Include a 12 L 300 bar stage when computing bailout gas volumes.'),
-            value: widget.notifier.tank12L300Available,
-            onChanged: (v) => widget.notifier.setTank12L300Available(v),
-          ),
-          const Divider(height: 32),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Text(
-              'Gas blending',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-          ),
-          ListTile(
-            title: const Text('O₂ price per litre'),
-            subtitle: Text(
-                '${widget.notifier.blendOxygenCostPerLitre.toStringAsFixed(3)} / L — '
-                'used to cost the O₂ side of a blend'),
-            trailing: SizedBox(
-              width: 120,
-              child: TextFormField(
-                key: const ValueKey('settings-blend-o2-cost'),
-                initialValue: widget.notifier.blendOxygenCostPerLitre
-                    .toStringAsFixed(3),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                textAlign: TextAlign.end,
-                onChanged: (s) {
-                  final v = double.tryParse(s);
-                  if (v != null) {
-                    widget.notifier.setBlendOxygenCostPerLitre(v);
-                  }
-                },
-              ),
-            ),
-          ),
-          ListTile(
-            title: const Text('He price per litre'),
-            subtitle: Text(
-                '${widget.notifier.blendHeliumCostPerLitre.toStringAsFixed(3)} / L — '
-                'used to cost the helium side of a blend'),
-            trailing: SizedBox(
-              width: 120,
-              child: TextFormField(
-                key: const ValueKey('settings-blend-he-cost'),
-                initialValue: widget.notifier.blendHeliumCostPerLitre
-                    .toStringAsFixed(3),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                textAlign: TextAlign.end,
-                onChanged: (s) {
-                  final v = double.tryParse(s);
-                  if (v != null) {
-                    widget.notifier.setBlendHeliumCostPerLitre(v);
-                  }
-                },
-              ),
-            ),
-          ),
-          ListTile(
-            title: const Text('Air / EAN top-off flat fee'),
-            subtitle: Text(
-                '${widget.notifier.blendAirFlatFee.toStringAsFixed(2)} per fill — '
-                'shop fill charge, applied whenever the blend uses a top-off'),
-            trailing: SizedBox(
-              width: 120,
-              child: TextFormField(
-                key: const ValueKey('settings-blend-air-fee'),
-                initialValue:
-                    widget.notifier.blendAirFlatFee.toStringAsFixed(2),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                textAlign: TextAlign.end,
-                onChanged: (s) {
-                  final v = double.tryParse(s);
-                  if (v != null) widget.notifier.setBlendAirFlatFee(v);
-                },
-              ),
-            ),
-          ),
-          ListTile(
-            title: const Text('Default top-off mix'),
-            subtitle: Text(
-                '${widget.notifier.blendTopoffOxygenPercent}/'
-                '${widget.notifier.blendTopoffHeliumPercent} — '
-                'pre-fills the top-off field on the Blend tab'),
-            trailing: SizedBox(
-              width: 180,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 70,
-                    child: TextFormField(
-                      key: const ValueKey('settings-blend-topoff-o2'),
-                      initialValue:
-                          '${widget.notifier.blendTopoffOxygenPercent}',
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(suffixText: '%'),
-                      onChanged: (s) {
-                        final v = int.tryParse(s);
-                        if (v != null) {
-                          widget.notifier.setBlendTopoff(v,
-                              widget.notifier.blendTopoffHeliumPercent);
-                        }
-                      },
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Text('/'),
-                  ),
-                  SizedBox(
-                    width: 70,
-                    child: TextFormField(
-                      key: const ValueKey('settings-blend-topoff-he'),
-                      initialValue:
-                          '${widget.notifier.blendTopoffHeliumPercent}',
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(suffixText: '%'),
-                      onChanged: (s) {
-                        final v = int.tryParse(s);
-                        if (v != null) {
-                          widget.notifier.setBlendTopoff(
-                              widget.notifier.blendTopoffOxygenPercent, v);
-                        }
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          ListTile(
-            title: const Text('Default fill order'),
-            subtitle: const Text(
-                'Used as the starting fill order on the Blend tab; '
-                'override per blend on the tab itself.'),
-            trailing: SizedBox(
-              width: 200,
-              child: DropdownButton<String>(
-                key: const ValueKey('settings-blend-sequence'),
-                value: widget.notifier.blendFillSequence,
-                isDense: true,
-                isExpanded: true,
-                items: const [
-                  DropdownMenuItem(
-                    value: 'heThenO2ThenTopoff',
-                    child: Text('He → O₂ → top-off'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'o2ThenHeThenTopoff',
-                    child: Text('O₂ → He → top-off'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'o2ThenTopoffThenHe',
-                    child: Text('O₂ → top-off → He'),
-                  ),
-                ],
-                onChanged: (v) {
-                  if (v != null) widget.notifier.setBlendFillSequence(v);
-                },
-              ),
-            ),
-          ),
-          SwitchListTile(
-            title: const Text('Real-gas Z-factor correction'),
-            subtitle: const Text(
-                'On: van der Waals real-gas math (matches reference '
-                'blender tools). Off: ideal-gas math.'),
-            value: widget.notifier.blendUseRealGas,
-            onChanged: (v) => widget.notifier.setBlendUseRealGas(v),
-          ),
-          ListTile(
-            title: const Text('Default fill temperature'),
-            subtitle: Text(
-                '${widget.notifier.blendFillTempC.toStringAsFixed(0)} °C — '
-                'cylinder temperature during blending; affects how many '
-                'moles fit at gauge pressure'),
-            trailing: SizedBox(
-              width: 100,
-              child: TextFormField(
-                key: const ValueKey('settings-blend-fill-temp'),
-                initialValue: widget.notifier.blendFillTempC.toStringAsFixed(0),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                textAlign: TextAlign.end,
-                decoration: const InputDecoration(suffixText: '°C'),
-                onChanged: (s) {
-                  final v = double.tryParse(s);
-                  if (v != null) widget.notifier.setBlendFillTempC(v);
-                },
-              ),
-            ),
-          ),
-          ListTile(
-            title: const Text('Default settled temperature'),
-            subtitle: Text(
-                '${widget.notifier.blendSettledTempC.toStringAsFixed(0)} °C — '
-                'where the cylinder ends up after cooling; when this '
-                'differs from fill temp the blender adds hot-fill '
-                'compensation'),
-            trailing: SizedBox(
-              width: 100,
-              child: TextFormField(
-                key: const ValueKey('settings-blend-settled-temp'),
-                initialValue:
-                    widget.notifier.blendSettledTempC.toStringAsFixed(0),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                textAlign: TextAlign.end,
-                decoration: const InputDecoration(suffixText: '°C'),
-                onChanged: (s) {
-                  final v = double.tryParse(s);
-                  if (v != null) widget.notifier.setBlendSettledTempC(v);
-                },
-              ),
-            ),
-          ),
-          const Divider(height: 32),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Text(
-              'Gas analyzer',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-          ),
-          ListenableBuilder(
-            listenable: widget.notifier,
-            builder: (context, _) => ListTile(
-              title: const Text('MOD ppO₂ limits'),
-              subtitle: Text(
-                  '${widget.notifier.analyzerModPpo2s.map((v) => v.toStringAsFixed(2)).join(', ')} bar — '
-                  'one MOD row per limit on the analyzer screen (1.1 = CCR diluent)'),
-              trailing: SizedBox(
-                width: 140,
-                child: TextFormField(
-                  key: const ValueKey('settings-analyzer-mod-ppo2s'),
-                  initialValue: widget.notifier.analyzerModPpo2s
-                      .map((v) => v.toString())
-                      .join(', '),
-                  keyboardType: TextInputType.text,
-                  textAlign: TextAlign.end,
-                  onChanged: (s) {
-                    final parts = s
-                        .split(RegExp(r'[,;\s]+'))
-                        .where((p) => p.isNotEmpty)
-                        .map(double.tryParse)
-                        .toList();
-                    if (parts.isEmpty || parts.contains(null)) return;
-                    widget.notifier
-                        .setAnalyzerModPpo2s(parts.whereType<double>());
-                  },
+              AboutTab(
+                onShareBleLog: _shareBleDebugLog,
+                onLongPressLogo: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const WidgetbookScreen()),
                 ),
               ),
-            ),
+            ],
           ),
-          if (widget.labelPrinting != null) ...[
-            const Divider(height: 32),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: Text(
-                'Label printer',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-            ),
-            LabelPrinterSettingsSection(
-              settings: widget.notifier,
-              printing: widget.labelPrinting!,
-            ),
-          ],
-          if (widget.subsurfaceOrchestrator != null &&
-              widget.subsurfaceCredentials != null &&
-              widget.diveDao != null) ...[
-            const Divider(height: 32),
-            SubsurfaceSyncSection(
-              credentials: widget.subsurfaceCredentials!,
-              isPlatformSupported:
-                  widget.subsurfaceOrchestrator!.isPlatformSupported,
-              onSync: widget.subsurfaceOrchestrator!.syncNow,
-              lastSyncedAt: widget.diveDao!.lastSubsurfaceUploadedAt,
-              onBootstrapImport: widget.subsurfaceBootstrapImporter == null
-                  ? null
-                  : () => widget.subsurfaceBootstrapImporter!.import(),
-            ),
-          ],
-          if (widget.db != null && widget.powerSyncDb != null) ...[
-            const Divider(height: 32),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: Text(
-                'Danger zone',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-              ),
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.delete_forever_outlined,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              title: const Text('Reset local data'),
-              subtitle: const Text(
-                  'Wipes imported dives + local sync state. Cloud data is unaffected; if signed in, it re-syncs after restart.'),
-              onTap: _confirmAndResetLocalData,
-            ),
-          ],
-          const Divider(height: 32),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Text(
-              'Diagnostics',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.bug_report_outlined),
-            title: const Text('Share BLE debug log'),
-            subtitle: const Text(
-                'Exports the Bluetooth import trace so the developer can diagnose import failures. The file contains no dive content — only protocol events and timings.'),
-            onTap: _shareBleDebugLog,
-          ),
-          ListTile(
-            leading: const Icon(Icons.cloud_sync_outlined),
-            title: const Text('Force-stamp owner_id on local dives'),
-            subtitle: const Text(
-                'Rewrites owner_id on every local dive + sample to the current signed-in user, then PowerSync uploads them. Use when dives imported under a different (or no) account need to be reassigned to this account.'),
-            onTap: _forceStampOwnerId,
-          ),
-          ListTile(
-            leading: const Icon(Icons.cloud_upload_outlined),
-            title: const Text('Drain upload queue manually'),
-            subtitle: const Text(
-                'Bypasses PowerSync\'s upload pump and pushes each queued CRUD op directly to Supabase. Use when the queue is stuck (ps_crud is non-empty, sync status shows uploading=false, lastSyncedAt=never). Slow — one HTTP request per op.'),
-            onTap: _drainQueueManually,
-          ),
-          ListTile(
-            title: const Text('Version'),
-            subtitle: Text(BuildInfo.label),
-          ),
-          const Divider(height: 32),
-          Padding(
-            padding: const EdgeInsets.all(Spacing.lg),
-            child: GestureDetector(
-              onLongPress: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const WidgetbookScreen()),
-              ),
-              child: Text(
-                'Anchorline',
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ),
-          ),
-              ],
-            );
-        },
-      ),
+        ),
       ),
     );
   }
@@ -1270,316 +803,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-class _AccountSection extends StatelessWidget {
-  final AuthService authService;
-  final SyncStatusSource? syncStatusSource;
-  const _AccountSection({
-    required this.authService,
-    this.syncStatusSource,
-  });
+/// A tab label that scales down rather than wrapping, so five of them fit
+/// beside the anchor on a narrow phone.
+class _SettingsTab extends StatelessWidget {
+  const _SettingsTab({super.key, required this.label});
+
+  final String label;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Account', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          Card(
-            child: authService.isSignedIn
-                ? _SignedInTile(
-                    authService: authService,
-                    syncStatusSource: syncStatusSource,
-                  )
-                : _SignInTile(authService: authService),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SignInTile extends StatelessWidget {
-  final AuthService authService;
-  const _SignInTile({required this.authService});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: const Icon(Icons.cloud_off_outlined),
-      title: const Text('Sign in to enable cloud sync'),
-      subtitle: const Text('Optional. The app works fully offline.'),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: () => _openAuthSheet(context, authService),
-    );
-  }
-}
-
-class _SignedInTile extends StatelessWidget {
-  final AuthService authService;
-  final SyncStatusSource? syncStatusSource;
-  const _SignedInTile({
-    required this.authService,
-    this.syncStatusSource,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final email = authService.currentUser?.email ?? '(unknown)';
-    final source = syncStatusSource;
-    return Column(
-      children: [
-        ListTile(
-          leading: const Icon(Icons.cloud_done_outlined),
-          title: Text(email),
-          subtitle: source == null
-              ? const Text('Last synced: never')
-              : _SyncStatusRow(source: source),
-        ),
-        const Divider(height: 0),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              icon: const Icon(Icons.logout),
-              label: const Text('Sign out'),
-              onPressed: () => _confirmSignOut(context, authService),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SyncStatusRow extends StatelessWidget {
-  final SyncStatusSource source;
-  const _SyncStatusRow({required this.source});
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<SyncStatusSnapshot>(
-      stream: source.statusStream,
-      initialData: source.currentStatus,
-      builder: (_, snapshot) {
-        final s = snapshot.data ?? source.currentStatus;
-        return Text(_formatSyncStatus(s));
-      },
-    );
-  }
-}
-
-String _formatSyncStatus(SyncStatusSnapshot s) {
-  final state = _statusLabel(s);
-  final last = s.lastSyncedAt;
-  if (last == null) return state;
-  return '$state  Last synced: ${_relativeTime(last, DateTime.now())}';
-}
-
-String _statusLabel(SyncStatusSnapshot s) {
-  if (!s.connected) return '🔴 Offline';
-  if (s.uploading || s.downloading) return '🟡 Syncing…';
-  return '🟢 Synced';
-}
-
-/// Compact relative-time formatting suitable for a status row. Falls back
-/// to an absolute date once we cross a day boundary.
-String _relativeTime(DateTime when, DateTime now) {
-  final diff = now.difference(when);
-  if (diff.inSeconds < 45) return 'just now';
-  if (diff.inMinutes < 1) return '${diff.inSeconds} sec ago';
-  if (diff.inMinutes < 60) {
-    final m = diff.inMinutes;
-    return '$m min ago';
-  }
-  if (diff.inHours < 24) {
-    final h = diff.inHours;
-    return h == 1 ? '1 hour ago' : '$h hours ago';
-  }
-  return DateFormat.yMd().add_Hm().format(when);
-}
-
-Future<void> _openAuthSheet(BuildContext context, AuthService auth) {
-  // Dialog (rather than modal bottom sheet) avoids a macOS Flutter focus
-  // quirk that prevents text-field keyboard input inside a bottom sheet.
-  return showDialog<void>(
-    context: context,
-    builder: (dialogCtx) => Dialog(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: _AuthSheet(authService: auth),
-      ),
-    ),
-  );
-}
-
-Future<void> _confirmSignOut(BuildContext context, AuthService auth) async {
-  final messenger = ScaffoldMessenger.of(context);
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('Sign out?'),
-      content: const Text(
-          'Your local dives stay on the device. Cloud sync will pause until you sign in again.'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(true),
-          child: const Text('Sign out'),
-        ),
-      ],
-    ),
-  );
-  if (confirmed != true) return;
-  await auth.signOut();
-  messenger.showSnackBar(const SnackBar(content: Text('Signed out')));
-}
-
-class _AuthSheet extends StatefulWidget {
-  final AuthService authService;
-  const _AuthSheet({required this.authService});
-
-  @override
-  State<_AuthSheet> createState() => _AuthSheetState();
-}
-
-class _AuthSheetState extends State<_AuthSheet> {
-  final _emailCtrl = TextEditingController();
-  final _passwordCtrl = TextEditingController();
-  final _emailFocus = FocusNode();
-  final _passwordFocus = FocusNode();
-  bool _busy = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    // macOS Flutter has a known race where TextFields inside dialogs
-    // don't establish keyboard focus on first paint. Forcing it after
-    // the frame settles is the standard workaround.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _emailFocus.requestFocus();
-    });
-  }
-
-  @override
-  void dispose() {
-    _emailCtrl.dispose();
-    _passwordCtrl.dispose();
-    _emailFocus.dispose();
-    _passwordFocus.dispose();
-    super.dispose();
-  }
-
-  Future<void> _run(Future<AuthResult> Function() op) async {
-    final email = _emailCtrl.text.trim();
-    final password = _passwordCtrl.text;
-    if (email.isEmpty || password.isEmpty) {
-      setState(() => _error = 'Email and password are both required');
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
-    final res = await op();
-    if (!mounted) return;
-    setState(() => _busy = false);
-    switch (res) {
-      case AuthSuccess(:final user):
-        navigator.pop();
-        messenger.showSnackBar(
-          SnackBar(content: Text('Signed in as ${user.email ?? user.id}')),
-        );
-      case AuthEmailConfirmationRequired():
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Check your inbox to confirm your email')),
-        );
-      case AuthFailure(:final message):
-        setState(() => _error = message);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Cloud sync sign-in',
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _emailCtrl,
-            focusNode: _emailFocus,
-            keyboardType: TextInputType.emailAddress,
-            autofillHints: const [AutofillHints.email],
-            decoration: const InputDecoration(labelText: 'Email'),
-            enabled: !_busy,
-            textInputAction: TextInputAction.next,
-            onSubmitted: (_) => _passwordFocus.requestFocus(),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _passwordCtrl,
-            focusNode: _passwordFocus,
-            obscureText: true,
-            autofillHints: const [AutofillHints.password],
-            decoration: const InputDecoration(labelText: 'Password'),
-            enabled: !_busy,
-            textInputAction: TextInputAction.done,
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 8),
-            Text(_error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          ],
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _busy
-                      ? null
-                      : () => _run(() => widget.authService.signUp(
-                            email: _emailCtrl.text.trim(),
-                            password: _passwordCtrl.text,
-                          )),
-                  child: const Text('Create account'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: _busy
-                      ? null
-                      : () => _run(() => widget.authService.signIn(
-                            email: _emailCtrl.text.trim(),
-                            password: _passwordCtrl.text,
-                          )),
-                  child: _busy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Sign in'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Tab(
+        child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
+      );
 }

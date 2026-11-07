@@ -10,11 +10,16 @@
 /// set up, each entry has a print action: copies, then the hard-mismatch
 /// warning when it applies, then the print.
 ///
+/// Rows are in the dive list's style (spec §5): a 3 px edge (accent for
+/// diluent, muted for bailout / deco), the analysed mix in mono, a stats
+/// line and a caption line saying how far it is off the desired mix. Days
+/// are separated by a header.
+///
 /// An entry that needs sign-off (issue #113, Log on OK) carries a "Needs
-/// sign-off" badge and has no print action until it is signed off, which
-/// the edit sheet does ("Sign off", or "Sign off and print" through the
-/// print action's own checks). A line above the list counts them, and a
-/// filter chip narrows the list to them.
+/// sign-off" tag; its print action is faded and says why on tap until it is
+/// signed off, which the edit sheet does ("Sign off", or "Sign off and
+/// print" through the print action's own checks). A chip in the tool row
+/// counts them and narrows the list to them; "All" restores it.
 library;
 
 import 'dart:async';
@@ -30,11 +35,12 @@ import '../../analysis/mix_match.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../../data/models/gas_analysis_csv.dart';
 import '../../labels/label_print_service.dart';
+import '../notifiers/blend_notifier.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../widgets/analysis_edit_sheet.dart';
 import '../widgets/label_print_controls.dart';
-import '../widgets/mix_match_indicator.dart';
+import '../widgets/mix_match_indicator.dart' show mixMatchColor;
 import '../widgets/mix_mismatch_dialog.dart';
 
 /// Hands a finished CSV to the user. [origin] anchors the iPad / macOS
@@ -63,6 +69,8 @@ class GasAnalysisLogScreen extends StatefulWidget {
     this.cylinderLabel,
     this.shareCsv = shareCsvFile,
     this.labelPrinting,
+    this.embedded = false,
+    this.blend,
   });
 
   final GasAnalysesDaoLike dao;
@@ -79,12 +87,23 @@ class GasAnalysisLogScreen extends StatefulWidget {
   /// print action; without one, or when null, none.
   final LabelPrintService? labelPrinting;
 
+  /// Shown as the Gas destination's Log tab: no app bar of its own, and the
+  /// Export button sits in a row at the top of the list.
+  final bool embedded;
+
+  /// The Gas destination's Blend tab, whose target a sign-off here can use
+  /// up (one blend is one cylinder). The screen pushed from Equipment has
+  /// none.
+  final BlendNotifier? blend;
+
   @override
   State<GasAnalysisLogScreen> createState() => _GasAnalysisLogScreenState();
 }
 
 class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
-  static final _dateFormat = DateFormat('d MMM yyyy, HH:mm');
+  static final _timeFormat = DateFormat('HH:mm');
+  static final _dayKeyFormat = DateFormat('yyyy-MM-dd');
+  static final _dayFormat = DateFormat('d MMM yyyy');
 
   List<GasAnalysis>? _items;
   StreamSubscription<void>? _changes;
@@ -93,7 +112,7 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
   /// printer has answered. Their print action is off meanwhile.
   final Set<String> _reprinting = {};
 
-  /// The "Show only these" filter of the sign-off line is on.
+  /// The "Needs sign-off" chip of the tool row is on.
   bool _onlyNeedsSignoff = false;
 
   @override
@@ -191,11 +210,29 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     final outcome = await _openEditSheet(a);
     if (outcome == AnalysisEditOutcome.cancelled) return;
     final stored = await _stored(a.id);
+    if (outcome == AnalysisEditOutcome.signedOff ||
+        outcome == AnalysisEditOutcome.signOffAndPrint) {
+      _useBlendTarget(stored);
+    }
     if (outcome != AnalysisEditOutcome.signOffAndPrint) return;
     // Deleted meanwhile, or flagged again (through sync): nothing to print.
     // Say so now, not after the copies prompt.
     if (stored == null || !mounted || _refuseUnsigned(stored)) return;
     await _reprint(stored);
+  }
+
+  /// A sign-off completes the save of an OK press: when the entry, as
+  /// stored after it, has the Blend target that is still unused as its
+  /// desired mix, it uses the target up (one blend is one cylinder, spec
+  /// §4.3), as a sign-off on the Analyse tab's result row does. Nothing
+  /// when it was deleted or flagged again meanwhile.
+  void _useBlendTarget(GasAnalysis? signedOff) {
+    final blend = widget.blend;
+    final target = blend?.unusedRecentTarget();
+    if (blend == null || target == null) return;
+    if (signedOff == null || signedOff.needsSignoff) return;
+    if (signedOff.desiredMix != target) return;
+    unawaited(blend.markRecentTargetUsed());
   }
 
   /// Prints the label of [a]: asks for copies, then, on a hard mismatch
@@ -303,68 +340,132 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     final title = widget.cylinderId == null
         ? 'Analysis log'
         : 'Analyses · ${widget.cylinderLabel ?? 'Cylinder'}';
+    final list = items == null
+        ? const Center(child: CircularProgressIndicator())
+        : items.isEmpty
+            ? _empty(context)
+            : _list(context, items);
+    // The one place the tool row is built. The Log tab always has it, for
+    // Export; the pushed screen has Export in its app bar, so it has the
+    // row only while there are entries to filter.
+    final body = widget.embedded || (items != null && items.isNotEmpty)
+        ? Column(
+            children: [
+              _toolRow(context, items),
+              Expanded(child: list),
+            ],
+          )
+        : list;
+    if (widget.embedded) return body;
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
-        actions: [
-          IconButton(
-            key: const ValueKey('analysis-log-export'),
-            tooltip: 'Export CSV',
-            icon: const Icon(Icons.ios_share),
-            onPressed: items == null || items.isEmpty ? null : _export,
-          ),
-        ],
+        actions: [_exportButton(items)],
       ),
-      body: items == null
-          ? const Center(child: CircularProgressIndicator())
-          : items.isEmpty
-              ? _empty(context)
-              : _list(context, items),
+      body: body,
     );
   }
+
+  Widget _exportButton(List<GasAnalysis>? items) => IconButton(
+        key: const ValueKey('analysis-log-export'),
+        tooltip: 'Export CSV',
+        icon: const Icon(Icons.ios_share),
+        onPressed: items == null || items.isEmpty ? null : _export,
+      );
 
   Widget _list(BuildContext context, List<GasAnalysis> items) {
-    final needSignoff = items.where((a) => a.needsSignoff).length;
     final shown = _shown(items);
-    final list = ListView.separated(
-      itemCount: shown.length,
-      separatorBuilder: (_, _) =>
-          Divider(height: 1, color: context.palette.surfaceRaised),
-      itemBuilder: (context, i) => _tile(context, shown[i]),
-    );
-    if (needSignoff == 0) return list;
-    return Column(
-      children: [
-        _signoffLine(context, needSignoff),
-        Expanded(child: list),
-      ],
+    final rows = _rows(shown);
+    return ListView.builder(
+      itemCount: rows.length,
+      itemBuilder: (context, i) {
+        final row = rows[i];
+        return row is DateTime
+            ? _dayHeader(context, row)
+            : _tile(context, row as GasAnalysis);
+      },
     );
   }
 
-  /// "2 analyses need sign-off" and the chip that narrows the list to them.
-  Widget _signoffLine(BuildContext context, int count) {
+  /// [items] with a day (a [DateTime] at midnight) ahead of each run of
+  /// entries from the same local day.
+  List<Object> _rows(List<GasAnalysis> items) {
+    final rows = <Object>[];
+    String? lastDay;
+    for (final a in items) {
+      final at = a.analysedAt.toLocal();
+      final day = _dayKeyFormat.format(at);
+      if (day != lastDay) {
+        rows.add(DateTime(at.year, at.month, at.day));
+        lastDay = day;
+      }
+      rows.add(a);
+    }
+    return rows;
+  }
+
+  /// "Today", "Yesterday", else "7 Nov 2026".
+  String _dayLabel(DateTime day) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (day == today) return 'Today';
+    if (day == DateTime(today.year, today.month, today.day - 1)) {
+      return 'Yesterday';
+    }
+    return _dayFormat.format(day);
+  }
+
+  Widget _dayHeader(BuildContext context, DateTime day) => Container(
+        key: ValueKey('analysis-day-${_dayKeyFormat.format(day)}'),
+        color: context.palette.surfaceRaised,
+        padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.md, vertical: Spacing.xs),
+        alignment: Alignment.centerLeft,
+        child: Text(
+          _dayLabel(day).toUpperCase(),
+          style: AppTypography.caption.copyWith(
+              color: context.palette.textSecondary, letterSpacing: 1.2),
+        ),
+      );
+
+  /// The filter chips ("All n" while there are entries, "Needs sign-off n"
+  /// while one needs it) and, on the Log tab, Export at the right. The
+  /// screen pushed from Equipment has Export in its app bar.
+  Widget _toolRow(BuildContext context, List<GasAnalysis>? items) {
+    final flagged = items?.where((a) => a.needsSignoff).length ?? 0;
     return Padding(
       padding: const EdgeInsets.symmetric(
-          horizontal: Spacing.lg, vertical: Spacing.xs),
+          horizontal: Spacing.md, vertical: Spacing.xs),
       child: Row(
         children: [
-          Expanded(
-            child: Text(
-              count == 1
-                  ? '1 analysis needs sign-off'
-                  : '$count analyses need sign-off',
-              key: const ValueKey('analysis-log-signoff-count'),
-              style: AppTypography.body
-                  .copyWith(color: context.palette.textPrimary),
-            ),
-          ),
-          const SizedBox(width: Spacing.sm),
-          FilterChip(
-            key: const ValueKey('analysis-log-signoff-filter'),
-            label: const Text('Show only these'),
-            selected: _onlyNeedsSignoff,
-            onSelected: (on) => setState(() => _onlyNeedsSignoff = on),
-          ),
+          if (items != null && items.isNotEmpty)
+            Expanded(
+              child: Wrap(
+                spacing: Spacing.sm,
+                runSpacing: Spacing.xs,
+                children: [
+                  FilterChip(
+                    key: const ValueKey('analysis-log-filter-all'),
+                    label: Text('All ${items.length}'),
+                    selected: !_onlyNeedsSignoff,
+                    onSelected: (_) =>
+                        setState(() => _onlyNeedsSignoff = false),
+                  ),
+                  if (flagged > 0)
+                    FilterChip(
+                      key: const ValueKey('analysis-log-signoff-filter'),
+                      label: Text('Needs sign-off $flagged'),
+                      labelStyle: TextStyle(color: SafetyColors.warning),
+                      selected: _onlyNeedsSignoff,
+                      onSelected: (on) =>
+                          setState(() => _onlyNeedsSignoff = on),
+                    ),
+                ],
+              ),
+            )
+          else
+            const Spacer(),
+          if (widget.embedded) _exportButton(items),
         ],
       ),
     );
@@ -387,19 +488,38 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
 
   Widget _tile(BuildContext context, GasAnalysis a) {
     final palette = context.palette;
-    final desired = a.desiredMix;
     final diluent = a.gasRole == GasRole.diluent;
     final printing = widget.labelPrinting;
-    // An entry that needs sign-off never prints a label until signed off.
-    final canPrint =
-        printing != null && printing.isConfigured && !a.needsSignoff;
-    final details = <String>[
-      _dateFormat.format(a.analysedAt),
-      if (widget.cylinderId == null && a.cylinderDisplay != null)
-        a.cylinderDisplay!,
-      if (a.analysedBy != null) a.analysedBy!,
+    final canPrint = printing != null && printing.isConfigured;
+    // Bailout and deco read quieter than diluent; both are palette tokens
+    // so the edge shows in every theme.
+    final edge = diluent ? palette.accentPrimary : palette.textMuted;
+    final monoStyle = AppTypography.readoutSm;
+    final stats = <String>[
+      '${a.o2Percent.toStringAsFixed(1)} / ${a.hePercent.toStringAsFixed(1)}',
       if (a.fillPressureBar != null)
         '${a.fillPressureBar!.toStringAsFixed(0)} bar',
+      a.analysedBy ?? 'no name',
+      if (widget.cylinderId == null && a.cylinderDisplay != null)
+        a.cylinderDisplay!,
+      if (a.analysedFor != null) 'for ${a.analysedFor}',
+    ];
+    // Grading NaN throws; a stored analysis is finite, but a row from
+    // elsewhere is not worth a crash.
+    final desired = a.desiredMix;
+    final match = a.o2Percent.isFinite && a.hePercent.isFinite ? a.match : null;
+    final caption = <Widget>[
+      if (match != null && desired != null)
+        Text(
+          mixMatchText(match, desired.name),
+          style: AppTypography.caption
+              .copyWith(color: mixMatchColor(match.level)),
+        ),
+      if (!a.stable)
+        Text(
+          'Saved before stable',
+          style: AppTypography.caption.copyWith(color: SafetyColors.warning),
+        ),
     ];
     return Dismissible(
       key: ValueKey('analysis-${a.id}'),
@@ -411,99 +531,131 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
         child: Icon(Icons.delete_outline, color: palette.textPrimary),
       ),
       onDismissed: (_) => _delete(a),
-      child: ListTile(
-        onTap: () => _edit(a),
-        leading: Tooltip(
-          message: a.stable ? 'Stable reading' : 'Saved before stable',
-          child: Icon(
-            a.stable ? Icons.check_circle : Icons.warning_amber_rounded,
-            color: a.stable ? SafetyColors.success : SafetyColors.warning,
+      child: Container(
+        decoration: BoxDecoration(
+          color: palette.surfaceCard,
+          border: Border(
+            left: BorderSide(color: edge, width: 3),
+            bottom: BorderSide(color: palette.surfaceRaised),
           ),
         ),
-        title: Text(
-          a.mixName,
-          style: AppTypography.title.copyWith(color: palette.textPrimary),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (a.needsSignoff || diluent || desired != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: Spacing.xs),
-                child: Wrap(
-                  spacing: Spacing.sm,
-                  runSpacing: Spacing.xs,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    if (a.needsSignoff)
-                      _Marker(
-                        key: ValueKey('analysis-needs-signoff-${a.id}'),
-                        label: 'Needs sign-off',
-                        color: SafetyColors.warning,
+        child: InkWell(
+          onTap: () => _edit(a),
+          child: Padding(
+            padding: const EdgeInsets.only(
+                left: Spacing.md,
+                top: Spacing.sm + 2,
+                bottom: Spacing.sm + 2),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Wraps on a narrow phone or large text rather
+                          // than squeezing the name.
+                          Expanded(
+                            child: Wrap(
+                              spacing: Spacing.xs + 2,
+                              runSpacing: 2,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                _Marker(
+                                  key: ValueKey('analysis-role-${a.id}'),
+                                  label: diluent ? 'DIL' : 'BO',
+                                  color: diluent
+                                      ? palette.accentPrimary
+                                      : palette.textMuted,
+                                ),
+                                Text(
+                                  a.mixName,
+                                  style: monoStyle.copyWith(
+                                      color: palette.textPrimary),
+                                ),
+                                if (a.needsSignoff)
+                                  _Marker(
+                                    key: ValueKey(
+                                        'analysis-needs-signoff-${a.id}'),
+                                    label: 'Needs sign-off',
+                                    color: SafetyColors.warning,
+                                  ),
+                                if (a.notes != null)
+                                  Tooltip(
+                                    key: ValueKey('analysis-notes-${a.id}'),
+                                    message: a.notes!,
+                                    triggerMode: TooltipTriggerMode.tap,
+                                    child: Icon(Icons.notes,
+                                        size: 14, color: palette.textMuted),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: Spacing.sm - 2),
+                          Text(
+                            _timeFormat.format(a.analysedAt),
+                            style: AppTypography.caption
+                                .copyWith(color: palette.textMuted),
+                          ),
+                        ],
                       ),
-                    if (diluent)
-                      _Marker(
-                        key: ValueKey('analysis-dil-${a.id}'),
-                        label: 'DIL',
-                        color: palette.accentPrimary,
-                      ),
-                    if (desired != null)
+                      const SizedBox(height: Spacing.xs - 2),
                       Text(
-                        'Desired ${desired.name}',
-                        style: AppTypography.body
-                            .copyWith(color: palette.textPrimary),
+                        stats.join(' · '),
+                        style: monoStyle.copyWith(
+                            color:
+                                palette.textPrimary.withValues(alpha: 0.85)),
                       ),
-                  ],
+                      if (caption.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              for (var i = 0; i < caption.length; i++) ...[
+                                if (i > 0)
+                                  Text(' · ',
+                                      style: AppTypography.caption.copyWith(
+                                          color: palette.textMuted)),
+                                caption[i],
+                              ],
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-            // Grading NaN throws; a stored analysis is finite, but a row
-            // from elsewhere is not worth a crash.
-            if (desired != null &&
-                a.o2Percent.isFinite &&
-                a.hePercent.isFinite)
-              Padding(
-                padding: const EdgeInsets.only(bottom: Spacing.xs),
-                child: MixMatchIndicator(
-                  o2Percent: a.o2Percent,
-                  hePercent: a.hePercent,
-                  desired: desired,
-                ),
-              ),
-            Text(
-              details.join(' · '),
-              style:
-                  AppTypography.body.copyWith(color: palette.textSecondary),
-            ),
-          ],
-        ),
-        trailing: a.notes == null && !canPrint
-            ? null
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (a.notes != null)
-                    Tooltip(
-                      message: a.notes!,
-                      child: Icon(Icons.notes, color: palette.textMuted),
-                    ),
-                  if (canPrint)
-                    IconButton(
+                if (canPrint)
+                  // A flagged entry's label waits for the sign-off: the
+                  // button is faded and says so on tap.
+                  Opacity(
+                    opacity: a.needsSignoff ? 0.35 : 1,
+                    child: IconButton(
                       key: ValueKey('analysis-print-${a.id}'),
                       tooltip: 'Print label',
                       icon: const Icon(Icons.print_outlined),
-                      onPressed: _reprinting.contains(a.id)
-                          ? null
-                          : () => _reprint(a),
+                      onPressed: a.needsSignoff
+                          ? () => _refuseUnsigned(a)
+                          : _reprinting.contains(a.id)
+                              ? null
+                              : () => _reprint(a),
                     ),
-                ],
-              ),
+                  )
+                else
+                  const SizedBox(width: Spacing.md),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
-/// A small outlined tag on an entry: "DIL" on a diluent entry (bailout and
-/// deco entries have none), "Needs sign-off" on one that is not signed off.
+/// A small outlined tag on an entry: "DIL" or "BO" for its role, "Needs
+/// sign-off" on one that is not signed off.
 class _Marker extends StatelessWidget {
   const _Marker({super.key, required this.label, required this.color});
 

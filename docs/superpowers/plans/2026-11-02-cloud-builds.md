@@ -485,6 +485,7 @@ Egbert does this; an agent can't. Nothing is printed, and each secret goes in wi
 Every platform job:
 - receives `version`, `build_number`, `channel` and `simulate` from prepare;
 - passes `--build-name`, `--build-number` and the four `--dart-define`s from the Global Constraints, with `BUILD_CHANNEL=<simulate>`, so a dry run is labelled as the packaging it simulates;
+- also passes `--dart-define=APP_BUILD_DATE=<yyyy-MM-dd>`, the UTC date of the build (the About tab shows it; without it the Date stat is hidden);
 - uploads its output as a workflow artifact named `<platform>-<channel>` with `retention-days: 2`;
 - has a `timeout-minutes` (Apple 60, others 45).
 

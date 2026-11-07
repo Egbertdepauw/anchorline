@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/material.dart' as material show Column;
 import 'package:powersync/powersync.dart' hide SyncStatus;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -42,12 +41,13 @@ import '../sync/subsurface_git/bootstrap_importer.dart';
 import '../sync/subsurface_git/credentials.dart';
 import '../sync/subsurface_git/dao_subsurface_sync_data_source.dart';
 import '../sync/subsurface_git/sync_orchestrator.dart';
+import 'notifiers/analyzer_session.dart';
 import 'notifiers/blend_notifier.dart';
 import 'notifiers/dive_list_notifier.dart';
 import 'notifiers/dive_plan_notifier.dart';
 import 'notifiers/import_notifier.dart';
 import 'notifiers/settings_notifier.dart';
-import 'screens/blend_screen.dart';
+import 'screens/gas_screen.dart';
 import 'screens/buddies_list_screen.dart';
 import 'screens/dive_list_screen.dart';
 import 'screens/dive_plan_screen.dart';
@@ -109,6 +109,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final DivePlansDao _divePlansDao;
   late final GasAnalysesDao _gasAnalysesDao;
   late final LabelPrintService _labelPrintService;
+  late final AnalyzerSession _analyzerSession;
   late final DivePlanNotifier _divePlanNotifier;
   late final BlendNotifier _blendNotifier;
   late final ImportNotifier _importNotifier;
@@ -192,11 +193,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       use14ForDeeperMixes: () =>
           widget.settingsNotifier.labelUse14ForDeeperMixes,
     );
-    _divePlanNotifier = DivePlanNotifier(
-      dao: _divePlansDao,
-      settings: widget.settingsNotifier,
-    );
-    _divePlanNotifier.load();
     _blendNotifier = BlendNotifier(settings: widget.settingsNotifier);
     // Restores the Blend tab's target mix and pressure. Not awaited: the tab
     // shows its defaults until it lands. A failure (say a stored value of the
@@ -206,6 +202,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         debugPrint('Blend target restore failed: $e\n$st');
       }),
     );
+    // Log on OK uses up the Blend target, so the session gets the notifier.
+    _analyzerSession = AnalyzerSession(
+      settings: widget.settingsNotifier,
+      analysesDao: _gasAnalysesDao,
+      labelPrinting: _labelPrintService,
+      blend: _blendNotifier,
+    );
+    _divePlanNotifier = DivePlanNotifier(
+      dao: _divePlansDao,
+      settings: widget.settingsNotifier,
+    );
+    _divePlanNotifier.load();
     _importNotifier = ImportNotifier(
       dao: _diveDao,
       importStateDao: _importStateDao,
@@ -303,6 +311,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _syncHealthService.dispose();
     _diveListNotifier.dispose();
     _divePlanNotifier.dispose();
+    // The session first: it uses the Blend notifier for Log on OK.
+    _analyzerSession.dispose();
     _blendNotifier.dispose();
     _importNotifier.dispose();
     _watermarkSuppressors.dispose();
@@ -390,7 +400,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     return ListenableBuilder(
       listenable: _diveListNotifier,
       builder: (context, _) => Scaffold(
-      appBar: isLandscape
+      appBar: isLandscape || _currentIndex == 2 || _currentIndex == 5
           ? null
           : (_currentIndex == 0 && _diveListNotifier.selectionMode
               ? _buildSelectionAppBar(context)
@@ -470,10 +480,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             ),
         ],
       )),
-      body: material.Column(
-        children: [
-          SyncHealthBanner(service: _syncHealthService),
-          Expanded(
+      body: SyncHealthBannerColumn(
+        service: _syncHealthService,
             // Lets media surfaces anywhere in the IndexedStack — including
             // routes pushed onto the Dives tab's nested Navigator — find
             // the suppression counter and zero the watermark while mounted.
@@ -542,11 +550,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           notifier: _divePlanNotifier,
                           settings: widget.settingsNotifier,
                         ),
-                        BlendScreen(
-                          notifier: _blendNotifier,
+                        GasScreen(
+                          blend: _blendNotifier,
                           settings: widget.settingsNotifier,
+                          session: _analyzerSession,
                           analysesDao: _gasAnalysesDao,
                           labelPrinting: _labelPrintService,
+                          onHome: _goHome,
                         ),
                         ImportScreen(
                           notifier: _importNotifier,
@@ -562,6 +572,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                         ),
                         SettingsScreen(
                           notifier: widget.settingsNotifier,
+                          onHome: _goHome,
                           authService: widget.authService,
                           syncStatusSource: _syncStatusSource,
                           db: widget.db,
@@ -581,36 +592,39 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 },
               ),
             ),
-          ),
-        ],
       ),
-      bottomNavigationBar: isLandscape ? null : BottomNavigationBar(
+      bottomNavigationBar: isLandscape ? null : ListenableBuilder(
+        // The Gas item's dot follows the analyzer connection.
+        listenable: _analyzerSession,
+        builder: (context, _) => BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
         type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
+        items: [
+          const BottomNavigationBarItem(
             icon: Icon(Icons.scuba_diving),
             label: 'Dives',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.event_note_outlined),
             label: 'Plan',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.science_outlined),
-            label: 'Blend',
+          gasNavItem(
+            connected: _analyzerSession.controller.isConnected,
+            okRunning: _analyzerSession.okRunning,
+            selected: _currentIndex == 2,
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: 'Import'),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: 'Import'),
+          const BottomNavigationBarItem(
             icon: Icon(Icons.build_outlined),
             label: 'Equipment',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),
             label: 'Settings',
           ),
         ],
+      ),
       ),
     ));
   }

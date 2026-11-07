@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../analysis/fill_pressure.dart';
 import '../theme/app_themes.dart';
 import '../widgets/map_tile_sources.dart' show MapLayerStyle;
 import '../widgets/trace_segmented_bar.dart' show TraceType;
@@ -44,7 +45,14 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kAnalyzerModPpo2s = 'analyzer_mod_ppo2s';
   static const _kAnalyzerLogOnOk = 'analyzer_log_on_ok';
   static const _kAnalyzerPrintOnOk = 'analyzer_print_on_ok';
+  // The name the old save card remembered; read once to start "Your
+  // initials" on a device that had none, then removed (see load()).
   static const _kAnalyzerAnalysedBy = 'analyzer_analysed_by';
+  static const _kYourInitials = 'your_initials';
+  static const _kAnalyzerFillPressureStart = 'analyzer_fill_pressure_start_bar';
+
+  /// Where the analyzer's "Fill pressure" starts when a cylinder is saved.
+  static const double kDefaultFillPressureStartBar = 230;
   static const _kLabelUse14 = 'label_use_14_for_deeper_mixes';
   static const _kLabelPrinterId = 'label_printer_id';
   static const _kLabelPrinterName = 'label_printer_name';
@@ -120,7 +128,8 @@ class SettingsNotifier extends ChangeNotifier {
   // Log on OK over USB (device-local, never synced).
   bool _analyzerLogOnOk = false;
   bool _analyzerPrintOnOk = true;
-  String? _analyzerAnalysedBy;
+  String? _yourInitials;
+  double _analyzerFillPressureStartBar = kDefaultFillPressureStartBar;
   // ── Cylinder labels (device-local, never synced) ────────────────
   bool _labelUse14ForDeeperMixes = false;
   String? _labelPrinterId;
@@ -175,9 +184,12 @@ class SettingsNotifier extends ChangeNotifier {
   /// up (issue #113). On by default.
   bool get analyzerPrintOnOk => _analyzerPrintOnOk;
 
-  /// The name on the analyzer's save card, kept between sessions; null until
-  /// one has been typed.
-  String? get analyzerAnalysedBy => _analyzerAnalysedBy;
+  /// The diver's initials (device-local, never synced); they start the
+  /// analyzer's "Analysed by" field. Null until set.
+  String? get yourInitials => _yourInitials;
+
+  /// The pressure in bar the analyzer's "Fill pressure" field starts at.
+  double get analyzerFillPressureStartBar => _analyzerFillPressureStartBar;
 
   /// Whether a cylinder label uses ppO2 1.4 instead of 1.6 for the MOD of a
   /// bailout/deco mix under 50 % O2.
@@ -302,7 +314,22 @@ class SettingsNotifier extends ChangeNotifier {
     }
     _analyzerLogOnOk = prefs.getBool(_kAnalyzerLogOnOk) ?? false;
     _analyzerPrintOnOk = prefs.getBool(_kAnalyzerPrintOnOk) ?? true;
-    _analyzerAnalysedBy = prefs.getString(_kAnalyzerAnalysedBy);
+    _yourInitials = _initialsOrNull(prefs.getString(_kYourInitials));
+    final rememberedName = prefs.getString(_kAnalyzerAnalysedBy);
+    if (rememberedName != null) {
+      // Upgrade, once: the name remembered by the old save card becomes the
+      // initials, unless they are set already. The old key goes, so
+      // initials cleared later stay cleared.
+      final migrated = _initialsOrNull(rememberedName);
+      if (_yourInitials == null && migrated != null) {
+        _yourInitials = migrated;
+        await prefs.setString(_kYourInitials, migrated);
+      }
+      await prefs.remove(_kAnalyzerAnalysedBy);
+    }
+    _analyzerFillPressureStartBar =
+        prefs.getDouble(_kAnalyzerFillPressureStart) ??
+            kDefaultFillPressureStartBar;
     _labelUse14ForDeeperMixes = prefs.getBool(_kLabelUse14) ?? false;
     _labelPrinterId = prefs.getString(_kLabelPrinterId);
     _labelPrinterName = prefs.getString(_kLabelPrinterName);
@@ -648,18 +675,35 @@ class SettingsNotifier extends ChangeNotifier {
     await prefs.setBool(_kAnalyzerPrintOnOk, v);
   }
 
-  /// Remembers the name typed on the save card. Blank means none.
-  Future<void> setAnalyzerAnalysedBy(String? v) async {
-    final name = v == null || v.trim().isEmpty ? null : v;
-    if (_analyzerAnalysedBy == name) return;
-    _analyzerAnalysedBy = name;
+  /// [v] trimmed; null when that is blank.
+  static String? _initialsOrNull(String? v) {
+    final t = v?.trim();
+    return t == null || t.isEmpty ? null : t;
+  }
+
+  /// Saves the diver's initials, trimmed. Blank means none.
+  Future<void> setYourInitials(String? v) async {
+    final initials = _initialsOrNull(v);
+    if (_yourInitials == initials) return;
+    _yourInitials = initials;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    if (name == null) {
-      await prefs.remove(_kAnalyzerAnalysedBy);
+    if (initials == null) {
+      await prefs.remove(_kYourInitials);
     } else {
-      await prefs.setString(_kAnalyzerAnalysedBy, name);
+      await prefs.setString(_kYourInitials, initials);
     }
+  }
+
+  /// Sets where the analyzer's fill pressure starts. A value that is not a
+  /// valid pressure (see [parseFillPressure]) is ignored.
+  Future<void> setAnalyzerFillPressureStartBar(double bar) async {
+    if (!parseFillPressure(bar.toString()).valid) return;
+    if (_analyzerFillPressureStartBar == bar) return;
+    _analyzerFillPressureStartBar = bar;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kAnalyzerFillPressureStart, bar);
   }
 
   Future<void> setLabelUse14ForDeeperMixes(bool v) async {

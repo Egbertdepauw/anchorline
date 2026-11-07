@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+
 /// What this binary is: which release channel, how it is distributed, and its
 /// version and build number.
 ///
@@ -23,6 +25,10 @@ class BuildInfo {
 
   /// Build number, e.g. `154`. Empty for local builds.
   static const build = String.fromEnvironment('APP_BUILD');
+
+  /// UTC date of the build as `yyyy-MM-dd`, e.g. `2026-11-06`. Empty when the
+  /// build did not pass it.
+  static const buildDate = String.fromEnvironment('APP_BUILD_DATE');
 
   static const _channelDefined = bool.hasEnvironment('BUILD_CHANNEL');
 
@@ -67,4 +73,27 @@ String buildLabel({
 String? sentryReleaseName({required String version, required String build}) {
   if (version.isEmpty || build.isEmpty) return null;
   return 'nl.despaankamer.ccrlogger@$version+$build';
+}
+
+/// `2026-11-06` as `6 Nov 2026` (English month names whatever the device
+/// locale), or null for an empty or malformed date.
+String? formatBuildDate(String raw) {
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(raw)) return null;
+  final parsed = DateTime.tryParse(raw);
+  if (parsed == null || parsed.toIso8601String().substring(0, 10) != raw) {
+    return null;
+  }
+  return DateFormat('d MMM yyyy', 'en_US').format(parsed);
+}
+
+/// The release channel as the About tab names it.
+String channelLabel(String channel) {
+  switch (channel) {
+    case 'release':
+      return 'Release';
+    case 'nightly':
+      return 'Nightly';
+    default:
+      return 'Development';
+  }
 }

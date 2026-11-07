@@ -68,7 +68,7 @@ self-sufficient.)
 flutter clean
 flutter pub get
 flutter build macos --release \
-  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=app_store --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N>
+  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=app_store --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N> --dart-define=APP_BUILD_DATE=<yyyy-MM-dd>
 
 xcodebuild -workspace macos/Runner.xcworkspace \
   -scheme Runner \
@@ -87,8 +87,8 @@ selected. Then close Xcode and re-run the `xcodebuild archive`.
 The archive lives at `build/macos/Anchorline.xcarchive` and works as
 the source for **both** export paths below.
 
-`<V>+<N>` is the `version:` in `pubspec.yaml`. The four defines label the
-build (Settings → Version, Sentry release). `DISTRIBUTION_CHANNEL` is baked
+`<V>+<N>` is the `version:` in `pubspec.yaml`. The five defines label the
+build (Settings → About, Sentry release). `DISTRIBUTION_CHANNEL` is baked
 into the build, so the archive you export for the Developer ID .dmg (§4)
 has to be built with `DISTRIBUTION_CHANNEL=website` instead of `app_store`.
 

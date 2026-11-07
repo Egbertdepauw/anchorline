@@ -369,4 +369,45 @@ void main() {
       expect(n.recentTarget(), isNull);
     });
   });
+  group('used mark', () {
+    test('a used target is hidden from unusedRecentTarget, not recentTarget',
+        () async {
+      final n = await newNotifier();
+      n.setTargetMix(21, 35);
+      expect(n.unusedRecentTarget(), const DesiredMix(21, 35));
+      await n.markRecentTargetUsed();
+      expect(n.unusedRecentTarget(), isNull);
+      expect(n.recentTarget(), const DesiredMix(21, 35));
+    });
+
+    test('marking the target used notifies, once', () async {
+      final n = await newNotifier();
+      n.setTargetMix(21, 35);
+      var notified = 0;
+      n.addListener(() => notified++);
+      await n.markRecentTargetUsed();
+      await n.markRecentTargetUsed();
+      expect(notified, 1);
+    });
+
+    test('any Blend edit clears the used mark', () async {
+      final n = await newNotifier();
+      n.setTargetMix(21, 35);
+      await n.markRecentTargetUsed();
+      expect(n.unusedRecentTarget(), isNull);
+      n.setCurrentPressure(50);
+      expect(n.unusedRecentTarget(), const DesiredMix(21, 35));
+    });
+
+    test('the used mark survives a reload', () async {
+      final n = await newNotifier();
+      n.setTargetMix(21, 35);
+      await Future<void>.delayed(Duration.zero);
+      await n.markRecentTargetUsed();
+      final again = await newNotifier();
+      await again.loadTarget();
+      expect(again.recentTarget(), const DesiredMix(21, 35));
+      expect(again.unusedRecentTarget(), isNull);
+    });
+  });
 }

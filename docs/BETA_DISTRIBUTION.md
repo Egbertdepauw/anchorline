@@ -54,11 +54,11 @@ restore both from 1Password.
 
 ```bash
 flutter build appbundle --release \
-  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=play_store --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N>
+  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=play_store --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N> --dart-define=APP_BUILD_DATE=<yyyy-MM-dd>
 ```
 
-`<V>+<N>` is the `version:` in `pubspec.yaml`. The four defines label the
-build (Settings → Version, Sentry release); the hosted `.apk` (section 3) and
+`<V>+<N>` is the `version:` in `pubspec.yaml`. The five defines label the
+build (Settings → About, Sentry release); the hosted `.apk` (section 3) and
 Windows (section 4) use `DISTRIBUTION_CHANNEL=website`, iOS and the Mac App
 Store use `app_store`.
 
@@ -168,7 +168,7 @@ people who hate Google), build a signed `.apk` and host it on R2:
 
 ```bash
 flutter build apk --release --target-platform android-arm64 \
-  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=website --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N>
+  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=website --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N> --dart-define=APP_BUILD_DATE=<yyyy-MM-dd>
 # Output: build/app/outputs/flutter-apk/app-release.apk
 ```
 
@@ -209,7 +209,7 @@ Build + package:
 :: and the build number from pubspec.yaml's version field (<V>+<N>).
 flutter pub get
 flutter build windows --release ^
-  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=website --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N>
+  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=website --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N> --dart-define=APP_BUILD_DATE=<yyyy-MM-dd>
 
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ^
   /DMyAppVersion=<V> /DMyAppBuild=<N> /DChannel=release ^

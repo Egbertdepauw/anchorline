@@ -2,9 +2,10 @@ import 'dart:async';
 
 import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
 import 'package:ccrlogger/data/models/equipment.dart';
+import 'package:ccrlogger/ui/theme/tokens.dart';
 import 'package:ccrlogger/ui/widgets/analysis_edit_sheet.dart';
 import 'package:ccrlogger/ui/widgets/desired_mix_picker.dart';
-import 'package:ccrlogger/ui/widgets/mix_match_indicator.dart';
+import 'package:ccrlogger/ui/widgets/analysis_fields.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -199,12 +200,16 @@ void main() {
     expect(measured(find.textContaining('bar')), findsNothing);
     expect(measured(find.text('Stable')), findsOneWidget);
     expect(measured(find.byType(EditableText)), findsNothing);
+    // A band in surfaceRaised, not an outlined box.
+    final band = tester.widget<Container>(_measured);
+    expect((band.decoration as BoxDecoration).color,
+        tester.element(_measured).palette.surfaceRaised);
 
     // Editable: the picker on the stored mix, graded; role; diver; notes.
     expect(_inSheet(find.byType(DesiredMixPicker)), findsOneWidget);
     expect(_chipSelected(tester, 'desired-mix-21-35'), isTrue);
     expect(_chipSelected(tester, 'desired-mix-50-0'), isFalse);
-    expect(_inSheet(find.byType(MixMatchIndicator)), findsOneWidget);
+    expect(_inSheet(find.byType(AnalysisVerdict)), findsOneWidget);
     expect(_inSheet(find.text('O2 1.5 off Tx21/35')), findsOneWidget);
     expect(_role(tester), {GasRole.diluent});
     expect(_field(tester, 'analysis-edit-diver'), 'Egbert');
@@ -224,7 +229,7 @@ void main() {
             analyses: [_tx(targetO2: null, targetHe: null)]));
     expect(_chipSelected(tester, 'desired-mix-21-35'), isFalse);
     expect(_chipSelected(tester, 'desired-mix-50-0'), isFalse);
-    expect(_inSheet(find.byType(MixMatchIndicator)), findsNothing);
+    expect(_inSheet(find.byType(AnalysisVerdict)), findsNothing);
   });
 
   testWidgets('Save sends the four fields, trimmed, and returns saved',
@@ -255,7 +260,7 @@ void main() {
     final dao = FakeGasAnalysesDao(analyses: [_tx()]);
     await _open(tester, dao: dao);
     await _tapAndSettle(tester, _key('desired-mix-21-35'));
-    expect(_inSheet(find.byType(MixMatchIndicator)), findsNothing);
+    expect(_inSheet(find.byType(AnalysisVerdict)), findsNothing);
     await _tapAndSettle(tester, _key('analysis-edit-save'));
 
     final (_, edit) = dao.updated.single;

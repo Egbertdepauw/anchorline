@@ -91,8 +91,16 @@ Future<void> _pump(
   SyncStatusSource src,
 ) {
   return tester.pumpWidget(MaterialApp(
-    home: SettingsScreen(notifier: s, authService: a, syncStatusSource: src),
-  ));
+    home: SettingsScreen(
+      notifier: s,
+      authService: a,
+      syncStatusSource: src,
+      onHome: () {},
+    ),
+  )).then((_) async {
+    await tester.tap(find.byKey(const ValueKey('settings-tab-sync')));
+    await tester.pumpAndSettle();
+  });
 }
 
 void main() {
@@ -171,7 +179,7 @@ void main() {
     expect(find.textContaining('🔴 Offline'), findsOneWidget);
 
     src.emit(const SyncStatusSnapshot(connected: true, uploading: true));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('🟡 Syncing'), findsOneWidget);
   });

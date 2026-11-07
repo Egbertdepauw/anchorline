@@ -509,6 +509,139 @@ void main() {
     });
   });
 
+  group('auto pick and the role', () {
+    // A setup with no mix and no role, named, printing on.
+    LogOnOkSetup autoSetup({
+      bool autoPickMix = true,
+      DesiredMix? desiredMix,
+      DesiredMix? blendTarget,
+      GasRole? gasRole,
+    }) => LogOnOkSetup(
+      analysedBy: 'EdP',
+      desiredMix: desiredMix,
+      blendTarget: blendTarget,
+      autoPickMix: autoPickMix,
+      gasRole: gasRole,
+      printOnOk: true,
+      printerConfigured: true,
+    );
+
+    // The held line is the reading being saved; the window is something else.
+    SaveRecord decide(
+      double o2,
+      double he, {
+      required LogOnOkSetup setup,
+      bool live = true,
+    }) => _save(
+      steady(21.0, 0.0, live: live, heldLine: soloLine(o2, he)),
+      setup: setup,
+    );
+
+    test('auto pick comes from the held line', () {
+      final out = decide(19.1, 43.0, setup: autoSetup());
+      expect(out.analysis.desiredMix, const DesiredMix(18, 45));
+      expect(out.printLabel, isTrue);
+    });
+
+    test('auto pick never takes a red mix; the label then names the '
+        'analysed gas', () {
+      final out = decide(23.0, 30.0, setup: autoSetup());
+      expect(out.analysis.desiredMix, isNull);
+      expect(out.printLabel, isTrue);
+    });
+
+    test('a diver pick wins over auto pick (and a red one still blocks the '
+        'print)', () {
+      final out = decide(
+        19.1,
+        43.0,
+        setup: autoSetup(desiredMix: const DesiredMix(21, 35)),
+      );
+      expect(out.analysis.desiredMix, const DesiredMix(21, 35));
+      expect(out.printLabel, isFalse);
+      expect(out.analysis.needsSignoff, isTrue);
+    });
+
+    test('the Blend target is used when it grades within orange', () {
+      final out = decide(
+        19.6,
+        40.2,
+        setup: autoSetup(blendTarget: const DesiredMix(19, 40)),
+      );
+      expect(out.analysis.desiredMix, const DesiredMix(19, 40));
+    });
+
+    test('the role follows the picked mix', () {
+      expect(
+        decide(49.2, 0.3, setup: autoSetup()).analysis.gasRole,
+        GasRole.bailout,
+      );
+      expect(
+        decide(20.6, 33.8, setup: autoSetup()).analysis.gasRole,
+        GasRole.diluent,
+      );
+    });
+
+    test('with no desired mix the role follows the reading', () {
+      expect(
+        decide(40.0, 0.0, setup: autoSetup()).analysis.gasRole,
+        GasRole.bailout,
+      );
+    });
+
+    test('the role follows the picked mix, not a reading above 30 %', () {
+      // 30.6/29.4 matches Tx30/30: 30 % O2 is diluent, though the reading
+      // itself is above 30.
+      final out = decide(30.6, 29.4, setup: autoSetup());
+      expect(out.analysis.desiredMix, const DesiredMix(30, 30));
+      expect(out.analysis.gasRole, GasRole.diluent);
+    });
+
+    test('with no pick the reading decides: 25 % is diluent', () {
+      final out = decide(25.0, 0.0, setup: autoSetup());
+      expect(out.analysis.desiredMix, isNull);
+      expect(out.analysis.gasRole, GasRole.diluent);
+    });
+
+    test("the diver's pick decides the role, even on a red grade", () {
+      // Tx21/35 picked on a 49.2/0.3 reading: diluent by the mix, though
+      // the reading would be bailout.
+      final out = decide(
+        49.2,
+        0.3,
+        setup: autoSetup(
+          autoPickMix: false,
+          desiredMix: const DesiredMix(21, 35),
+        ),
+      );
+      expect(out.analysis.desiredMix, const DesiredMix(21, 35));
+      expect(out.analysis.gasRole, GasRole.diluent);
+      expect(out.analysis.needsSignoff, isTrue);
+    });
+
+    test('an explicit role wins', () {
+      expect(
+        decide(
+          49.2,
+          0.3,
+          setup: autoSetup(gasRole: GasRole.diluent),
+        ).analysis.gasRole,
+        GasRole.diluent,
+      );
+    });
+
+    test('without auto pick no mix is chosen', () {
+      final out = decide(19.1, 43.0, setup: autoSetup(autoPickMix: false));
+      expect(out.analysis.desiredMix, isNull);
+    });
+
+    test('a late record still gets no desired mix and bailout', () {
+      final out = decide(20.6, 33.8, setup: autoSetup(), live: false);
+      expect(out.analysis.desiredMix, isNull);
+      expect(out.analysis.gasRole, GasRole.bailout);
+    });
+  });
+
   group('late records', () {
     test('a late record gets no setup', () {
       final r = _save(steady(21.0, 35.0, live: false));

@@ -18,24 +18,33 @@ import '../theme/tokens.dart';
 /// [options] must not hold the same mix twice. A [selected] mix that is not
 /// in [options], because it was typed in through "Other…", gets a chip of
 /// its own after the options.
+///
+/// [dense] chips are 32 pt high, the floor for chips, with no padding around
+/// them for a larger tap target (the Analyse tab's height budget).
 class DesiredMixPicker extends StatelessWidget {
   const DesiredMixPicker({
     super.key,
     required this.options,
     required this.selected,
     required this.onChanged,
+    this.dense = false,
   });
 
   final List<DesiredMix> options;
   final DesiredMix? selected;
   final ValueChanged<DesiredMix?> onChanged;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
     final current = selected;
+    final tapTarget = dense ? MaterialTapTargetSize.shrinkWrap : null;
+    // One step down from the standard density takes the chip from 34 to the
+    // 32 pt floor, on every platform.
+    final density = dense ? const VisualDensity(vertical: -1) : null;
     return Wrap(
-      spacing: Spacing.sm,
-      runSpacing: Spacing.sm,
+      spacing: dense ? 6 : Spacing.sm,
+      runSpacing: dense ? 6 : Spacing.sm,
       children: [
         for (final mix in [
           ...options,
@@ -45,11 +54,15 @@ class DesiredMixPicker extends StatelessWidget {
             key: ValueKey('desired-mix-${mix.o2Percent}-${mix.hePercent}'),
             label: Text(mix.name),
             selected: mix == current,
+            materialTapTargetSize: tapTarget,
+            visualDensity: density,
             onSelected: (_) => onChanged(mix == current ? null : mix),
           ),
         ActionChip(
           key: const ValueKey('desired-mix-other'),
           label: const Text('Other…'),
+          materialTapTargetSize: tapTarget,
+          visualDensity: density,
           onPressed: () => _pickOther(context),
         ),
       ],
@@ -57,13 +70,18 @@ class DesiredMixPicker extends StatelessWidget {
   }
 
   Future<void> _pickOther(BuildContext context) async {
-    final picked = await showDialog<DesiredMix>(
-      context: context,
-      builder: (_) => const _OtherMixDialog(),
-    );
+    final picked = await showOtherMixDialog(context);
     if (picked != null && context.mounted) onChanged(picked);
   }
 }
+
+/// Asks for any mix as whole O2 / He percents; null when cancelled. Shared
+/// by the picker's "Other…" chip and the Blend tab's top-off "Other…".
+Future<DesiredMix?> showOtherMixDialog(BuildContext context) =>
+    showDialog<DesiredMix>(
+      context: context,
+      builder: (_) => const _OtherMixDialog(),
+    );
 
 /// O2 and He as whole percents. OK checks them and, if they are not a
 /// breathable mix, shows what is wrong instead of closing. After the first

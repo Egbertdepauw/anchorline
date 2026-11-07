@@ -19,11 +19,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../analysis/fill_pressure.dart';
+import '../../analysis/mix_match.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
+import 'analysis_fields.dart';
 import 'desired_mix_picker.dart';
-import 'mix_match_indicator.dart';
 
 /// How the edit sheet closed.
 enum AnalysisEditOutcome {
@@ -122,6 +123,10 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
   late final _forWhom =
       TextEditingController(text: widget.analysis.analysedFor ?? '');
   late final _notes = TextEditingController(text: widget.analysis.notes ?? '');
+  final _diverFocus = FocusNode();
+  final _pressureFocus = FocusNode();
+  final _forFocus = FocusNode();
+  final _notesFocus = FocusNode();
 
   /// The diver's cylinders, once read. Until then, and if the read fails,
   /// the entry's own cylinder is still offered (see [_cylinderItems]).
@@ -146,6 +151,10 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
     _fill.dispose();
     _forWhom.dispose();
     _notes.dispose();
+    _diverFocus.dispose();
+    _pressureFocus.dispose();
+    _forFocus.dispose();
+    _notesFocus.dispose();
     super.dispose();
   }
 
@@ -233,6 +242,28 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
       _desired = latest.desiredMix;
       _role = latest.gasRole;
     });
+  }
+
+  static TextStyle _inputStyle(BuildContext context) =>
+      AppTypography.body.copyWith(color: context.palette.textPrimary);
+
+  Widget _cylinderDropdown(BuildContext context) {
+    final palette = context.palette;
+    final style = _inputStyle(context);
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<String?>(
+        key: const ValueKey('analysis-edit-cylinder'),
+        value: _cylinderId,
+        isExpanded: true,
+        isDense: true,
+        iconSize: 18,
+        iconEnabledColor: palette.textMuted,
+        style: style,
+        dropdownColor: palette.surfaceRaised,
+        items: _cylinderItems(),
+        onChanged: _selectCylinder,
+      ),
+    );
   }
 
   /// Writes the edit and closes with [outcome]: saved, signedOff or
@@ -381,10 +412,14 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
                 a.o2Percent.isFinite &&
                 a.hePercent.isFinite) ...[
               const SizedBox(height: Spacing.sm),
-              MixMatchIndicator(
-                o2Percent: a.o2Percent,
-                hePercent: a.hePercent,
-                desired: desired,
+              AnalysisVerdict(
+                match: gradeMix(
+                  o2Percent: a.o2Percent,
+                  hePercent: a.hePercent,
+                  targetO2Percent: desired.o2Percent,
+                  targetHePercent: desired.hePercent,
+                ),
+                mix: desired,
               ),
             ],
             const SizedBox(height: Spacing.md),
@@ -400,70 +435,85 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
               onSelectionChanged: (s) => setState(() => _role = s.first),
             ),
             const SizedBox(height: Spacing.sm),
-            DropdownButtonFormField<String?>(
-              key: const ValueKey('analysis-edit-cylinder'),
-              initialValue: _cylinderId,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Cylinder (optional)',
-                isDense: true,
-              ),
-              items: _cylinderItems(),
-              onChanged: _selectCylinder,
+            AnalysisFieldBox(
+              label: 'Cylinder (optional)',
+              child: _cylinderDropdown(context),
             ),
             const SizedBox(height: Spacing.sm),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextField(
-                    key: const ValueKey('analysis-edit-diver'),
-                    controller: _diver,
-                    textCapitalization: TextCapitalization.words,
-                    onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
-                      labelText: 'Analysed by',
-                      isDense: true,
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: AnalysisFieldBox(
+                      label: 'Analysed by',
+                      focusNode: _diverFocus,
+                      child: TextField(
+                        key: const ValueKey('analysis-edit-diver'),
+                        controller: _diver,
+                        focusNode: _diverFocus,
+                        textCapitalization: TextCapitalization.words,
+                        onChanged: (_) => setState(() {}),
+                        style: _inputStyle(context),
+                        decoration: analysisBareDecoration(context),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: Spacing.md),
-                Expanded(
-                  child: TextField(
-                    key: const ValueKey('analysis-edit-pressure'),
-                    controller: _fill,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      labelText: 'Fill pressure (bar)',
-                      isDense: true,
-                      errorText:
-                          pressure.valid ? null : 'Enter a pressure in bar',
-                      errorMaxLines: 2,
+                  const SizedBox(width: Spacing.sm),
+                  Expanded(
+                    child: AnalysisFieldBox(
+                      label: 'Fill pressure (bar)',
+                      focusNode: _pressureFocus,
+                      error: !pressure.valid,
+                      child: TextField(
+                        key: const ValueKey('analysis-edit-pressure'),
+                        controller: _fill,
+                        focusNode: _pressureFocus,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        onChanged: (_) => setState(() {}),
+                        style: _inputStyle(context),
+                        decoration: analysisBareDecoration(context),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+            if (!pressure.valid)
+              Padding(
+                padding: const EdgeInsets.only(top: Spacing.xs),
+                child: Text(
+                  'Enter a pressure in bar',
+                  textAlign: TextAlign.end,
+                  style: AppTypography.caption
+                      .copyWith(color: SafetyColors.danger),
+                ),
+              ),
             const SizedBox(height: Spacing.sm),
-            TextField(
-              key: const ValueKey('analysis-edit-for'),
-              controller: _forWhom,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                labelText: 'For (optional)',
-                hintText: 'Who the gas is for',
-                isDense: true,
+            AnalysisFieldBox(
+              label: 'For (optional)',
+              focusNode: _forFocus,
+              child: TextField(
+                key: const ValueKey('analysis-edit-for'),
+                controller: _forWhom,
+                focusNode: _forFocus,
+                textCapitalization: TextCapitalization.words,
+                style: _inputStyle(context),
+                decoration:
+                    analysisBareDecoration(context, hint: 'Who the gas is for'),
               ),
             ),
             const SizedBox(height: Spacing.sm),
-            TextField(
-              key: const ValueKey('analysis-edit-notes'),
-              controller: _notes,
-              decoration: const InputDecoration(
-                labelText: 'Notes',
-                isDense: true,
+            AnalysisFieldBox(
+              label: 'Notes',
+              focusNode: _notesFocus,
+              child: TextField(
+                key: const ValueKey('analysis-edit-notes'),
+                controller: _notes,
+                focusNode: _notesFocus,
+                style: _inputStyle(context),
+                decoration: analysisBareDecoration(context),
               ),
             ),
             if (error != null) ...[
@@ -557,8 +607,10 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
   }
 }
 
-/// What was measured, as text: never an input. The cylinder and the fill
-/// pressure are stated, not measured: they are inputs of the sheet.
+/// What was measured, as text: never an input. A band in `surfaceRaised`
+/// with the mix name, a Stable / Not stable pill, the readings and when and
+/// at what temperature. The cylinder and the fill pressure are stated, not
+/// measured: they are inputs of the sheet.
 class _MeasuredValues extends StatelessWidget {
   const _MeasuredValues({required this.analysis});
 
@@ -579,7 +631,7 @@ class _MeasuredValues extends StatelessWidget {
       key: const ValueKey('analysis-edit-measured'),
       padding: const EdgeInsets.all(Spacing.md),
       decoration: BoxDecoration(
-        border: Border.all(color: palette.surfaceRaised),
+        color: palette.surfaceRaised,
         borderRadius: Radii.cardBr,
       ),
       child: Column(
@@ -590,19 +642,34 @@ class _MeasuredValues extends StatelessWidget {
               Expanded(
                 child: Text(
                   a.mixName,
-                  style:
-                      AppTypography.title.copyWith(color: palette.textPrimary),
+                  style: AppTypography.readoutMd
+                      .copyWith(color: palette.textPrimary),
                 ),
               ),
-              Icon(
-                a.stable ? Icons.check_circle : Icons.warning_amber_rounded,
-                size: 16,
-                color: stableColor,
-              ),
-              const SizedBox(width: Spacing.xs),
-              Text(
-                a.stable ? 'Stable' : 'Not stable',
-                style: AppTypography.label.copyWith(color: stableColor),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: Spacing.sm, vertical: 2),
+                decoration: BoxDecoration(
+                  border: Border.all(color: stableColor),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      a.stable
+                          ? Icons.check_circle
+                          : Icons.warning_amber_rounded,
+                      size: 14,
+                      color: stableColor,
+                    ),
+                    const SizedBox(width: Spacing.xs),
+                    Text(
+                      a.stable ? 'Stable' : 'Not stable',
+                      style: AppTypography.label.copyWith(color: stableColor),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

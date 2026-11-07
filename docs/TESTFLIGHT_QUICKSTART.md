@@ -52,11 +52,11 @@ want a fresh one:
 
 ```bash
 flutter build ipa --release \
-  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=app_store --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N>
+  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=app_store --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N> --dart-define=APP_BUILD_DATE=<yyyy-MM-dd>
 ```
 
-`<V>+<N>` is the `version:` in `pubspec.yaml`. The four defines label the
-build (Settings → Version, Sentry release); without them it reports as a
+`<V>+<N>` is the `version:` in `pubspec.yaml`. The five defines label the
+build (Settings → About, Sentry release); without them it reports as a
 development build.
 
 Build artefact: `build/ios/ipa/ccrlogger.ipa` (~30 MB).

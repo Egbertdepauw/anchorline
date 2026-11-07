@@ -58,6 +58,27 @@ void main() {
     });
   });
 
+  group('formatBuildDate', () {
+    test('formats a yyyy-MM-dd date', () {
+      expect(formatBuildDate('2026-11-06'), '6 Nov 2026');
+    });
+
+    test('empty or malformed dates are null', () {
+      expect(formatBuildDate(''), isNull);
+      expect(formatBuildDate('11/06/2026'), isNull);
+      expect(formatBuildDate('2026-13-45'), isNull);
+    });
+  });
+
+  group('channelLabel', () {
+    test('names the channels', () {
+      expect(channelLabel('release'), 'Release');
+      expect(channelLabel('nightly'), 'Nightly');
+      expect(channelLabel('dev'), 'Development');
+      expect(channelLabel('whatever'), 'Development');
+    });
+  });
+
   group('sentryReleaseName', () {
     test('joins bundle id, version and build', () {
       expect(
@@ -82,6 +103,7 @@ void main() {
       expect(BuildInfo.distribution, 'none');
       expect(BuildInfo.version, isEmpty);
       expect(BuildInfo.build, isEmpty);
+      expect(BuildInfo.buildDate, isEmpty);
       expect(BuildInfo.isNightly, isFalse);
       expect(BuildInfo.label, 'Development build');
       expect(BuildInfo.sentryRelease, isNull);
