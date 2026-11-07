@@ -9,6 +9,8 @@
 /// top-off, default fill sequence, and ideal-gas vs real-gas toggle.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../analysis/blending/gas_blender.dart';
@@ -99,7 +101,7 @@ class _BlendScreenState extends State<BlendScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _ChipWrap(children: [
+                      _ChipGrid(children: [
                         for (final m in _targetChips)
                           _MixChip(
                             key: ValueKey(
@@ -179,7 +181,7 @@ class _BlendScreenState extends State<BlendScreen> {
                 ),
                 _Section(
                   label: 'Top off with',
-                  child: _ChipWrap(children: [
+                  child: _ChipGrid(children: [
                     for (final m in [
                       ..._topoffChips,
                       if (!_topoffChips.contains(topoff)) topoff,
@@ -281,12 +283,31 @@ class _FieldGrid extends StatelessWidget {
   }
 }
 
-class _ChipWrap extends StatelessWidget {
-  const _ChipWrap({required this.children});
+/// Gas chips in equal columns, as many as fit at [_minChipWidth] each and
+/// never fewer than two: three on an iPhone 15, where they line up with the
+/// three fields under the target chips, and more on wider screens. Large
+/// text raises the minimum, so a phone drops to two columns first.
+class _ChipGrid extends StatelessWidget {
+  const _ChipGrid({required this.children});
   final List<Widget> children;
+
+  static const double _minChipWidth = 100;
+
   @override
-  Widget build(BuildContext context) =>
-      Wrap(spacing: 6, runSpacing: 6, children: children);
+  Widget build(BuildContext context) {
+    final scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
+    return LayoutBuilder(builder: (context, c) {
+      const gap = Spacing.sm;
+      final cols = math.max(
+          2, ((c.maxWidth + gap) / (_minChipWidth * scale + gap)).floor());
+      final w = (c.maxWidth - gap * (cols - 1)) / cols;
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: [for (final f in children) SizedBox(width: w, child: f)],
+      );
+    });
+  }
 }
 
 class _MixChip extends StatelessWidget {

@@ -129,6 +129,7 @@ Mockup: `gas-tabs.png`, left phone.
 3. **Top off with:** chips Air, EAN32, EAN50, Other….
    - "Other…" opens the same O₂ / He dialog as the desired-mix picker.
    - A custom top-off gets its own selected chip, as `DesiredMixPicker` does.
+   - **Both chip sets (Target and Top off) sit in a grid of equal columns.** It fits as many as there's room for at about 100 pt each, never fewer than two: three on an iPhone 15 (lined up with the three Target fields), two on a 320 pt phone or with large text, and more on wider screens. *(Changed after the first device check, 2026-11-07: Egbert wanted several gases per row.)*
 4. **Fill options:** one collapsed row with a summary on the right ("He → O₂ → top-off · real gas · 20 °C").
    - Tapping it opens Fill order (dropdown), Real-gas maths (switch), Fill temp and Settled temp.
    - It starts collapsed each time; that isn't remembered.

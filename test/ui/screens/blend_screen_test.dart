@@ -256,4 +256,70 @@ void main() {
     await pumpBlend(tester, setup: tx2135);
     expect(tester.getSize(k('blend-cost')).height, greaterThanOrEqualTo(44));
   });
+
+  group('gas chip grid', () {
+    double x(WidgetTester t, String key) => t.getTopLeft(k(key)).dx;
+    double y(WidgetTester t, String key) => t.getTopLeft(k(key)).dy;
+
+    testWidgets('three per row on an iPhone 15, lined up with the fields',
+        (tester) async {
+      await pumpBlend(tester, width: 393);
+      final row1 = y(tester, 'blend-target-chip-21-35');
+      expect(y(tester, 'blend-target-chip-18-45'), row1);
+      expect(y(tester, 'blend-target-chip-15-55'), row1);
+      expect(y(tester, 'blend-target-chip-32-0'), greaterThan(row1));
+      expect(y(tester, 'blend-target-chip-50-0'),
+          y(tester, 'blend-target-chip-32-0'));
+      // The columns are the O₂ / He / Pressure columns under the chips.
+      expect(x(tester, 'blend-target-chip-21-35'),
+          moreOrLessEquals(x(tester, 'tgt-o2')));
+      expect(x(tester, 'blend-target-chip-18-45'),
+          moreOrLessEquals(x(tester, 'tgt-he')));
+      expect(x(tester, 'blend-target-chip-15-55'),
+          moreOrLessEquals(x(tester, 'tgt-pressure')));
+      expect(x(tester, 'blend-target-chip-32-0'),
+          moreOrLessEquals(x(tester, 'blend-target-chip-21-35')));
+      expect(tester.getSize(k('blend-target-chip-21-35')).width,
+          moreOrLessEquals(tester.getSize(k('tgt-o2')).width));
+
+      final topoff = y(tester, 'blend-topoff-chip-21-0');
+      expect(y(tester, 'blend-topoff-chip-32-0'), topoff);
+      expect(y(tester, 'blend-topoff-chip-50-0'), topoff);
+      expect(y(tester, 'blend-topoff-other'), greaterThan(topoff));
+    });
+
+    testWidgets('two per row on a 320 pt phone and with large text',
+        (tester) async {
+      for (final (width, scale) in [(320.0, 1.0), (393.0, 1.3)]) {
+        await pumpBlend(tester, width: width, textScale: scale);
+        final row1 = y(tester, 'blend-target-chip-21-35');
+        expect(y(tester, 'blend-target-chip-18-45'), row1,
+            reason: '$width pt at ×$scale');
+        expect(y(tester, 'blend-target-chip-15-55'), greaterThan(row1),
+            reason: '$width pt at ×$scale');
+        expect(tester.takeException(), isNull);
+      }
+    });
+
+    testWidgets('more columns on a wide screen', (tester) async {
+      await pumpBlend(tester, width: 700);
+      final targets = y(tester, 'blend-target-chip-21-35');
+      for (final key in [
+        'blend-target-chip-18-45',
+        'blend-target-chip-15-55',
+        'blend-target-chip-32-0',
+        'blend-target-chip-50-0',
+      ]) {
+        expect(y(tester, key), targets, reason: key);
+      }
+      final topoff = y(tester, 'blend-topoff-chip-21-0');
+      for (final key in [
+        'blend-topoff-chip-32-0',
+        'blend-topoff-chip-50-0',
+        'blend-topoff-other',
+      ]) {
+        expect(y(tester, key), topoff, reason: key);
+      }
+    });
+  });
 }
