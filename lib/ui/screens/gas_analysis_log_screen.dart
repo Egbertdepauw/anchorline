@@ -356,7 +356,6 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
             : _tile(context, row as GasAnalysis);
       },
     );
-    if (widget.embedded || !items.any((a) => a.needsSignoff)) return list;
     return Column(
       children: [
         _toolRow(context, items),
@@ -416,7 +415,7 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
           horizontal: Spacing.md, vertical: Spacing.xs),
       child: Row(
         children: [
-          if (flagged > 0)
+          if (items != null && items.isNotEmpty)
             Expanded(
               child: Wrap(
                 spacing: Spacing.sm,
@@ -424,17 +423,20 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
                 children: [
                   FilterChip(
                     key: const ValueKey('analysis-log-filter-all'),
-                    label: const Text('All'),
+                    label: Text('All ${items.length}'),
                     selected: !_onlyNeedsSignoff,
                     onSelected: (_) =>
                         setState(() => _onlyNeedsSignoff = false),
                   ),
-                  FilterChip(
-                    key: const ValueKey('analysis-log-signoff-filter'),
-                    label: Text('Needs sign-off $flagged'),
-                    selected: _onlyNeedsSignoff,
-                    onSelected: (on) => setState(() => _onlyNeedsSignoff = on),
-                  ),
+                  if (flagged > 0)
+                    FilterChip(
+                      key: const ValueKey('analysis-log-signoff-filter'),
+                      label: Text('Needs sign-off $flagged'),
+                      labelStyle: TextStyle(color: SafetyColors.warning),
+                      selected: _onlyNeedsSignoff,
+                      onSelected: (on) =>
+                          setState(() => _onlyNeedsSignoff = on),
+                    ),
                 ],
               ),
             )
@@ -561,6 +563,7 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
                                   Tooltip(
                                     key: ValueKey('analysis-notes-${a.id}'),
                                     message: a.notes!,
+                                    triggerMode: TooltipTriggerMode.tap,
                                     child: Icon(Icons.notes,
                                         size: 14, color: palette.textMuted),
                                   ),

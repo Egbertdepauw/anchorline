@@ -327,6 +327,11 @@ void main() {
       await pump(tester,
           GasAnalysisLogScreen(dao: FakeGasAnalysesDao(analyses: [e])));
       expect(_key('analysis-notes-n'), findsOneWidget);
+      // A tap shows the note (a touch screen has no hover).
+      expect(find.text('Topped up'), findsNothing);
+      await tester.tap(_key('analysis-notes-n'));
+      await tester.pump();
+      expect(find.text('Topped up'), findsOneWidget);
       expect(_key('analysis-notes-tx'), findsNothing);
     });
 
@@ -998,6 +1003,7 @@ void main() {
 
     testWidgets('the sign-off chip filters, and All restores', (tester) async {
       await pump(tester, GasAnalysisLogScreen(dao: twoFlagged()));
+      expect(find.text('All 3'), findsOneWidget);
       expect(find.descendant(
               of: _key(filterKey), matching: find.text('Needs sign-off 2')),
           findsOneWidget);
@@ -1029,10 +1035,13 @@ void main() {
       expect(find.text('Needs sign-off 1'), findsOneWidget);
     });
 
-    testWidgets('no flagged entries: no chips', (tester) async {
+    testWidgets('no flagged entries: All 2 shown, no sign-off chip',
+        (tester) async {
       await pump(tester, GasAnalysisLogScreen(dao: seeded()));
       expect(_key(filterKey), findsNothing);
-      expect(_key('analysis-log-filter-all'), findsNothing);
+      expect(find.descendant(
+              of: _key('analysis-log-filter-all'), matching: find.text('All 2')),
+          findsOneWidget);
       expect(find.textContaining('sign-off'), findsNothing);
       expect(tiles(tester), 2);
     });
