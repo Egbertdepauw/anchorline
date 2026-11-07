@@ -70,13 +70,18 @@ class DesiredMixPicker extends StatelessWidget {
   }
 
   Future<void> _pickOther(BuildContext context) async {
-    final picked = await showDialog<DesiredMix>(
-      context: context,
-      builder: (_) => const _OtherMixDialog(),
-    );
+    final picked = await showOtherMixDialog(context);
     if (picked != null && context.mounted) onChanged(picked);
   }
 }
+
+/// Asks for any mix as whole O2 / He percents; null when cancelled. Shared
+/// by the picker's "Other…" chip and the Blend tab's top-off "Other…".
+Future<DesiredMix?> showOtherMixDialog(BuildContext context) =>
+    showDialog<DesiredMix>(
+      context: context,
+      builder: (_) => const _OtherMixDialog(),
+    );
 
 /// O2 and He as whole percents. OK checks them and, if they are not a
 /// breathable mix, shows what is wrong instead of closing. After the first
