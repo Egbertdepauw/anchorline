@@ -135,9 +135,7 @@ class _Rig {
     ThemeData? theme,
   }) async {
     SharedPreferences.setMockInitialValues(prefs);
-    // Opens on the Blend tab, whose top-off row still overflows on a phone
-    // (to be restyled), so the tabs are switched at a wider size first.
-    tester.view.physicalSize = Size(600, size.height);
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     settings = SettingsNotifier();
@@ -204,8 +202,6 @@ class _Rig {
     ));
     await tester.pumpAndSettle();
     await tester.tap(_key('gas-tab-analyse'));
-    await tester.pumpAndSettle();
-    tester.view.physicalSize = size;
     await tester.pumpAndSettle();
   }
 

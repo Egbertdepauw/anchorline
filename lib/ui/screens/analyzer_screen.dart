@@ -132,7 +132,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
 
   /// Keeps [_saveController] in step with the screen, on every build: made
   /// when the save card is shown, retired when it goes away (so a card shown
-  /// again starts fresh, from the remembered name), and told the reading,
+  /// again starts fresh, from Your initials), and told the reading,
   /// the Blend target, the connection and the Log on OK logger.
   void _syncSaveController() {
     final dao = _analysesDao;

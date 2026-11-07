@@ -52,7 +52,7 @@ flutter build windows --release `
   --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=website --dart-define=APP_VERSION=<x.y.z> --dart-define=APP_BUILD=<N> --dart-define=APP_BUILD_DATE=<yyyy-MM-dd>
 ```
 
-The last four defines label the build (Settings → Version, Sentry release).
+The last five defines label the build (Settings → About, Sentry release).
 
 Output: `build\windows\x64\runner\Release\` — `Anchorline.exe` plus
 runtime DLLs and the `data\` tree. **The whole folder is the app**; the

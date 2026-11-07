@@ -57,8 +57,8 @@ flutter build appbundle --release \
   --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=play_store --dart-define=APP_VERSION=<V> --dart-define=APP_BUILD=<N> --dart-define=APP_BUILD_DATE=<yyyy-MM-dd>
 ```
 
-`<V>+<N>` is the `version:` in `pubspec.yaml`. The four defines label the
-build (Settings → Version, Sentry release); the hosted `.apk` (section 3) and
+`<V>+<N>` is the `version:` in `pubspec.yaml`. The five defines label the
+build (Settings → About, Sentry release); the hosted `.apk` (section 3) and
 Windows (section 4) use `DISTRIBUTION_CHANNEL=website`, iOS and the Mac App
 Store use `app_store`.
 

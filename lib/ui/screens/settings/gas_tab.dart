@@ -371,7 +371,7 @@ class _AddModDialogState extends State<_AddModDialog> {
         keyboardType: decimalKeyboard,
         decoration: InputDecoration(
           labelText: 'ppO₂ (bar)',
-          hintText: '1.25',
+          hintText: '1.6',
           errorText: _error,
         ),
         onSubmitted: (_) => _submit(),
