@@ -14,6 +14,8 @@ import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/analyzer_screen.dart';
+import 'package:ccrlogger/ui/theme/app_themes.dart';
+import 'package:ccrlogger/ui/theme/safety_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -115,6 +117,9 @@ class _Harness {
   late AnalyzerController controller;
   late AnalyzerSession session;
 
+  /// The Blend tab's notifier; its target starts as EAN32.
+  late BlendNotifier blend;
+
   /// The transport of the latest session.
   _FakeSolo? solo;
 
@@ -133,6 +138,7 @@ class _Harness {
     bool withDao = true,
     SettingsNotifier? useSettings,
     Size size = const Size(400, 3200),
+    ThemeData? theme,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -173,10 +179,11 @@ class _Harness {
         return logger = l;
       },
     );
-    final blend = BlendNotifier(settings: settings)
+    blend = BlendNotifier(settings: settings)
       ..setTargetMix(32, 0)
       ..setTargetPressure(200);
     await tester.pumpWidget(MaterialApp(
+      theme: theme,
       home: Scaffold(
         body: AnalyzerScreen(
             settings: settings, session: session, blend: blend),
@@ -235,10 +242,41 @@ Future<void> _pickSource(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _switchOn(WidgetTester tester) async {
+/// The "Log on OK" button in the heading of the save section.
+Future<void> _start(WidgetTester tester) async {
   await tester.tap(_key('analyzer-log-on-ok'));
   await tester.pump();
 }
+
+/// Stop, in the status strip.
+Future<void> _stop(WidgetTester tester) async {
+  await tester.tap(_key('analyzer-ok-stop'));
+  await tester.pump();
+}
+
+/// The start button can be tapped.
+bool _startEnabled(WidgetTester tester) =>
+    tester.widget<ButtonStyleButton>(_key('analyzer-log-on-ok')).enabled;
+
+/// The heading's "● Logging on OK", drawn like the section's heading.
+Finder get _runningLabel => find.text('● Logging on OK'.toUpperCase());
+
+/// Settings with Log on OK left running from an earlier session.
+Future<SettingsNotifier> _leftRunning() async {
+  final s = SettingsNotifier();
+  await s.load();
+  await s.setAnalyzerLogOnOk(true);
+  return s;
+}
+
+/// The "Print a label on each OK" switch.
+bool _printOnOk(WidgetTester tester) =>
+    tester.widget<Switch>(_key('analysis-print-on-ok')).value;
+
+/// The saved rows' (desired mix, role), in the order of the presses.
+List<(DesiredMix?, GasRole)> _mixesAndRoles(_Harness h) => [
+      for (final (_, a) in h.dao.addedFromBridge) (a.desiredMix, a.gasRole),
+    ];
 
 /// The setup of a stable EAN32 for the name "EdP": the chip, the name.
 Future<void> _setUp(WidgetTester tester) async {
@@ -308,99 +346,268 @@ void _test(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  group('the switch', () {
-    _test('Log on OK is offered for USB, not for the demo', (tester, h) async {
+  group('the start button', () {
+    _test('the heading button is disabled before connecting and hidden for '
+        'Demo', (tester, h) async {
       await h.pump(tester);
       expect(_key('analyzer-log-on-ok'), findsOneWidget);
       expect(find.text('Log on OK'), findsOneWidget);
-      // What to do is said once it is on.
-      expect(find.text('Press OK on the SOLO to save. Keep this screen open.'),
-          findsNothing);
-      await _switchOn(tester);
-      expect(find.text('Press OK on the SOLO to save. Keep this screen open.'),
-          findsOneWidget);
+      expect(_startEnabled(tester), isFalse);
+      // It sits at the right of the "Save analysis" heading.
+      expect(
+        tester.getCenter(_key('analyzer-log-on-ok')).dy,
+        closeTo(tester.getCenter(find.text('SAVE ANALYSIS')).dy, 4),
+      );
+      expect(
+        tester.getTopRight(_key('analyzer-log-on-ok')).dx,
+        greaterThan(tester.getTopRight(find.text('SAVE ANALYSIS')).dx),
+      );
+
+      await h.connect(tester);
+      expect(_startEnabled(tester), isTrue);
+      await h.disconnect(tester);
+      expect(_startEnabled(tester), isFalse);
 
       await _pickSource(tester, 'Demo');
       expect(_key('analyzer-log-on-ok'), findsNothing);
     });
 
-    _test('the wide layout has the switch and the OK hint too',
+    _test('the wide layout has the button and the strip too',
         (tester, h) async {
       await h.pump(tester, size: const Size(1200, 1600));
-      await _switchOn(tester);
       await h.connect(tester);
-      expect(_key('analyzer-log-on-ok'), findsOneWidget);
-      expect(_key('analysis-ok-hint'), findsOneWidget);
+      expect(_startEnabled(tester), isTrue);
+      await _start(tester);
+      expect(_runningLabel, findsOneWidget);
+      expect(_key('analyzer-ok-strip'), findsOneWidget);
       expect(_key('analysis-save'), findsNothing);
+      // The strip is the save column's bar.
+      expect(tester.getRect(_key('analyzer-ok-strip')).left,
+          greaterThan(tester.getRect(_key('analysis-save-card')).left));
     });
 
-    _test('without a log there is no switch', (tester, h) async {
+    _test('without a log there is no button', (tester, h) async {
       await h.pump(tester, withDao: false);
       expect(_key('analyzer-log-on-ok'), findsNothing);
     });
 
-    _test('the switch is remembered on the device', (tester, h) async {
+    _test('Log on OK is remembered on the device', (tester, h) async {
       await h.pump(tester);
+      await h.connect(tester);
       expect(h.settings.analyzerLogOnOk, isFalse);
-      await _switchOn(tester);
+      await _start(tester);
       expect(h.settings.analyzerLogOnOk, isTrue);
-      final again = SettingsNotifier();
+      var again = SettingsNotifier();
       await again.load();
       expect(again.analyzerLogOnOk, isTrue);
+
+      await _stop(tester);
+      expect(h.settings.analyzerLogOnOk, isFalse);
+      again = SettingsNotifier();
+      await again.load();
+      expect(again.analyzerLogOnOk, isFalse);
     });
 
-    _test('no logger without a connection, the card stays manual',
-        (tester, h) async {
-      await h.pump(tester);
-      await _switchOn(tester);
+    _test('left running, no logger without a connection: the card stays '
+        'manual', (tester, h) async {
+      await h.pump(tester, useSettings: await _leftRunning());
       expect(h.loggersBuilt, 0);
       expect(_key('analysis-save'), findsOneWidget);
-      expect(_key('analysis-ok-hint'), findsNothing);
+      expect(_key('analyzer-ok-strip'), findsNothing);
       expect(_key('analysis-print-on-ok'), findsNothing);
+      expect(_runningLabel, findsNothing);
+      expect(_startEnabled(tester), isFalse);
+
+      // It runs again on the next connect.
+      await h.connect(tester);
+      expect(h.loggersBuilt, 1);
+      expect(_runningLabel, findsOneWidget);
+      expect(_key('analyzer-ok-strip'), findsOneWidget);
     });
 
     _test('a demo session never gets a logger', (tester, h) async {
-      await h.pump(tester);
-      await _switchOn(tester);
+      await h.pump(tester, useSettings: await _leftRunning());
       await _pickSource(tester, 'Demo');
       await h.connect(tester);
       await tester.pump(const Duration(seconds: 3));
       expect(h.loggersBuilt, 0);
+      expect(_key('analyzer-ok-strip'), findsNothing);
     });
   });
 
-  group('the card in Log on OK mode', () {
-    _test('with Log on OK on, the card shows the OK hint instead of Save',
-        (tester, h) async {
+  group('the status strip', () {
+    _test('Start shows the strip and the print row; Stop restores Save and '
+        'Save & print', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await h.feed(tester, 32.0, 0, seconds: 3);
+      expect(_key('analysis-save'), findsOneWidget);
+      expect(_key('analysis-save-print'), findsOneWidget);
+      expect(_key('analysis-print-on-ok'), findsNothing);
 
+      await _start(tester);
       expect(h.loggersBuilt, 1);
-      expect(_key('analysis-ok-hint'), findsOneWidget);
+      // The heading says it runs, and the bar is the strip.
+      expect(_key('analyzer-log-on-ok'), findsNothing);
+      expect(_runningLabel, findsOneWidget);
+      expect(_key('analyzer-ok-strip'), findsOneWidget);
+      expect(find.text('Logging on OK'), findsOneWidget);
       expect(find.text('Press OK on the SOLO to save'), findsOneWidget);
+      expect(_key('analyzer-ok-stop'), findsOneWidget);
       expect(_key('analysis-save'), findsNothing);
       expect(_key('analysis-save-print'), findsNothing);
-      // The fields of the setup are still there, with "For" in both modes.
+      expect(_key('analysis-ok-strip-save'), findsNothing);
+      // The strip takes the bar's place, at the bar's height.
+      expect(tester.getRect(_key('analysis-action-bar')).height, 64);
+      // The print row, with the copies, while running with a printer.
+      expect(find.text('Print a label on each OK'), findsOneWidget);
+      expect(_printOnOk(tester), isTrue);
+      expect(_key('copies-value'), findsOneWidget);
+      expect(find.text('Keep Anchorline open'), findsOneWidget);
+
+      await _stop(tester);
+      expect(h.settings.analyzerLogOnOk, isFalse);
+      expect(h.loggerClosed, isTrue);
+      expect(_key('analyzer-ok-strip'), findsNothing);
+      expect(_runningLabel, findsNothing);
+      expect(_startEnabled(tester), isTrue);
+      expect(_key('analysis-save'), findsOneWidget);
+      expect(_key('analysis-save-print'), findsOneWidget);
+      expect(_key('analysis-print-on-ok'), findsNothing);
+      expect(find.text('Keep Anchorline open'), findsNothing);
+    }, printer: true);
+
+    _test('running without a printer: the setup link, no print row',
+        (tester, h) async {
+      h.printerSetUp = false;
+      await h.pump(tester);
+      await h.connect(tester);
+      await _start(tester);
+      expect(_key('analysis-print-on-ok'), findsNothing);
+      expect(_key('analysis-setup-printer'), findsOneWidget);
+      // The fields of the setup are still there.
       expect(_key('analysis-diver'), findsOneWidget);
       expect(_key('analysis-for'), findsOneWidget);
       expect(_key('analysis-pressure'), findsOneWidget);
       expect(_key('analysis-add-note'), findsOneWidget);
       expect(_key('analysis-cylinder'), findsOneWidget);
-      // No printer here, so nothing to switch on.
-      expect(
-        tester
-            .widget<SwitchListTile>(_key('analysis-print-on-ok'))
-            .onChanged,
-        isNull,
-      );
+    }, printer: true);
+
+    _test('held shows "Held on the SOLO"', (tester, h) async {
+      await h.pump(tester);
+      await h.connect(tester);
+      await _start(tester);
+      await h.feed(tester, 32.0, 0, seconds: 3);
+      expect(find.text('Logging on OK'), findsOneWidget);
+
+      // OK pressed: the stream stops and stays stopped.
+      await tester.pump(const Duration(seconds: 5));
+      expect(find.text('Held on the SOLO'), findsOneWidget);
+      expect(find.text('Press OK there to measure again'), findsOneWidget);
+      expect(find.text('Logging on OK'), findsNothing);
+      expect(_key('analyzer-ok-stop'), findsOneWidget);
+      expect(_runningLabel, findsOneWidget);
+
+      // OK again: the lines come back and so does the usual text.
+      h.solo!.emitLine(_line(32.0, 0));
+      await tester.pump();
+      expect(find.text('Logging on OK'), findsOneWidget);
+      expect(find.text('Held on the SOLO'), findsNothing);
+      await tester.pumpAndSettle();
     });
 
+    _test("room air shows the strip's Save and Stop", (tester, h) async {
+      await h.pump(tester);
+      await h.connect(tester);
+      await _start(tester);
+
+      await h.feed(tester, 20.9, 0);
+      expect(find.text("Air isn't logged on OK"), findsOneWidget);
+      expect(find.text('Tap Save to log it'), findsOneWidget);
+      expect(_key('analysis-ok-strip-save'), findsOneWidget);
+      expect(_key('analyzer-ok-stop'), findsOneWidget);
+      expect(_key('analysis-save'), findsNothing);
+      // Save before Stop.
+      expect(tester.getCenter(_key('analysis-ok-strip-save')).dx,
+          lessThan(tester.getCenter(_key('analyzer-ok-stop')).dx));
+
+      // The strip's Save logs the air, by hand.
+      await tester.tap(_key('analysis-ok-strip-save'));
+      await tester.pumpAndSettle();
+      expect(h.dao.added, hasLength(1));
+      expect(h.dao.added.single.o2Percent, closeTo(20.9, 0.01));
+      expect(h.dao.addedFromBridge, isEmpty);
+
+      await h.feed(tester, 32.0, 0, seconds: 3);
+      expect(find.text('Press OK on the SOLO to save'), findsOneWidget);
+      expect(_key('analysis-ok-strip-save'), findsNothing);
+    });
+
+    _test('the strip buttons are 44 pt targets', (tester, h) async {
+      await h.pump(tester);
+      await h.connect(tester);
+      expect(tester.getSize(_key('analyzer-log-on-ok')).height, 44);
+      await _start(tester);
+      await h.feed(tester, 20.9, 0, seconds: 3);
+      expect(tester.getSize(_key('analyzer-ok-stop')).height, 44);
+      expect(tester.getSize(_key('analyzer-ok-stop')).width,
+          greaterThanOrEqualTo(44));
+      expect(tester.getSize(_key('analysis-ok-strip-save')).height, 44);
+      expect(tester.getSize(_key('analysis-ok-strip-save')).width,
+          greaterThanOrEqualTo(44));
+    });
+
+    _test('no overflow at 320×568 and text scale 1.3 while running',
+        (tester, h) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await h.pump(tester, size: const Size(320, 568));
+      await h.connect(tester);
+      expect(tester.takeException(), isNull);
+      await _start(tester);
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await h.feed(tester, 20.9, 0, seconds: 3);
+      expect(_key('analysis-ok-strip-save'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+      await tester.drag(_key('analyzer-scroll'), const Offset(0, -2000));
+      await tester.pumpAndSettle();
+      expect(_key('analysis-ok-result'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }, printer: true);
+
+    testWidgets('the running section and strip render in every theme',
+        (tester) async {
+      for (final def in AppThemes.all) {
+        // Each theme starts with Log on OK not yet started.
+        SharedPreferences.setMockInitialValues({});
+        final h = _Harness(printer: true);
+        try {
+          await h.pump(tester, theme: def.themeData);
+          await h.connect(tester);
+          await _start(tester);
+          await tester.enterText(_key('analysis-diver'), 'EdP');
+          await h.feed(tester, 32.0, 0);
+          await h.pressOk(tester);
+          await tester.pumpAndSettle();
+          expect(_key('analyzer-ok-strip'), findsOneWidget, reason: def.id);
+          expect(_key('analysis-ok-result'), findsOneWidget, reason: def.id);
+          expect(_runningLabel, findsOneWidget, reason: def.id);
+          expect(tester.takeException(), isNull, reason: def.id);
+        } finally {
+          await h.end(tester);
+        }
+      }
+    });
+  });
+
+  group('the card in Log on OK mode', () {
     _test('an unstable reading does not ask to wait: OK still saves it',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
 
       await h.feed(tester, 32.0, 0, seconds: 3);
       expect(
@@ -414,8 +621,8 @@ void main() {
     _test('room air keeps the wait-for-stable hint for the manual Save',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
 
       await h.feed(tester, 20.9, 0, seconds: 3);
       expect(
@@ -424,26 +631,11 @@ void main() {
       );
     });
 
-    _test('room air brings Save back', (tester, h) async {
-      await h.pump(tester);
-      await _switchOn(tester);
-      await h.connect(tester);
-
-      await h.feed(tester, 20.9, 0, seconds: 3);
-      expect(find.text("Air isn't logged on OK. Tap Save."), findsOneWidget);
-      expect(_key('analysis-ok-hint'), findsOneWidget);
-      expect(_key('analysis-save'), findsOneWidget);
-
-      await h.feed(tester, 32.0, 0, seconds: 3);
-      expect(find.text('Press OK on the SOLO to save'), findsOneWidget);
-      expect(_key('analysis-save'), findsNothing);
-    });
-
     _test('an OK on air says it was not logged and saves nothing',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
 
       await h.feed(tester, 20.9, 0);
       await h.pressOk(tester);
@@ -454,11 +646,10 @@ void main() {
       expect(_key('analysis-ok-delete'), findsNothing);
     });
 
-    _test('an OK press saves, shows the result and offers Edit and Delete',
-        (tester, h) async {
+    _test('the result row has Edit and no Delete', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
 
       await h.feed(tester, 32.0, 0);
@@ -475,14 +666,47 @@ void main() {
 
       expect(_resultText(tester), 'Saved EAN32');
       expect(_key('analysis-ok-edit'), findsOneWidget);
-      expect(_key('analysis-ok-delete'), findsOneWidget);
+      expect(_key('analysis-ok-delete'), findsNothing);
+      expect(find.text('Delete'), findsNothing);
+      // An icon, the text and Edit on one row, with a 3 pt edge on the left
+      // in the result's colour.
+      final row = find.ancestor(
+          of: _key('analysis-ok-result'),
+          matching: find.byKey(const ValueKey('analysis-ok-result-row')));
+      expect(row, findsOneWidget);
+      expect(find.descendant(of: row, matching: _key('analysis-ok-edit')),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: row, matching: find.byIcon(Icons.check_circle_outline)),
+          findsOneWidget);
+      final box = tester.widget<Container>(row).decoration! as BoxDecoration;
+      final edge = (box.border! as Border).left;
+      expect(edge.width, 3);
+      expect(edge.color, SafetyColors.success);
+      expect(tester.getSize(_key('analysis-ok-edit')).height, 44);
+    });
+
+    _test('a result that needs sign-off has the warning edge',
+        (tester, h) async {
+      await h.pump(tester);
+      await h.connect(tester);
+      await _start(tester);
+      await _setUp(tester);
+      await h.feed(tester, 28.0, 0, seconds: 6);
+      await h.pressOk(tester);
+      expect(_resultText(tester), 'Needs sign-off: MISMATCH');
+      final row = tester.widget<Container>(
+          find.byKey(const ValueKey('analysis-ok-result-row')));
+      final edge = ((row.decoration! as BoxDecoration).border! as Border).left;
+      expect(edge.color, SafetyColors.warning);
     });
 
     _test('the setup of the card is what the OK press saves',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       await _pickCylinder(tester, 'Dil 3L');
       await tester.enterText(_key('analysis-for'), 'Anna');
@@ -505,8 +729,8 @@ void main() {
 
     _test('Edit opens the sheet on the stored entry', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       await h.feed(tester, 32.0, 0);
       await h.pressOk(tester);
@@ -517,40 +741,12 @@ void main() {
       expect(find.text('EdP'), findsWidgets);
     });
 
-    _test('Delete on the result asks, then soft-deletes', (tester, h) async {
-      await h.pump(tester);
-      await _switchOn(tester);
-      await h.connect(tester);
-      await _setUp(tester);
-      await h.feed(tester, 32.0, 0);
-      await h.pressOk(tester);
-      final id = h.dao.addedFromBridge.single.$1;
-
-      await tester.tap(_key('analysis-ok-delete'));
-      await tester.pumpAndSettle();
-      expect(find.text('Delete this analysis?'), findsOneWidget);
-      expect(h.dao.deleted, isEmpty);
-
-      // Cancel leaves it all as it was.
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
-      expect(h.dao.deleted, isEmpty);
-      expect(_key('analysis-ok-result'), findsOneWidget);
-
-      await tester.tap(_key('analysis-ok-delete'));
-      await tester.pumpAndSettle();
-      await tester.tap(_key('analysis-ok-delete-confirm'));
-      await tester.pumpAndSettle();
-      expect(h.dao.deleted, [id]);
-      expect(_key('analysis-ok-result'), findsNothing);
-    });
-
     _test(
         'a complete save clears cylinder, pressure and notes, '
         'keeps name and mix', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       await _pickCylinder(tester, 'Dil 3L'); // role: diluent
       await tester.enterText(_key('analysis-for'), 'Anna');
@@ -565,6 +761,9 @@ void main() {
       expect(h.dao.addedFromBridge.single.$2.gasRole, GasRole.diluent);
       expect(find.text('200'), findsNothing);
       expect(find.text('Topped up'), findsNothing);
+      // The notes fold away again.
+      expect(_key('analysis-notes'), findsNothing);
+      expect(_key('analysis-add-note'), findsOneWidget);
       expect(_cylinderValue(tester), isNull);
       // Kept for the next cylinder.
       expect(find.text('EdP'), findsOneWidget);
@@ -584,11 +783,209 @@ void main() {
       );
     });
 
+    _test('a complete OK save puts the fill pressure back to 230',
+        (tester, h) async {
+      await h.pump(tester);
+      await h.connect(tester);
+      await _start(tester);
+      await _setUp(tester);
+      expect(
+          tester.widget<TextField>(_key('analysis-pressure')).controller!.text,
+          '230');
+      await tester.enterText(_key('analysis-pressure'), '200');
+      await tester.pump();
+
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+      expect(_resultText(tester), 'Saved EAN32');
+      expect(h.dao.addedFromBridge.single.$2.fillPressureBar, 200);
+      // Back to "Fill pressure starts at", not empty.
+      expect(
+          tester.widget<TextField>(_key('analysis-pressure')).controller!.text,
+          '230');
+
+      // A blank pressure the press took is "used up" to 230 as well.
+      await tester.enterText(_key('analysis-pressure'), '');
+      await tester.pump();
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+      expect(h.dao.addedFromBridge.last.$2.fillPressureBar, isNull);
+      expect(
+          tester.widget<TextField>(_key('analysis-pressure')).controller!.text,
+          '230');
+    });
+
+    _test('each press picks its own mix: Tx21/35 then EAN50 in one run',
+        (tester, h) async {
+      await h.pump(tester);
+      await h.connect(tester);
+      await _start(tester);
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await tester.pump();
+
+      await h.feed(tester, 20.6, 33.8);
+      await h.pressOk(tester);
+      await h.feed(tester, 49.2, 0.3);
+      await h.pressOk(tester);
+
+      expect(_mixesAndRoles(h), [
+        (const DesiredMix(21, 35), GasRole.diluent),
+        (const DesiredMix(50, 0), GasRole.bailout),
+      ]);
+      expect(h.dao.addedFromBridge.every((e) => !e.$2.needsSignoff), isTrue);
+    });
+
+    _test('a tapped role stays across presses', (tester, h) async {
+      await h.pump(tester);
+      await h.connect(tester);
+      await _start(tester);
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await tester.pump();
+      await tester.tap(find.text('Bailout / deco'));
+      await tester.pump();
+
+      await h.feed(tester, 20.6, 33.8);
+      await h.pressOk(tester);
+      expect(_resultText(tester), 'Saved Tx21/34');
+      await h.feed(tester, 19.1, 43.0);
+      await h.pressOk(tester);
+
+      expect(_mixesAndRoles(h), [
+        (const DesiredMix(21, 35), GasRole.bailout),
+        (const DesiredMix(18, 45), GasRole.bailout),
+      ]);
+      // Still the diver's after both saves.
+      expect(
+        tester
+            .widget<SegmentedButton<GasRole>>(_key('analysis-gas-role'))
+            .selected,
+        {GasRole.bailout},
+      );
+    });
+
+    _test('tapping the role already shown keeps it for every press',
+        (tester, h) async {
+      await h.pump(tester);
+      await h.connect(tester);
+      await _start(tester);
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await h.feed(tester, 20.6, 33.8, seconds: 3);
+      // The rule shows Diluent for Tx21/35; the diver taps it anyway.
+      expect(
+        tester
+            .widget<SegmentedButton<GasRole>>(_key('analysis-gas-role'))
+            .selected,
+        {GasRole.diluent},
+      );
+      await tester.tap(find.text('Diluent'));
+      await tester.pump();
+
+      await h.feed(tester, 32.0, 0);
+      await h.pressOk(tester);
+      await h.feed(tester, 49.2, 0.3);
+      await h.pressOk(tester);
+
+      expect(_mixesAndRoles(h), [
+        (const DesiredMix(32, 0), GasRole.diluent),
+        (const DesiredMix(50, 0), GasRole.diluent),
+      ]);
+      expect(
+        tester
+            .widget<SegmentedButton<GasRole>>(_key('analysis-gas-role'))
+            .selected,
+        {GasRole.diluent},
+      );
+    });
+
+    _test('a complete OK save of the Blend target marks it used',
+        (tester, h) async {
+      await h.pump(tester);
+      // Tx19/40 is no standard mix, so the target is told apart from the
+      // nearest standard mix (none is within orange of 19.6/40.2).
+      h.blend.setTargetMix(19, 40);
+      await h.connect(tester);
+      await _start(tester);
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await tester.pump();
+
+      await h.feed(tester, 19.6, 40.2);
+      expect(find.textContaining('the Blend target'), findsOneWidget);
+      await h.pressOk(tester);
+      await tester.pumpAndSettle();
+      expect(_resultText(tester), 'Saved Tx20/40');
+      expect(h.dao.addedFromBridge.single.$2.desiredMix,
+          const DesiredMix(19, 40));
+      expect(h.blend.unusedRecentTarget(), isNull);
+      expect(h.blend.recentTarget(), const DesiredMix(19, 40));
+
+      // The next cylinder of the batch, the same gas: one blend is one
+      // cylinder, so this press does not get the target.
+      await h.feed(tester, 19.6, 40.2);
+      expect(find.textContaining('the Blend target'), findsNothing);
+      await h.pressOk(tester);
+      await tester.pumpAndSettle();
+      expect(h.dao.addedFromBridge, hasLength(2));
+      expect(h.dao.addedFromBridge.last.$2.desiredMix,
+          isNot(const DesiredMix(19, 40)));
+    });
+
+    _test('a press queued behind the Blend target\'s save does not get it',
+        (tester, h) async {
+      final slow = h.dao as _SlowDao;
+      await h.pump(tester);
+      h.blend.setTargetMix(19, 40);
+      await h.connect(tester);
+      await _start(tester);
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await tester.pump();
+
+      // The first press is saved slowly; a second one waits behind it.
+      await h.feed(tester, 19.6, 40.2);
+      slow.gate = Completer<void>();
+      await h.pressOk(tester);
+      await h.feed(tester, 19.6, 40.2, seconds: 4);
+      await h.pressOk(tester);
+      slow.gate!.complete();
+      await tester.pumpAndSettle();
+
+      final saved = h.dao.addedFromBridge.map((e) => e.$2.desiredMix).toList();
+      expect(saved, [
+        const DesiredMix(19, 40),
+        isNot(const DesiredMix(19, 40)),
+      ]);
+      expect(h.blend.unusedRecentTarget(), isNull);
+    }, dao: _SlowDao(cylinders: const [_dil, _s80]));
+
+    _test('a press that needs sign-off leaves the Blend target unused',
+        (tester, h) async {
+      await h.pump(tester);
+      h.blend.setTargetMix(19, 40);
+      await h.connect(tester);
+      await _start(tester);
+      // No name: saved for sign-off.
+      await h.feed(tester, 19.6, 40.2);
+      await h.pressOk(tester);
+      await tester.pumpAndSettle();
+      expect(h.dao.addedFromBridge.single.$2.desiredMix,
+          const DesiredMix(19, 40));
+      expect(h.dao.addedFromBridge.single.$2.needsSignoff, isTrue);
+      expect(h.blend.unusedRecentTarget(), const DesiredMix(19, 40));
+
+      // The next press still gets it.
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await h.feed(tester, 19.6, 40.2);
+      await h.pressOk(tester);
+      await tester.pumpAndSettle();
+      expect(h.dao.addedFromBridge.last.$2.desiredMix,
+          const DesiredMix(19, 40));
+      expect(h.blend.unusedRecentTarget(), isNull);
+    });
+
     _test('a save that needs sign-off keeps the per-cylinder fields',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       await _pickCylinder(tester, 'S80 left');
       await tester.enterText(_key('analysis-pressure'), '200');
@@ -612,8 +1009,8 @@ void main() {
 
     _test('with no name the entry is saved for sign-off', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
 
       await h.feed(tester, 32.0, 0);
       await h.pressOk(tester);
@@ -625,8 +1022,8 @@ void main() {
     _test('with a name and the automatic pick the entry gets the nearest '
         'mix and is saved complete', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await tester.enterText(_key('analysis-diver'), 'EdP');
       await tester.pump();
 
@@ -643,8 +1040,8 @@ void main() {
     _test('with a name and no desired mix the entry is saved complete',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await tester.enterText(_key('analysis-diver'), 'EdP');
       await tester.pump();
 
@@ -661,8 +1058,8 @@ void main() {
     _test('an OK before the reading is stable saves complete, marked not '
         'stable', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       await _pickCylinder(tester, 'S80 left');
       await tester.enterText(_key('analysis-pressure'), '200');
@@ -684,8 +1081,8 @@ void main() {
         (tester, h) async {
       final slow = h.dao as _SlowDao;
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       await tester.enterText(_key('analysis-pressure'), '200');
       await _enterNotes(tester, 'first');
@@ -712,8 +1109,8 @@ void main() {
     _test('Edit and Sign off turns the result into a plain Saved',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
 
       await h.feed(tester, 28.0, 0, seconds: 6);
@@ -732,8 +1129,8 @@ void main() {
     _test('Edit and Sign off uses up the per-cylinder fields',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       await _pickCylinder(tester, 'S80 left');
       await tester.enterText(_key('analysis-pressure'), '200');
@@ -763,8 +1160,8 @@ void main() {
 
     _test('Edit and Sign off leaves what was typed since', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       await tester.enterText(_key('analysis-pressure'), '200');
       await tester.pump();
@@ -787,8 +1184,8 @@ void main() {
     _test('after an edit the result follows the entry as stored',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       await h.feed(tester, 28.0, 0, seconds: 6);
       await h.pressOk(tester);
@@ -807,8 +1204,8 @@ void main() {
 
     _test('Delete in the edit sheet clears the result', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       await h.feed(tester, 32.0, 0);
       await h.pressOk(tester);
@@ -828,14 +1225,11 @@ void main() {
   group('printing on OK', () {
     _test('the label prints and the entry is signed off', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       // On by default with a printer set up.
-      expect(
-        tester.widget<SwitchListTile>(_key('analysis-print-on-ok')).value,
-        isTrue,
-      );
+      expect(_printOnOk(tester), isTrue);
       await tester.tap(_key('copies-inc'));
       await tester.pump();
 
@@ -857,22 +1251,19 @@ void main() {
         (tester, h) async {
       h.printerSetUp = false;
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
-      expect(
-        tester.widget<SwitchListTile>(_key('analysis-print-on-ok')).value,
-        isFalse,
-      );
+      // No printer: the link, not the print row.
+      expect(_key('analysis-print-on-ok'), findsNothing);
+      expect(_key('analysis-setup-printer'), findsOneWidget);
 
       // Set up through the card's link, which comes back to this screen.
       h.printerSetUp = true;
       await h.settings.setLabelPrinter(id: 'dev-1', name: 'Phomemo');
       await tester.pump();
-      expect(
-        tester.widget<SwitchListTile>(_key('analysis-print-on-ok')).value,
-        isTrue,
-      );
+      expect(_printOnOk(tester), isTrue);
+      expect(_key('analysis-setup-printer'), findsNothing);
 
       await h.feed(tester, 32.0, 0);
       await h.pressOk(tester);
@@ -884,8 +1275,8 @@ void main() {
 
     _test('an OK before the reading is stable prints', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
 
       // 6 s of flow is not stable; the OK press is the confirmation.
@@ -902,8 +1293,8 @@ void main() {
     _test('with a name and no desired mix the label shows the analysed mix',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await tester.enterText(_key('analysis-diver'), 'EdP');
       await tester.pump();
 
@@ -920,8 +1311,8 @@ void main() {
 
     _test('without a name nothing prints', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await tester.tap(_key('desired-mix-32-0'));
       await tester.pump();
 
@@ -937,8 +1328,8 @@ void main() {
     _test('a desired mix picked on the card still blocks a red mismatch',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
 
       await h.feed(tester, 28.0, 0);
@@ -953,8 +1344,8 @@ void main() {
     _test('with the print switch off the entry is saved, not printed',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       await tester.tap(_key('analysis-print-on-ok'));
       await tester.pump();
@@ -972,8 +1363,8 @@ void main() {
     _test('crossing the wide breakpoint keeps the card and its setup',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       // A tapped role stays for every press.
       await tester.tap(find.text('Diluent'));
@@ -1000,7 +1391,8 @@ void main() {
               .selected,
           {GasRole.diluent},
         );
-        expect(_key('analysis-ok-hint'), findsOneWidget);
+        expect(_key('analyzer-ok-strip'), findsOneWidget);
+        expect(_runningLabel, findsOneWidget);
       }
 
       // Narrow to wide: the same card, so the setup is still on it and
@@ -1045,8 +1437,8 @@ void main() {
           .join(' | ');
 
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await h.feed(tester, 33.0, 0);
       // EAN32 is picked automatically.
       expect(mod16(), contains('38 m'));
@@ -1085,8 +1477,8 @@ void main() {
     _test('a disposed screen leaves the setup of its successor alone',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       final first = h.logger!.setupProvider;
       expect(first, isNotNull);
 
@@ -1114,8 +1506,8 @@ void main() {
         (tester, h) async {
       final slow = h.dao as _SlowDao;
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       await _pickCylinder(tester, 'S80 left');
       await tester.enterText(_key('analysis-pressure'), '200');
@@ -1163,8 +1555,8 @@ void main() {
   group('the fill pressure on the card', () {
     _test('a typo says so and is not saved as a pressure', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       expect(find.text('Enter a pressure in bar'), findsNothing);
 
@@ -1189,8 +1581,8 @@ void main() {
 
     _test('a pressure is passed as a number, comma or dot', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       await tester.enterText(_key('analysis-pressure'), '199,5');
       await tester.pump();
@@ -1205,8 +1597,8 @@ void main() {
     _test('a label that printed but could not be signed off says so',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
 
       await h.feed(tester, 32.0, 0);
@@ -1221,8 +1613,8 @@ void main() {
     _test('a label that printed and was signed off says only Printed',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
 
       await h.feed(tester, 32.0, 0);
@@ -1236,8 +1628,8 @@ void main() {
     _test('the switch is written, and the next card starts from it',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       expect(h.settings.analyzerPrintOnOk, isTrue, reason: 'on by default');
 
       await tester.tap(_key('analysis-print-on-ok'));
@@ -1250,20 +1642,15 @@ void main() {
       // A new screen (a new card) starts from the remembered choice.
       await tester.pumpWidget(const SizedBox());
       h.controller.dispose();
+      // Log on OK was left running, so it runs again on this connect.
       await h.pump(tester, useSettings: again);
       await h.connect(tester);
-      expect(
-        tester.widget<SwitchListTile>(_key('analysis-print-on-ok')).value,
-        isFalse,
-      );
+      expect(_printOnOk(tester), isFalse);
 
       await tester.tap(_key('analysis-print-on-ok'));
       await tester.pump();
       expect(again.analyzerPrintOnOk, isTrue);
-      expect(
-        tester.widget<SwitchListTile>(_key('analysis-print-on-ok')).value,
-        isTrue,
-      );
+      expect(_printOnOk(tester), isTrue);
     }, printer: true);
   });
 
@@ -1352,19 +1739,19 @@ void main() {
   });
 
   group('stopping the logger', () {
-    _test('switching off disposes the logger and brings Save back',
+    _test('Stop disposes the logger and brings Save back',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await _setUp(tester);
       expect(h.loggerClosed, isFalse);
 
-      await _switchOn(tester); // now off
+      await _stop(tester);
       await tester.pump();
       expect(h.settings.analyzerLogOnOk, isFalse);
       expect(h.loggerClosed, isTrue);
-      expect(_key('analysis-ok-hint'), findsNothing);
+      expect(_key('analyzer-ok-strip'), findsNothing);
       expect(_key('analysis-save'), findsOneWidget);
 
       await h.feed(tester, 32.0, 0);
@@ -1375,8 +1762,8 @@ void main() {
     _test('disconnecting disposes the logger, reconnecting builds one',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       expect(h.loggersBuilt, 1);
 
       await h.disconnect(tester);
@@ -1387,7 +1774,7 @@ void main() {
       await h.connect(tester);
       expect(h.loggersBuilt, 2);
       expect(h.loggerClosed, isFalse);
-      expect(_key('analysis-ok-hint'), findsOneWidget);
+      expect(_key('analyzer-ok-strip'), findsOneWidget);
 
       // The card follows the new logger: its setup, its results.
       await _setUp(tester);
@@ -1400,8 +1787,8 @@ void main() {
 
     _test('leaving the screen leaves the logger running', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       expect(h.loggerClosed, isFalse);
 
       await tester.pumpWidget(const MaterialApp(home: SizedBox()));
@@ -1417,16 +1804,16 @@ void main() {
         (tester, h) async {
       await h.pump(tester);
       expect(h.awake, isEmpty);
-      await _switchOn(tester);
-      expect(h.awake, isEmpty, reason: 'no connection, no logger, no lock');
       await h.connect(tester);
+      expect(h.awake, isEmpty, reason: 'not started, no logger, no lock');
+      await _start(tester);
       expect(h.awake, [true]);
 
       // Readings do not take it again.
       await h.feed(tester, 32.0, 0, seconds: 3);
       expect(h.awake, [true]);
 
-      await _switchOn(tester); // off
+      await _stop(tester);
       await tester.pump();
       expect(h.awake, [true, false]);
     });
@@ -1434,8 +1821,8 @@ void main() {
     _test('disconnecting releases it, reconnecting takes it again',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await h.disconnect(tester);
       await tester.pump();
       expect(h.awake, [true, false]);
@@ -1445,16 +1832,15 @@ void main() {
 
     _test('leaving the screen keeps it', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await tester.pumpWidget(const MaterialApp(home: SizedBox()));
       await tester.pump();
       expect(h.awake, [true]);
     });
 
     _test('a demo session never takes it', (tester, h) async {
-      await h.pump(tester);
-      await _switchOn(tester);
+      await h.pump(tester, useSettings: await _leftRunning());
       await _pickSource(tester, 'Demo');
       await h.connect(tester);
       await tester.pump(const Duration(seconds: 3));
@@ -1465,19 +1851,20 @@ void main() {
   group('the screen when the SOLO is held', () {
     _test('no data hint if the SOLO never sent a line', (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await tester.pump(const Duration(seconds: 5));
       expect(_key('analyzer-no-data-hint'), findsOneWidget);
-      expect(find.text('Press OK on the SOLO to save. Keep this screen open.'),
-          findsOneWidget);
+      // Never streamed, so not held: the strip waits for OK.
+      expect(find.text('Press OK on the SOLO to save'), findsOneWidget);
+      expect(find.text('Held on the SOLO'), findsNothing);
     });
 
-    _test('after an OK press the setup hint stays away, the switch says held',
+    _test('after an OK press the setup hint stays away, the strip says held',
         (tester, h) async {
       await h.pump(tester);
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       await h.feed(tester, 32.0, 0, seconds: 3);
       expect(_key('analyzer-no-data-hint'), findsNothing);
 
@@ -1485,15 +1872,13 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       expect(h.controller.noDataHint, isTrue);
       expect(_key('analyzer-no-data-hint'), findsNothing);
-      expect(find.text('Held on the SOLO. Press OK there to measure again.'),
-          findsOneWidget);
+      expect(find.text('Held on the SOLO'), findsOneWidget);
 
       // OK again: the lines come back and so does the usual text.
       h.solo!.emitLine(_line(32.0, 0));
       await tester.pump();
       expect(_key('analyzer-no-data-hint'), findsNothing);
-      expect(find.text('Press OK on the SOLO to save. Keep this screen open.'),
-          findsOneWidget);
+      expect(find.text('Press OK on the SOLO to save'), findsOneWidget);
     });
 
     _test('with Log on OK off the quiet SOLO gets no held text and no hint',
@@ -1526,8 +1911,8 @@ void main() {
     _test('a name typed there is never written to the settings',
         (tester, h) async {
       await h.pump(tester, useSettings: await withInitials());
-      await _switchOn(tester);
       await h.connect(tester);
+      await _start(tester);
       var writes = 0;
       h.settings.addListener(() => writes++);
 

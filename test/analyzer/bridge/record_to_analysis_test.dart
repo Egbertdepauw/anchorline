@@ -589,6 +589,36 @@ void main() {
       );
     });
 
+    test('the role follows the picked mix, not a reading above 30 %', () {
+      // 30.6/29.4 matches Tx30/30: 30 % O2 is diluent, though the reading
+      // itself is above 30.
+      final out = decide(30.6, 29.4, setup: autoSetup());
+      expect(out.analysis.desiredMix, const DesiredMix(30, 30));
+      expect(out.analysis.gasRole, GasRole.diluent);
+    });
+
+    test('with no pick the reading decides: 25 % is diluent', () {
+      final out = decide(25.0, 0.0, setup: autoSetup());
+      expect(out.analysis.desiredMix, isNull);
+      expect(out.analysis.gasRole, GasRole.diluent);
+    });
+
+    test("the diver's pick decides the role, even on a red grade", () {
+      // Tx21/35 picked on a 49.2/0.3 reading: diluent by the mix, though
+      // the reading would be bailout.
+      final out = decide(
+        49.2,
+        0.3,
+        setup: autoSetup(
+          autoPickMix: false,
+          desiredMix: const DesiredMix(21, 35),
+        ),
+      );
+      expect(out.analysis.desiredMix, const DesiredMix(21, 35));
+      expect(out.analysis.gasRole, GasRole.diluent);
+      expect(out.analysis.needsSignoff, isTrue);
+    });
+
     test('an explicit role wins', () {
       expect(
         decide(

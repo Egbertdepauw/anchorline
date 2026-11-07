@@ -12,10 +12,13 @@
 /// Blend target, spec §4.3) and the verdict line says where it came from. A
 /// chip the diver taps is their pick until the next manual save.
 ///
-/// With a [UsbOkLogger] (issue #113, Log on OK over USB) the section becomes
-/// the setup for the OK presses: its fields are what the next OK press saves,
-/// a hint says to press OK, and the outcome of each press shows with Edit and
-/// Delete.
+/// Log on OK (issue #113, spec §4.4) starts from the outlined "Log on OK"
+/// button at the right of the heading. While it runs (a [UsbOkLogger] is
+/// bound) the heading says "● Logging on OK", the section is the setup for
+/// the OK presses (its fields are what the next OK press saves), a "Print a
+/// label on each OK" row shows with a printer set up, and the outcome of the
+/// last press shows with Edit. The action bar is then the status strip with
+/// Stop.
 ///
 /// The section is a view: the form's state and its save logic live in the
 /// [AnalysisSaveController] it is given.
@@ -47,8 +50,8 @@ class AnalysisSaveCard extends StatefulWidget {
     super.key,
     required this.controller,
     this.onSetUpPrinter,
-    this.headingTrailing,
-    this.headingNote,
+    this.offersLogOnOk = false,
+    this.onStartLogOnOk,
   });
 
   /// The form's state and actions.
@@ -57,11 +60,12 @@ class AnalysisSaveCard extends StatefulWidget {
   /// Opens the label printer settings, for the "Set up label printer" link.
   final VoidCallback? onSetUpPrinter;
 
-  /// At the right of the "Save analysis" heading: the Log on OK control.
-  final Widget? headingTrailing;
+  /// The heading has the "Log on OK" start button: there is a log and the
+  /// source is not the demo. False hides it.
+  final bool offersLogOnOk;
 
-  /// A line under the heading, about Log on OK.
-  final Widget? headingNote;
+  /// Starts Log on OK; null disables the button (not connected).
+  final VoidCallback? onStartLogOnOk;
 
   @override
   State<AnalysisSaveCard> createState() => _AnalysisSaveCardState();
@@ -99,7 +103,7 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
     final printReady = c.printReady;
     final okMode = c.okMode;
     final roomAir = gas != null && isRoomAir(gas.o2, gas.he);
-    // OK doesn't log air, so the Save buttons stay for it.
+    // OK doesn't log air, so the strip offers Save for it.
     final showSave = !okMode || roomAir;
     // Without a printer the bar has Save only, and this sets one up.
     final setUpPrinter = c.labelPrinting != null &&
@@ -121,7 +125,7 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: palette.surfaceRaised)),
       ),
-      // The heading row is a 44 pt target high (the Log on OK control) and
+      // The heading row is a 44 pt target high (the Log on OK button) and
       // takes the place of the section's 10 pt top padding (spec §4.1
       // height budget).
       padding: const EdgeInsets.fromLTRB(Spacing.lg, 0, Spacing.lg, 10),
@@ -133,14 +137,17 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
             child: Row(
               children: [
                 const Expanded(child: SectionHeader('Save analysis')),
-                ?widget.headingTrailing,
+                if (okMode)
+                  // Drawn like the heading, in the accent colour.
+                  const SectionHeader(
+                    '● Logging on OK',
+                    key: ValueKey('analysis-ok-running'),
+                  )
+                else if (widget.offersLogOnOk)
+                  _startButton(),
               ],
             ),
           ),
-          if (widget.headingNote != null) ...[
-            widget.headingNote!,
-            const SizedBox(height: Spacing.xs),
-          ],
           const SizedBox(height: 2),
           Column(
             key: c.mixRowKey,
@@ -171,7 +178,9 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
           const SizedBox(height: 10),
           SegmentedButton<GasRole>(
             key: const ValueKey('analysis-gas-role'),
-            showSelectedIcon: false,
+            // A check on a role the diver set, which stays for every OK
+            // press; none on the rule's.
+            showSelectedIcon: c.roleTapped,
             expandedInsets: EdgeInsets.zero,
             // 36 pt high on every platform: the segments are text buttons
             // (40 pt) one density step down (spec §4.1 height budget).
@@ -197,7 +206,10 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
               ),
             ],
             selected: {c.role},
-            onSelectionChanged: (s) => c.tapRole(s.first),
+            // Lets a tap on the role already shown through (as an empty
+            // selection): it is the diver's choice as much as the other.
+            emptySelectionAllowed: true,
+            onSelectionChanged: (s) => c.tapRole(s.isEmpty ? c.role : s.first),
           ),
           const SizedBox(height: Spacing.sm),
           _pair(
@@ -321,14 +333,23 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
               ],
             ),
           ],
-          if (okMode) ...[
+          if (okMode && printReady) ...[
             const SizedBox(height: Spacing.xs),
-            _printOnOkRow(printReady: printReady, showCopies: !showSave),
-            _okHint(roomAir),
+            _printOnOkRow(),
           ],
           if (okMode && c.okResult != null) ...[
             const SizedBox(height: Spacing.sm),
             _okResultRow(c.okResult!),
+          ],
+          if (okMode) ...[
+            const SizedBox(height: Spacing.xs),
+            // Next to Stop, below: logging needs the app, not this tab.
+            Text(
+              'Keep Anchorline open',
+              key: const ValueKey('analysis-ok-keep-open'),
+              textAlign: TextAlign.end,
+              style: AppTypography.caption.copyWith(color: palette.textMuted),
+            ),
           ],
         ],
       ),
@@ -434,58 +455,80 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
           );
   }
 
-  /// "Print label on OK", with the copies while the Save buttons (which
-  /// carry their own) are away. Off and disabled without a printer.
-  Widget _printOnOkRow({required bool printReady, required bool showCopies}) {
-    final on = printReady && _c.printOnOk;
-    return Row(
-      children: [
-        Expanded(
-          // A ListTile paints on the nearest Material, and the card's own
-          // background would hide its ink.
-          child: Material(
-            type: MaterialType.transparency,
-            child: SwitchListTile(
-              key: const ValueKey('analysis-print-on-ok'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: const Text('Print label on OK'),
-              value: on,
-              onChanged: printReady ? _c.setPrintOnOk : null,
+  /// The outlined "Log on OK" start button with its ring icon: 44 pt high,
+  /// disabled until a real analyzer is connected.
+  Widget _startButton() {
+    final palette = context.palette;
+    return OutlinedButton.icon(
+      key: const ValueKey('analyzer-log-on-ok'),
+      onPressed: widget.onStartLogOnOk,
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(44, 44)),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.standard,
+        padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: Spacing.md)),
+        shape: const WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: Radii.buttonBr)),
+        textStyle: WidgetStatePropertyAll(AppTypography.body
+            .copyWith(fontSize: 13, fontWeight: FontWeight.w600)),
+        foregroundColor: WidgetStateProperty.resolveWith((states) =>
+            states.contains(WidgetState.disabled)
+                ? palette.textMuted
+                : palette.textPrimary),
+        iconColor: WidgetStateProperty.resolveWith((states) =>
+            states.contains(WidgetState.disabled)
+                ? palette.textMuted
+                : palette.accentPrimary),
+        side: WidgetStateProperty.resolveWith((states) => BorderSide(
+              color: states.contains(WidgetState.disabled)
+                  ? palette.surfaceRaised
+                  : palette.surfaceBezel,
+            )),
+      ),
+      icon: const Icon(Icons.radio_button_unchecked, size: 14),
+      label: const Text('Log on OK', maxLines: 1),
+    );
+  }
+
+  /// "Print a label on each OK", with the copies while it is on (the strip
+  /// has none), and its switch. Only while running with a printer set up.
+  Widget _printOnOkRow() {
+    final on = _c.printOnOk;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 44),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _c.setPrintOnOk(!on),
+              child: Text(
+                'Print a label on each OK',
+                style: AppTypography.body
+                    .copyWith(color: context.palette.textPrimary),
+              ),
             ),
           ),
-        ),
-        if (on && showCopies)
-          CopiesStepper(
-            value: _c.copies,
-            onChanged: _c.setCopies,
+          if (on)
+            CopiesStepper(
+              value: _c.copies,
+              onChanged: _c.setCopies,
+            ),
+          const SizedBox(width: Spacing.xs),
+          Switch(
+            key: const ValueKey('analysis-print-on-ok'),
+            value: on,
+            onChanged: _c.setPrintOnOk,
           ),
-      ],
+        ],
+      ),
     );
   }
 
-  /// What to do in Log on OK mode: press OK, or, for room air, tap Save.
-  Widget _okHint(bool roomAir) {
-    final palette = context.palette;
-    return Row(
-      key: const ValueKey('analysis-ok-hint'),
-      children: [
-        Icon(Icons.touch_app_outlined, size: 18, color: palette.textSecondary),
-        const SizedBox(width: Spacing.sm),
-        Expanded(
-          child: Text(
-            roomAir
-                ? "Air isn't logged on OK. Tap Save."
-                : 'Press OK on the SOLO to save',
-            style: AppTypography.body.copyWith(color: palette.textSecondary),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// How the latest OK press went, with Edit and Delete for the entry it
-  /// saved.
+  /// How the latest OK press went: an icon, the message and Edit for the
+  /// entry it saved, with a 3 pt edge on the left in the result's colour.
+  /// Delete is in the edit sheet.
   Widget _okResultRow(OkLogResult r) {
     final palette = context.palette;
     final (message, icon, color) = switch (r.code) {
@@ -526,44 +569,53 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
           SafetyColors.danger,
         ),
     };
-    final hasEntry = r.analysisId != null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: Spacing.sm),
-            Expanded(
+    final side = BorderSide(color: palette.surfaceRaised);
+    return Container(
+      key: const ValueKey('analysis-ok-result-row'),
+      constraints: const BoxConstraints(minHeight: 44),
+      padding: const EdgeInsets.only(left: 10),
+      decoration: BoxDecoration(
+        color: palette.surfaceCard,
+        border: Border(
+          left: BorderSide(color: color, width: 3),
+          top: side,
+          right: side,
+          bottom: side,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
               child: Text(
                 message,
                 key: const ValueKey('analysis-ok-result'),
-                style: AppTypography.body.copyWith(color: palette.textPrimary),
+                style: AppTypography.body
+                    .copyWith(fontSize: 13, color: palette.textPrimary),
               ),
             ),
-          ],
-        ),
-        if (hasEntry)
-          Wrap(
-            alignment: WrapAlignment.end,
-            children: [
-              TextButton.icon(
-                key: const ValueKey('analysis-ok-edit'),
-                onPressed: _c.okBusy ? null : () => _c.editResult(context),
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('Edit'),
-              ),
-              TextButton.icon(
-                key: const ValueKey('analysis-ok-delete'),
-                onPressed:
-                    _c.okBusy ? null : () => _c.deleteResult(context),
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Delete'),
-              ),
-            ],
           ),
-      ],
+          if (r.analysisId != null)
+            TextButton(
+              key: const ValueKey('analysis-ok-edit'),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(44, 44),
+                padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.standard,
+                textStyle: AppTypography.body
+                    .copyWith(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              onPressed: _c.okBusy ? null : () => _c.editResult(context),
+              child: const Text('Edit'),
+            )
+          else
+            const SizedBox(width: 10),
+        ],
+      ),
     );
   }
 }

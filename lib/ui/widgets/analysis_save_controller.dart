@@ -26,7 +26,7 @@
 ///
 /// With a [UsbOkLogger] bound (Log on OK over USB) the form is the setup for
 /// the OK presses: its fields are what the next OK press saves ([okSetup]),
-/// and the outcome of each press is kept in [okResult] for Edit and Delete.
+/// and the outcome of each press is kept in [okResult] for Edit.
 library;
 
 import 'dart:async';
@@ -53,7 +53,7 @@ import 'mix_mismatch_dialog.dart';
 class AnalysisSaveController extends ChangeNotifier {
   /// "Analysed by" starts from "Your initials" in [settings] (and again on
   /// every connect), the fill pressure from "Fill pressure starts at", and
-  /// "Print label on OK" from the choice remembered there.
+  /// "Print a label on each OK" from the choice remembered there.
   AnalysisSaveController({
     required GasAnalysesDaoLike dao,
     required SettingsNotifier settings,
@@ -113,9 +113,9 @@ class AnalysisSaveController extends ChangeNotifier {
   /// The analyzer is connected.
   bool get connected => _connected;
 
-  /// Called after a manual save of the Blend target completes, so the
-  /// target is used up (one blend is one cylinder). The screen sets it to
-  /// `BlendNotifier.markRecentTargetUsed`.
+  /// Called after a complete save of the Blend target, manual or by an OK
+  /// press, so the target is used up (one blend is one cylinder). The
+  /// screen sets it to `BlendNotifier.markRecentTargetUsed`.
   VoidCallback? onBlendTargetUsed;
 
   /// Takes the screen's live values and re-evaluates the automatic mix pick
@@ -227,6 +227,9 @@ class AnalysisSaveController extends ChangeNotifier {
   /// The gas role by the rule of [resolveGasRole], for [desiredMix].
   GasRole get role => _roleFor(desiredMix, usableGas?.o2);
 
+  /// The diver tapped the role, so [role] is theirs rather than the rule's.
+  bool get roleTapped => _tappedRole != null;
+
   /// The role for [mix] on a reading with [readingO2] % O2: the tapped role,
   /// else the picked cylinder's, else by the O2 of the mix, or of the
   /// reading when there is no mix (none at all is Diluent).
@@ -278,8 +281,9 @@ class AnalysisSaveController extends ChangeNotifier {
   /// The diver's "no mix": no desired mix until the next manual save.
   void clearMix() => pickMix(null);
 
-  /// The diver taps a gas role; it wins over the cylinder and the mix until
-  /// the next manual save.
+  /// The diver taps a gas role, also the one already shown; it wins over the
+  /// cylinder and the mix until the next manual save, and for every OK
+  /// press until changed.
   void tapRole(GasRole role) {
     _tappedRole = role;
     notifyListeners();
@@ -555,34 +559,41 @@ class AnalysisSaveController extends ChangeNotifier {
   UsbOkLogger? _okLogger;
   StreamSubscription<OkLogResult>? _okSub;
 
-  /// The latest OK press of this logger, shown with Edit and Delete.
+  /// The latest OK press of this logger, shown with Edit.
   OkLogResult? _okResult;
 
-  /// Edit or Delete of the result is under way.
+  /// Edit of the result is under way.
   bool _okBusy = false;
 
-  /// "Print label on OK"; it counts only while a printer is set up.
+  /// "Print a label on each OK"; it counts only while a printer is set up.
   bool _printOnOk;
 
   /// The per-cylinder fields the press of [_okResult] took (from the setup
   /// it carries), for it to use up: by itself when it saved complete, or from
   /// a sign-off on the result row. Only the fields still as they were are
-  /// cleared, because the diver may already be typing for the next cylinder
-  /// while the label prints. Null once used up.
+  /// put back to their start, because the diver may already be typing for
+  /// the next cylinder while the label prints. Null once used up.
   ({String? cylinderId, double? pressure, String notes})? _takenForResult;
+
+  /// The setup of the press the unused Blend target was offered to, until
+  /// that press's outcome is known. Meanwhile no other press is offered the
+  /// target: presses are handled one after the other, and a press queued
+  /// behind it asks for its setup before the first one's result arrives.
+  LogOnOkSetup? _targetOfferedTo;
 
   /// A Log on OK logger is bound: the form is the setup of its OK presses.
   bool get okMode => _okLogger != null;
   OkLogResult? get okResult => _okResult;
 
-  /// Edit or Delete of [okResult] is under way.
+  /// Edit of [okResult] is under way.
   bool get okBusy => _okBusy;
 
-  /// "Print label on OK", as the diver set it; it counts only while a
-  /// printer is set up.
+  /// "Print a label on each OK", as the diver set it; it counts only while
+  /// a printer is set up.
   bool get printOnOk => _printOnOk;
 
-  /// The diver flips "Print label on OK"; it is remembered in the settings.
+  /// The diver flips "Print a label on each OK"; it is remembered in the
+  /// settings.
   void setPrintOnOk(bool on) {
     _printOnOk = on;
     notifyListeners();
@@ -597,6 +608,7 @@ class AnalysisSaveController extends ChangeNotifier {
     _unbindLogger();
     _okResult = null;
     _takenForResult = null;
+    _targetOfferedTo = null;
     if (logger != null) {
       _okLogger = logger;
       logger.setupProvider = okSetup;
@@ -626,44 +638,82 @@ class AnalysisSaveController extends ChangeNotifier {
   /// An automatic mix pick is not passed as a mix: the press picks its own
   /// from its held reading ([LogOnOkSetup.autoPickMix]), and works out its
   /// role from that unless the diver tapped one or the cylinder has one.
+  ///
+  /// It is the logger's [UsbOkLogger.setupProvider], asked once per press,
+  /// and it has one side effect: the unused Blend target goes to one press
+  /// at a time. The press that gets it holds it until its outcome is known
+  /// ([_onOkResult]), so a press queued behind it gets none. It writes
+  /// nothing to the settings; "Analysed by" is never written back.
   OkSetup okSetup() {
     final printReady = this.printReady;
     final pressure = parseFillPressure(fillPressure.text);
     final cylinderRole = _cylinder(_knownCylinderId)?.role;
-    return (
-      setup: LogOnOkSetup(
-        analysedBy: analysedBy.text,
-        desiredMix: _mixAutomatic ? null : _diverMix,
-        autoPickMix: _mixAutomatic,
-        blendTarget: _unusedBlendTarget,
-        gasRole: _tappedRole ??
-            (cylinderRole == null
-                ? null
-                : gasRoleForCylinderRole(cylinderRole)),
-        analysedFor: _blankToNull(analysedFor.text),
-        printOnOk: printReady && _printOnOk,
-        printerConfigured: printReady,
-        cylinderId: _knownCylinderId,
-        fillPressureBar: pressure.bar,
-        notes: notes.text,
-        modPpo2s: _settings.analyzerModPpo2s,
-      ),
-      copies: _copies,
+    final unused = _unusedBlendTarget;
+    // A lease on an older target (the diver blended again since) is no
+    // reason to keep the new one back.
+    final target = _targetOfferedTo?.blendTarget == unused ? null : unused;
+    final setup = LogOnOkSetup(
+      analysedBy: analysedBy.text,
+      desiredMix: _mixAutomatic ? null : _diverMix,
+      autoPickMix: _mixAutomatic,
+      blendTarget: target,
+      gasRole: _tappedRole ??
+          (cylinderRole == null ? null : gasRoleForCylinderRole(cylinderRole)),
+      analysedFor: _blankToNull(analysedFor.text),
+      printOnOk: printReady && _printOnOk,
+      printerConfigured: printReady,
+      cylinderId: _knownCylinderId,
+      fillPressureBar: pressure.bar,
+      notes: notes.text,
+      modPpo2s: _settings.analyzerModPpo2s,
     );
+    if (target != null) _targetOfferedTo = setup;
+    return (setup: setup, copies: _copies);
   }
 
   /// Keeps the outcome of an OK press. One that saved complete uses up the
-  /// per-cylinder fields; a press that needs sign-off leaves them, so OK on
-  /// the same cylinder again still has them. The name, desired mix, role,
-  /// "for", copies and print switch stay for the next cylinder.
+  /// per-cylinder fields, and the Blend target when the entry has it; a
+  /// press that needs sign-off leaves them, so OK on the same cylinder again
+  /// still has them. The name, desired mix, tapped role, "for", copies and
+  /// print switch stay for the next cylinder.
   void _onOkResult(OkLogResult r) {
     if (_disposed) return;
     _okResult = r;
     _takenForResult = _takenBy(r);
     if (r.complete) _useUpTaken();
+    final id = r.analysisId;
+    final heldTarget = _targetOfferedTo != null &&
+        identical(r.setupUsed?.setup, _targetOfferedTo);
+    if (r.complete && id != null && _unusedBlendTarget != null) {
+      unawaited(_useTargetIfSaved(id, releasing: heldTarget));
+    } else if (heldTarget) {
+      _targetOfferedTo = null;
+    }
     notifyListeners();
     // Not awaited: the mix just used may be new to the chips.
-    if (r.analysisId != null) unawaited(_loadMixOptions());
+    if (id != null) unawaited(_loadMixOptions());
+  }
+
+  /// A complete OK save whose entry, read back as stored, has the Blend
+  /// target as its desired mix uses the target up. With [releasing] the
+  /// press held the target ([_targetOfferedTo]), and lets go of it once
+  /// this is known.
+  Future<void> _useTargetIfSaved(String id, {required bool releasing}) async {
+    final held = releasing ? _targetOfferedTo : null;
+    GasAnalysis? stored;
+    try {
+      stored = await _readStored(id);
+    } catch (e) {
+      debugPrint('Analysis save card: reading the OK entry failed: $e');
+    }
+    if (_disposed) return;
+    final target = _blendTarget;
+    if (stored != null && target != null && stored.desiredMix == target) {
+      _useBlendTarget();
+    }
+    if (held != null && identical(_targetOfferedTo, held)) {
+      _targetOfferedTo = null;
+    }
   }
 
   /// The per-cylinder fields [r]'s own press took, or null when it did not
@@ -682,17 +732,24 @@ class AnalysisSaveController extends ChangeNotifier {
     );
   }
 
-  /// Clears the per-cylinder fields the kept result's press took, the ones
-  /// still as it took them. A pressure that is not a number now was not what
-  /// the press took. The caller notifies the listeners.
+  /// Puts the per-cylinder fields the kept result's press took back to their
+  /// start, the ones still as it took them: no cylinder, the fill pressure
+  /// "Fill pressure starts at", and the notes empty and folded. A pressure
+  /// that is not a number now was not what the press took. The caller
+  /// notifies the listeners.
   void _useUpTaken() {
     final taken = _takenForResult;
     _takenForResult = null;
     if (taken == null) return;
     if (_knownCylinderId == taken.cylinderId) _cylinderId = null;
     final pressure = parseFillPressure(fillPressure.text);
-    if (pressure.valid && pressure.bar == taken.pressure) fillPressure.clear();
-    if (notes.text == taken.notes) notes.clear();
+    if (pressure.valid && pressure.bar == taken.pressure) {
+      fillPressure.text = _startPressure();
+    }
+    if (notes.text == taken.notes) {
+      notes.clear();
+      _notesOpen = false;
+    }
   }
 
   /// The stored entry [id], or null when it is gone.
@@ -764,8 +821,15 @@ class AnalysisSaveController extends ChangeNotifier {
         notifyListeners();
       } else if (!r.complete && !after.needsSignoff) {
         // Signed off: nothing is left to do for this entry, so its press
-        // counts as complete and uses up what it took.
+        // counts as complete and uses up what it took, the Blend target
+        // included.
         _useUpTaken();
+        final target = _blendTarget;
+        if (target != null &&
+            _unusedBlendTarget != null &&
+            after.desiredMix == target) {
+          _useBlendTarget();
+        }
         _okResult = OkLogResult(
           code: r.code == FeedbackCode.printed
               ? FeedbackCode.printed
@@ -777,54 +841,6 @@ class AnalysisSaveController extends ChangeNotifier {
         );
         notifyListeners();
       }
-    } finally {
-      if (!_disposed) {
-        _okBusy = false;
-        notifyListeners();
-      }
-    }
-  }
-
-  /// "Delete" on [okResult]: a confirm, then the entry is soft-deleted.
-  Future<void> deleteResult(BuildContext context) async {
-    final r = _okResult;
-    final id = r?.analysisId;
-    if (r == null || id == null || _okBusy) return;
-    _okBusy = true;
-    notifyListeners();
-    try {
-      final messenger = ScaffoldMessenger.of(context);
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Delete this analysis?'),
-          content: const Text('It is removed from the analysis log.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              key: const ValueKey('analysis-ok-delete-confirm'),
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Delete'),
-            ),
-          ],
-        ),
-      );
-      if (ok != true) return;
-      try {
-        await _dao.softDelete(id);
-      } catch (e) {
-        messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(SnackBar(content: Text('Delete failed: $e')));
-        return;
-      }
-      if (_disposed || !context.mounted) return;
-      if (identical(_okResult, r)) _okResult = null;
-      notifyListeners();
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(const SnackBar(content: Text('Analysis deleted.')));
     } finally {
       if (!_disposed) {
         _okBusy = false;

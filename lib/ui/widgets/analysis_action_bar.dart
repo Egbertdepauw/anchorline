@@ -6,9 +6,14 @@
 /// stepper. Without one, a single filled **Save** across the bar; the
 /// "Set up label printer" link is in the save section.
 ///
-/// While Log on OK is running an OK press saves, so the bar is empty, except
-/// for room air, which OK doesn't log.
+/// While Log on OK is running (spec §4.4) the bar becomes a status strip:
+/// accent-tinted, with a dot that pulses with each line from the SOLO, two
+/// lines of text, and **Stop**. Held on the SOLO, the dot is grey and still.
+/// For room air, which OK doesn't log, the strip has a filled **Save** before
+/// Stop.
 library;
+
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -32,18 +37,27 @@ const EdgeInsets kSnackBarClearOfActionBar =
     EdgeInsets.fromLTRB(15, 5, 15, 10 + kAnalysisActionBarHeight);
 
 class AnalysisActionBar extends StatelessWidget {
-  const AnalysisActionBar({super.key, required this.controller});
+  const AnalysisActionBar({
+    super.key,
+    required this.controller,
+    this.okHeld = false,
+    this.onStopLogOnOk,
+  });
 
   /// The save form whose actions the bar offers.
   final AnalysisSaveController controller;
+
+  /// Log on OK runs and the SOLO holds its reading after an OK press
+  /// (`AnalyzerSession.held`).
+  final bool okHeld;
+
+  /// Stop, in the Log on OK strip; null disables it.
+  final VoidCallback? onStopLogOnOk;
 
   @override
   Widget build(BuildContext context) =>
       ListenableBuilder(listenable: controller, builder: (context, _) {
         final c = controller;
-        final gas = c.usableGas;
-        final roomAir = gas != null && isRoomAir(gas.o2, gas.he);
-        if (c.okMode && !roomAir) return const SizedBox.shrink();
         final palette = context.palette;
         return SafeArea(
           top: false,
@@ -57,9 +71,11 @@ class AnalysisActionBar extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(Spacing.lg, 9, Spacing.lg, 10),
             child: SizedBox(
               height: kAnalysisActionHeight,
-              child: c.printReady
-                  ? _withPrinter(context)
-                  : _saveOnly(context),
+              child: c.okMode
+                  ? _okStrip(context)
+                  : c.printReady
+                      ? _withPrinter(context)
+                      : _saveOnly(context),
             ),
           ),
         );
@@ -155,7 +171,237 @@ class AnalysisActionBar extends StatelessWidget {
       );
     });
   }
+
+  /// The Log on OK status strip. Room air (OK doesn't log it) comes first,
+  /// as only it offers Save; then held on the SOLO; else it waits for OK.
+  Widget _okStrip(BuildContext context) {
+    final palette = context.palette;
+    final c = controller;
+    final gas = c.usableGas;
+    final roomAir = gas != null && isRoomAir(gas.o2, gas.he);
+    final held = okHeld && !roomAir;
+    final (title, subtitle) = roomAir
+        ? ("Air isn't logged on OK", 'Tap Save to log it')
+        : held
+            ? ('Held on the SOLO', 'Press OK there to measure again')
+            : ('Logging on OK', 'Press OK on the SOLO to save');
+    final accent = palette.accentPrimary;
+    final dot = held ? palette.textSecondary : accent;
+    return DecoratedBox(
+      key: const ValueKey('analyzer-ok-strip'),
+      decoration: BoxDecoration(
+        color: held
+            ? palette.textSecondary.withValues(alpha: 0.10)
+            : accent.withValues(alpha: 0.12),
+        border: Border.all(
+          color: held ? palette.surfaceBezel : accent.withValues(alpha: 0.55),
+        ),
+        borderRadius: Radii.buttonBr,
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: Spacing.md),
+          _PulseDot(color: dot, pulsing: !held, beat: c.reading),
+          const SizedBox(width: 10),
+          Expanded(
+            // Large text on a small phone shrinks the two lines rather
+            // than overflow the strip.
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    style: AppTypography.body.copyWith(
+                      fontSize: 13.5,
+                      height: 1.2,
+                      fontWeight: FontWeight.w600,
+                      color: palette.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    style: AppTypography.caption.copyWith(
+                      fontSize: 11.5,
+                      height: 1.2,
+                      color: palette.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (roomAir) ...[
+            const SizedBox(width: Spacing.xs),
+            _StripButton(
+              key: const ValueKey('analysis-ok-strip-save'),
+              label: 'Save',
+              filled: true,
+              onPressed: _onSave(context),
+            ),
+          ],
+          const SizedBox(width: Spacing.xs),
+          _StripButton(
+            key: const ValueKey('analyzer-ok-stop'),
+            label: 'Stop',
+            onPressed: onStopLogOnOk,
+          ),
+          const SizedBox(width: 6),
+        ],
+      ),
+    );
+  }
 }
+
+/// A button in the Log on OK strip: a 44 pt target, drawn as the smaller box
+/// of the mockup inside it, so the strip keeps its look.
+class _StripButton extends StatelessWidget {
+  const _StripButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.filled = false,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  /// The accent fill (room air's Save); else raised with a bezel line.
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    Color foreground(Set<WidgetState> states) =>
+        states.contains(WidgetState.disabled)
+            ? palette.textMuted
+            : filled
+                ? palette.textInverse
+                : palette.textPrimary;
+    return TextButton(
+      onPressed: onPressed,
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(
+            Size(kAnalysisActionHeight, kAnalysisActionHeight)),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.standard,
+        padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: Spacing.md)),
+        shape: const WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: Radii.buttonBr)),
+        textStyle: WidgetStatePropertyAll(AppTypography.body
+            .copyWith(fontSize: 13, fontWeight: FontWeight.w600)),
+        foregroundColor: WidgetStateProperty.resolveWith(foreground),
+        // The box below shows the press; the target around it stays clear.
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        splashFactory: NoSplash.splashFactory,
+        backgroundBuilder: (context, states, child) {
+          final disabled = states.contains(WidgetState.disabled);
+          var fill = filled && !disabled
+              ? palette.accentPrimary
+              : palette.surfaceRaised;
+          if (!disabled &&
+              (states.contains(WidgetState.pressed) ||
+                  states.contains(WidgetState.hovered) ||
+                  states.contains(WidgetState.focused))) {
+            fill = Color.alphaBlend(
+                foreground(states).withValues(alpha: 0.12), fill);
+          }
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: fill,
+                border: filled && !disabled
+                    ? null
+                    : Border.all(color: palette.surfaceBezel),
+                borderRadius: Radii.buttonBr,
+              ),
+              child: child,
+            ),
+          );
+        },
+      ),
+      child: Text(label, maxLines: 1),
+    );
+  }
+}
+
+/// The strip's dot. While logging it pulses once with each new line from
+/// the SOLO ([beat] changes), so it shows the lines are coming in; held, it
+/// is still. Each pulse ends, so a test's pumpAndSettle still settles, and
+/// with reduced motion there is none.
+class _PulseDot extends StatefulWidget {
+  const _PulseDot({required this.color, required this.pulsing, this.beat});
+
+  final Color color;
+  final bool pulsing;
+
+  /// Changes with each line: the live reading.
+  final Object? beat;
+
+  @override
+  State<_PulseDot> createState() => _PulseDotState();
+}
+
+class _PulseDotState extends State<_PulseDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 800),
+    value: 1,
+  );
+  bool _reduceMotion = false;
+
+  @override
+  void didUpdateWidget(_PulseDot old) {
+    super.didUpdateWidget(old);
+    if (!widget.pulsing) {
+      _pulse.value = 1;
+    } else if (!identical(old.beat, widget.beat) && !_reduceMotion) {
+      _pulse.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, _) {
+        // At rest a 4 pt ring; a pulse swells it and brings it back.
+        final swell = math.sin(math.pi * _pulse.value);
+        return Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: widget.color,
+            shape: BoxShape.circle,
+            boxShadow: [
+              if (widget.pulsing)
+                BoxShadow(
+                  color: widget.color.withValues(alpha: 0.25 + 0.2 * swell),
+                  spreadRadius: 4 + 3 * swell,
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 
 /// A button label that shrinks rather than overflows when the text is
 /// large and the bar narrow.

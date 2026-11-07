@@ -15,13 +15,14 @@
 ///
 /// The Analyse tab of the Gas destination: no app bar of its own.
 ///
-/// "Log on OK" (#113): with the switch on and a real analyzer connected, the
-/// shell-owned [AnalyzerSession] runs a logger that watches the session's
-/// lines, and an OK press on the SOLO saves an analysis (and prints its
-/// label) from the setup on the save card. The session, not this screen,
-/// owns the connection and the logger, so they outlive the screen; the
-/// save card's [AnalysisSaveController] only hands the logger the setup to
-/// save with.
+/// "Log on OK" (#113): started from the save section's heading while a real
+/// analyzer is connected, the shell-owned [AnalyzerSession] runs a logger
+/// that watches the session's lines, and an OK press on the SOLO saves an
+/// analysis (and prints its label) from the setup on the save card. While it
+/// runs the action bar is a status strip with Stop. The session, not this
+/// screen, owns the connection and the logger, so they outlive the screen;
+/// the save card's [AnalysisSaveController] only hands the logger the setup
+/// to save with.
 library;
 
 import 'package:flutter/material.dart';
@@ -218,7 +219,14 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   List<Widget> _actionBar() {
     final save = _saveController;
     if (save == null) return const [];
-    return [AnalysisActionBar(key: _actionBarKey, controller: save)];
+    return [
+      AnalysisActionBar(
+        key: _actionBarKey,
+        controller: save,
+        okHeld: _session.held,
+        onStopLogOnOk: () => widget.settings.setAnalyzerLogOnOk(false),
+      ),
+    ];
   }
 
   /// Log on OK (#113) is offered: there is a log to save to and the source
@@ -226,52 +234,11 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   /// one is on, as for the session's Log on OK).
   bool get _offersLogOnOk => _analysesDao != null && !_session.sourceIsDemo;
 
-  /// The "Log on OK" switch, at the right of the save section's heading. It
-  /// is remembered on the device; the logger itself runs only while a real
-  /// session is connected.
-  Widget _logOnOkSwitch() {
-    final settings = widget.settings;
-    final on = settings.analyzerLogOnOk;
-    return InkWell(
-      onTap: () => settings.setAnalyzerLogOnOk(!on),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 44),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Log on OK',
-              style: AppTypography.body.copyWith(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: context.palette.textPrimary),
-            ),
-            const SizedBox(width: Spacing.xs),
-            Switch(
-              key: const ValueKey('analyzer-log-on-ok'),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              value: on,
-              onChanged: settings.setAnalyzerLogOnOk,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// While Log on OK is on, what to do, under the heading. While the logger
-  /// is watching and the SOLO has streamed and gone quiet, OK was pressed:
-  /// it says so.
-  Widget? _logOnOkNote() {
-    if (!widget.settings.analyzerLogOnOk) return null;
-    return Text(
-      _session.held
-          ? 'Held on the SOLO. Press OK there to measure again.'
-          : 'Press OK on the SOLO to save. Keep this screen open.',
-      key: const ValueKey('analyzer-log-on-ok-subtitle'),
-      style: AppTypography.caption.copyWith(color: context.palette.textMuted),
-    );
-  }
+  /// The "Log on OK" button can start it: a real (non-Demo) analyzer is
+  /// connected and there is a log. Started, it is remembered on the device
+  /// and runs again on the next connect; the session runs the logger.
+  bool get _canStartLogOnOk =>
+      _controller.isConnected && !_session.sourceIsDemo && _analysesDao != null;
 
   /// Whether the save card is shown; see [_saveCard].
   bool get _showsSaveCard {
@@ -296,8 +263,10 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
       AnalysisSaveCard(
         key: _saveCardKey,
         controller: save,
-        headingTrailing: _offersLogOnOk ? _logOnOkSwitch() : null,
-        headingNote: _offersLogOnOk ? _logOnOkNote() : null,
+        offersLogOnOk: _offersLogOnOk,
+        onStartLogOnOk: _canStartLogOnOk
+            ? () => widget.settings.setAnalyzerLogOnOk(true)
+            : null,
         onSetUpPrinter: printing == null
             ? null
             : () => Navigator.of(context).push(MaterialPageRoute(

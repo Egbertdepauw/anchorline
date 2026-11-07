@@ -215,6 +215,151 @@ void main() {
     expect(c.notes.text, 'second');
   });
 
+  test('a complete OK result puts the fill pressure back to its start and '
+      'folds the notes', () async {
+    await settings.setAnalyzerFillPressureStartBar(230);
+    final c = await make();
+    final logger = _Logger(dao);
+    c.bindLogger(logger);
+
+    c.fillPressure.text = '200';
+    c.openNotes();
+    c.notes.text = 'Topped up';
+    expect(c.notesShown, isTrue);
+    logger.send(_result(c.okSetup(), complete: true));
+
+    expect(c.fillPressure.text, '230', reason: 'back to its start, not empty');
+    expect(c.notes.text, isEmpty);
+    expect(c.notesShown, isFalse, reason: 'folded again');
+
+    // The field opened but left empty folds as well.
+    c.openNotes();
+    logger.send(_result(c.okSetup(), complete: true));
+    expect(c.notesShown, isFalse);
+
+    // A press that needs sign-off leaves the notes open.
+    c.openNotes();
+    c.notes.text = 'again';
+    logger.send(_result(c.okSetup(), complete: false));
+    expect(c.notes.text, 'again');
+    expect(c.notesShown, isTrue);
+  });
+
+  group('the Blend target on OK', () {
+    const target = DesiredMix(19, 40);
+
+    /// The log has entry [id] saved with [desired].
+    Future<void> stored(String id, DesiredMix? desired) => dao.addFromBridge(
+          id,
+          NewGasAnalysis(
+            analysedAt: DateTime(2026, 11, 7),
+            o2Percent: 19.6,
+            hePercent: 40.2,
+            stable: true,
+            desiredMix: desired,
+          ),
+        );
+
+    OkLogResult complete(OkSetup setup, String id) => OkLogResult(
+          code: FeedbackCode.saved,
+          text: 'Tx20/40',
+          analysisId: id,
+          complete: true,
+          setupUsed: setup,
+        );
+
+    test('a complete result whose entry has the target uses it up',
+        () async {
+      final c = await make(blendTarget: target, unusedBlendTarget: target);
+      var used = 0;
+      c.onBlendTargetUsed = () => used++;
+      final logger = _Logger(dao);
+      c.bindLogger(logger);
+
+      final first = c.okSetup();
+      expect(first.setup.blendTarget, target);
+      await stored('a1', target);
+      logger.send(complete(first, 'a1'));
+      await _settle();
+
+      expect(used, 1);
+      expect(c.unusedBlendTarget, isNull);
+      expect(c.okSetup().setup.blendTarget, isNull);
+    });
+
+    test('a complete result with another mix leaves the target', () async {
+      final c = await make(blendTarget: target, unusedBlendTarget: target);
+      var used = 0;
+      c.onBlendTargetUsed = () => used++;
+      final logger = _Logger(dao);
+      c.bindLogger(logger);
+
+      final first = c.okSetup();
+      await stored('a1', const DesiredMix(18, 45));
+      logger.send(complete(first, 'a1'));
+      await _settle();
+
+      expect(used, 0);
+      expect(c.okSetup().setup.blendTarget, target);
+    });
+
+    test('is offered to one press at a time, until that press is known',
+        () async {
+      final c = await make(blendTarget: target, unusedBlendTarget: target);
+      var used = 0;
+      c.onBlendTargetUsed = () => used++;
+      final logger = _Logger(dao);
+      c.bindLogger(logger);
+
+      final first = c.okSetup();
+      expect(first.setup.blendTarget, target);
+      // A press queued behind it asks before the first one's result is in.
+      final queued = c.okSetup();
+      expect(queued.setup.blendTarget, isNull);
+
+      // The first one needs sign-off: the target is free again.
+      logger.send(_result(first, complete: false));
+      expect(used, 0);
+      expect(c.okSetup().setup.blendTarget, target);
+    });
+
+    test('a new Blend target is offered although an old one is out',
+        () async {
+      final c = await make(blendTarget: target, unusedBlendTarget: target);
+      c.bindLogger(_Logger(dao));
+      expect(c.okSetup().setup.blendTarget, target);
+
+      const next = DesiredMix(21, 35);
+      c.update(
+        reading: _ean32,
+        stability: ReadingStability.stable,
+        blendTarget: next,
+        unusedBlendTarget: next,
+        connected: true,
+      );
+      expect(c.okSetup().setup.blendTarget, next);
+    });
+
+    test('a new logger frees the target', () async {
+      final c = await make(blendTarget: target, unusedBlendTarget: target);
+      c.bindLogger(_Logger(dao));
+      expect(c.okSetup().setup.blendTarget, target);
+      c.bindLogger(_Logger(dao));
+      expect(c.okSetup().setup.blendTarget, target);
+    });
+  });
+
+  test('tapping the role that is shown makes it the diver\'s', () async {
+    final c = await make();
+    expect(c.role, GasRole.bailout, reason: 'EAN32 by the rule');
+    expect(c.roleTapped, isFalse);
+    expect(c.okSetup().setup.gasRole, isNull);
+
+    c.tapRole(GasRole.bailout);
+    expect(c.roleTapped, isTrue);
+    expect(c.okSetup().setup.gasRole, GasRole.bailout);
+  });
+
   test('a non-number fill pressure is passed as no pressure', () async {
     final c = await make();
     final logger = _Logger(dao);
