@@ -1,7 +1,10 @@
 import 'dart:async';
 
 import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/sync/cloud/account_deleter.dart';
 import 'package:ccrlogger/sync/cloud/auth_service.dart';
+import 'package:ccrlogger/sync/cloud/ccrlogger_backend_connector.dart';
+import 'package:ccrlogger/sync/cloud/cloud_sync_coordinator.dart';
 import 'package:ccrlogger/ui/components/value_stepper.dart';
 import 'package:ccrlogger/ui/theme/app_themes.dart';
 import 'package:ccrlogger/ui/theme/safety_colors.dart';
@@ -51,8 +54,47 @@ class _FakeAuthClient implements AuthClient {
     session = null;
   }
 
+  /// Flips to signed out and tells listeners, like a real sign-out.
+  void emitSignedOut() {
+    user = null;
+    session = null;
+    _ctrl.add(const AuthState(AuthChangeEvent.signedOut, null));
+  }
+
   void dispose() => _ctrl.close();
 }
+
+class _DeleteFakeSession implements SessionSource {
+  @override
+  Session? get currentSession => null;
+  @override
+  Future<void> refreshSession() async {}
+}
+
+class _DeleteFakeBackend implements AccountDeletionBackend {
+  @override
+  Future<List<String>> listStorageKeys() async => const [];
+  @override
+  Future<void> deleteAccount() async {}
+}
+
+class _DeleteFakeSync implements SyncPause {
+  @override
+  Future<void> pause() async {}
+  @override
+  Future<void> resume() async {}
+}
+
+AccountDeleter _fakeDeleter({Future<void> Function()? onSignOut}) =>
+    AccountDeleter(
+      session: _DeleteFakeSession(),
+      backend: _DeleteFakeBackend(),
+      sync: _DeleteFakeSync(),
+      localStorageKeys: () async => const [],
+      deleteObject: (_) async {},
+      signOut: () async => onSignOut?.call(),
+      wipeLocal: () async {},
+    );
 
 User _user(String id, String email) => User(
       id: id,
@@ -90,6 +132,7 @@ Future<void> _pump(
   bool showThemePicker = true,
   AppDatabase? db,
   PowerSyncDatabase? psDb,
+  AccountDeleter? accountDeleter,
 }) {
   return tester.pumpWidget(MaterialApp(
     home: SettingsScreen(
@@ -99,6 +142,7 @@ Future<void> _pump(
       showThemePicker: showThemePicker,
       db: db,
       powerSyncDb: psDb,
+      accountDeleter: accountDeleter,
     ),
   ));
 }
@@ -491,6 +535,68 @@ void main() {
       await tester.pump();
       expect(find.text('PowerSync is not available on this build.'),
           findsOneWidget);
+    });
+
+    testWidgets('Delete account row shows only when signed in',
+        (tester) async {
+      final h = await _build(signedIn: true);
+      addTearDown(() {
+        h.auth.dispose();
+        h.client.dispose();
+      });
+      await _pump(tester, h.settings, h.auth, accountDeleter: _fakeDeleter());
+      await _tab(tester, 'sync');
+      expect(_k('settings-account-delete'), findsOneWidget);
+      expect(find.text('Deletes your account and all its data'),
+          findsOneWidget);
+      final title = tester.widget<Text>(find.text('Delete account'));
+      expect(title.style!.color, SafetyColors.danger);
+    });
+
+    testWidgets('Delete account row is absent when signed out',
+        (tester) async {
+      final h = await _build(signedIn: false);
+      addTearDown(() {
+        h.auth.dispose();
+        h.client.dispose();
+      });
+      await _pump(tester, h.settings, h.auth, accountDeleter: _fakeDeleter());
+      await _tab(tester, 'sync');
+      expect(_k('settings-account-delete'), findsNothing);
+    });
+
+    testWidgets('Delete account row is absent without an accountDeleter',
+        (tester) async {
+      final h = await _build(signedIn: true);
+      addTearDown(() {
+        h.auth.dispose();
+        h.client.dispose();
+      });
+      await _pump(tester, h.settings, h.auth);
+      await _tab(tester, 'sync');
+      expect(_k('settings-account-delete'), findsNothing);
+    });
+
+    testWidgets('success dialog survives the sign-out rebuild',
+        (tester) async {
+      final h = await _build(signedIn: true);
+      addTearDown(() {
+        h.auth.dispose();
+        h.client.dispose();
+      });
+      await _pump(tester, h.settings, h.auth,
+          accountDeleter: _fakeDeleter(onSignOut: () async {
+        h.client.emitSignedOut();
+      }));
+      await _tab(tester, 'sync');
+      await tester.tap(_k('settings-account-delete'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'DELETE');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete account'));
+      await tester.pumpAndSettle();
+      expect(_k('settings-account-delete'), findsNothing);
+      expect(find.text('Account deleted'), findsOneWidget);
     });
 
     testWidgets("Repair rows open today's dialogs", (tester) async {

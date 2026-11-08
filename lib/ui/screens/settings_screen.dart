@@ -12,6 +12,7 @@ import '../../data/db/dive_dao.dart';
 import '../../data/local_data_wiper.dart';
 import '../../labels/label_print_service.dart';
 import '../../sync/attachments/attachment_object_wiper.dart';
+import '../../sync/cloud/account_deleter.dart';
 import '../../sync/cloud/auth_service.dart';
 import '../../shearwater/ble/ble_debug_logger.dart';
 import '../../sync/cloud/cloud_data_wiper.dart';
@@ -28,6 +29,7 @@ import 'settings/about_tab.dart';
 import 'settings/general_tab.dart';
 import 'settings/gas_tab.dart';
 import 'settings/planning_tab.dart';
+import 'settings/delete_account_flow.dart';
 import 'settings/sync_tab.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -66,6 +68,10 @@ class SettingsScreen extends StatefulWidget {
   /// settings-screen tests stay unchanged.
   final LabelPrintService? labelPrinting;
 
+  /// Optional — when present and signed in, Settings → Sync shows the
+  /// Delete account row. Tests omit it and the row is hidden.
+  final AccountDeleter? accountDeleter;
+
   /// Whether to show the theme picker. Follows [kThemingEnabled], which is
   /// on in every build; kept as a parameter so tests can hide the section.
   final bool showThemePicker;
@@ -88,6 +94,7 @@ class SettingsScreen extends StatefulWidget {
     this.diveDao,
     this.subsurfaceBootstrapImporter,
     this.labelPrinting,
+    this.accountDeleter,
     this.showThemePicker = kThemingEnabled,
   });
 
@@ -155,6 +162,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onReassign: _forceStampOwnerId,
                 onPushStuck: _drainQueueManually,
                 onReset: canReset ? _confirmAndResetLocalData : null,
+                onDeleteAccount: widget.accountDeleter == null
+                    ? null
+                    : () => runDeleteAccountFlow(
+                          context,
+                          widget.accountDeleter!,
+                        ),
               ),
               AboutTab(
                 onShareBleLog: _shareBleDebugLog,
