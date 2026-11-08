@@ -76,8 +76,33 @@ safe. Before applying it, check in the SQL Editor:
    fallback is a request queue or the Dart service, and that decision is his.
 2. Apply the migration (`./supabase/apply_migrations.sh`), then check it
    end to end: create a throwaway account in the app, add a dive and an
-   attachment, delete the account from the app, and confirm the user is
-   gone from Authentication → Users and its rows are gone from `dives`.
+   attachment, add a bailout-carry entry to a dive, and merge two dives.
+   Then delete the account from the app, and confirm the user is gone from
+   Authentication → Users and its rows are gone from `dives`.
+3. Post-check, with the throwaway account's user id:
+
+   ```sql
+   select count(*) from auth.audit_log_entries where payload->>'actor_id' = '<uid>';
+   ```
+
+   It must return 0. If it does not, the function's guarded audit-log
+   delete lacked the privilege, and those entries (which hold the email and
+   IP address) are still there. Tell Egbert: he decides whether to delete
+   them by hand or disclose them in the privacy policy.
+
+Optional rollback dry run against a real user id (for example your own,
+which has bailout carry and merged dives). It runs the whole function as
+that user inside a transaction and rolls it back, so it raises any foreign
+key error the real deletion would hit without deleting anything. Run all
+four statements together; without the `rollback` the account is deleted
+for real.
+
+```sql
+begin;
+select set_config('request.jwt.claims', '{"sub":"<uid>","role":"authenticated"}', true);
+select public.delete_my_account();
+rollback;
+```
 
 ## Deleting an account on request (email)
 
@@ -87,5 +112,27 @@ For people who no longer have the app and email `support@anchorline.eu`
 1. Verify the email comes from the address the account was created with.
 2. Note the user id (Authentication → Users).
 3. Delete the `attachments/<uid>/` prefix in the Cloudflare R2 dashboard.
-4. Delete the user under Authentication → Users. Their rows cascade.
-5. Reply to confirm the deletion.
+4. The dashboard delete does not run `delete_my_account()`, so first do
+   its extra deletes in the SQL Editor (the rows the cascade misses, and
+   the audit-log entries that hold the email and IP address):
+
+   ```sql
+   delete from public.dive_bailout_carry
+   where dive_id in (select id from public.dives where owner_id = '<uid>')
+      or cylinder_id in (select id from public.cylinders where owner_id = '<uid>');
+   delete from public.dive_merge_links
+   where id in (select id from public.dives where owner_id = '<uid>');
+   delete from auth.audit_log_entries where payload->>'actor_id' = '<uid>';
+   ```
+
+5. Delete the user under Authentication → Users. Their rows cascade.
+6. The dashboard delete itself logs a `user_deleted` audit entry whose
+   traits name the user's id, email and phone. Delete it too:
+
+   ```sql
+   delete from auth.audit_log_entries where payload->'traits'->>'user_id' = '<uid>';
+   ```
+
+   If either audit-log delete fails with `permission denied`, tell Egbert,
+   as in the post-check above.
+7. Reply to confirm the deletion.
