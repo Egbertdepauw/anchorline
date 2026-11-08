@@ -64,3 +64,28 @@ the live (or a Supabase branch) DB:
 2. Run it **again** — must complete with zero errors (all no-ops). This proves
    idempotency/convergence.
 3. `./supabase/check_migrations.sh` — must print `✓ in sync`.
+
+## Before deploying 0022
+
+`0022_delete_my_account.sql` adds `delete_my_account()` for in-app account
+deletion. Nothing calls it until the app ships, so deploying it early is
+safe. Before applying it, check in the SQL Editor:
+
+1. `select has_table_privilege('postgres', 'auth.users', 'DELETE');` must
+   return `true`. If it returns `false`, stop and go back to Egbert: the
+   fallback is a request queue or the Dart service, and that decision is his.
+2. Apply the migration (`./supabase/apply_migrations.sh`), then check it
+   end to end: create a throwaway account in the app, add a dive and an
+   attachment, delete the account from the app, and confirm the user is
+   gone from Authentication → Users and its rows are gone from `dives`.
+
+## Deleting an account on request (email)
+
+For people who no longer have the app and email `support@anchorline.eu`
+(confirm within 5 working days, complete within 30 days):
+
+1. Verify the email comes from the address the account was created with.
+2. Note the user id (Authentication → Users).
+3. Delete the `attachments/<uid>/` prefix in the Cloudflare R2 dashboard.
+4. Delete the user under Authentication → Users. Their rows cascade.
+5. Reply to confirm the deletion.
