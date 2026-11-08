@@ -274,9 +274,21 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       deleteObject: (k) => _attachmentSigner.deleteObject(objectKey: k),
       signOut: widget.authService.signOut,
       wipeLocal: () async {
-        await LocalDataWiper(db: widget.db, powerSyncDb: widget.powerSyncDb)
-            .wipe();
-        await _attachmentCache.clear();
+        try {
+          await LocalDataWiper(db: widget.db, powerSyncDb: widget.powerSyncDb)
+              .wipe();
+        } finally {
+          // Runs even when the wipe throws: the account is already gone, so
+          // clear what can be cleared. The pending-upload paths are best
+          // effort (a leftover entry names a row that no longer exists), and
+          // go first so a cache failure cannot skip them.
+          try {
+            await _pendingUploadStore.clearAll();
+          } catch (e) {
+            debugPrint('Account deletion: pending-upload clear failed: $e');
+          }
+          await _attachmentCache.clear();
+        }
       },
     );
 
