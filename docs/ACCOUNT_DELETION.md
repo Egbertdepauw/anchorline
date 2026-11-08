@@ -23,9 +23,11 @@ days and complete the deletion within 30 days. We reply when it is done.
 - Every dive, note, equipment item and gas analysis stored in the cloud.
 - All attachment files.
 - The dives and data on the device you delete from. Other devices signed in
-  to the account lose the synced data when they next connect, and are
-  signed out within about an hour. Copies kept only on such a device, such
-  as downloaded attachments, stay until the app is reset or removed there.
+  to the account that are online when you delete lose the synced data
+  straight away and are signed out within about an hour. A device that's
+  offline at the time is signed out when it next connects, but keeps its
+  copy until the app is reset or removed there. Copies kept only on a
+  device, such as downloaded attachments, also stay until then.
 
 ## What is kept
 
