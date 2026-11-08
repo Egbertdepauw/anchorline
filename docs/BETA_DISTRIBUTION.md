@@ -128,6 +128,11 @@ wants completed before any internal-testing build can roll out:
   collects: email (for sign-in), location (for dive sites), photos
   (for attachments), crash logs (Sentry). All of it is encrypted in
   transit + at rest. Tick those boxes.
+  Data deletion: users can request deletion: yes. In-app path:
+  Settings → Sync → Delete account. URL: `https://anchorline.eu/delete-account`
+  (until the site exists, the current privacy policy URL plus
+  `#deleting-your-account`). The data is deleted with the account, not
+  just the account.
 - **Government app** — No.
 - **Financial features** — No.
 
