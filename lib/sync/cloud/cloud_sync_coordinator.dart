@@ -6,6 +6,10 @@
 ///
 /// If the user is already signed in at app launch, [start] connects
 /// immediately so the first sync doesn't wait for a fresh login.
+///
+/// The coordinator can be paused ([SyncPause]) so account deletion can keep
+/// PowerSync disconnected while local data is wiped; otherwise token
+/// refreshes and lifecycle resumes would reconnect it mid-delete.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -33,11 +37,21 @@ class PowerSyncCloudSyncTarget implements CloudSyncTarget {
   Future<void> disconnect() => _db.disconnect();
 }
 
-class CloudSyncCoordinator {
+/// Lets a long-running operation (account deletion) hold sync disconnected.
+abstract class SyncPause {
+  /// Disconnects and stays disconnected until [resume].
+  Future<void> pause();
+
+  /// Lifts the pause and reconnects if the user is signed in.
+  Future<void> resume();
+}
+
+class CloudSyncCoordinator implements SyncPause {
   final CloudSyncTarget _target;
   final CcrloggerBackendConnector _connector;
   final AuthService _auth;
   bool _connected = false;
+  bool _paused = false;
 
   CloudSyncCoordinator({
     required PowerSyncDatabase database,
@@ -84,6 +98,7 @@ class CloudSyncCoordinator {
   bool get isConnected => _connected;
 
   void _reconcile() {
+    if (_paused) return;
     if (_auth.isSignedIn) {
       _connect();
     } else {
@@ -112,12 +127,24 @@ class CloudSyncCoordinator {
     }
   }
 
+  @override
+  Future<void> pause() async {
+    _paused = true;
+    await _disconnect();
+  }
+
+  @override
+  Future<void> resume() async {
+    _paused = false;
+    _reconcile();
+  }
+
   /// Forces a fresh PowerSync connection. Used to recover from stale
   /// WebSockets after the app was backgrounded / the Mac came back from
   /// sleep — the indicator can falsely report "connected" while the
   /// underlying socket is dead. No-op when signed out.
   Future<void> forceReconnect() async {
-    if (!_auth.isSignedIn) return;
+    if (_paused || !_auth.isSignedIn) return;
     await _disconnect();
     await _connect();
   }
