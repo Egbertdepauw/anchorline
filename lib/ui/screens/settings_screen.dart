@@ -9,7 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import '../../data/db/database.dart';
 import '../../data/db/dive_dao.dart';
-import '../../dev/fixture_seeder.dart';
+import '../../data/local_data_wiper.dart';
 import '../../labels/label_print_service.dart';
 import '../../sync/attachments/attachment_object_wiper.dart';
 import '../../sync/cloud/auth_service.dart';
@@ -734,59 +734,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (alsoWipeCloud && wiper != null) {
         await wiper.wipeAllForCurrentUser();
       }
-      // Drift: clear all imported-dive related rows. Equipment / annotation
-      // tables in Drift are no longer used (PowerSync owns them), but
-      // we still wipe them to keep the local file fully fresh.
-      await db.transaction(() async {
-        await db.customStatement('DELETE FROM dive_samples');
-        await db.customStatement('DELETE FROM dives');
-        await db.customStatement('DELETE FROM import_states');
-        await db.customStatement('DELETE FROM dive_annotations');
-        await db.customStatement('DELETE FROM dive_computers');
-        await db.customStatement('DELETE FROM oxygen_cells');
-        await db.customStatement('DELETE FROM scrubber_sessions');
-        await db.customStatement('DELETE FROM cylinders');
-        await db.customStatement('DELETE FROM pressure_mappings');
-        await db.customStatement('DELETE FROM dive_cylinders');
-      });
-      // PowerSync: disconnect + clear local SQLite. Re-sync on next start.
-      //
-      // `disconnectAndClear()` is supposed to remove every `ps_data__*`
-      // row but has been observed leaving rows behind (2026-05-10
-      // incident: 13 dives survived a Reset Everything). We follow it
-      // with an explicit DELETE of every PowerSync-managed local table
-      // as a fallback, so a fresh bootstrap-import sees an empty DB and
-      // re-parses everything with the current mapper instead of
-      // dedup-skipping stale rows. Wrapping in try/catch because the
-      // table list isn't part of any contract — if PowerSync renames
-      // its local tables in a future SDK rev, the explicit DELETE
-      // becomes a no-op rather than blocking the reset.
-      await psDb.disconnectAndClear();
-      try {
-        const psTables = [
-          'ps_data__dives',
-          'ps_data__dive_samples',
-          'ps_data__dive_annotations',
-          'ps_data__dive_attachments',
-          'ps_data__dive_computers',
-          'ps_data__dive_cylinders',
-          'ps_data__cylinders',
-          'ps_data__oxygen_cells',
-          'ps_data__pressure_mappings',
-          'ps_data__scrubber_sessions',
-          'ps_crud',
-          'ps_oplog',
-          'ps_buckets',
-        ];
-        for (final t in psTables) {
-          await psDb.execute('DELETE FROM $t');
-        }
-      } catch (e) {
-        debugPrint('Belt-and-braces PowerSync wipe partial: $e');
-      }
-      // Stop fixture re-seeding from re-populating the empty DB on next
-      // launch. Reinstalling the app clears this flag.
-      await markFixturesBlocked();
+      await LocalDataWiper(db: db, powerSyncDb: psDb).wipe();
     } catch (e, st) {
       debugPrint('Reset data failed: $e\n$st');
       if (!mounted) return;
