@@ -193,22 +193,18 @@ ShowcaseExport buildShowcase({
   final series = seriesOf(cell);
   final surfaceById = {for (final p in series.surface) p.diveId: p.mv};
   final peakById = {for (final p in series.peak) p.diveId: p.mv};
-  // Chronological union of dives that contribute a surface or peak value.
-  final dates = <String, DateTime>{
-    for (final p in [...series.surface, ...series.peak]) p.diveId: p.date,
-  };
-  final ordered = dates.keys.toList()
-    ..sort((a, b) => dates[a]!.compareTo(dates[b]!));
+  // One point per dive with a surface value (chronological); a dive with a
+  // peak but no surface samples contributes no point.
+  final ordered = [for (final p in series.surface) p.diveId];
+  final dates = {for (final p in series.surface) p.diveId: p.date};
   final points = <Map<String, Object?>>[];
   for (var i = 0; i < ordered.length; i++) {
     final id = ordered[i];
-    final surf = surfaceById[id];
-    final peak = peakById[id];
     points.add({
       'dive': i + 1,
       'day': dates[id]!.difference(dates[ordered.first]!).inDays,
-      'surfaceMv': surf == null ? null : _round(surf, 1),
-      'peakMv': peak == null ? null : _round(peak, 1),
+      'surfaceMv': _round(surfaceById[id]!, 1),
+      'peakMv': _round(peakById[id]!, 1),
     });
   }
 

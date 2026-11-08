@@ -183,4 +183,35 @@ void main() {
     expect(pts.first, {'dive': 1, 'day': 0, 'surfaceMv': 10.0, 'peakMv': 60.0});
     expect((pts[1] as Map)['day'], 1);
   });
+
+  test('a dive with a peak but no surface samples yields no cell point', () {
+    final samples = <String, dynamic>{};
+    final dives = <DiveRow>[];
+    for (var i = 1; i <= 3; i++) {
+      dives.add(_row('d$i', i, 1000000 + i * 86400));
+      samples['d$i'] = makeSampleSet(
+        diveId: 'd$i',
+        intervalMs: 10000,
+        depth: [0.5, 0.5, 30, 30],
+        // Dive 2 has no reading at the surface, only at depth.
+        cell0: i == 2 ? [0, 0, 60, 60] : [10, 10, 60, 60],
+        decoDepth: [0, 0, 3, 3],
+      );
+    }
+    final db = FakeDb(
+      dives,
+      [
+        CellRow(
+            id: 'a', slot: 1, label: 'A', installedDate: null, retiredDate: null)
+      ],
+      samples,
+    );
+    final pts = (buildShowcase(db: db).json['cell'] as Map)['points'] as List;
+    expect(pts.length, 2);
+    expect([for (final p in pts) (p as Map)['dive']], [1, 2]);
+    expect([for (final p in pts) (p as Map)['day']], [0, 2]);
+    for (final p in pts) {
+      expect((p as Map)['surfaceMv'], isNotNull);
+    }
+  });
 }
