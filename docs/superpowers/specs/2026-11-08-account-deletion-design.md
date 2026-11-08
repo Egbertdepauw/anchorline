@@ -92,7 +92,8 @@ instead. This is a recorded, **temporary** exception:
 | Data | Where | How it goes |
 |---|---|---|
 | Account (email, password hash, sessions, refresh tokens, identities) | Supabase Auth | `delete from auth.users`; Supabase cascades its own `auth.*` tables |
-| Dives, samples, annotations, cylinders, cells, scrubbers, dive computers, pressure mappings, bailout carry, dive plans, merge links, gas analyses, attachment metadata | Supabase Postgres | `on delete cascade` from `auth.users` (every `owner_id` FK has it, checked 2026-11-08) |
+| Dives, samples, annotations, cylinders, cells, scrubbers, dive computers, pressure mappings, bailout carry, dive plans, merge links, gas analyses, attachment metadata | Supabase Postgres | `on delete cascade` from `auth.users` (every `owner_id` FK has it, checked 2026-11-08). Bailout carry and merge links also reference dives and cylinders through NO ACTION FKs, so the function deletes those rows first (§6.1) |
+| Auth audit log (email and IP address per sign-in event) | Supabase Auth (`auth.audit_log_entries`) | No FK to `auth.users`, so no cascade: the function deletes the caller's entries (`payload->>'actor_id'`) in a guarded block; a post-check confirms (§6.1) |
 | Usage events | Supabase Postgres | Same cascade (`usage_events.owner_id … on delete cascade`) |
 | Attachment files | Cloudflare R2 | Deleted by the app through the Worker's existing `/delete` route, before the account (§6.3) |
 | Replicated copy | PowerSync | Removed as the Postgres deletes replicate |
@@ -125,6 +126,21 @@ begin
   if uid is null then
     raise exception 'not signed in' using errcode = '28000';
   end if;
+
+  -- NO ACTION FKs: delete the referencing rows (any owner) first.
+  delete from public.dive_bailout_carry
+  where dive_id in (select id from public.dives where owner_id = uid)
+     or cylinder_id in (select id from public.cylinders where owner_id = uid);
+  delete from public.dive_merge_links
+  where id in (select id from public.dives where owner_id = uid);
+
+  -- Email and IP; guarded so a missing privilege cannot block the delete.
+  begin
+    delete from auth.audit_log_entries where payload->>'actor_id' = uid::text;
+  exception when insufficient_privilege or undefined_table then
+    null;
+  end;
+
   delete from auth.users where id = uid;
 end;
 $$;
@@ -138,6 +154,19 @@ grant execute on function public.delete_my_account() to authenticated;
   (`auth.uid()`), refuses an unauthenticated call, pins `search_path`,
   and is not executable by `anon` or `PUBLIC`.
 - **One transaction.** The cascade either removes everything or nothing.
+- **NO ACTION children first.** `dive_bailout_carry.dive_id`,
+  `dive_bailout_carry.cylinder_id` and `dive_merge_links.id` reference
+  dives and cylinders without `on delete cascade`. Deleting those rows
+  explicitly means the auth delete never depends on the order the
+  cascades run in. It also removes rows of another owner that point at
+  this user's dives or cylinders; they could not survive the delete
+  anyway.
+- **Audit log.** `auth.audit_log_entries` holds the email and IP address
+  of each auth event and has no FK to `auth.users`. The function deletes
+  the caller's entries inside a nested block that ignores
+  `insufficient_privilege` and `undefined_table`, so a missing privilege
+  leaves the entries behind (caught by the post-check below) instead of
+  blocking the deletion.
 - **Timeout.** `authenticated` defaults to 8 s. PostgREST applies a
   function-level `statement_timeout` to RPC calls, and Supabase caps
   client queries at 60 s, so 50 s leaves headroom for a large log.
@@ -153,8 +182,23 @@ grant execute on function public.delete_my_account() to authenticated;
 1. `select has_table_privilege('postgres', 'auth.users', 'DELETE');` →
    `true`.
 2. Apply the migration, create a throwaway account in the app, add a dive
-   and an attachment, delete the account from the app, then check the
-   user is gone from Authentication → Users and its rows from `dives`.
+   and an attachment, add a bailout-carry entry to a dive, merge two
+   dives, delete the account from the app, then check the user is gone
+   from Authentication → Users and its rows from `dives`.
+3. Post-check: `select count(*) from auth.audit_log_entries where
+   payload->>'actor_id' = '<uid>';` → 0. Otherwise the guarded delete
+   lacked the privilege; the entries hold the email and IP, and Egbert
+   decides whether to delete them by hand or disclose them.
+
+Optionally, a rollback dry run against a real user id raises any FK error
+the deletion would hit without deleting anything:
+
+```sql
+begin;
+select set_config('request.jwt.claims', '{"sub":"<uid>","role":"authenticated"}', true);
+select public.delete_my_account();
+rollback;
+```
 
 If step 1 is `false`, stop: the fallback is a request queue or the Dart
 service, and the decision goes back to Egbert.
@@ -166,9 +210,12 @@ UI calls `deleteAccount()`, which reports progress and returns a result.
 Steps, in order:
 
 1. **Check online and refresh the session.** `SessionSource.refreshSession()`
-   (the existing seam in `ccrlogger_backend_connector.dart`). Failure →
-   `offline`; nothing has changed. A fresh token also covers the
-   R2 sweep, so the JWT cannot expire mid-flow.
+   (the existing seam in `ccrlogger_backend_connector.dart`). A
+   non-retryable `AuthException` (anything but
+   `AuthRetryableFetchException`; gotrue has then removed the session
+   itself), or no user id on the session afterwards → `sessionEnded`.
+   Any other failure → `offline`. Either way nothing has changed. A fresh
+   token also covers the R2 sweep, so the JWT cannot expire mid-flow.
 2. **Pause sync.** `CloudSyncCoordinator.pause()` disconnects PowerSync
    and stops it reconnecting (auth notifications and resume-from-sleep
    both reconnect today). This stops queued uploads from racing the
@@ -178,26 +225,39 @@ Steps, in order:
    null`, RLS-scoped, paged past PostgREST's 1000-row limit, includes
    soft-deleted rows) and the local list
    (`DiveAttachmentsDao.listAllStorageKeys()`, covering files uploaded
-   from this device whose rows have not synced yet).
+   from this device whose rows have not synced yet). Paging advances by
+   the rows returned and stops only on an empty page. Only keys starting
+   with `attachments/<uid>/` (the session's user id after step 1) are
+   kept; any other key is skipped silently, since the Worker refuses it
+   and it would fail every retry.
 4. **Delete attachment files** through `AttachmentSigner.deleteObject`,
-   retrying each failure once. If any still fail → `attachments` failure:
-   resume sync, account untouched. (R2 deletes are idempotent, so a retry
-   of the whole flow is safe.)
-5. **Delete the account.** `rpc('delete_my_account')`. Failure →
-   `account` failure: resume sync. The attachment files are already gone;
-   the message says so.
+   each attempt limited to 30 s, retrying each failure (a timeout
+   included) once. If any still fail → `attachments` failure: resume
+   sync, account untouched. (R2 deletes are idempotent, so a retry of the
+   whole flow is safe.)
+5. **Delete the account.** `rpc('delete_my_account')`, limited to 60 s
+   (above the function's 50 s `statement_timeout`). On a failure or
+   timeout the response may have been lost after the commit, so the app
+   asks `AccountDeletionBackend.accountExists()` (`auth.getUser()`;
+   GoTrue answers a valid JWT whose user is gone with 403
+   `user_not_found`; 30 s limit). Gone → carry on with step 6 and report
+   success. Still there, or the probe fails → `account` failure: resume
+   sync. The attachment files are already gone; the message says so.
 6. **Sign out** locally (`AuthService.signOut()`; gotrue already ignores
    the 403/404 a deleted user gets from `/logout`).
-7. **Wipe this device**: `LocalDataWiper.wipe()` (§6.4) and
-   `AttachmentCache.clear()`. Failure here → `localWipe` result: the
-   account *is* deleted; the message points to Reset local data.
+7. **Wipe this device**: `LocalDataWiper.wipe()` (§6.4), then, in a
+   `finally` so they run even if the wipe throws, the pending-upload
+   paths (best effort) and `AttachmentCache.clear()`. Failure here →
+   `localWipe` result: the account *is* deleted; the message points to
+   Reset local data.
 8. **Resume** the coordinator (always, in a `finally`), so a later
    sign-in connects normally.
 
 Result type (sealed): `AccountDeleted`, or `AccountDeletionFailed` with a
-stage (`offline`, `attachments`, `account`, `localWipe`) and the
-underlying message. No usage event is logged for deletion; it would be
-deleted with the account anyway.
+stage (`offline`, `sessionEnded`, `attachments`, `account`, `localWipe`)
+and the underlying message (`.message` for `PostgrestException` and
+`AuthException`, `toString()` otherwise). No usage event is logged for
+deletion; it would be deleted with the account anyway.
 
 ### 6.3 Why attachments go first, and the gap
 
@@ -212,6 +272,10 @@ not on this device (for example uploaded from another device that then
 lost its local database). It cannot be listed by the app. The Dart
 service's orphan sweep (§4) closes it later; until then such files are
 rare and inert (only reachable with a presigned URL for that user's key).
+
+The same holds for an upload already in flight when the flow starts: it
+sets `storage_key` only after its PUT, so its object can be missed. That
+is rare under the modal UI, and the orphan sweep closes it later.
 
 ### 6.4 `LocalDataWiper`
 
@@ -278,6 +342,8 @@ account", "Clearing this device").
   deletion is complete".
 - `offline`: "You need an internet connection to delete your account.
   Nothing was deleted."
+- `sessionEnded`: "Your sign-in has ended, so nothing was deleted. Sign
+  in again, then try again."
 - `attachments`: "Your account was not deleted. N attachment files could
   not be removed. Check your connection and try again."
 - `account`: "Your account was not deleted. Attachment files were
@@ -322,8 +388,10 @@ not change.
 - **`supabase/README.md`**: the pre-deploy check from §6.1, and a short
   runbook for an email request (verify the sender is the account's
   address; note the user id; delete `attachments/<uid>/` in the R2
-  dashboard; delete the user under Authentication → Users; reply to
-  confirm).
+  dashboard; run the function's NO ACTION child deletes and audit-log
+  delete for that uid in the SQL Editor, since the dashboard delete does
+  not run the function; delete the user under Authentication → Users;
+  reply to confirm).
 - **Website** (agreed with the website session 2026-11-08): it publishes
   `docs/ACCOUNT_DELETION.md` at `https://anchorline.eu/delete-account`
   next to the privacy policy (`https://anchorline.eu/privacy`). Until the
