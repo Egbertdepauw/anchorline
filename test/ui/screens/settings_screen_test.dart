@@ -66,7 +66,11 @@ class _FakeAuthClient implements AuthClient {
 
 class _DeleteFakeSession implements SessionSource {
   @override
-  Session? get currentSession => null;
+  Session? get currentSession => Session(
+        accessToken: 'token',
+        tokenType: 'bearer',
+        user: _user('uid', 'me@example.test'),
+      );
   @override
   Future<void> refreshSession() async {}
 }
@@ -76,6 +80,8 @@ class _DeleteFakeBackend implements AccountDeletionBackend {
   Future<List<String>> listStorageKeys() async => const [];
   @override
   Future<void> deleteAccount() async {}
+  @override
+  Future<bool> accountExists() async => true;
 }
 
 class _DeleteFakeSync implements SyncPause {

@@ -11,7 +11,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class _FakeSession implements SessionSource {
   Object? refreshError;
   @override
-  Session? get currentSession => null;
+  Session? get currentSession => Session(
+        accessToken: 'token',
+        tokenType: 'bearer',
+        user: User(
+          id: 'uid',
+          appMetadata: const {},
+          userMetadata: const {},
+          aud: 'authenticated',
+          createdAt: '2026-11-08T00:00:00Z',
+        ),
+      );
   @override
   Future<void> refreshSession() async {
     final e = refreshError;
@@ -40,6 +50,9 @@ class _FakeBackend implements AccountDeletionBackend {
     final e = rpcError;
     if (e != null) throw e;
   }
+
+  @override
+  Future<bool> accountExists() async => true;
 }
 
 class _FakeSync implements SyncPause {
@@ -145,9 +158,10 @@ void main() {
 
   testWidgets('progress dialog follows the steps', (tester) async {
     final h = _Harness();
-    h.backend.serverKeys = const ['a', 'b'];
+    h.backend.serverKeys = const ['attachments/uid/a', 'attachments/uid/b'];
     final gate = Completer<void>();
-    h.onDelete = (k) => k == 'b' ? gate.future : Future.value();
+    h.onDelete =
+        (k) => k == 'attachments/uid/b' ? gate.future : Future.value();
     await _pumpButton(tester, h.build());
     await _openConfirm(tester);
     await _typeAndConfirmNoSettle(tester, 'DELETE');
@@ -191,11 +205,33 @@ void main() {
     expect(find.textContaining('internet connection'), findsOneWidget);
   });
 
+  testWidgets('an ended sign-in says to sign in again', (tester) async {
+    final h = _Harness()
+      ..session.refreshError = AuthApiException(
+        'Invalid Refresh Token: Refresh Token Not Found',
+        statusCode: '400',
+        code: 'refresh_token_not_found',
+      );
+    await _pumpButton(tester, h.build());
+    await _openConfirm(tester);
+    await _typeAndConfirm(tester, 'DELETE');
+    expect(find.text('Could not delete account'), findsOneWidget);
+    expect(
+        find.text('Your sign-in has ended, so nothing was deleted. Sign in '
+            'again, then try again.'),
+        findsOneWidget);
+    expect(h.backend.rpcCalls, 0);
+  });
+
   testWidgets('attachments failure shows the count', (tester) async {
     final h = _Harness();
-    h.backend.serverKeys = const ['a', 'b', 'c'];
+    h.backend.serverKeys = const [
+      'attachments/uid/a',
+      'attachments/uid/b',
+      'attachments/uid/c',
+    ];
     h.onDelete = (k) async {
-      if (k != 'a') throw Exception('r2 down');
+      if (k != 'attachments/uid/a') throw Exception('r2 down');
     };
     await _pumpButton(tester, h.build());
     await _openConfirm(tester);

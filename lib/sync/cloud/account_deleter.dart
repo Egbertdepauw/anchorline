@@ -2,11 +2,15 @@
 ///
 /// The order is load-bearing:
 ///
-/// 1. Refresh the session (doubles as the online check).
+/// 1. Refresh the session (doubles as the online check). A rejected
+///    refresh means the sign-in has ended, not that the device is offline.
 /// 2. Pause sync, so queued uploads cannot race the delete.
-/// 3. Collect attachment keys (server list plus this device's list).
+/// 3. Collect attachment keys (server list plus this device's list), kept
+///    only when they are under this user's `attachments/<uid>/` prefix.
 /// 4. Delete the attachment files from R2.
 /// 5. Delete the account (Postgres function; every cloud row cascades).
+///    If the call fails or times out, ask the server whether the account
+///    still exists: the response may have been lost after the commit.
 /// 6. Sign out, then wipe this device.
 /// 7. Resume sync (always), so a later sign-in connects normally.
 ///
@@ -32,6 +36,12 @@ abstract class AccountDeletionBackend {
 
   /// Calls the `delete_my_account` Postgres function.
   Future<void> deleteAccount();
+
+  /// Whether the signed-in user still exists on the server. Asked after a
+  /// failed [deleteAccount], because the delete may have committed and only
+  /// the response was lost. Returns `false` only when the server says the
+  /// user is gone; throws when it cannot tell.
+  Future<bool> accountExists();
 }
 
 class SupabaseAccountDeletionBackend implements AccountDeletionBackend {
@@ -60,9 +70,32 @@ class SupabaseAccountDeletionBackend implements AccountDeletionBackend {
   @override
   Future<void> deleteAccount() => _client.rpc('delete_my_account');
 
+  /// `GET /user` with the current access token. The token outlives the
+  /// user (issued JWTs cannot be revoked), and GoTrue answers it with a 403
+  /// carrying the code `user_not_found` once the auth.users row is gone.
+  @override
+  Future<bool> accountExists() async {
+    try {
+      await _client.auth.getUser();
+      return true;
+    } on AuthException catch (e) {
+      if (isUserGone(e)) return false;
+      rethrow;
+    }
+  }
+
+  /// Whether [e] is GoTrue saying the JWT's user no longer exists. Matched
+  /// on the error code only: gotrue 2.20.0 puts it in [AuthException.code]
+  /// (from `code` or the older `error_code` body field) whatever the HTTP
+  /// status, and its `ErrorCode` enum is not exported, hence the literal.
+  @visibleForTesting
+  static bool isUserGone(AuthException e) => e.code == 'user_not_found';
+
   /// Pages through [page] (inclusive `from`/`to` row indexes) until a page
-  /// comes back shorter than [pageSize]. PostgREST caps a response at 1000
-  /// rows by default, hence the loop.
+  /// comes back empty. PostgREST caps a response at 1000 rows by default,
+  /// hence the loop. `from` moves by the rows actually returned, and only an
+  /// empty page stops it, so a server cap below [pageSize] (a short page
+  /// that is not the last) cannot skip keys.
   @visibleForTesting
   static Future<List<String>> fetchAllPages(
     Future<List<String>> Function(int from, int to) page, {
@@ -72,9 +105,9 @@ class SupabaseAccountDeletionBackend implements AccountDeletionBackend {
     var from = 0;
     while (true) {
       final chunk = await page(from, from + pageSize - 1);
+      if (chunk.isEmpty) break;
       all.addAll(chunk);
-      if (chunk.length < pageSize) break;
-      from += pageSize;
+      from += chunk.length;
     }
     return all;
   }
@@ -97,7 +130,16 @@ class AccountDeletionProgress {
   final int total;
 }
 
-enum AccountDeletionStage { offline, attachments, account, localWipe }
+enum AccountDeletionStage {
+  offline,
+
+  /// The sign-in ended (refresh rejected, or no user after refreshing).
+  /// Nothing was deleted.
+  sessionEnded,
+  attachments,
+  account,
+  localWipe,
+}
 
 sealed class AccountDeletionResult {
   const AccountDeletionResult();
@@ -134,6 +176,8 @@ class AccountDeleter {
     required Future<void> Function(String objectKey) deleteObject,
     required Future<void> Function() signOut,
     required Future<void> Function() wipeLocal,
+    this.rpcTimeout = const Duration(seconds: 60),
+    this.requestTimeout = const Duration(seconds: 30),
   })  : _session = session,
         _backend = backend,
         _sync = sync,
@@ -149,6 +193,15 @@ class AccountDeleter {
   final Future<void> Function(String objectKey) _deleteObject;
   final Future<void> Function() _signOut;
   final Future<void> Function() _wipeLocal;
+
+  /// Limit on the `delete_my_account` call. Above the function's own 50 s
+  /// `statement_timeout`, so by the time it fires the server has either
+  /// committed or given up; the existence probe then tells which.
+  final Duration rpcTimeout;
+
+  /// Limit on each attachment delete attempt and on the existence probe.
+  /// A timed-out delete counts as a failed attempt.
+  final Duration requestTimeout;
 
   Future<AccountDeletionResult>? _inFlight;
 
@@ -176,20 +229,45 @@ class AccountDeleter {
     report(const AccountDeletionProgress(AccountDeletionStep.checking));
     try {
       await _session.refreshSession();
+    } on AuthRetryableFetchException catch (e) {
+      return AccountDeletionFailed(AccountDeletionStage.offline, _describe(e));
+    } on AuthException catch (e) {
+      // gotrue removes the session itself on any non-retryable refresh
+      // error, so the user really is signed out now.
+      return AccountDeletionFailed(
+        AccountDeletionStage.sessionEnded,
+        _describe(e),
+      );
     } catch (e) {
-      return AccountDeletionFailed(AccountDeletionStage.offline, '$e');
+      return AccountDeletionFailed(AccountDeletionStage.offline, _describe(e));
+    }
+    final uid = _session.currentSession?.user.id;
+    if (uid == null || uid.isEmpty) {
+      return const AccountDeletionFailed(
+        AccountDeletionStage.sessionEnded,
+        'No signed-in user after refreshing the session',
+      );
     }
 
     await _sync.pause();
     try {
-      // Collect keys: server first, then local-only, first-seen order.
+      // Collect keys: server first, then local-only, first-seen order. Only
+      // keys under this user's prefix: the Worker refuses any other key, so
+      // passing one would fail the sweep on every retry.
+      final prefix = 'attachments/$uid/';
       final List<String> keys;
       try {
         final server = await _backend.listStorageKeys();
         final local = await _localStorageKeys();
-        keys = {...server, ...local}.toList();
+        keys = [
+          for (final k in {...server, ...local})
+            if (k.startsWith(prefix)) k,
+        ];
       } catch (e) {
-        return AccountDeletionFailed(AccountDeletionStage.attachments, '$e');
+        return AccountDeletionFailed(
+          AccountDeletionStage.attachments,
+          _describe(e),
+        );
       }
 
       // Delete files. Sequential; each key gets at most two attempts.
@@ -202,9 +280,9 @@ class AccountDeleter {
       for (var i = 0; i < keys.length; i++) {
         try {
           try {
-            await _deleteObject(keys[i]);
+            await _deleteObject(keys[i]).timeout(requestTimeout);
           } catch (_) {
-            await _deleteObject(keys[i]);
+            await _deleteObject(keys[i]).timeout(requestTimeout);
           }
         } catch (e) {
           failed++;
@@ -220,16 +298,27 @@ class AccountDeleter {
       if (failed > 0) {
         return AccountDeletionFailed(
           AccountDeletionStage.attachments,
-          '$lastError',
+          _describe(lastError!),
           failedAttachments: failed,
         );
       }
 
       report(const AccountDeletionProgress(AccountDeletionStep.deletingAccount));
       try {
-        await _backend.deleteAccount();
+        await _backend.deleteAccount().timeout(rpcTimeout);
       } catch (e) {
-        return AccountDeletionFailed(AccountDeletionStage.account, '$e');
+        // The delete may have committed with only the response lost. If
+        // the server says the user is gone, finish the flow; if it says
+        // the user is there, or cannot tell, report the failure.
+        if (await _accountGone()) {
+          debugPrint('AccountDeleter: rpc failed but the account is gone '
+              '(continuing): $e');
+        } else {
+          return AccountDeletionFailed(
+            AccountDeletionStage.account,
+            _describe(e),
+          );
+        }
       }
 
       report(const AccountDeletionProgress(AccountDeletionStep.clearingDevice));
@@ -241,11 +330,33 @@ class AccountDeleter {
       try {
         await _wipeLocal();
       } catch (e) {
-        return AccountDeletionFailed(AccountDeletionStage.localWipe, '$e');
+        return AccountDeletionFailed(
+          AccountDeletionStage.localWipe,
+          _describe(e),
+        );
       }
       return const AccountDeleted();
     } finally {
       await _sync.resume();
     }
   }
+
+  /// True only when the server positively says the user is gone. A probe
+  /// that fails or times out counts as "still there".
+  Future<bool> _accountGone() async {
+    try {
+      return !await _backend.accountExists().timeout(requestTimeout);
+    } catch (e) {
+      debugPrint('AccountDeleter: account probe failed: $e');
+      return false;
+    }
+  }
+
+  /// Short cause for [AccountDeletionFailed.message]: the server's own
+  /// message where there is one, rather than the exception's dump.
+  static String _describe(Object e) => switch (e) {
+        PostgrestException(:final message) => message,
+        AuthException(:final message) => message,
+        _ => e.toString(),
+      };
 }

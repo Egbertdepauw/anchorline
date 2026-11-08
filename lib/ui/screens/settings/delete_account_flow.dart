@@ -197,6 +197,14 @@ class _ResultDialog extends StatelessWidget {
               'was deleted.',
         ),
       AccountDeletionFailed(
+        stage: AccountDeletionStage.sessionEnded,
+      ) =>
+        (
+          'Could not delete account',
+          'Your sign-in has ended, so nothing was deleted. Sign in again, '
+              'then try again.',
+        ),
+      AccountDeletionFailed(
         stage: AccountDeletionStage.attachments,
         failedAttachments: final n,
       ) =>
