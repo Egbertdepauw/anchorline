@@ -3,7 +3,7 @@
 ///
 /// Usage (not `dart run`, which triggers the package's build hooks):
 ///   dart tool/site_showcase/export.dart --db `powersync.db` \
-///       [--dive ID] [--cell ID] [--out showcase.json]
+///       [--dive ID] [--cell ID] --out showcase.json
 ///
 /// The human-readable summary (dive number, date, depth, cell label) goes to
 /// stdout only; it is never written to the output file.
@@ -17,7 +17,7 @@ import 'lib/showcase_db.dart';
 
 const _usage =
     'Usage: dart tool/site_showcase/export.dart --db <path> '
-    '[--dive <id>] [--cell <id>] [--out <file>]';
+    '[--dive <id>] [--cell <id>] --out <file>';
 
 Never _usageError(String message) {
   stderr.writeln(message);
@@ -37,6 +37,8 @@ void main(List<String> args) {
   }
   final dbPath = opts['--db'];
   if (dbPath == null) _usageError('Missing --db');
+  final outPath = opts['--out'];
+  if (outPath == null) _usageError('Missing --out');
   if (!File(dbPath).existsSync()) _usageError('Cannot read database: $dbPath');
 
   final ShowcaseExport result;
@@ -60,7 +62,7 @@ void main(List<String> args) {
     db.close();
   }
 
-  final out = File(opts['--out'] ?? 'showcase.json');
+  final out = File(outPath);
   out.writeAsStringSync(
     '${const JsonEncoder.withIndent('  ').convert(result.json)}\n',
   );

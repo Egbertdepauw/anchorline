@@ -6,6 +6,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ccrlogger/data/models/sample_set.dart';
@@ -131,7 +132,14 @@ class SqliteShowcaseDb implements ShowcaseDb {
     final row = rows.first;
     final blobs = <String, Uint8List>{};
     for (final e in _blobColumns.entries) {
-      blobs[e.key] = base64Decode(row[e.value] as String);
+      final v = row[e.value];
+      if (v is! String) {
+        stderr.writeln(
+          'Warning: skipping dive ${dive.id}: ${e.value} is NULL.',
+        );
+        return null;
+      }
+      blobs[e.key] = base64Decode(v);
     }
     final tank = row['tank_pressures_blob'];
     if (tank is String && tank.isNotEmpty) {

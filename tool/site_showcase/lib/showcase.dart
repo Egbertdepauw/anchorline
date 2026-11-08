@@ -62,7 +62,7 @@ Decimated decimate(SampleSet s, int targetIntervalMs) {
       sum += v;
       n++;
     }
-    return n == 0 ? null : _round(sum / n, 2);
+    return n == 0 ? null : sum / n;
   }
 
   for (var from = 0; from < s.sampleCount; from += k) {
@@ -72,7 +72,8 @@ Decimated decimate(SampleSet s, int targetIntervalMs) {
       if (s.depthMeters[i] > maxDepth) maxDepth = s.depthMeters[i];
     }
     depth.add(_round(maxDepth, 2));
-    ppo2.add(mean(s.ppo2Bar, from, to, (_) => true));
+    final p = mean(s.ppo2Bar, from, to, (_) => true);
+    ppo2.add(p == null ? null : _round(p, 2));
     setpoint.add(_round(s.setpointBar[to - 1], 2));
     for (var c = 0; c < 3; c++) {
       final m = mean(cellSrc[c], from, to, (v) => v > 0);

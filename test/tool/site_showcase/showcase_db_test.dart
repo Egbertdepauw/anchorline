@@ -155,4 +155,29 @@ void main() {
     expect((cell['points'] as List).length, 2);
     expect(r.cellId, 'c1');
   });
+
+  test('null tank_pressures_blob decodes; other null blob skips the dive', () {
+    final raw = sqlite3.open(path);
+    raw.execute('UPDATE dive_samples SET tank_pressures_blob = NULL');
+    raw.execute("UPDATE dive_samples SET cell_mv1_blob = NULL WHERE id = 'd2'");
+    raw.close();
+    final db = SqliteShowcaseDb(path);
+    addTearDown(db.close);
+    final dives = {for (final d in db.dives) d.id: d};
+    expect(db.samplesFor(dives['d1']!)!.sampleCount, 4);
+    expect(db.samplesFor(dives['d2']!), isNull);
+  });
+
+  test('CLI: missing --out is a usage error (exit 1)', () {
+    final r = Process.runSync('dart', [
+      'tool/site_showcase/export.dart',
+      '--db',
+      path,
+    ]);
+    expect(r.exitCode, 1);
+    expect(r.stderr, contains('Missing --out'));
+    final noDb = Process.runSync('dart', ['tool/site_showcase/export.dart']);
+    expect(noDb.exitCode, 1);
+    expect(noDb.stderr, contains('Missing --db'));
+  });
 }

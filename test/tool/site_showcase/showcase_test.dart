@@ -198,14 +198,15 @@ void main() {
         decoDepth: [0, 0, 3, 3],
       );
     }
-    final db = FakeDb(
-      dives,
-      [
-        CellRow(
-            id: 'a', slot: 1, label: 'A', installedDate: null, retiredDate: null)
-      ],
-      samples,
-    );
+    final db = FakeDb(dives, [
+      CellRow(
+        id: 'a',
+        slot: 1,
+        label: 'A',
+        installedDate: null,
+        retiredDate: null,
+      ),
+    ], samples);
     final pts = (buildShowcase(db: db).json['cell'] as Map)['points'] as List;
     expect(pts.length, 2);
     expect([for (final p in pts) (p as Map)['dive']], [1, 2]);
@@ -213,5 +214,18 @@ void main() {
     for (final p in pts) {
       expect((p as Map)['surfaceMv'], isNotNull);
     }
+  });
+
+  test('cell means are rounded once (10.249 -> 10.2, not 10.3)', () {
+    final set = makeSampleSet(
+      diveId: 'x',
+      intervalMs: 10000,
+      depth: [5],
+      ppo2: [1.2349],
+      cell0: [10.249],
+    );
+    final d = decimate(set, 10000);
+    expect(d.cellMv[0], [10.2]);
+    expect(d.ppo2Bar, [1.23]);
   });
 }
