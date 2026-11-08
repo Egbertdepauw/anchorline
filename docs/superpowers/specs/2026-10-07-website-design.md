@@ -1,7 +1,8 @@
 # Anchorline website — design
 
 Date: 2026-10-07
-Status: design approved in conversation; awaiting spec review
+Status: superseded on 2026-11-08 by `2026-11-08-website-design.md`, which
+carries this contract forward. Kept for history; PR #140 amends its §2.
 Context: `docs/RELEASE_AND_MONETISATION.md`
 
 The website is its own project in its own repository. This spec lives in
