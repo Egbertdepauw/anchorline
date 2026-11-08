@@ -119,7 +119,9 @@ final class AccountDeletionFailed extends AccountDeletionResult {
   /// Short human-readable cause.
   final String message;
 
-  /// Non-zero only for [AccountDeletionStage.attachments].
+  /// Non-zero only for [AccountDeletionStage.attachments] when files failed
+  /// to delete. Zero with stage `attachments` means the attachment list
+  /// could not be read; nothing was deleted.
   final int failedAttachments;
 }
 
@@ -161,7 +163,15 @@ class AccountDeleter {
   Future<AccountDeletionResult> _run(
     void Function(AccountDeletionProgress)? onProgress,
   ) async {
-    void report(AccountDeletionProgress p) => onProgress?.call(p);
+    // A throwing UI callback must never abort the flow: by the time the
+    // later steps report, the account may already be deleted.
+    void report(AccountDeletionProgress p) {
+      try {
+        onProgress?.call(p);
+      } catch (e) {
+        debugPrint('AccountDeleter: onProgress threw (ignored): $e');
+      }
+    }
 
     report(const AccountDeletionProgress(AccountDeletionStep.checking));
     try {

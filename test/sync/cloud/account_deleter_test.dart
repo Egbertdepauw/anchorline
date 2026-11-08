@@ -27,12 +27,15 @@ class _FakeBackend implements AccountDeletionBackend {
   _FakeBackend(this.calls);
   final List<String> calls;
   List<String> serverKeys = const ['a'];
+  Object? listError;
   Object? rpcError;
   Completer<void>? rpcGate;
 
   @override
   Future<List<String>> listStorageKeys() async {
     calls.add('serverKeys');
+    final e = listError;
+    if (e != null) throw e;
     return serverKeys;
   }
 
@@ -68,6 +71,7 @@ class _Harness {
   List<String> localKeys = const ['a', 'b'];
   Future<void> Function(String key)? onDelete;
   Object? signOutError;
+  Object? localKeysError;
   Object? wipeError;
 
   AccountDeleter build() => AccountDeleter(
@@ -76,6 +80,8 @@ class _Harness {
         sync: sync,
         localStorageKeys: () async {
           calls.add('localKeys');
+          final e = localKeysError;
+          if (e != null) throw e;
           return localKeys;
         },
         deleteObject: (key) async {
@@ -218,6 +224,38 @@ void main() {
         .toList();
     expect(removing.map((p) => p.done), [0, 1, 2]);
     expect(removing.every((p) => p.total == 2), isTrue);
+  });
+
+  test('a throwing onProgress does not break the flow', () async {
+    final h = _Harness();
+    final result = await h
+        .build()
+        .deleteAccount(onProgress: (_) => throw StateError('ui gone'));
+    expect(result, isA<AccountDeleted>());
+    expect(h.calls.sublist(h.calls.length - 4),
+        ['rpc', 'signOut', 'wipe', 'resume']);
+  });
+
+  test('a server key-listing failure stops before any delete', () async {
+    final h = _Harness()..backend.listError = Exception('list');
+    final f = _failed(await h.build().deleteAccount());
+    expect(f.stage, AccountDeletionStage.attachments);
+    expect(f.failedAttachments, 0);
+    expect(h.calls.where((c) => c.startsWith('delete:')), isEmpty);
+    expect(h.calls, isNot(contains('rpc')));
+    expect(h.calls, isNot(contains('wipe')));
+    expect(h.calls.last, 'resume');
+  });
+
+  test('a local key-listing failure stops before any delete', () async {
+    final h = _Harness()..localKeysError = Exception('local');
+    final f = _failed(await h.build().deleteAccount());
+    expect(f.stage, AccountDeletionStage.attachments);
+    expect(f.failedAttachments, 0);
+    expect(h.calls.where((c) => c.startsWith('delete:')), isEmpty);
+    expect(h.calls, isNot(contains('rpc')));
+    expect(h.calls, isNot(contains('wipe')));
+    expect(h.calls.last, 'resume');
   });
 
   group('SupabaseAccountDeletionBackend.fetchAllPages', () {
