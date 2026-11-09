@@ -10,6 +10,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "lvgl.h"
+#include "text_fit.h"
 
 #define REDRAW_MS 250
 #define INFO_MS 5000
@@ -27,9 +28,15 @@ static const char *TAG = "ui";
 #define COL_AMBER lv_color_hex(0xFFB020)
 #define COL_RED lv_color_hex(0xFF5A5A)
 
-// Largest first; the first one whose wrapped text fits the main area is used.
+#define MAIN_MAX_LINES 4
+#define MAIN_H (240 - MARGIN - MAIN_TOP)
+#define MAIN_W (240 - 2 * MARGIN)
+
+// Largest first; the first one that fits the text in at most MAIN_MAX_LINES
+// lines, breaking only between words, is used.
 static const lv_font_t *const kMainFonts[] = {&lv_font_montserrat_48, &lv_font_montserrat_40,
-                                              &lv_font_montserrat_32, &lv_font_montserrat_24};
+                                              &lv_font_montserrat_32, &lv_font_montserrat_28,
+                                              &lv_font_montserrat_24, &lv_font_montserrat_20};
 
 typedef struct {
     char bridge_id[16], fw[16], vbus_src[16], epoch[16];
@@ -44,6 +51,7 @@ static bool s_vbus_on;
 static info_t s_info;
 
 static lv_obj_t *s_status, *s_pending_lbl, *s_main;
+static int32_t s_shown_y = -1;
 // What the labels show now, so an unchanged screen is not touched.
 static char s_shown_status[64], s_shown_pending[32], s_shown_main[160];
 static const lv_font_t *s_shown_font;
@@ -67,18 +75,53 @@ static void set_label(lv_obj_t *l, char *shown, size_t cap, const char *text) {
     lv_label_set_text(l, text);
 }
 
-static const lv_font_t *fit_font(const char *text) {
-    const int32_t max_h = 240 - MARGIN - MAIN_TOP;
-    for (size_t i = 0; i < sizeof kMainFonts / sizeof kMainFonts[0]; i++) {
-        lv_point_t size;
-        lv_text_get_size(&size, text, kMainFonts[i], 0, 0, 240 - 2 * MARGIN, LV_TEXT_FLAG_NONE);
-        if (size.y <= max_h) return kMainFonts[i];
-    }
-    return kMainFonts[sizeof kMainFonts / sizeof kMainFonts[0] - 1];
+// Width of n bytes of one line in the font passed as ctx.
+static int32_t measure(const char *s, size_t n, void *ctx) {
+    char buf[160];
+    if (n >= sizeof buf) n = sizeof buf - 1;
+    memcpy(buf, s, n);
+    buf[n] = '\0';
+    lv_point_t size;
+    lv_text_get_size(&size, buf, (const lv_font_t *)ctx, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    return size.x;
 }
 
-static void show_main(const char *text, const lv_font_t *font, lv_color_t color, lv_text_align_t align) {
+// Picks the largest font that fits `text` in the main area in at most
+// MAIN_MAX_LINES lines without splitting a word, and writes the text with its
+// line breaks to `wrapped`. Sets *lines. Falls back to the smallest font and
+// LVGL's own wrapping when nothing fits.
+static const lv_font_t *fit_text(const char *text, char *wrapped, size_t cap, int *lines) {
+    const size_t n = sizeof kMainFonts / sizeof kMainFonts[0];
+    for (size_t i = 0; i < n; i++) {
+        const lv_font_t *f = kMainFonts[i];
+        int max_lines = MAIN_H / lv_font_get_line_height(f);
+        if (max_lines > MAIN_MAX_LINES) max_lines = MAIN_MAX_LINES;
+        if (max_lines < 1) continue;
+        int got = text_fit_wrap(text, MAIN_W, max_lines, measure, (void *)f, wrapped, cap);
+        if (got >= 0) {
+            *lines = got;
+            return f;
+        }
+    }
+    snprintf(wrapped, cap, "%s", text);
+    *lines = MAIN_MAX_LINES;
+    return kMainFonts[n - 1];
+}
+
+// Shows the main text; `lines` centres the block vertically (0 = top).
+static void show_main(const char *text, const lv_font_t *font, int lines, lv_color_t color,
+                      lv_text_align_t align) {
     uint32_t rgb = lv_color_to_u32(color);
+    int32_t y = MAIN_TOP;
+    if (lines > 0) {
+        int32_t h = lines * lv_font_get_line_height(font);
+        if (h < MAIN_H) y += (MAIN_H - h) / 2;
+    }
+    if (y != s_shown_y) {
+        lv_obj_set_y(s_main, y);
+        lv_obj_set_height(s_main, 240 - MARGIN - y);
+        s_shown_y = y;
+    }
     set_label(s_main, s_shown_main, sizeof s_shown_main, text);
     if (font != s_shown_font) {
         lv_obj_set_style_text_font(s_main, font, 0);
@@ -112,7 +155,7 @@ static void redraw(lv_timer_t *timer) {
                  "ID %s\nFW %s\nBATT %u mV\nHOST VBUS %u mV\n5V SRC %s\nEPOCH %s", info.bridge_id,
                  info.fw, (unsigned)info.batt_mv, (unsigned)info.host_vbus_mv, info.vbus_src,
                  info.epoch);
-        show_main(line, &lv_font_montserrat_16, COL_NEUTRAL, LV_TEXT_ALIGN_LEFT);
+        show_main(line, &lv_font_montserrat_16, 0, COL_NEUTRAL, LV_TEXT_ALIGN_LEFT);
         return;
     }
 
@@ -126,7 +169,10 @@ static void redraw(lv_timer_t *timer) {
 
     ui_main_t m = ui_pick(&in);
     ui_main_text(m, &in, line, sizeof line);
-    show_main(line, fit_font(line), tone_color(ui_tone(m, &in)), LV_TEXT_ALIGN_CENTER);
+    char wrapped[sizeof line];
+    int lines;
+    const lv_font_t *font = fit_text(line, wrapped, sizeof wrapped, &lines);
+    show_main(wrapped, font, lines, tone_color(ui_tone(m, &in)), LV_TEXT_ALIGN_CENTER);
 }
 
 static lv_obj_t *make_label(const lv_font_t *font, lv_color_t color, int32_t y) {

@@ -35,7 +35,7 @@
 #include "solo_line.h"
 #include "usb_solo.h"
 
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.0.1"
 #define STATUS_EVERY_MS 5000
 #define DATA_FRESH_MS 1000  // ST data=1 when a data line came this recently
 #define HOLD_TICK_MS 200    // how often the hold detector is asked
