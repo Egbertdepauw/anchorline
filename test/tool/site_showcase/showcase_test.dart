@@ -135,6 +135,11 @@ void main() {
     expect(text, isNot(contains('Cell A')));
     expect(text, isNot(contains('deep"')));
     final dive = r.json['dive'] as Map;
+    expect(
+      dive['durationSeconds'],
+      ((dive['depthMeters'] as List).length - 1) *
+          (dive['intervalSeconds'] as int),
+    );
     expect((dive['depthMeters'] as List).length, n);
     expect((dive['cellMv'] as List).length, 3);
     expect((dive['cellMv'] as List)[2].first, isNull);

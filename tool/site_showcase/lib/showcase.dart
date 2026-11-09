@@ -214,7 +214,7 @@ ShowcaseExport buildShowcase({
     'format': 1,
     'dive': {
       'intervalSeconds': dec.intervalSeconds,
-      'durationSeconds': dive.durationSeconds,
+      'durationSeconds': (dec.depthMeters.length - 1) * dec.intervalSeconds,
       'maxDepthMeters': _round(dive.maxDepthMm / 1000, 2),
       'depthMeters': dec.depthMeters,
       'ppo2Bar': dec.ppo2Bar,
