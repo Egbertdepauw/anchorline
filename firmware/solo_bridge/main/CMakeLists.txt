@@ -5,4 +5,5 @@ idf_component_register(
          "settings.c"
          "line_splitter.c" "solo_line.c" "usb_solo.c"
          "bridge_proto.c" "ble_link.c"
+         "hold_detector.c" "record_store.c"
     INCLUDE_DIRS ".")

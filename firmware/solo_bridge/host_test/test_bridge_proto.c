@@ -50,8 +50,25 @@ TEST_SUITE(test_bridge_proto) {
     CHECK(proto_fmt_live_line(tiny, sizeof tiny, kCapture) == 0);
     CHECK(proto_fmt_hello(tiny, sizeof tiny, &h) == 0);
 
-    const char *produced[] = {hello, st, l};
-    check_golden(produced, 3);
+    char rec[128], rec2[128], w[256], w0[256], hl[256], end[64];
+    CHECK(proto_fmt_rec(rec, sizeof rec, "1a2b3c4d-7", 3, 99000, 0, true) > 0);
+    CHECK_STR_EQ(rec, "REC 1a2b3c4d-7 boot=3 up=99000 wall=0 live=1");
+    CHECK(proto_fmt_rec(rec2, sizeof rec2, "1a2b3c4d-8", 3, 99000, 1762182000000ULL, false) > 0);
+    CHECK_STR_EQ(rec2, "REC 1a2b3c4d-8 boot=3 up=99000 wall=1762182000000 live=0");
+    CHECK(proto_fmt_w(w, sizeof w, -1200, kCapture) > 0);
+    CHECK(strncmp(w, "W -1200 ", 8) == 0);
+    CHECK_STR_EQ(w + 8, kCapture);
+    CHECK(proto_fmt_w(w0, sizeof w0, 0, kCapture) > 0);
+    CHECK(strncmp(w0, "W 0 ", 4) == 0);
+    CHECK(proto_fmt_h(hl, sizeof hl, kCapture) == strlen(kCapture) + 2);
+    CHECK(strncmp(hl, "H ", 2) == 0);
+    CHECK_STR_EQ(hl + 2, kCapture);
+    CHECK(proto_fmt_end(end, sizeof end, "1a2b3c4d-7") > 0);
+    CHECK_STR_EQ(end, "END 1a2b3c4d-7");
+    CHECK(proto_fmt_h(tiny, sizeof tiny, kCapture) == 0);  // too small gives 0
+
+    const char *produced[] = {hello, st, l, rec, rec2, w, w0, hl, end};
+    check_golden(produced, 9);
 
     proto_cmd_t c;
     proto_parse_cmd("TIME 1762700000000", &c);

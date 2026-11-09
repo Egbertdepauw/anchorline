@@ -15,6 +15,7 @@
 #include "board.h"
 #include "bridge_proto.h"
 #include "driver/gpio.h"
+#include "esp_littlefs.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_timer.h"
@@ -23,6 +24,7 @@
 #include "freertos/task.h"
 #include "line_splitter.h"
 #include "power.h"
+#include "record_store.h"
 #include "settings.h"
 #include "solo_line.h"
 #include "usb_solo.h"
@@ -44,6 +46,8 @@ static char s_bridge_id[13];  // factory MAC, 12 lowercase hex digits
 static volatile bool s_live;  // the phone asked for live lines
 static volatile uint64_t s_last_data_ms;
 static volatile uint32_t s_lines;
+
+static record_store_t s_store;
 
 static uint64_t now_ms(void) { return (uint64_t)(esp_timer_get_time() / 1000); }
 
@@ -172,6 +176,10 @@ void app_main(void) {
     led_init(PIN_LED_YELLOW, 1);  // on while no SOLO is attached
     settings_init();
 
+    esp_vfs_littlefs_conf_t fs = {
+        .base_path = "/rec", .partition_label = "storage", .format_if_mount_failed = true};
+    ESP_ERROR_CHECK(esp_vfs_littlefs_register(&fs));
+
     uint8_t mac[6];
     esp_efuse_mac_get_default(mac);
     snprintf(s_bridge_id, sizeof s_bridge_id, "%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2],
@@ -182,6 +190,11 @@ void app_main(void) {
     ESP_LOGI(TAG, "solo_bridge fw=%s bridge=%s boot=%" PRIu32 " epoch=%s batt=%" PRIu32 "mV",
              FW_VERSION, s_bridge_id, settings_boot(), settings_epoch(), power_battery_mv());
     power_set_vbus(settings_vbus());
+
+    if (!record_store_open(&s_store, "/rec", settings_epoch(), settings_counter()))
+        ESP_LOGE(TAG, "record store: can't open /rec");
+    ESP_LOGI(TAG, "record store: %u waiting, next counter %" PRIu32, (unsigned)s_store.count,
+             s_store.next_counter);
 
     s_events = xQueueCreate(16, sizeof(event_t));
     xTaskCreate(main_task, "main", 6144, NULL, 4, NULL);

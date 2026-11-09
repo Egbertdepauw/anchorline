@@ -30,6 +30,12 @@ typedef struct {
 size_t proto_fmt_hello(char *out, size_t cap, const proto_hello_t *h);
 size_t proto_fmt_status(char *out, size_t cap, const proto_status_t *s);
 size_t proto_fmt_live_line(char *out, size_t cap, const char *solo_line);  // "L <line>"
+// A record, as it is stored and sent: REC, one W per window line, H, END.
+size_t proto_fmt_rec(char *out, size_t cap, const char *rid, uint32_t boot, uint64_t up_ms,
+                     uint64_t wall_ms, bool live);  // "REC <rid> boot= up= wall= live="
+size_t proto_fmt_w(char *out, size_t cap, int64_t offset_ms, const char *line);  // "W <off> <line>"
+size_t proto_fmt_h(char *out, size_t cap, const char *line);                     // "H <line>"
+size_t proto_fmt_end(char *out, size_t cap, const char *rid);                    // "END <rid>"
 
 typedef enum { CMD_UNKNOWN, CMD_TIME, CMD_LIVE, CMD_STATE, CMD_ACK, CMD_FB, CMD_CFG } proto_cmd_kind_t;
 

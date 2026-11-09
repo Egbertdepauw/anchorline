@@ -52,3 +52,14 @@ bool settings_rec(void) { return get_u8("rec", 0) != 0; }
 void settings_set_rec(bool on) { set_u8("rec", on ? 1 : 0); }
 uint32_t settings_boot(void) { return s_boot; }
 const char *settings_epoch(void) { return s_epoch; }
+
+uint32_t settings_counter(void) {
+    uint32_t v = 1;
+    if (nvs_get_u32(s_nvs, "counter", &v) != ESP_OK || v == 0) v = 1;
+    return v;
+}
+
+void settings_set_counter(uint32_t next) {
+    ESP_ERROR_CHECK(nvs_set_u32(s_nvs, "counter", next));
+    ESP_ERROR_CHECK(nvs_commit(s_nvs));
+}
