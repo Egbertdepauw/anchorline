@@ -66,6 +66,18 @@ class FakeBleCentral implements BleCentral {
   @override
   FakeBlePeripheral peripheral(String id) =>
       peripherals.putIfAbsent(id, () => FakeBlePeripheral(id, this));
+
+  /// What [classicSerialPeripheral] returns, by id.
+  final Map<String, FakeBlePeripheral> serialPeripherals = {};
+
+  @override
+  FakeBlePeripheral? classicSerialPeripheral(
+    String id, {
+    required String serviceUuid,
+    required String writeUuid,
+    required String notifyUuid,
+  }) =>
+      serialPeripherals[id];
 }
 
 class FakeBlePeripheral extends BlePeripheral {

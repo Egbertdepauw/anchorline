@@ -18,6 +18,12 @@
 /// | `setNotify`   | `id, service, characteristic, enable`       | – |
 /// | `write`       | `id, service, characteristic, value, withoutResponse` | – |
 /// | `disconnect`  | `id`                                        | – |
+/// | `serialConnect` | `id`                                      | – |
+/// | `serialWrite` | `id, value`                                 | – |
+/// | `serialDisconnect` | `id`                                   | – |
+///
+/// The `serial*` methods drive a classic Bluetooth serial (RFCOMM SPP) link
+/// to a dual-mode device, see [WindowsSerialPeripheral].
 ///
 /// `id` is the Bluetooth address as 12 hex digits. `properties` is a bit
 /// set: 1 read, 2 write, 4 write without response, 8 notify, 16 indicate.
@@ -86,6 +92,19 @@ class WindowsBleNotification extends WindowsBleEvent {
   final Uint8List value;
 }
 
+/// Bytes that came in on a classic serial link.
+class WindowsSerialData extends WindowsBleEvent {
+  const WindowsSerialData(this.id, this.value);
+  final String id;
+  final Uint8List value;
+}
+
+/// A classic serial link dropped.
+class WindowsSerialDropped extends WindowsBleEvent {
+  const WindowsSerialDropped(this.id);
+  final String id;
+}
+
 /// The session's MaxPduSize (the ATT MTU) changed.
 class WindowsBleMtu extends WindowsBleEvent {
   const WindowsBleMtu(this.id, this.mtu);
@@ -143,14 +162,14 @@ WindowsBleEvent? decodeWindowsBleEvent(Object? raw) {
         id,
         normalizeBleUuid(service),
         normalizeBleUuid(characteristic),
-        value is Uint8List
-            ? value
-            : Uint8List.fromList([
-                if (value is List)
-                  for (final b in value)
-                    if (b is int) b,
-              ]),
+        _bytes(value),
       );
+    case 'serialData':
+      if (id == null) return null;
+      return WindowsSerialData(id, _bytes(raw['value']));
+    case 'serialConnection':
+      if (id == null || raw['connected'] == true) return null;
+      return WindowsSerialDropped(id);
     case 'mtu':
       final mtu = raw['mtu'];
       if (id == null || mtu is! int) return null;
@@ -163,6 +182,14 @@ WindowsBleEvent? decodeWindowsBleEvent(Object? raw) {
   }
   return null;
 }
+
+Uint8List _bytes(Object? value) => value is Uint8List
+    ? value
+    : Uint8List.fromList([
+        if (value is List)
+          for (final b in value)
+            if (b is int) b,
+      ]);
 
 BleAdapterState decodeWindowsAdapterState(String? s) => switch (s) {
       'on' => BleAdapterState.on,
@@ -219,6 +246,7 @@ class WindowsBleCentral implements BleCentral {
   BleAdapterState _adapter = BleAdapterState.unknown;
   final _adapterCtl = StreamController<BleAdapterState>.broadcast();
   final Map<String, WindowsBlePeripheral> _peripherals = {};
+  final Map<String, WindowsSerialPeripheral> _serials = {};
 
   _WindowsScan? _scan;
 
@@ -284,6 +312,10 @@ class WindowsBleCentral implements BleCentral {
         _setAdapter(state);
       case WindowsBleLog(:final message):
         bleLog('BLE (Windows native): $message');
+      case WindowsSerialData(:final id, :final value):
+        _serials[id.toUpperCase()]?._onData(value);
+      case WindowsSerialDropped(:final id):
+        _serials[id.toUpperCase()]?._setConnected(false);
     }
   }
 
@@ -320,6 +352,26 @@ class WindowsBleCentral implements BleCentral {
     return _peripherals.putIfAbsent(
       id.toUpperCase(),
       () => WindowsBlePeripheral._(this, id.toUpperCase()),
+    );
+  }
+
+  @override
+  BlePeripheral classicSerialPeripheral(
+    String id, {
+    required String serviceUuid,
+    required String writeUuid,
+    required String notifyUuid,
+  }) {
+    _ensureEvents();
+    return _serials.putIfAbsent(
+      id.toUpperCase(),
+      () => WindowsSerialPeripheral._(
+        this,
+        id.toUpperCase(),
+        normalizeBleUuid(serviceUuid),
+        normalizeBleUuid(writeUuid),
+        normalizeBleUuid(notifyUuid),
+      ),
     );
   }
 }
@@ -590,6 +642,174 @@ class WindowsBleCharacteristic implements BleCharacteristic {
         ..._args,
         'value': Uint8List.fromList(value),
         'withoutResponse': withoutResponse,
+      }).timeout(timeout);
+    } on PlatformException catch (e) {
+      throw _bleError(e);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Classic serial
+// ---------------------------------------------------------------------------
+
+/// A classic Bluetooth serial (RFCOMM SPP) link to a dual-mode device, for
+/// printers whose LE side refuses writes until paired, which Windows can't
+/// do for some of them (the Phomemo M110). The device must be paired in
+/// Windows Settings. Shaped as a peripheral so LE code runs on it: one
+/// service with a write characteristic (bytes out) and a notify
+/// characteristic (bytes in).
+class WindowsSerialPeripheral extends BlePeripheral {
+  WindowsSerialPeripheral._(
+    this._central,
+    this.id,
+    this._service,
+    this._write,
+    this._notify,
+  );
+
+  /// What [maxWritePayload] allows per write; RFCOMM has no ATT limit, so
+  /// this only bounds the chunks callers make.
+  static const int _kSerialMtu = 515;
+
+  final WindowsBleCentral _central;
+  final String _service;
+  final String _write;
+  final String _notify;
+
+  @override
+  final String id;
+
+  bool _connected = false;
+  final _changes = StreamController<bool>.broadcast();
+  final _data = StreamController<List<int>>.broadcast();
+
+  MethodChannel get _methods => _central._methods;
+
+  @override
+  Stream<bool> get connectionChanges => Stream<bool>.multi((listener) {
+        listener.add(_connected);
+        final sub = _changes.stream.listen(
+          listener.add,
+          onError: listener.addError,
+          onDone: listener.close,
+        );
+        listener.onCancel = sub.cancel;
+      });
+
+  @override
+  bool get isConnected => _connected;
+
+  void _setConnected(bool up) {
+    if (up == _connected) return;
+    _connected = up;
+    if (!_changes.isClosed) _changes.add(up);
+  }
+
+  void _onData(Uint8List value) {
+    if (!_data.isClosed) _data.add(value);
+  }
+
+  @override
+  Future<void> connect({
+    Duration timeout = const Duration(seconds: 10),
+    bool autoConnect = false,
+  }) async {
+    try {
+      await _methods
+          .invokeMethod<void>('serialConnect', {'id': id})
+          .timeout(timeout);
+      _setConnected(true);
+    } on TimeoutException {
+      await disconnect();
+      rethrow;
+    } on PlatformException catch (e) {
+      throw _bleError(e);
+    } on MissingPluginException {
+      throw const BleException(kBleErrorUnavailable, 'No serial support');
+    }
+  }
+
+  @override
+  Future<int> requestMtu(int mtu) async => _kSerialMtu;
+
+  @override
+  int get mtu => _kSerialMtu;
+
+  @override
+  Future<List<BleCharacteristic>> discoverServices() async {
+    if (!_connected) {
+      throw const BleException(kBleErrorNotConnected, 'Not connected');
+    }
+    return [
+      _SerialCharacteristic(
+        this,
+        _service,
+        _write,
+        const BleCharacteristicProperties(write: true),
+      ),
+      _SerialCharacteristic(
+        this,
+        _service,
+        _notify,
+        const BleCharacteristicProperties(notify: true),
+      ),
+    ];
+  }
+
+  @override
+  Future<void> disconnect() async {
+    try {
+      await _methods.invokeMethod<void>('serialDisconnect', {'id': id});
+    } catch (e) {
+      bleLog('BLE (Windows): serial disconnect failed: $e');
+    }
+    _setConnected(false);
+  }
+}
+
+class _SerialCharacteristic implements BleCharacteristic {
+  _SerialCharacteristic(
+    this._peripheral,
+    this.serviceUuid,
+    this.uuid,
+    this.properties,
+  );
+
+  final WindowsSerialPeripheral _peripheral;
+
+  @override
+  final String serviceUuid;
+
+  @override
+  final String uuid;
+
+  @override
+  final BleCharacteristicProperties properties;
+
+  /// Everything the device sends comes on the notify characteristic.
+  @override
+  Stream<List<int>> get notifications => properties.notify
+      ? _peripheral._data.stream
+      : const Stream<List<int>>.empty();
+
+  /// Serial data always flows; nothing to switch.
+  @override
+  Future<void> setNotify(bool enable) async {}
+
+  @override
+  Future<void> write(
+    List<int> value, {
+    required bool withoutResponse,
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    if (!properties.write) {
+      throw const BleException(kBleErrorWriteFailed, 'Not writable');
+    }
+    try {
+      await _peripheral._methods.invokeMethod<void>('serialWrite', {
+        'id': _peripheral.id,
+        'value': Uint8List.fromList(value),
       }).timeout(timeout);
     } on PlatformException catch (e) {
       throw _bleError(e);

@@ -78,12 +78,26 @@ const LabelPrinterException _kConnectionLost = LabelPrinterException(
 /// connected again after a [disconnect].
 class PhomemoBlePrinter implements LabelPrinter {
   PhomemoBlePrinter({required String remoteId, BleCentral? central})
-    : _central = central ?? defaultBleCentral() {
-    _device = _central.peripheral(remoteId);
+    : _central = central ?? defaultBleCentral(),
+      _remoteId = remoteId {
+    _le = _central.peripheral(remoteId);
+    _device = _le;
   }
 
   final BleCentral _central;
-  late final BlePeripheral _device;
+  final String _remoteId;
+  late final BlePeripheral _le;
+
+  /// The link in use: [_le], or the classic serial link where the LE side
+  /// refuses to work without pairing (the M110 on Windows).
+  late BlePeripheral _device;
+
+  /// The classic serial link worked last time: try it first.
+  bool _serialPreferred = false;
+
+  /// Whether this connection runs over classic Bluetooth serial.
+  @visibleForTesting
+  bool get usingClassicSerial => !identical(_device, _le);
 
   /// Everything the printer has told us, as it arrives. Closed by
   /// [disconnect]; [connect] opens a new one.
@@ -141,7 +155,20 @@ class PhomemoBlePrinter implements LabelPrinter {
     _ensureCurrent(session);
 
     StreamSubscription<List<int>>? sub;
+    _device = _le;
     try {
+      if (_serialPreferred) {
+        final serial = await _connectSerial(session);
+        if (serial != null) {
+          _commit(serial.notify.notifications.listen(
+            _onNotification,
+            onError: (Object e) => bleLog('Phomemo BLE: serial error: $e'),
+          ), serial.write, notifying: false);
+          return;
+        }
+        _serialPreferred = false;
+      }
+
       // The central connects without an MTU request (a refusal would fail
       // the connect). We ask for 247 ourselves below and ignore a refusal.
       await _device.connect(timeout: _kConnectTimeout);
@@ -176,6 +203,23 @@ class PhomemoBlePrinter implements LabelPrinter {
       }
       _ensureCurrent(session);
 
+      // Refused status over LE (the M110 wants LE pairing, which Windows
+      // can't do for it): its classic side takes the same bytes over a
+      // serial link, once paired in Windows Settings.
+      if (!notifying) {
+        final serial = await _connectSerial(session);
+        if (serial != null) {
+          await sub.cancel();
+          await _le.disconnect();
+          _serialPreferred = true;
+          _commit(serial.notify.notifications.listen(
+            _onNotification,
+            onError: (Object e) => bleLog('Phomemo BLE: serial error: $e'),
+          ), serial.write, notifying: false);
+          return;
+        }
+      }
+
       // A refused subscribe can take the link down with it (on Windows a
       // failed pairing attempt does). Connect once more and print blind.
       if (!_device.isConnected) {
@@ -193,22 +237,7 @@ class PhomemoBlePrinter implements LabelPrinter {
         }
       }
 
-      // Commit. Synchronous from the last check, so a disconnect() can't
-      // slip in between.
-      final previous = _notifySub;
-      _notifySub = sub;
-      _writeChar = write;
-      // Blind, a write without response that the printer refuses (it
-      // wants pairing, say) is lost without a word; with response it
-      // fails, and Windows can pair and retry.
-      _writeWithoutResponse = write.properties.writeWithoutResponse &&
-          (notifying || !write.properties.write);
-      _notifying = notifying;
-      unawaited(previous?.cancel());
-      bleLog(
-        'Phomemo BLE: connected. MTU=${_device.mtu}B, '
-        'write ${_writeWithoutResponse ? 'without' : 'with'} response',
-      );
+      _commit(sub, write, notifying: notifying);
     } catch (e) {
       await _abandon(session, sub);
       if (e is LabelPrinterException) rethrow;
@@ -362,6 +391,60 @@ class PhomemoBlePrinter implements LabelPrinter {
   }
 
   /// Throws when a [disconnect] or a newer [connect] overtook [session].
+  /// Makes the connection just set up the current one. Synchronous from
+  /// the caller's last session check, so a disconnect() can't slip in.
+  void _commit(
+    StreamSubscription<List<int>>? sub,
+    BleCharacteristic write, {
+    required bool notifying,
+  }) {
+    final previous = _notifySub;
+    _notifySub = sub;
+    _writeChar = write;
+    // Blind, a write without response that the printer refuses (it wants
+    // pairing, say) is lost without a word; with response it fails, and
+    // Windows can pair and retry.
+    _writeWithoutResponse = write.properties.writeWithoutResponse &&
+        (notifying || !write.properties.write);
+    _notifying = notifying;
+    unawaited(previous?.cancel());
+    bleLog(
+      'Phomemo BLE: connected${usingClassicSerial ? ' (classic serial)' : ''}. '
+      'MTU=${_device.mtu}B, '
+      'write ${_writeWithoutResponse ? 'without' : 'with'} response',
+    );
+  }
+
+  /// Opens the printer's classic Bluetooth serial link where the platform
+  /// has one, and makes it [_device]. Null (with [_device] left alone)
+  /// when there is none or it can't be opened.
+  Future<({BleCharacteristic write, BleCharacteristic notify})?>
+      _connectSerial(int session) async {
+    final serial = _central.classicSerialPeripheral(
+      _remoteId,
+      serviceUuid: kPhomemoServiceUuid,
+      writeUuid: kPhomemoWriteUuid,
+      notifyUuid: kPhomemoNotifyUuid,
+    );
+    if (serial == null) return null;
+    try {
+      await serial.connect(timeout: _kConnectTimeout);
+      _ensureCurrent(session);
+      final found = _findCharacteristics(await serial.discoverServices());
+      _ensureCurrent(session);
+      _device = serial;
+      return found;
+    } on LabelPrinterException {
+      await serial.disconnect();
+      rethrow;
+    } on Object catch (e) {
+      if (e is! BleException && e is! TimeoutException) rethrow;
+      bleLog('Phomemo BLE: classic serial unavailable: $e');
+      await serial.disconnect();
+      return null;
+    }
+  }
+
   void _ensureCurrent(int session) {
     if (session != _session) throw _kNotFound;
   }

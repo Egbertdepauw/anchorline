@@ -208,6 +208,19 @@ abstract class BleCentral {
 
   /// The device with [id], as returned in [BleScanResult.id].
   BlePeripheral peripheral(String id);
+
+  /// The classic Bluetooth serial (SPP) link to the dual-mode device [id],
+  /// where the platform offers one (Windows); null elsewhere. It is shaped
+  /// as a peripheral with one service, [serviceUuid], holding a write
+  /// characteristic [writeUuid] (the bytes go out on the serial link) and a
+  /// notify characteristic [notifyUuid] (the bytes that come back), so code
+  /// written for the LE side runs on it unchanged.
+  BlePeripheral? classicSerialPeripheral(
+    String id, {
+    required String serviceUuid,
+    required String writeUuid,
+    required String notifyUuid,
+  });
 }
 
 /// Waits up to [timeout] for [central]'s adapter to be on and returns the

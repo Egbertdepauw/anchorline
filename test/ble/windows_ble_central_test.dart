@@ -353,4 +353,21 @@ void main() {
       expect(p.mtu, 185);
     });
   });
+
+  test('serial events decode', () {
+    final data = decodeWindowsBleEvent({
+      'event': 'serialData',
+      'id': 'AABBCCDDEEFF',
+      'value': Uint8List.fromList([1, 2, 3]),
+    });
+    expect(data, isA<WindowsSerialData>());
+    expect((data! as WindowsSerialData).value, [1, 2, 3]);
+
+    final dropped = decodeWindowsBleEvent({
+      'event': 'serialConnection',
+      'id': 'AABBCCDDEEFF',
+      'connected': false,
+    });
+    expect(dropped, isA<WindowsSerialDropped>());
+  });
 }

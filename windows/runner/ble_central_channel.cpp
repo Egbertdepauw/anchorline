@@ -30,7 +30,10 @@
 #include <winrt/Windows.Devices.Bluetooth.GenericAttributeProfile.h>
 #include <winrt/Windows.Devices.Bluetooth.h>
 #include <winrt/Windows.Devices.Enumeration.h>
+#include <winrt/Windows.Devices.Bluetooth.Rfcomm.h>
 #include <winrt/Windows.Devices.Radios.h>
+#include <winrt/Windows.Networking.Sockets.h>
+#include <winrt/Windows.Networking.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Storage.Streams.h>
@@ -58,6 +61,8 @@ namespace gatt = winrt::Windows::Devices::Bluetooth::GenericAttributeProfile;
 namespace enumeration = winrt::Windows::Devices::Enumeration;
 namespace radios = winrt::Windows::Devices::Radios;
 namespace streams = winrt::Windows::Storage::Streams;
+namespace rfcomm = winrt::Windows::Devices::Bluetooth::Rfcomm;
+namespace sockets = winrt::Windows::Networking::Sockets;
 
 using flutter::EncodableList;
 using flutter::EncodableMap;
@@ -385,6 +390,12 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
       }
     }
     for (auto& entry : devices) Close(entry.second);
+    std::vector<std::string> serial_ids;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      for (const auto& entry : serials_) serial_ids.push_back(entry.first);
+    }
+    for (const auto& serial_id : serial_ids) SerialClose(serial_id, false);
     if (methods_) methods_->SetMethodCallHandler(nullptr);
     if (events_) events_->SetStreamHandler(nullptr);
     sink_.reset();
@@ -439,6 +450,13 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
             BoolArg(args, "withoutResponse"), result);
     } else if (method == "pair") {
       Pair(self, id, result);
+    } else if (method == "serialConnect") {
+      SerialConnect(self, id, address, result);
+    } else if (method == "serialWrite") {
+      SerialWrite(self, id, BytesArg(args, "value"), result);
+    } else if (method == "serialDisconnect") {
+      SerialClose(id, /*report=*/false);
+      result->Success();
     } else if (method == "disconnect") {
       Disconnect(id);
       result->Success();
@@ -1220,6 +1238,177 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
     self->ReplyOk(result);
   }
 
+  // -------------------------------------------------------------------------
+  // Classic Bluetooth serial (RFCOMM SPP)
+  //
+  // Some printers (the Phomemo M110) are dual mode and only take writes
+  // over LE once the LE side is paired, which Windows can't do for them.
+  // Their classic side pairs from Windows Settings and takes the same
+  // bytes over the Serial Port Profile. One socket per address; incoming
+  // bytes come as "serialData" events, a drop as "serialConnection".
+  // -------------------------------------------------------------------------
+
+  struct Serial {
+    sockets::StreamSocket socket{nullptr};
+    streams::DataWriter writer{nullptr};
+    // Writes go out one at a time.
+    std::mutex write_mutex;
+  };
+
+  winrt::fire_and_forget SerialConnect(std::shared_ptr<Impl> self,
+                                       std::string id, uint64_t address,
+                                       MethodResultPtr result) {
+    {
+      std::lock_guard<std::mutex> lock(self->mutex_);
+      if (self->serials_.count(id)) {
+        self->ReplyOk(result);
+        co_return;
+      }
+    }
+    co_await winrt::resume_background();
+    auto serial = std::make_shared<Serial>();
+    std::string code = kErrUnreachable;
+    std::string error;
+    try {
+      bt::BluetoothDevice device =
+          co_await bt::BluetoothDevice::FromBluetoothAddressAsync(address);
+      if (!device) {
+        code = kErrNotFound;
+        error = "No classic Bluetooth device (pair it in Windows Settings)";
+      } else {
+        rfcomm::RfcommDeviceServicesResult services =
+            co_await device.GetRfcommServicesForIdAsync(
+                rfcomm::RfcommServiceId::SerialPort(),
+                bt::BluetoothCacheMode::Uncached);
+        if (services.Services().Size() == 0) {
+          services = co_await device.GetRfcommServicesForIdAsync(
+              rfcomm::RfcommServiceId::SerialPort(),
+              bt::BluetoothCacheMode::Cached);
+        }
+        if (services.Services().Size() == 0) {
+          error = "No serial port service (" +
+                  BluetoothErrorName(services.Error()) + ")";
+        } else {
+          rfcomm::RfcommDeviceService service = services.Services().GetAt(0);
+          serial->socket = sockets::StreamSocket();
+          co_await serial->socket.ConnectAsync(
+              service.ConnectionHostName(), service.ConnectionServiceName(),
+              sockets::SocketProtectionLevel::
+                  BluetoothEncryptionAllowNullAuthentication);
+          serial->writer = streams::DataWriter(serial->socket.OutputStream());
+        }
+      }
+    } catch (const winrt::hresult_error& e) {
+      error = HresultMessage(e);
+    }
+    if (!error.empty()) {
+      try {
+        if (serial->socket) serial->socket.Close();
+      } catch (...) {
+      }
+      self->Log(id + " serial connect: " + error);
+      self->ReplyError(result, code, error);
+      co_return;
+    }
+    {
+      std::lock_guard<std::mutex> lock(self->mutex_);
+      self->serials_[id] = serial;
+    }
+    self->Log(id + " serial connected");
+    self->SerialRead(self, id, serial);
+    self->ReplyOk(result);
+  }
+
+  winrt::fire_and_forget SerialRead(std::shared_ptr<Impl> self,
+                                    std::string id,
+                                    std::shared_ptr<Serial> serial) {
+    co_await winrt::resume_background();
+    try {
+      streams::DataReader reader(serial->socket.InputStream());
+      reader.InputStreamOptions(streams::InputStreamOptions::Partial);
+      for (;;) {
+        const uint32_t n = co_await reader.LoadAsync(256);
+        if (n == 0) break;  // closed by the other side
+        std::vector<uint8_t> bytes(n);
+        reader.ReadBytes(bytes);
+        self->Emit(EncodableMap{
+            {EncodableValue("event"), EncodableValue("serialData")},
+            {EncodableValue("id"), EncodableValue(id)},
+            {EncodableValue("value"), EncodableValue(bytes)},
+        });
+      }
+    } catch (const winrt::hresult_error& e) {
+      self->Log(id + " serial read: " + HresultMessage(e));
+    } catch (...) {
+    }
+    // Only report a drop for the socket still in use.
+    bool current = false;
+    {
+      std::lock_guard<std::mutex> lock(self->mutex_);
+      auto it = self->serials_.find(id);
+      current = it != self->serials_.end() && it->second == serial;
+    }
+    if (current) self->SerialClose(id, /*report=*/true);
+  }
+
+  winrt::fire_and_forget SerialWrite(std::shared_ptr<Impl> self,
+                                     std::string id,
+                                     std::vector<uint8_t> value,
+                                     MethodResultPtr result) {
+    std::shared_ptr<Serial> serial;
+    {
+      std::lock_guard<std::mutex> lock(self->mutex_);
+      auto it = self->serials_.find(id);
+      if (it != self->serials_.end()) serial = it->second;
+    }
+    if (!serial) {
+      self->ReplyError(result, kErrNotConnected, "Serial port not connected");
+      co_return;
+    }
+    co_await winrt::resume_background();
+    std::string error;
+    try {
+      std::lock_guard<std::mutex> lock(serial->write_mutex);
+      serial->writer.WriteBytes(value);
+      serial->writer.StoreAsync().get();
+    } catch (const winrt::hresult_error& e) {
+      error = HresultMessage(e);
+    }
+    if (!error.empty()) {
+      self->ReplyError(result, kErrWriteFailed, error);
+      co_return;
+    }
+    self->ReplyOk(result);
+  }
+
+  // Any thread. Closes the socket for [id]; with [report], tells Dart.
+  void SerialClose(const std::string& id, bool report) {
+    std::shared_ptr<Serial> serial;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto it = serials_.find(id);
+      if (it == serials_.end()) return;
+      serial = it->second;
+      serials_.erase(it);
+    }
+    try {
+      if (serial->writer) serial->writer.DetachStream();
+    } catch (...) {
+    }
+    try {
+      if (serial->socket) serial->socket.Close();
+    } catch (...) {
+    }
+    if (report) {
+      Log(id + " serial dropped");
+      Emit(EncodableMap{
+          {EncodableValue("event"), EncodableValue("serialConnection")},
+          {EncodableValue("id"), EncodableValue(id)},
+          {EncodableValue("connected"), EncodableValue(false)},
+      });
+    }
+  }
+
   flutter::BinaryMessenger* messenger_;
   std::shared_ptr<PlatformDispatcher> dispatcher_;
   std::unique_ptr<flutter::MethodChannel<EncodableValue>> methods_;
@@ -1239,6 +1428,8 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
   std::map<uint64_t, bt::BluetoothAddressType> address_types_;
   // Devices a pairing attempt failed for, this run.
   std::set<std::string> pair_failed_;
+  // Open classic serial links, by address.
+  std::map<std::string, std::shared_ptr<Serial>> serials_;
   adv::BluetoothLEAdvertisementWatcher watcher_{nullptr};
   winrt::event_token received_token_{};
   winrt::event_token stopped_token_{};

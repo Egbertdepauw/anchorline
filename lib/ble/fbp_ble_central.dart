@@ -131,6 +131,15 @@ class FbpBleCentral implements BleCentral {
   @override
   BlePeripheral peripheral(String id) =>
       FbpBlePeripheral(BluetoothDevice.fromId(id), this);
+
+  @override
+  BlePeripheral? classicSerialPeripheral(
+    String id, {
+    required String serviceUuid,
+    required String writeUuid,
+    required String notifyUuid,
+  }) =>
+      null;
 }
 
 class FbpBlePeripheral extends BlePeripheral {

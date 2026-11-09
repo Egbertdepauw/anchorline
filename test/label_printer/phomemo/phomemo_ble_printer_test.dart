@@ -119,4 +119,85 @@ void main() {
     expect(printer.writesWithoutResponse, isFalse);
     await printer.disconnect();
   });
+
+  group('classic serial fallback', () {
+    FakeBlePeripheral serialFor(FakeBleCentral central) {
+      final serial = FakeBlePeripheral('AABBCCDDEEFF', central);
+      serial.characteristics = [
+        FakeBleCharacteristic(
+          kPhomemoServiceUuid,
+          kPhomemoWriteUuid,
+          properties: const BleCharacteristicProperties(write: true),
+        ),
+        notifyChar(),
+      ];
+      central.serialPeripherals['AABBCCDDEEFF'] = serial;
+      return serial;
+    }
+
+    test('LE refusing status switches to the serial link and remembers it',
+        () async {
+      final central = FakeBleCentral();
+      final le = central.peripheral('AABBCCDDEEFF');
+      le.characteristics = [
+        writeChar(),
+        notifyChar()
+          ..notifyError =
+              const BleException(kBleErrorGatt, 'authentication required'),
+      ];
+      final serial = serialFor(central);
+      final printer =
+          PhomemoBlePrinter(remoteId: 'AABBCCDDEEFF', central: central);
+
+      await printer.connect();
+      expect(printer.usingClassicSerial, isTrue);
+      expect(le.isConnected, isFalse);
+      expect(serial.isConnected, isTrue);
+      expect(printer.writesWithoutResponse, isFalse);
+      await printer.disconnect();
+      expect(serial.isConnected, isFalse);
+
+      // Next time straight to serial, LE untouched.
+      final leConnects = le.connectCalls;
+      await printer.connect();
+      expect(printer.usingClassicSerial, isTrue);
+      expect(le.connectCalls, leConnects);
+      await printer.disconnect();
+    });
+
+    test('a serial link that fails leaves LE printing blind', () async {
+      final central = FakeBleCentral();
+      final le = central.peripheral('AABBCCDDEEFF');
+      le.characteristics = [
+        writeChar(),
+        notifyChar()
+          ..notifyError = const BleException(kBleErrorGatt, 'refused'),
+      ];
+      serialFor(central).reachable = false;
+      final printer =
+          PhomemoBlePrinter(remoteId: 'AABBCCDDEEFF', central: central);
+
+      await printer.connect();
+      expect(printer.usingClassicSerial, isFalse);
+      expect(le.isConnected, isTrue);
+      expect(printer.notifying, isFalse);
+      await printer.disconnect();
+    });
+
+    test('LE with working status never touches the serial link', () async {
+      final central = FakeBleCentral();
+      central.peripheral('AABBCCDDEEFF').characteristics = [
+        writeChar(),
+        notifyChar(),
+      ];
+      final serial = serialFor(central);
+      final printer =
+          PhomemoBlePrinter(remoteId: 'AABBCCDDEEFF', central: central);
+
+      await printer.connect();
+      expect(printer.usingClassicSerial, isFalse);
+      expect(serial.connectCalls, 0);
+      await printer.disconnect();
+    });
+  });
 }
