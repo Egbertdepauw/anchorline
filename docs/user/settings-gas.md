@@ -16,7 +16,7 @@ Defaults for blending and analysing gas: what your fills cost, what a new blend 
   - **Fill order**: the order of steps, one of **He → O₂ → top-off**, **O₂ → He → top-off** or **O₂ → top-off → He**.
   - **Real-gas maths (Z)**: when on, blends use real-gas behaviour. When off, they use the ideal gas law.
   - **Fill / settled temp**: the temperature while filling, then once the cylinder has settled, in °C.
-- **Analyzer**: **MOD rows at ppO₂** lists the ppO₂ values for which the analyzer shows a maximum operating depth. Remove one with its cross, or tap **+ Add** and enter a ppO₂ in bar. **Fill pressure starts at** sets the pressure a new analysis begins with, in bar.
+- **Analyzer**: **MOD rows at ppO₂** lists the ppO₂ values for which the analyzer shows a maximum operating depth. Remove one with its cross (the last one stays), or tap **+ Add** and enter a ppO₂ in bar. **Fill pressure starts at** sets the pressure a new analysis begins with, in bar.
 
 ## Good to know
 

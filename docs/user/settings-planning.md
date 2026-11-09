@@ -6,7 +6,7 @@ Where: **Settings** tab, **Planning** sub-tab.
 
 ## What it's for
 
-The numbers and equipment the bailout calculations on the [Plan](/manual/plan) tab start from. They are your own inputs; the app uses them as given.
+The numbers and equipment the bailout calculations on the [Plan](/manual/plan) tab and in dive details start from. They are your own inputs; the app uses them as given.
 
 ## On this screen
 

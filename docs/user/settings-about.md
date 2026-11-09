@@ -18,5 +18,4 @@ Which version of the app you are running, who makes it, and a way to send a Blue
 
 ## Good to know
 
-- This tab shows no licence line.
 - If you have not imported yet there is no log; run an import first, then try again.
