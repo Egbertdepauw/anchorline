@@ -18,3 +18,8 @@ uint32_t settings_boot(void);  // this boot's number, from 1
 // 8 lowercase hex digits, made once at first boot. New after a flash erase,
 // so a reset record counter can't collide with old record ids.
 const char *settings_epoch(void);
+
+// The next record counter to use, from 1. A put persists counter+1 BEFORE it
+// writes the record, so a counter is never reused after a power cut.
+uint32_t settings_counter(void);
+void settings_set_counter(uint32_t next);
