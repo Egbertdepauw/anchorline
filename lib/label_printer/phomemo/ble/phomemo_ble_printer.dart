@@ -279,6 +279,10 @@ class PhomemoBlePrinter implements LabelPrinter {
       if (!job.allDone && (session != _session || _device.isDisconnected)) {
         throw _kConnectionLost;
       }
+
+      // 4. Job done comes before the label is fed out to the tear-off edge;
+      // keep the link open while it feeds.
+      if (job.allDone) await Future<void>.delayed(kPhomemoAfterDoneFeedPause);
       return job.warnings;
     } finally {
       job.dispose();
