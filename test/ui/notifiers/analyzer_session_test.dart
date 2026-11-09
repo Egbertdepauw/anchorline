@@ -467,6 +467,7 @@ void main() {
       await connectBridge(tester, r);
       expect(r.session.okLogger, isNull);
       expect(r.loggersBuilt, 0);
+      expect(r.session.connectedOverBridge, isTrue);
     });
 
     _test('toggling the 5 V switch sends CFG', (tester, r) async {

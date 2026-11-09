@@ -116,6 +116,12 @@ class AnalyzerSession extends ChangeNotifier {
         selectedIsDemo: _options[_selected].isDemo,
       );
 
+  /// Whether the connected session runs over the bridge. Log on OK isn't
+  /// offered there until the bridge makes the records itself (a later part
+  /// of #113).
+  bool get connectedOverBridge =>
+      _controller.isConnected && _controller.transport is BleBridgeTransport;
+
   /// The Log on OK logger; non-null while it runs.
   UsbOkLogger? get okLogger => _okLogger;
   bool get okRunning => _okLogger != null;
