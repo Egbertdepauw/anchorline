@@ -52,7 +52,7 @@ idf.py -p /dev/cu.usbserial-XXXX flash monitor
 
 ## Host tests
 
-The pure modules (line splitting, protocol, power switching order, and later the OK rule and the record store) have no ESP-IDF includes. They build and run on the Mac:
+The pure modules (line splitting, protocol, power switching order, the OK rule, the record store and the send queue) have no ESP-IDF includes. They build and run on the Mac:
 
 ```bash
 make -C firmware/solo_bridge/host_test
