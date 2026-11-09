@@ -38,6 +38,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <atomic>
 #include <map>
 #include <mutex>
 #include <string>
@@ -223,29 +224,33 @@ std::string CharKey(const std::string& service, const std::string& chr) {
 }
 
 // Waits up to [timeout] for an advertisement from [address], with a watcher
-// of its own. FromBluetoothAddressAsync returns null for a device Windows
-// has not seen lately (an unpaired device after a restart, say); seeing one
+// of its own, and returns the address type it advertised with (-1 when none
+// came). FromBluetoothAddressAsync returns null for a device Windows has not
+// seen lately (an unpaired device after a restart, say); seeing one
 // advertisement is enough for it to find the device again.
-wf::IAsyncOperation<bool> WaitForAdvertisement(uint64_t address,
-                                               wf::TimeSpan timeout) {
+wf::IAsyncOperation<int32_t> WaitForAdvertisement(uint64_t address,
+                                                  wf::TimeSpan timeout) {
   // Shared with the handler, so a late callback never signals a closed
   // (and possibly reused) handle.
   auto seen = std::make_shared<winrt::handle>(
       CreateEventW(nullptr, TRUE, FALSE, nullptr));
-  if (!*seen) co_return false;
+  if (!*seen) co_return -1;
+  auto type = std::make_shared<std::atomic<int32_t>>(-1);
   adv::BluetoothLEAdvertisementWatcher watcher;
   watcher.ScanningMode(adv::BluetoothLEScanningMode::Active);
   winrt::event_token token = watcher.Received(
-      [seen, address](const adv::BluetoothLEAdvertisementWatcher&,
-                      const adv::BluetoothLEAdvertisementReceivedEventArgs&
-                          args) {
-        if (args.BluetoothAddress() == address) SetEvent(seen->get());
+      [seen, type, address](
+          const adv::BluetoothLEAdvertisementWatcher&,
+          const adv::BluetoothLEAdvertisementReceivedEventArgs& args) {
+        if (args.BluetoothAddress() != address) return;
+        type->store(static_cast<int32_t>(args.BluetoothAddressType()));
+        SetEvent(seen->get());
       });
   watcher.Start();
   const bool found = co_await winrt::resume_on_signal(seen->get(), timeout);
   watcher.Received(token);
   watcher.Stop();
-  co_return found;
+  co_return found ? type->load() : -1;
 }
 
 // One connected device and everything Windows holds open for it.
@@ -473,6 +478,11 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
                        args) {
               auto self = weak.lock();
               if (!self) return;
+              {
+                std::lock_guard<std::mutex> lock(self->mutex_);
+                self->address_types_[args.BluetoothAddress()] =
+                    args.BluetoothAddressType();
+              }
               EncodableList services;
               for (const winrt::guid& g : args.Advertisement().ServiceUuids()) {
                 services.push_back(EncodableValue(GuidToString(g)));
@@ -571,12 +581,42 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
     std::string error_code;
     std::string error_message;
     try {
-      d->device = co_await bt::BluetoothLEDevice::FromBluetoothAddressAsync(
-          address);
-      if (!d->device &&
-          co_await WaitForAdvertisement(address, std::chrono::seconds(5))) {
+      // The type the scan saw, else public first and then random.
+      bool known = false;
+      bt::BluetoothAddressType type = bt::BluetoothAddressType::Public;
+      {
+        std::lock_guard<std::mutex> lock(self->mutex_);
+        auto it = self->address_types_.find(address);
+        if (it != self->address_types_.end()) {
+          known = true;
+          type = it->second;
+        }
+      }
+      if (known) {
         d->device = co_await bt::BluetoothLEDevice::FromBluetoothAddressAsync(
-            address);
+            address, type);
+      } else {
+        d->device = co_await bt::BluetoothLEDevice::FromBluetoothAddressAsync(
+            address, bt::BluetoothAddressType::Public);
+        if (!d->device) {
+          d->device =
+              co_await bt::BluetoothLEDevice::FromBluetoothAddressAsync(
+                  address, bt::BluetoothAddressType::Random);
+        }
+      }
+      if (!d->device) {
+        const int32_t seen =
+            co_await WaitForAdvertisement(address, std::chrono::seconds(5));
+        if (seen >= 0) {
+          const auto seen_type = static_cast<bt::BluetoothAddressType>(seen);
+          {
+            std::lock_guard<std::mutex> lock(self->mutex_);
+            self->address_types_[address] = seen_type;
+          }
+          d->device =
+              co_await bt::BluetoothLEDevice::FromBluetoothAddressAsync(
+                  address, seen_type);
+        }
       }
       if (!d->device) {
         error_code = kErrNotFound;
@@ -953,6 +993,10 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
   // Bumped by every connect and disconnect, so a connect overtaken by a
   // disconnect closes what it opened instead of keeping it.
   std::map<std::string, uint64_t> generations_;
+  // The address type each scanned device advertised with. Windows only
+  // finds a device with a random address (the Phomemo printers use one)
+  // when it is told the type.
+  std::map<uint64_t, bt::BluetoothAddressType> address_types_;
   adv::BluetoothLEAdvertisementWatcher watcher_{nullptr};
   winrt::event_token received_token_{};
   winrt::event_token stopped_token_{};

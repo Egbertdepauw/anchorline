@@ -166,8 +166,13 @@ class PhomemoBlePrinter implements LabelPrinter {
     } catch (e) {
       await _abandon(session, sub);
       if (e is LabelPrinterException) rethrow;
-      if (e is BleException ||
-          e is TimeoutException ||
+      if (e is BleException) {
+        // Keep the platform's reason visible: on desktop it is the only
+        // clue to why a printer the scan found can't be reached.
+        debugPrint('Phomemo BLE: connect failed: $e');
+        throw LabelPrinterException('${_kNotFound.message} (${e.message})');
+      }
+      if (e is TimeoutException ||
           e is PlatformException) {
         debugPrint('Phomemo BLE: connect failed: $e');
         throw _kNotFound;
