@@ -16,6 +16,7 @@ library;
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show PlatformException;
 
 import '../../../ble/ble_central.dart';
@@ -98,6 +99,10 @@ class PhomemoBlePrinter implements LabelPrinter {
   /// time instead.
   bool get notifying => _notifying;
   bool _notifying = false;
+
+  /// Whether label data goes out as writes without response.
+  @visibleForTesting
+  bool get writesWithoutResponse => _writeWithoutResponse;
 
   /// Bumped by every [connect] and [disconnect]. A [connect] or
   /// [printLabel] that sees a newer value was overtaken and stops.
@@ -193,7 +198,11 @@ class PhomemoBlePrinter implements LabelPrinter {
       final previous = _notifySub;
       _notifySub = sub;
       _writeChar = write;
-      _writeWithoutResponse = write.properties.writeWithoutResponse;
+      // Blind, a write without response that the printer refuses (it
+      // wants pairing, say) is lost without a word; with response it
+      // fails, and Windows can pair and retry.
+      _writeWithoutResponse = write.properties.writeWithoutResponse &&
+          (notifying || !write.properties.write);
       _notifying = notifying;
       unawaited(previous?.cancel());
       bleLog(

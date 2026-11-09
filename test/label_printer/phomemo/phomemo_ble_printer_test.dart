@@ -103,4 +103,20 @@ void main() {
     await expectLater(printer.connect(), throwsA(isA<LabelPrinterException>()));
     await printer.disconnect();
   });
+
+  test('printing blind writes with response, so a refusal is not silent',
+      () async {
+    final central = FakeBleCentral();
+    final p = central.peripheral('AABBCCDDEEFF');
+    final w = writeChar();
+    final n = notifyChar()
+      ..notifyError = const BleException(kBleErrorGatt, 'authentication');
+    p.characteristics = [w, n];
+    final printer = PhomemoBlePrinter(remoteId: 'AABBCCDDEEFF', central: central);
+
+    await printer.connect();
+    expect(printer.notifying, isFalse);
+    expect(printer.writesWithoutResponse, isFalse);
+    await printer.disconnect();
+  });
 }

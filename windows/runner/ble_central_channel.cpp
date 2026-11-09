@@ -198,6 +198,20 @@ bool MayNeedPairing(gatt::GattCommunicationStatus s) {
          s == gatt::GattCommunicationStatus::ProtocolError;
 }
 
+// ATT errors Windows throws when the link must be encrypted first.
+bool NeedsPairing(const winrt::hresult_error& e) {
+  switch (static_cast<uint32_t>(e.code().value)) {
+    case 0x80650005u:  // insufficient authentication
+    case 0x80650008u:  // insufficient authorization
+    case 0x8065000Cu:  // insufficient encryption key size
+    case 0x8065000Fu:  // insufficient encryption
+    case 0x80070005u:  // access denied
+      return true;
+    default:
+      return false;
+  }
+}
+
 std::string PairingStatusName(enumeration::DevicePairingResultStatus s) {
   switch (s) {
     case enumeration::DevicePairingResultStatus::Paired:
@@ -210,6 +224,20 @@ std::string PairingStatusName(enumeration::DevicePairingResultStatus s) {
       return "authentication failure";
     case enumeration::DevicePairingResultStatus::Failed:
       return "failed";
+    case enumeration::DevicePairingResultStatus::ConnectionRejected:
+      return "connection rejected";
+    case enumeration::DevicePairingResultStatus::AuthenticationTimeout:
+      return "authentication timeout";
+    case enumeration::DevicePairingResultStatus::AuthenticationNotAllowed:
+      return "authentication not allowed";
+    case enumeration::DevicePairingResultStatus::ProtectionLevelCouldNotBeMet:
+      return "protection level could not be met";
+    case enumeration::DevicePairingResultStatus::AccessDenied:
+      return "access denied";
+    case enumeration::DevicePairingResultStatus::RejectedByHandler:
+      return "rejected by handler";
+    case enumeration::DevicePairingResultStatus::RemoteDeviceHasAssociation:
+      return "remote device has association";
     default:
       return "status " + std::to_string(static_cast<int>(s));
   }
@@ -457,6 +485,7 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
   // "add a device" prompt and the operation would fail. Once per device per
   // connection. True when the device is paired afterwards.
   wf::IAsyncOperation<bool> PairInApp(std::shared_ptr<Device> d) {
+    namespace en = enumeration;
     try {
       if (d->pair_tried) co_return false;
       d->pair_tried = true;
@@ -466,47 +495,74 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
         std::lock_guard<std::mutex> lock(mutex_);
         if (pair_failed_.count(d->id)) co_return false;
       }
-      enumeration::DeviceInformationPairing pairing =
-          d->device.DeviceInformation().Pairing();
-      if (pairing.IsPaired()) {
-        Log(d->id + " pair: already paired");
-        co_return false;  // pairing is not what's missing
-      }
-      if (!pairing.CanPair()) {
-        Log(d->id + " pair: device can't pair");
-        co_return false;
-      }
-      enumeration::DeviceInformationCustomPairing custom = pairing.Custom();
-      winrt::event_token token = custom.PairingRequested(
-          [](const enumeration::DeviceInformationCustomPairing&,
-             const enumeration::DevicePairingRequestedEventArgs& args) {
-            switch (args.PairingKind()) {
-              case enumeration::DevicePairingKinds::ConfirmOnly:
-              case enumeration::DevicePairingKinds::ConfirmPinMatch:
-                args.Accept();
-                break;
-              case enumeration::DevicePairingKinds::ProvidePin:
+      // A fresh DeviceInformation: the one the BluetoothLEDevice carries
+      // can be stale and then refuses to pair.
+      en::DeviceInformation info =
+          co_await en::DeviceInformation::CreateFromIdAsync(
+              d->device.DeviceId());
+      en::DeviceInformationPairing pairing = info.Pairing();
+      Log(d->id + " pair: paired=" + (pairing.IsPaired() ? "yes" : "no") +
+          " canPair=" + (pairing.CanPair() ? "yes" : "no"));
+      if (pairing.IsPaired()) co_return false;  // not what's missing
+
+      struct Attempt {
+        en::DevicePairingKinds kinds;
+        en::DevicePairingProtectionLevel level;
+        const char* name;
+      };
+      const en::DevicePairingKinds any =
+          en::DevicePairingKinds::ConfirmOnly |
+          en::DevicePairingKinds::ConfirmPinMatch |
+          en::DevicePairingKinds::DisplayPin |
+          en::DevicePairingKinds::ProvidePin;
+      const Attempt attempts[] = {
+          {en::DevicePairingKinds::ConfirmOnly,
+           en::DevicePairingProtectionLevel::Encryption,
+           "confirm only, encryption"},
+          {any, en::DevicePairingProtectionLevel::Default, "any, default"},
+          {any, en::DevicePairingProtectionLevel::None, "any, none"},
+      };
+      std::weak_ptr<Impl> weak = weak_from_this();
+      const std::string id = d->id;
+      for (const Attempt& a : attempts) {
+        en::DeviceInformationCustomPairing custom = pairing.Custom();
+        winrt::event_token token = custom.PairingRequested(
+            [weak, id](const en::DeviceInformationCustomPairing&,
+                       const en::DevicePairingRequestedEventArgs& args) {
+              const auto kind = args.PairingKind();
+              if (auto self = weak.lock()) {
+                self->Log(id + " pair: asked for kind " +
+                          std::to_string(static_cast<int>(kind)));
+              }
+              if (kind == en::DevicePairingKinds::ProvidePin) {
                 args.Accept(L"0000");
-                break;
-              default:
-                break;
-            }
-          });
-      enumeration::DevicePairingResult r = co_await custom.PairAsync(
-          enumeration::DevicePairingKinds::ConfirmOnly |
-              enumeration::DevicePairingKinds::ConfirmPinMatch |
-              enumeration::DevicePairingKinds::ProvidePin,
-          enumeration::DevicePairingProtectionLevel::None);
-      custom.PairingRequested(token);
-      Log(d->id + " pair: " + PairingStatusName(r.Status()));
-      const bool ok =
-          r.Status() == enumeration::DevicePairingResultStatus::Paired ||
-          r.Status() == enumeration::DevicePairingResultStatus::AlreadyPaired;
-      if (!ok) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        pair_failed_.insert(d->id);
+              } else {
+                args.Accept();
+              }
+            });
+        en::DevicePairingResult r{nullptr};
+        std::string failure;
+        try {
+          r = co_await custom.PairAsync(a.kinds, a.level);
+        } catch (const winrt::hresult_error& e) {
+          failure = HresultMessage(e);
+        }
+        custom.PairingRequested(token);
+        if (!r) {
+          Log(id + " pair (" + a.name + "): " + failure);
+          continue;
+        }
+        Log(id + " pair (" + a.name + "): " + PairingStatusName(r.Status()) +
+            ", level " + std::to_string(static_cast<int>(
+                             r.ProtectionLevelUsed())));
+        if (r.Status() == en::DevicePairingResultStatus::Paired ||
+            r.Status() == en::DevicePairingResultStatus::AlreadyPaired) {
+          co_return true;
+        }
       }
-      co_return ok;
+      std::lock_guard<std::mutex> lock(mutex_);
+      pair_failed_.insert(d->id);
+      co_return false;
     } catch (const winrt::hresult_error& e) {
       Log(d->id + " pair: " + HresultMessage(e));
       co_return false;
@@ -989,11 +1045,12 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
     }
     co_await winrt::resume_background();
 
+    using V = gatt::GattClientCharacteristicConfigurationDescriptorValue;
     std::string error;
+    bool pair_and_retry = false;
+    V value = V::None;
     try {
-      using V = gatt::GattClientCharacteristicConfigurationDescriptorValue;
       const auto props = c.CharacteristicProperties();
-      V value = V::None;
       if (enable) {
         value = HasProperty(props, gatt::GattCharacteristicProperties::Notify)
                     ? V::Notify
@@ -1004,20 +1061,34 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
           co_await c.WriteClientCharacteristicConfigurationDescriptorAsync(
               value);
       if (MayNeedPairing(status)) {
-        self->Log(id + " subscribe " + chr + ": " + GattStatusName(status));
-        if (co_await self->PairInApp(d)) {
-          status =
-              co_await c.WriteClientCharacteristicConfigurationDescriptorAsync(
-                  value);
-        }
-      }
-      if (status != gatt::GattCommunicationStatus::Success) {
+        error = "Subscribe failed (" + GattStatusName(status) + ")";
+        pair_and_retry = true;
+      } else if (status != gatt::GattCommunicationStatus::Success) {
         error = "Subscribe failed (" + GattStatusName(status) + ")";
       }
-      if (!enable) self->UnhookValueChanged(d, key, c);
     } catch (const winrt::hresult_error& e) {
       error = HresultMessage(e);
+      pair_and_retry = NeedsPairing(e);
     }
+    if (pair_and_retry) {
+      self->Log(id + " subscribe " + chr + ": " + error);
+      if (co_await self->PairInApp(d)) {
+        error.clear();
+        try {
+          gatt::GattCommunicationStatus status =
+              co_await c.WriteClientCharacteristicConfigurationDescriptorAsync(
+                  value);
+          if (status != gatt::GattCommunicationStatus::Success) {
+            error = "Subscribe failed (" + GattStatusName(status) + ")";
+          }
+        } catch (const winrt::hresult_error& e) {
+          error = HresultMessage(e);
+        }
+        self->Log(id + " subscribe after pairing: " +
+                  (error.empty() ? std::string("ok") : error));
+      }
+    }
+    if (!enable) self->UnhookValueChanged(d, key, c);
     if (!error.empty()) {
       self->ReplyError(result, kErrGatt, error);
       co_return;
@@ -1101,15 +1172,33 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
       streams::IBuffer buffer = writer.DetachBuffer();
       const auto option = without ? gatt::GattWriteOption::WriteWithoutResponse
                                   : gatt::GattWriteOption::WriteWithResponse;
-      gatt::GattWriteResult r = co_await c.WriteValueWithResultAsync(buffer, option);
-      if (MayNeedPairing(r.Status())) {
-        self->Log(id + " write " + chr + ": " + GattStatusName(r.Status()));
-        if (co_await self->PairInApp(d)) {
-          r = co_await c.WriteValueWithResultAsync(buffer, option);
+      gatt::GattWriteResult r{nullptr};
+      bool pair_and_retry = false;
+      try {
+        r = co_await c.WriteValueWithResultAsync(buffer, option);
+        if (MayNeedPairing(r.Status())) {
+          error = "Write failed (" + GattStatusName(r.Status()) + ")";
+          pair_and_retry = true;
+        } else if (r.Status() != gatt::GattCommunicationStatus::Success) {
+          error = "Write failed (" + GattStatusName(r.Status()) + ")";
         }
+      } catch (const winrt::hresult_error& e) {
+        error = HresultMessage(e);
+        pair_and_retry = NeedsPairing(e);
       }
-      if (r.Status() != gatt::GattCommunicationStatus::Success) {
-        error = "Write failed (" + GattStatusName(r.Status()) + ")";
+      if (pair_and_retry) {
+        self->Log(id + " write " + chr + ": " + error);
+        if (co_await self->PairInApp(d)) {
+          error.clear();
+          try {
+            r = co_await c.WriteValueWithResultAsync(buffer, option);
+            if (r.Status() != gatt::GattCommunicationStatus::Success) {
+              error = "Write failed (" + GattStatusName(r.Status()) + ")";
+            }
+          } catch (const winrt::hresult_error& e) {
+            error = HresultMessage(e);
+          }
+        }
       }
     } catch (const winrt::hresult_error& e) {
       error = HresultMessage(e);
