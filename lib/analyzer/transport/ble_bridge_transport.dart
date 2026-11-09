@@ -113,8 +113,7 @@ class BleBridgeTransport implements AnalyzerTransport {
     }
     // The state event may have been delivered already; make sure the
     // handshake runs once either way.
-    if (_status == AnalyzerConnectionStatus.connecting &&
-        _link.state == BridgeLinkState.connected) {
+    if (_link.state == BridgeLinkState.connected) {
       _startHandshake();
     }
     await done.future;
@@ -135,18 +134,28 @@ class BleBridgeTransport implements AnalyzerTransport {
     }
   }
 
-  /// A link connection is up: wait for `HELLO` and send the three opening
-  /// messages in order.
+  /// A link connection is up: send the three opening messages in order, once
+  /// per link connection, and wait for `HELLO` unless it came already.
+  ///
+  /// The bridge sends `HELLO` the moment notifications are on, which is
+  /// before the link reports `connected`, so the transport may already be
+  /// connected here.
   void _startHandshake() {
     if (_disposed || _handshakeStarted) return;
-    if (_status != AnalyzerConnectionStatus.connecting) return;
+    if (_status != AnalyzerConnectionStatus.connecting &&
+        _status != AnalyzerConnectionStatus.connected) {
+      return;
+    }
     _handshakeStarted = true;
     _helloTimer?.cancel();
-    _helloTimer = Timer(_helloTimeout, () {
-      if (_status == AnalyzerConnectionStatus.connecting) {
-        _fail('The bridge did not answer.');
-      }
-    });
+    _helloTimer = null;
+    if (_status == AnalyzerConnectionStatus.connecting) {
+      _helloTimer = Timer(_helloTimeout, () {
+        if (_status == AnalyzerConnectionStatus.connecting) {
+          _fail('The bridge did not answer.');
+        }
+      });
+    }
     unawaited(_sendOpening());
   }
 

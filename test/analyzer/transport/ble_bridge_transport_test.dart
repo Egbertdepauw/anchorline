@@ -166,6 +166,39 @@ void main() {
     await t.dispose();
   });
 
+  test('HELLO before the link reports connected still sends TIME, CFG and '
+      'LIVE ON', () async {
+    // The real bridge sends HELLO as soon as notifications are on, which is
+    // before the link layer reports the connection.
+    final link = FakeBridgeLink(lineBeforeConnected: _hello);
+    final t = _transport(link);
+    await t.connect();
+    await _settle();
+    expect(t.status, AnalyzerConnectionStatus.connected);
+    expect(link.sent, ['TIME 1762700000000', 'CFG rec=off vbus=off', 'LIVE ON']);
+    await t.dispose();
+  });
+
+  test('on a reconnect, HELLO before the connected state still resends '
+      'TIME, CFG and LIVE ON', () async {
+    final link = FakeBridgeLink();
+    final t = _transport(link);
+    final done = t.connect();
+    await _settle();
+    link.pushLine(_hello);
+    await done;
+    link.sent.clear();
+
+    link.pushState(BridgeLinkState.connecting);
+    await _settle();
+    link.pushLine(_hello);
+    link.pushState(BridgeLinkState.connected);
+    await _settle();
+    expect(t.status, AnalyzerConnectionStatus.connected);
+    expect(link.sent, ['TIME 1762700000000', 'CFG rec=off vbus=off', 'LIVE ON']);
+    await t.dispose();
+  });
+
   test('disconnect sends LIVE OFF', () async {
     final link = FakeBridgeLink();
     final t = _transport(link);

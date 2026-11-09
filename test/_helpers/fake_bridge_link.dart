@@ -5,7 +5,12 @@ import 'package:ccrlogger/analyzer/bridge/bridge_link.dart';
 /// A [BridgeLink] the test drives by hand: it records what was sent and
 /// lets the test push lines and link states.
 class FakeBridgeLink implements BridgeLink {
-  FakeBridgeLink({this.connectError});
+  FakeBridgeLink({this.connectError, this.lineBeforeConnected});
+
+  /// When set, [connect] pushes this line before the `connected` state, as
+  /// a real bridge does: it sends `HELLO` the moment notifications are on,
+  /// before the link layer reports the connection.
+  String? lineBeforeConnected;
 
   /// When set, [connect] throws it and the link stays disconnected.
   BridgeLinkException? connectError;
@@ -45,6 +50,8 @@ class FakeBridgeLink implements BridgeLink {
     final error = connectError;
     if (error != null) throw error;
     pushState(BridgeLinkState.connecting);
+    final early = lineBeforeConnected;
+    if (early != null) pushLine(early);
     pushState(BridgeLinkState.connected);
   }
 
