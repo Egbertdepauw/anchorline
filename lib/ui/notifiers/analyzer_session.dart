@@ -13,10 +13,12 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../analyzer/analyzer_controller.dart';
 import '../../analyzer/transport/analyzer_transport.dart';
 import '../../analyzer/transport/analyzer_transport_options.dart';
+import '../../analyzer/transport/ble_bridge_transport.dart';
 import '../../analyzer/usb_ok_logger.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../../label_printer/label_printer.dart' show LabelPrinterException;
 import '../../labels/label_print_service.dart';
+import '../widgets/analyzer/bridge_transport_option.dart';
 import 'blend_notifier.dart';
 import 'settings_notifier.dart';
 
@@ -35,7 +37,10 @@ class AnalyzerSession extends ChangeNotifier {
         _labelPrinting = labelPrinting,
         _ownsController = controller == null,
         _controller = controller ?? AnalyzerController(),
-        _options = transportOptions ?? defaultAnalyzerTransportOptions(),
+        _options = transportOptions ??
+            defaultAnalyzerTransportOptions(
+              bridge: bridgeTransportOption(settings),
+            ),
         _okLoggerFactory = okLoggerFactory,
         _keepAwake = keepAwake,
         _blend = blend {
@@ -81,6 +86,15 @@ class AnalyzerSession extends ChangeNotifier {
   /// The Log on OK logger while it is wanted, and the transport it watches.
   UsbOkLogger? _okLogger;
   AnalyzerTransport? _okTransport;
+
+  /// The Log on OK and 5 V settings last sent to the bridge in this session,
+  /// and the transport they were sent to; see [_syncBridge].
+  (bool, bool)? _bridgeConfig;
+  BleBridgeTransport? _bridgeConfigFor;
+
+  /// Follows the bridge's status so the connection strip redraws on `ST`.
+  StreamSubscription<void>? _bridgeSub;
+  BleBridgeTransport? _bridgeSubFor;
 
   bool _disposed = false;
 
@@ -144,16 +158,51 @@ class AnalyzerSession extends ChangeNotifier {
 
   void _onChanged() {
     _syncOkLogger();
+    _syncBridge();
     notifyListeners();
+  }
+
+  /// While the session runs over the bridge: redraw when its status
+  /// changes, and tell it when Log on OK or the 5 V switch changed. The
+  /// handshake already sent the values of the moment, so the first call
+  /// for a connection only notes them.
+  void _syncBridge() {
+    final transport = _controller.transport;
+    final bridge = transport is BleBridgeTransport ? transport : null;
+
+    if (!identical(_bridgeSubFor, bridge)) {
+      unawaited(_bridgeSub?.cancel());
+      _bridgeSubFor = bridge;
+      _bridgeSub = bridge?.bridgeChanges.listen((_) {
+        if (!_disposed) notifyListeners();
+      });
+    }
+
+    if (bridge == null || !_controller.isConnected) {
+      _bridgeConfig = null;
+      _bridgeConfigFor = null;
+      return;
+    }
+    final config = (_settings.analyzerLogOnOk, _settings.analyzerBridgeVbus);
+    if (!identical(_bridgeConfigFor, bridge)) {
+      _bridgeConfigFor = bridge;
+      _bridgeConfig = config;
+    } else if (_bridgeConfig != config) {
+      _bridgeConfig = config;
+      unawaited(bridge.sendConfig());
+    }
   }
 
   /// Whether Log on OK should be running now: the switch is on, there is a
   /// log to save to, and the session that is connected is not the demo's.
+  /// Over the bridge the USB logger is never wanted: the bridge makes the
+  /// records itself (a later part of #113 handles them).
   bool get _okWanted =>
       _settings.analyzerLogOnOk &&
       _analysesDao != null &&
       _sessionIsDemo == false &&
-      _controller.isConnected;
+      _controller.isConnected &&
+      _controller.transport is! BleBridgeTransport;
 
   /// Builds and attaches the logger when Log on OK is wanted, and disposes
   /// it when it no longer is or the session's transport changed. Cheap, as
@@ -232,6 +281,8 @@ class AnalyzerSession extends ChangeNotifier {
     _disposed = true;
     _controller.removeListener(_onChanged);
     _settings.removeListener(_onChanged);
+    unawaited(_bridgeSub?.cancel());
+    _bridgeSub = null;
     // Not awaited: cancelling a broadcast subscription returns a root-zone
     // future, which never completes under the fake clock of widget tests.
     for (final sub in _okResultSubs) {

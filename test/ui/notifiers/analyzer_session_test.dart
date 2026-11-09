@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:ccrlogger/analyzer/analyzer_controller.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
+import 'package:ccrlogger/analyzer/transport/ble_bridge_transport.dart';
 import 'package:ccrlogger/analyzer/bridge/record_to_analysis.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport_options.dart';
 import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
@@ -13,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../_helpers/fake_bridge_link.dart';
 import '../../_helpers/fake_elapsed.dart';
 import '../../_helpers/fake_gas_analyses_dao.dart';
 
@@ -58,6 +60,7 @@ class _Rig {
   final dao = FakeGasAnalysesDao();
   final awake = <bool>[];
   final solos = <_FakeSolo>[];
+  final bridgeLinks = <FakeBridgeLink>[];
   int loggersBuilt = 0;
   late SettingsNotifier settings;
   late AnalyzerController controller;
@@ -111,6 +114,19 @@ class _Rig {
           label: 'Demo',
           isDemo: true,
           create: () => _FakeSolo(),
+        ),
+        AnalyzerTransportOption(
+          label: 'Bridge',
+          create: () {
+            final link = FakeBridgeLink();
+            bridgeLinks.add(link);
+            return BleBridgeTransport(
+              link: link,
+              recording: () => settings.analyzerLogOnOk,
+              vbusOn: () => settings.analyzerBridgeVbus,
+              now: () => DateTime.fromMillisecondsSinceEpoch(1762700000000),
+            );
+          },
         ),
       ],
     );
@@ -426,6 +442,57 @@ void main() {
       // The press itself finished; the session, gone, marks nothing.
       expect(r.dao.analyses.single.needsSignoff, isFalse);
       expect(r.blend.unusedRecentTarget(), target);
+    });
+  });
+
+  group('over the bridge', () {
+    const hello =
+        'HELLO proto=1 fw=0.1.0 bridge=a0b1c2d3e4f5 epoch=1a2b3c4d boot=7 '
+        'up=123456 solo=1 rec=off vbus=off batt=3987 pending=0';
+
+    /// Connects the Bridge source and answers its HELLO.
+    Future<void> connectBridge(WidgetTester tester, _Rig r) async {
+      r.session.select(2);
+      unawaited(r.session.connectSelected(r.context));
+      await tester.pump();
+      r.bridgeLinks.single.pushLine(hello);
+      await tester.pump();
+      expect(r.controller.isConnected, isTrue);
+    }
+
+    _test('the Log on OK logger is not built, even with the switch on',
+        (tester, r) async {
+      await r.start(tester);
+      expect(r.settings.analyzerLogOnOk, isTrue);
+      await connectBridge(tester, r);
+      expect(r.session.okLogger, isNull);
+      expect(r.loggersBuilt, 0);
+    });
+
+    _test('toggling the 5 V switch sends CFG', (tester, r) async {
+      await r.start(tester, logOnOk: false);
+      await connectBridge(tester, r);
+      final link = r.bridgeLinks.single;
+      link.sent.clear();
+
+      await r.settings.setAnalyzerBridgeVbus(true);
+      await tester.pump();
+      expect(link.sent, ['CFG rec=off vbus=on']);
+
+      // An unrelated change sends nothing.
+      await r.settings.setAnalyzerPrintOnOk(false);
+      await tester.pump();
+      expect(link.sent, hasLength(1));
+    });
+
+    _test('toggling Log on OK sends CFG too', (tester, r) async {
+      await r.start(tester, logOnOk: false);
+      await connectBridge(tester, r);
+      final link = r.bridgeLinks.single;
+      link.sent.clear();
+      await r.settings.setAnalyzerLogOnOk(true);
+      await tester.pump();
+      expect(link.sent, ['CFG rec=on vbus=off']);
     });
   });
 }

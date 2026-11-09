@@ -51,10 +51,27 @@ bool get _hasDesktopSerial =>
         defaultTargetPlatform == TargetPlatform.windows ||
         defaultTargetPlatform == TargetPlatform.linux);
 
-/// The transports available on this platform: desktop USB serial (#108)
-/// on macOS/Windows/Linux, USB OTG on Android (#109), and the demo
-/// simulator everywhere.
-List<AnalyzerTransportOption> defaultAnalyzerTransportOptions() => [
+/// Whether the SOLO bridge can be used here: Bluetooth LE on iOS, Android
+/// and macOS. Windows and Linux have no bridge in v1.
+bool get analyzerBridgeAvailable =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.macOS);
+
+/// The transports available on this platform, in picker order (the first is
+/// selected by default):
+///
+///  * iOS: Bridge, Demo.
+///  * Android: USB (Android), Bridge, Demo.
+///  * macOS: USB, Bridge, Demo.
+///  * Windows and Linux: USB, Demo.
+///
+/// [bridge] is the Bridge source; it is left out where
+/// [analyzerBridgeAvailable] is false or when null.
+List<AnalyzerTransportOption> defaultAnalyzerTransportOptions({
+  AnalyzerTransportOption? bridge,
+}) => [
       if (_hasDesktopSerial)
         AnalyzerTransportOption(
           label: 'USB',
@@ -74,15 +91,16 @@ List<AnalyzerTransportOption> defaultAnalyzerTransportOptions() => [
             return DesktopSerialTransport(portPath: port);
           },
         ),
-      AnalyzerTransportOption(
-        label: 'Demo',
-        isDemo: true,
-        create: () => DemoAnalyzerTransport(),
-      ),
       if (!kIsWeb && Platform.isAndroid)
         AnalyzerTransportOption(
           label: 'USB (Android)',
           create: () => AndroidUsbTransport(),
           note: 'The phone powers the analyzer over the USB OTG cable.',
         ),
+      if (bridge != null && analyzerBridgeAvailable) bridge,
+      AnalyzerTransportOption(
+        label: 'Demo',
+        isDemo: true,
+        create: () => DemoAnalyzerTransport(),
+      ),
     ];

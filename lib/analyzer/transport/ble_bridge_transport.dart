@@ -82,6 +82,9 @@ class BleBridgeTransport implements AnalyzerTransport {
   /// ([BridgeUnknown]). Broadcast.
   Stream<BridgeMessage> get messages => _messages.stream;
 
+  /// Whether the 5 V switch is on, as the bridge was last told.
+  bool get vbusOn => _vbusOn();
+
   BridgeHello? get lastHello => _lastHello;
 
   /// The latest `ST`; also set from `HELLO`.
