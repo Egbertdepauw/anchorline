@@ -12,12 +12,12 @@ Every Shearwater you have imported from appears here by itself. The screen shows
 ## On this screen
 
 - **List row**: the model (for example Petrel 3) with the end of the serial number, then **FW** with the firmware version and how long ago the entry was last updated. The model, serial and firmware come from the dive computer.
-- **Serial**, **Model**, **Firmware**: as the computer reported them at import. You cannot edit them.
+- **Serial**, **Model**, **Firmware**: as the computer reported them at import. You cannot edit them. Model shows the computer's raw model code, not the name in the list.
 - **Nickname**: your own name for the unit. Type it and tap **Save nickname**. The list then shows the nickname.
 - **Recent imports**: the latest dives imported from this computer, as **Dive #** (the computer's own dive number) with the date and time.
-- **Pressure mapping**: lists which pressure channels are mapped, with **Add channel** to add one by hand.
+- **Pressure mapping**: **Add channel** adds the next channel number (0 to 3). Pick one of your cylinders for it, or leave it **unmapped**. A mapped channel's tank pressure line on the dive profile then carries that cylinder's label.
 
 ## Good to know
 
 - You do not add computers here. Import a dive (see [Import](/manual/import)) and the computer appears.
-- The nickname is the only field you can change.
+- The nickname and the pressure mapping are the only things you change here.

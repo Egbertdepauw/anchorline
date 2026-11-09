@@ -15,7 +15,7 @@ Your cylinders, entered by you. They are what you link to dives and what the gas
 - **Row**: the label, then the volume and working pressure, for example 3L @ 200 bar. Bailout rows start with their order, like **#1**.
 - **Set up standard CCR cylinders**: shown on an empty list; creates an oxygen, a diluent and a bailout cylinder to edit.
 - **Label**: your name for the cylinder.
-- **Role**: what it is used as.
+- **Role**: oxygen, diluent, bailout or offboard.
 - **Bailout order (#)**: the order of a bailout cylinder in your list. It is only used for the Bailout role.
 - **Volume (L)** and **Working pressure (bar)**: the figures you type for the cylinder.
 - **Notes**: free text.
