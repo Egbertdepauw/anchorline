@@ -9,7 +9,8 @@
 // Flutter channels. Device state is shared between threads under mutex_.
 //
 // A device is connected by Bluetooth address, without a scan:
-// BluetoothLEDevice::FromBluetoothAddressAsync, a GattSession with
+// BluetoothLEDevice::FromBluetoothAddressAsync (only when Windows has
+// forgotten the device does a short watcher run first), a GattSession with
 // MaintainConnection, then an uncached service query, which is what makes
 // Windows open the link. Windows closes the link once every service,
 // session and device object is closed, which Close() does on a drop and on
@@ -33,6 +34,7 @@
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Storage.Streams.h>
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -218,6 +220,32 @@ std::string HresultMessage(const winrt::hresult_error& e) {
 
 std::string CharKey(const std::string& service, const std::string& chr) {
   return service + "|" + chr;
+}
+
+// Waits up to [timeout] for an advertisement from [address], with a watcher
+// of its own. FromBluetoothAddressAsync returns null for a device Windows
+// has not seen lately (an unpaired device after a restart, say); seeing one
+// advertisement is enough for it to find the device again.
+wf::IAsyncOperation<bool> WaitForAdvertisement(uint64_t address,
+                                               wf::TimeSpan timeout) {
+  // Shared with the handler, so a late callback never signals a closed
+  // (and possibly reused) handle.
+  auto seen = std::make_shared<winrt::handle>(
+      CreateEventW(nullptr, TRUE, FALSE, nullptr));
+  if (!*seen) co_return false;
+  adv::BluetoothLEAdvertisementWatcher watcher;
+  watcher.ScanningMode(adv::BluetoothLEScanningMode::Active);
+  winrt::event_token token = watcher.Received(
+      [seen, address](const adv::BluetoothLEAdvertisementWatcher&,
+                      const adv::BluetoothLEAdvertisementReceivedEventArgs&
+                          args) {
+        if (args.BluetoothAddress() == address) SetEvent(seen->get());
+      });
+  watcher.Start();
+  const bool found = co_await winrt::resume_on_signal(seen->get(), timeout);
+  watcher.Received(token);
+  watcher.Stop();
+  co_return found;
 }
 
 // One connected device and everything Windows holds open for it.
@@ -545,6 +573,11 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
     try {
       d->device = co_await bt::BluetoothLEDevice::FromBluetoothAddressAsync(
           address);
+      if (!d->device &&
+          co_await WaitForAdvertisement(address, std::chrono::seconds(5))) {
+        d->device = co_await bt::BluetoothLEDevice::FromBluetoothAddressAsync(
+            address);
+      }
       if (!d->device) {
         error_code = kErrNotFound;
         error_message = "Device not found";
