@@ -240,7 +240,6 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   bool get _canStartLogOnOk =>
       _controller.isConnected &&
       !_session.sourceIsDemo &&
-      !_session.connectedOverBridge &&
       _analysesDao != null;
 
   /// Whether the save card is shown; see [_saveCard].
