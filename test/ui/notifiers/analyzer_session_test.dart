@@ -7,6 +7,7 @@ import 'package:ccrlogger/analyzer/bridge/record_to_analysis.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport_options.dart';
 import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
 import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
+import 'package:ccrlogger/data/models/gas_analysis.dart';
 import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
@@ -460,14 +461,122 @@ void main() {
       expect(r.controller.isConnected, isTrue);
     }
 
-    _test('the Log on OK logger is not built, even with the switch on',
-        (tester, r) async {
+    /// Lets the bridge's messages and the record's save run.
+    Future<void> settle(WidgetTester tester) async {
+      for (var i = 0; i < 10; i++) {
+        await tester.pump();
+      }
+    }
+
+    /// Pushes one record of steady EAN32 from the bridge.
+    void pushRecord(_Rig r, String rid, {int boot = 7, bool live = true}) {
+      final link = r.bridgeLinks.single;
+      link.pushLine('REC $rid boot=$boot up=123456 wall=0 '
+          'live=${live ? 1 : 0}');
+      for (var s = -30; s <= 0; s++) {
+        link.pushLine('W ${s * 1000} ${_line(32, 0)}');
+      }
+      link.pushLine('H ${_line(32, 0)}');
+      link.pushLine('END $rid');
+    }
+
+    _test('the USB logger is not built; the bridge handler is the Log on OK '
+        'logger', (tester, r) async {
       await r.start(tester);
       expect(r.settings.analyzerLogOnOk, isTrue);
       await connectBridge(tester, r);
-      expect(r.session.okLogger, isNull);
       expect(r.loggersBuilt, 0);
-      expect(r.session.connectedOverBridge, isTrue);
+      expect(r.session.bridgeOkHandler, isNotNull);
+      expect(r.session.okLogger, same(r.session.bridgeOkHandler));
+      expect(r.session.okRunning, isTrue);
+      expect(r.awake, isEmpty, reason: 'the bridge keeps the records');
+
+      await r.settings.setAnalyzerLogOnOk(false);
+      expect(r.session.okLogger, isNull);
+      expect(r.session.bridgeOkHandler, isNotNull,
+          reason: 'records are always collected');
+    });
+
+    _test('with Log on OK off a record still saves, flagged, and is ACKed',
+        (tester, r) async {
+      await r.start(tester, logOnOk: false);
+      await connectBridge(tester, r);
+      // Pressed while the app was away: another boot, so late.
+      pushRecord(r, 'r1', boot: 6, live: false);
+      await settle(tester);
+
+      final a = r.dao.analyses.single;
+      expect(a.needsSignoff, isTrue);
+      expect(a.analysedBy, isNull);
+      expect(a.captureSource, CaptureSource.bridgeOk);
+      expect(a.bridgeRecordId, 'a0b1c2d3e4f5/r1');
+      final sent = r.bridgeLinks.single.sent;
+      expect(sent, containsAllInOrder(['ACK r1', 'FB r1 saved SIGN OFF LATER']));
+      expect(r.loggersBuilt, 0);
+    });
+
+    _test('with Log on OK on the save card\'s setup is used',
+        (tester, r) async {
+      await r.start(tester);
+      await connectBridge(tester, r);
+      r.session.okLogger!.setupProvider = () => (
+            setup: const LogOnOkSetup(
+              analysedBy: 'EdP',
+              desiredMix: DesiredMix(32, 0),
+            ),
+            copies: 1,
+          );
+      pushRecord(r, 'r1');
+      await settle(tester);
+
+      final a = r.dao.analyses.single;
+      expect(a.analysedBy, 'EdP');
+      expect(a.desiredMix, const DesiredMix(32, 0));
+      expect(a.needsSignoff, isFalse);
+      expect(r.bridgeLinks.single.sent,
+          containsAllInOrder(['ACK r1', 'FB r1 saved EAN32']));
+    });
+
+    _test('without a log nothing is ACKed', (tester, r) async {
+      await r.start(tester, withDao: false);
+      await connectBridge(tester, r);
+      expect(r.session.bridgeOkHandler, isNull);
+      pushRecord(r, 'r1');
+      await settle(tester);
+      expect(r.bridgeLinks.single.sent.where((m) => m.startsWith('ACK')),
+          isEmpty);
+    });
+
+    _test('the live state goes to the bridge as STATE', (tester, r) async {
+      await r.start(tester, logOnOk: false);
+      await connectBridge(tester, r);
+      final link = r.bridgeLinks.single;
+      link.pushLine('L ${_line(32, 0)}');
+      await settle(tester);
+      expect(link.sent, contains('STATE settling EAN32'));
+
+      final before = link.sent.length;
+      await tester.pump(const Duration(seconds: 3));
+      expect(link.sent.length, greaterThan(before), reason: 'heartbeat');
+    });
+
+    _test('Disconnect stops the handler and the STATE heartbeat',
+        (tester, r) async {
+      await r.start(tester);
+      await connectBridge(tester, r);
+      final link = r.bridgeLinks.single;
+      link.pushLine('L ${_line(32, 0)}');
+      await settle(tester);
+      // On the real event loop: the transport awaits cancelling its link
+      // subscriptions, a root-zone future the fake clock never completes.
+      await tester.runAsync(r.session.disconnect);
+      await settle(tester);
+      expect(r.controller.transport, isNull);
+      expect(r.session.bridgeOkHandler, isNull);
+      expect(r.session.okLogger, isNull);
+      final after = link.sent.length;
+      await tester.pump(const Duration(seconds: 10));
+      expect(link.sent.length, after);
     });
 
     _test('toggling the 5 V switch sends CFG', (tester, r) async {

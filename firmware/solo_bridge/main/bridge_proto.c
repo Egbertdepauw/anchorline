@@ -38,6 +38,20 @@ size_t proto_fmt_live_line(char *out, size_t cap, const char *solo_line) {
     return fmt(out, cap, "L %s", solo_line);
 }
 
+size_t proto_fmt_rec(char *out, size_t cap, const char *rid, uint32_t boot, uint64_t up_ms,
+                     uint64_t wall_ms, bool live) {
+    return fmt(out, cap, "REC %s boot=%" PRIu32 " up=%" PRIu64 " wall=%" PRIu64 " live=%d", rid, boot,
+               up_ms, wall_ms, live ? 1 : 0);
+}
+
+size_t proto_fmt_w(char *out, size_t cap, int64_t offset_ms, const char *line) {
+    return fmt(out, cap, "W %" PRId64 " %s", offset_ms, line);
+}
+
+size_t proto_fmt_h(char *out, size_t cap, const char *line) { return fmt(out, cap, "H %s", line); }
+
+size_t proto_fmt_end(char *out, size_t cap, const char *rid) { return fmt(out, cap, "END %s", rid); }
+
 // Copies at most cap-1 bytes of [from, to) into dst.
 static void copy_span(char *dst, size_t cap, const char *from, const char *to) {
     size_t n = (size_t)(to - from);

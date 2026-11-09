@@ -19,23 +19,20 @@ library;
 
 import 'dart:async';
 
-import '../analysis/gas_naming.dart';
 import '../data/models/gas_analysis.dart';
 import 'bridge/bridge_protocol.dart';
 import 'bridge/record_to_analysis.dart';
 import 'hold_detector.dart';
+import 'ok_logger.dart';
+import 'ok_record_processor.dart';
 import 'transport/analyzer_transport.dart';
+
+export 'ok_logger.dart';
 
 /// How often the logger asks the hold detector whether OK was pressed. The
 /// screen's logger uses this; a test passes null to drive [UsbOkLogger.tick]
 /// itself.
 const Duration kOkTickInterval = Duration(milliseconds: 200);
-
-/// What the diver set up for the next OK, and how many labels to print.
-typedef OkSetup = ({LogOnOkSetup setup, int copies});
-
-/// The setup used when the screen has none to give.
-const OkSetup _noSetup = (setup: LogOnOkSetup(), copies: 1);
 
 /// A gap between two timer callbacks longer than this means the isolate or
 /// the process was stalled (Android freezing a cached app, a long jank), not
@@ -49,46 +46,9 @@ const Duration kStallGap = Duration(seconds: 1);
 /// after the grace.
 const Duration kStallGrace = Duration(seconds: 1);
 
-/// How one OK press went, for the screen and the save card.
-class OkLogResult {
-  const OkLogResult({
-    required this.code,
-    required this.text,
-    required this.analysisId,
-    required this.complete,
-    this.setupUsed,
-  });
-
-  /// The feedback: printed, saved, check, skipped or error.
-  final FeedbackCode code;
-
-  /// The feedback text, ASCII and at most [kFeedbackTextMax] characters
-  /// (`EAN32`, `MISMATCH`, `NO NAME SET`, `PRINT FAILED`, ...).
-  final String text;
-
-  /// The id of the saved row; null when nothing was saved.
-  final String? analysisId;
-
-  /// The row was saved with `needs_signoff = 0`: nothing is left for the
-  /// diver to do (and the label printed, if a print was wanted).
-  final bool complete;
-
-  /// The setup this press used: what the setup provider gave when the press
-  /// was handled. Presses are handled one after the other, so a result can
-  /// arrive after the provider was asked again for the next press; the card
-  /// goes by this, not by what the provider gives now, to see which of its
-  /// fields this press took. Null when the press never got as far as the
-  /// setup (a failed timer tick).
-  final OkSetup? setupUsed;
-
-  @override
-  String toString() =>
-      'OkLogResult($code, "$text", id: $analysisId, complete: $complete)';
-}
-
 /// Detects the OK presses on a USB transport and logs them. See the library
 /// comment.
-class UsbOkLogger {
+class UsbOkLogger implements OkLogger {
   UsbOkLogger({
     required Future<bool> Function(String id, NewGasAnalysis a) save,
     required Future<void> Function(String id) markComplete,
@@ -97,17 +57,19 @@ class UsbOkLogger {
     DateTime Function()? now,
     Duration? tickInterval = kOkTickInterval,
     void Function(Object error, StackTrace stack)? onError,
-  }) : _save = save,
-       _markComplete = markComplete,
-       _printLabel = printLabel,
+  }) : _processor = OkRecordProcessor(
+         save: save,
+         markComplete: markComplete,
+         printLabel: printLabel,
+         onError: onError,
+       ),
        _elapsed = elapsed ?? _stopwatchClock(),
        _now = now ?? DateTime.now,
        _tickInterval = tickInterval,
        _onError = onError;
 
-  final Future<bool> Function(String id, NewGasAnalysis a) _save;
-  final Future<void> Function(String id) _markComplete;
-  final Future<void> Function(GasAnalysis a, int copies)? _printLabel;
+  /// The save, print and mark-complete steps, shared with the bridge.
+  final OkRecordProcessor _processor;
   final Duration Function() _elapsed;
   final DateTime Function() _now;
   final Duration? _tickInterval;
@@ -117,6 +79,7 @@ class UsbOkLogger {
   /// a provider that throws, means [LogOnOkSetup] with its defaults and one
   /// copy: the reading is still saved, flagged for sign-off, and nothing
   /// prints.
+  @override
   OkSetup Function()? setupProvider;
 
   final HoldDetector _detector = HoldDetector();
@@ -153,6 +116,7 @@ class UsbOkLogger {
   bool _tickFailing = false;
 
   /// One event per OK press that was handled, also when it failed. Broadcast.
+  @override
   Stream<OkLogResult> get results => _results.stream;
 
   /// Starts watching [t]: its lines go to the hold detector and any status
@@ -305,10 +269,10 @@ class UsbOkLogger {
   Future<OkLogResult> _process(DetectedHold hold) async {
     OkSetup setup;
     try {
-      setup = setupProvider?.call() ?? _noSetup;
+      setup = setupProvider?.call() ?? kNoOkSetup;
     } catch (e, st) {
       _report(e, st);
-      setup = _noSetup;
+      setup = kNoOkSetup;
     }
 
     final elapsed = _elapsed();
@@ -323,112 +287,14 @@ class UsbOkLogger {
       window: hold.window,
       heldLine: hold.heldLine,
     );
-    final outcome = recordToAnalysis(
+    return _processor.process(
       record: record,
       bridgeId: 'usb',
-      setup: setup.setup,
+      source: CaptureSource.usbOk,
       clock: BridgeClock(boot: 0, upMs: elapsed.inMilliseconds),
       now: now,
       active: true,
-      source: CaptureSource.usbOk,
-    );
-
-    switch (outcome) {
-      case SkipRecord():
-        return OkLogResult(
-          code: outcome.feedback,
-          text: outcome.feedbackText,
-          analysisId: null,
-          complete: false,
-          setupUsed: setup,
-        );
-      case SaveRecord():
-        return _saveAndPrint(outcome, setup);
-    }
-  }
-
-  Future<OkLogResult> _saveAndPrint(SaveRecord outcome, OkSetup setup) async {
-    final copies = setup.copies;
-    final rowId = outcome.rowId;
-    final analysis = outcome.analysis;
-    final saveFailed = OkLogResult(
-      code: FeedbackCode.error,
-      text: 'SAVE FAILED',
-      analysisId: null,
-      complete: false,
-      setupUsed: setup,
-    );
-
-    try {
-      // False means a row with this id was already there, and nothing was
-      // written. Do not print for it or touch it: [_markComplete] only ever
-      // clears a row this hold wrote.
-      final inserted = await _save(rowId, analysis);
-      if (!inserted) return saveFailed;
-    } catch (e, st) {
-      _report(e, st);
-      return saveFailed;
-    }
-
-    if (!outcome.printLabel) {
-      return OkLogResult(
-        code: outcome.feedback,
-        text: outcome.feedbackText,
-        analysisId: rowId,
-        complete: !analysis.needsSignoff,
-        setupUsed: setup,
-      );
-    }
-
-    // A label is wanted. The row is saved flagged; the printable copy is the
-    // entry as it will be once the print has worked, because the print
-    // service refuses an entry that still needs a sign-off.
-    final print = _printLabel;
-    if (print == null) {
-      return OkLogResult(
-        code: FeedbackCode.check,
-        text: 'NO PRINTER',
-        analysisId: rowId,
-        complete: false,
-        setupUsed: setup,
-      );
-    }
-    try {
-      await print(
-        GasAnalysis.fromNew(rowId, analysis).withNeedsSignoff(false),
-        copies < 1 ? 1 : copies,
-      );
-    } catch (e, st) {
-      _report(e, st);
-      return OkLogResult(
-        code: FeedbackCode.check,
-        text: 'PRINT FAILED',
-        analysisId: rowId,
-        complete: false,
-        setupUsed: setup,
-      );
-    }
-    final mixName = gasMixName(analysis.o2Percent, analysis.hePercent);
-    try {
-      await _markComplete(rowId);
-    } catch (e, st) {
-      _report(e, st);
-      // The label is out but the stored flag could not be cleared: the diver
-      // is told it printed, and the entry still asks for a sign-off.
-      return OkLogResult(
-        code: FeedbackCode.printed,
-        text: mixName,
-        analysisId: rowId,
-        complete: false,
-        setupUsed: setup,
-      );
-    }
-    return OkLogResult(
-      code: FeedbackCode.printed,
-      text: mixName,
-      analysisId: rowId,
-      complete: true,
-      setupUsed: setup,
+      setup: setup,
     );
   }
 

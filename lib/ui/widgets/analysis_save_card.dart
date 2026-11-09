@@ -13,7 +13,7 @@
 /// chip the diver taps is their pick until the next manual save.
 ///
 /// Log on OK (issue #113, spec §4.4) starts from the outlined "Log on OK"
-/// button at the right of the heading. While it runs (a [UsbOkLogger] is
+/// button at the right of the heading. While it runs (an [OkLogger] is
 /// bound) the heading says "● Logging on OK", the section is the setup for
 /// the OK presses (its fields are what the next OK press saves), a "Print a
 /// label on each OK" row shows with a printer set up, and the outcome of the
@@ -30,7 +30,7 @@ import '../../analysis/mix_match.dart';
 import '../../analyzer/bridge/bridge_protocol.dart';
 import '../../analyzer/bridge/record_to_analysis.dart';
 import '../../analyzer/stability.dart';
-import '../../analyzer/usb_ok_logger.dart';
+import '../../analyzer/ok_logger.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../components/section_header.dart';
 import '../theme/safety_colors.dart';
@@ -524,6 +524,12 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
           'Printed ${r.text}',
           Icons.print_outlined,
           SafetyColors.success,
+        ),
+      // Over the bridge: a record delivered again after its ACK was lost.
+      FeedbackCode.saved when r.alreadySaved => (
+          'Already in the log',
+          Icons.check_circle_outline,
+          palette.textMuted,
         ),
       FeedbackCode.saved when r.complete => (
           'Saved ${r.text}',

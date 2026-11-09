@@ -809,6 +809,29 @@ board). SOLO on the USB-A host port, on its own battery. App: macOS debug build 
 - **The 5 V switch:** the SOLO does not need host 5 V, so the default stays **off**. Whether "on"
   stays available at all waits for the meter readings.
 
+## Bench results, step 2 (2026-11-09)
+
+Same setup as step 1, bridge firmware 1.0.0, macOS debug build of `feat/175-solo-bridge-v1`,
+Phomemo M110 on. Egbert: "everything seems to work, status labels, printing all works".
+
+From the bridge log:
+
+| Record | Lines in window | What happened |
+|---|---|---|
+| `c0b53ec0-1` | 124 | Sent and `ACK`ed within 1 s; `FB check PRINT FAILED` 10 s later (first print of the session). |
+| `c0b53ec0-2` | 151 | Waited 114 s for the app, then sent, `ACK`ed, `FB saved SIGN OFF LATER` (late, flagged). |
+| `c0b53ec0-3`, `-4` | 151 | Sent and `ACK`ed within 1.3 s; `FB printed Hypoxic 20` 6–7 s later. |
+
+- The SOLO still reads room air as 20.2–20.3 % O2, so the bench gas named Hypoxic 20; calibrate before
+  checking `AIR - NOT LOGGED`.
+- **Firmware fix from the bench:** the app sends `STATE` only while it has a reading, so the bridge now
+  judges the phone silent only while SOLO data flows (10 s from the later of the last `STATE` and the
+  start of the flow).
+- **iPhone 16 Pro (iOS 27.2, profile build):** pairing, live readings and printing work. The printed
+  label is not fed out to the tear-off edge; that is the label printer path, not the bridge.
+- **Not done yet:** Log on OK off, double OK, SOLO off mid-measurement, power-cycling the bridge with
+  records waiting, the meter readings.
+
 ## Risks and things to verify on hardware
 
 - **A future SOLO firmware could change what OK does on USB.** The captures, as fixtures, make
