@@ -145,6 +145,20 @@ const appSchema = Schema([
     Column.integer('version'),
     Column.integer('sync_status'),
   ]),
+  // Texts the diver has accepted (issue #184): subject is e.g.
+  // 'planner_warning', text_version the version of that text. Accepted =
+  // a live row at the version the app ships. Rows are only ever added.
+  Table('user_acknowledgements', [
+    Column.text('owner_id'),
+    Column.text('subject'),
+    Column.integer('text_version'),
+    Column.integer('accepted_at'),
+    Column.integer('created_at'),
+    Column.integer('updated_at'),
+    Column.integer('deleted_at'),
+    Column.integer('version'),
+    Column.integer('sync_status'),
+  ]),
   Table('oxygen_cells', [
     Column.text('owner_id'),
     Column.integer('slot'),

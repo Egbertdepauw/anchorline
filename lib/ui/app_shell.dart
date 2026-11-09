@@ -19,6 +19,7 @@ import '../data/db/gas_analyses_dao.dart';
 import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
 import '../ble/ble_central_default.dart' show bleCentralAvailable;
+import '../data/db/user_acknowledgements_dao.dart';
 import '../label_printer/phomemo/ble/phomemo_ble_printer.dart';
 import '../label_printer/phomemo/ble/phomemo_ble_scanner.dart';
 import '../labels/label_print_service.dart';
@@ -113,6 +114,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final DiveListNotifier _diveListNotifier;
   late final DivePlansDao _divePlansDao;
   late final GasAnalysesDao _gasAnalysesDao;
+  late final UserAcknowledgementsDao _userAcknowledgementsDao;
   /// Null where the app has no Bluetooth LE central (the web).
   late final LabelPrintService? _labelPrintService;
   late final AnalyzerSession _analyzerSession;
@@ -192,6 +194,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       SupabaseAuthSessionSource(Supabase.instance.client),
     );
     _gasAnalysesDao = GasAnalysesDao(
+      widget.powerSyncDb,
+      SupabaseAuthSessionSource(Supabase.instance.client),
+    );
+    _userAcknowledgementsDao = UserAcknowledgementsDao(
       widget.powerSyncDb,
       SupabaseAuthSessionSource(Supabase.instance.client),
     );
@@ -630,6 +636,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                         DivePlanScreen(
                           notifier: _divePlanNotifier,
                           settings: widget.settingsNotifier,
+                          acknowledgements: _userAcknowledgementsDao,
+                          onHome: _goHome,
                         ),
                         GasScreen(
                           blend: _blendNotifier,

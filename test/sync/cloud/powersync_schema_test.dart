@@ -26,6 +26,8 @@ void main() {
         'dive_merge_links',
         // Gas analyzer: cylinder analysis log.
         'gas_analyses',
+        // Accepted texts: the planner safety warning (#184).
+        'user_acknowledgements',
       });
     });
 

@@ -40,6 +40,8 @@ const cloudSyncTables = <String>[
   // Gas analyses soft-reference cylinders (no FK); listed before them
   // anyway so a future FK can't break the wipe.
   'gas_analyses',
+  // Accepted texts (planner warning); no children, no parents.
+  'user_acknowledgements',
   // Equipment / device parents.
   'cylinders',
   'oxygen_cells',

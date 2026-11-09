@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../_helpers/fake_user_acknowledgements_dao.dart';
+
 class _FakeDao implements DivePlansDaoLike {
   DivePlanDraft? draft;
   @override
@@ -56,8 +58,15 @@ void main() {
     final notifier = DivePlanNotifier(dao: dao, settings: settings);
     await notifier.load();
     await tester.pumpWidget(MaterialApp(
-      home: DivePlanScreen(notifier: notifier, settings: settings),
+      home: DivePlanScreen(
+        notifier: notifier,
+        settings: settings,
+        acknowledgements:
+            FakeUserAcknowledgementsDao(plannerWarningAccepted: true),
+      ),
     ));
+    // Let the warning acceptance load.
+    await tester.pump();
 
     // Add a gas.
     await tester.tap(find.byKey(const ValueKey('add-gas')));
