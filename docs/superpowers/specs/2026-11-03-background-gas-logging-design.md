@@ -827,8 +827,10 @@ From the bridge log:
 - **Firmware fix from the bench:** the app sends `STATE` only while it has a reading, so the bridge now
   judges the phone silent only while SOLO data flows (10 s from the later of the last `STATE` and the
   start of the flow).
-- **Not done yet:** the iPhone, Log on OK off, double OK, SOLO off mid-measurement, power-cycling the
-  bridge with records waiting, the meter readings.
+- **iPhone 16 Pro (iOS 27.2, profile build):** pairing, live readings and printing work. The printed
+  label is not fed out to the tear-off edge; that is the label printer path, not the bridge.
+- **Not done yet:** Log on OK off, double OK, SOLO off mid-measurement, power-cycling the bridge with
+  records waiting, the meter readings.
 
 ## Risks and things to verify on hardware
 
