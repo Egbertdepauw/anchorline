@@ -46,7 +46,7 @@ idf.py -p /dev/cu.usbserial-XXXX flash monitor
 ```
 
 - Flash and monitor go through the **DEBUG** port (USB-C on the V1.1 board). It is a USB-to-UART bridge to UART0, and the log console is on it.
-- The port shows up as `/dev/cu.usbserial-*` or `/dev/cu.wchusbserial-*`.
+- The DEBUG port's chip is a WCH CH342 (`1a86:7522`). macOS has no driver for it built in: install WCH's **CH34xVCPDriver** (Mac App Store, or wch-ic.com), allow it in System Settings, and replug. The port then shows up as `/dev/cu.wchusbserial*`.
 - If flashing doesn't start: hold OK (it is also BOOT, GPIO0), press RESET, then release OK.
 - Quit the monitor with `Ctrl-]`.
 
@@ -92,6 +92,7 @@ Pins, from Espressif's user guide and the BSP header (`board.h`):
 - **The bridge does not power the SOLO by default.** Host 5 V is off at boot, and stays off unless the app's "Power the analyzer from the bridge" switch is on (`CFG vbus=on`, persisted).
 - When it is on, the bridge uses the battery boost if a battery is fitted, otherwise the DEV plug's 5 V.
 - **The DEBUG port can power the board, but never the host port.** With the board on the DEBUG port, the SOLO always runs on its own battery.
+- **Bench 2026-11-09:** the SOLO enumerates and streams with host 5 V off, so the switch stays off by default. With the SOLO plugged in and host 5 V off, `host_vbus` still reads about 5.1 V: the SOLO seems to drive VBUS itself. Not yet checked with a meter.
 - **Battery:**
   - The board has battery solder pads on the back and an on-board charger: 212.7 mA from the DEV plug, with a red LED while charging. The battery switch must be OFF while charging.
   - The guide names no low-voltage cut-off. Use a **protected** 18650 cell, or power the board from a power bank.
