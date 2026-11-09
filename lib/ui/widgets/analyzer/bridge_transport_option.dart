@@ -5,13 +5,13 @@ library;
 import 'package:flutter/widgets.dart' show BuildContext;
 
 import '../../../analyzer/bridge/bridge_link.dart';
-import '../../../analyzer/bridge/bridge_link_fbp.dart';
+import '../../../analyzer/bridge/bridge_link_ble.dart';
 import '../../../analyzer/transport/analyzer_transport_options.dart';
 import '../../../analyzer/transport/ble_bridge_transport.dart';
 import '../../notifiers/settings_notifier.dart';
 import '../analyzer_bridge_settings_section.dart';
 
-/// The "Bridge" source. Offered on iOS, Android and macOS (see
+/// The "Bridge" source. Offered on iOS, Android, macOS, Windows and Linux (see
 /// `defaultAnalyzerTransportOptions`). When no bridge is paired, its picker
 /// opens the find dialog first and pairs the one picked.
 ///
@@ -23,7 +23,7 @@ AnalyzerTransportOption bridgeTransportOption(
   Future<FoundBridge?> Function(BuildContext context)? findBridge,
 }) {
   BleBridgeTransport build(String id) => BleBridgeTransport(
-        link: (linkFactory ?? (id) => FbpBridgeLink(remoteId: id))(id),
+        link: (linkFactory ?? (id) => CentralBridgeLink(remoteId: id))(id),
         recording: () => settings.analyzerLogOnOk,
         vbusOn: () => settings.analyzerBridgeVbus,
       );

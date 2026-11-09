@@ -255,7 +255,7 @@ void main() {
   });
 
   test('a line split over three notifications arrives whole', () {
-    // What FbpBridgeLink does with notifications: bytes go through a
+    // What CentralBridgeLink does with notifications: bytes go through a
     // SerialLineBuffer. A 140-byte L line over a 23-byte MTU is 20 bytes
     // per notification.
     final line = 'L He   0.4 %  O2  19.8 %  Ti  21.7 ~C  1029.5 hPa   '

@@ -1,7 +1,7 @@
 /// The Bluetooth link to the SOLO bridge, as the transport sees it.
 ///
-/// Pure Dart. The real implementation is `FbpBridgeLink` in
-/// `bridge_link_fbp.dart`; tests use a fake. The link moves whole text lines:
+/// Pure Dart. The real implementation is `CentralBridgeLink` in
+/// `bridge_link_ble.dart`; tests use a fake. The link moves whole text lines:
 /// it splits the Nordic UART stream into lines on the way in and chunks to
 /// the MTU on the way out. Protocol meaning lives in `bridge_protocol.dart`
 /// and `BleBridgeTransport`.
