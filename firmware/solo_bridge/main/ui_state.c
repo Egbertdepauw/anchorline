@@ -15,8 +15,10 @@ ui_main_t ui_pick(const ui_inputs_t *in) {
     if (has_battery(in) && in->batt_mv < BATTERY_EMPTY_MV) return UI_BATTERY_EMPTY;
     if (!in->phone_ever) return UI_WAITING_FOR_PHONE;
     if (!in->phone_connected) return UI_CONNECTION_LOST;
-    if (in->live_on && since(in->now_ms, in->last_state_ms) > UI_STATE_STALE_MS)
-        return UI_PHONE_NOT_RESPONDING;
+    if (in->live_on && in->flow_start_ms != 0) {
+        uint64_t from = in->last_state_ms > in->flow_start_ms ? in->last_state_ms : in->flow_start_ms;
+        if (since(in->now_ms, from) > UI_STATE_STALE_MS) return UI_PHONE_NOT_RESPONDING;
+    }
     if (!in->solo) return UI_NO_SOLO;
     if (!in->solo_had_line && since(in->now_ms, in->solo_attach_ms) > UI_SOLO_NO_DATA_MS)
         return UI_SOLO_NO_DATA;

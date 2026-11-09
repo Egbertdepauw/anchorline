@@ -53,6 +53,8 @@ static QueueHandle_t s_events;
 static char s_bridge_id[13];  // factory MAC, 12 lowercase hex digits
 static volatile bool s_live;  // the phone asked for live lines
 static volatile uint64_t s_last_data_ms;  // uptime of the last data line, 0 = none
+static volatile uint64_t s_flow_start_ms; // when the current unbroken data flow began
+#define FLOW_GAP_MS 2000                  // a gap this long ends a flow (as the hold rule)
 static volatile uint32_t s_lines;
 
 static record_store_t s_store;
@@ -116,6 +118,7 @@ static void on_detach(void) {
 
 static void on_line(uint64_t up_ms, const char *line) {
     if (solo_is_data_line(line)) {
+        if (s_last_data_ms == 0 || up_ms - s_last_data_ms >= FLOW_GAP_MS) s_flow_start_ms = up_ms;
         s_last_data_ms = up_ms;
         s_had_line = true;
     }
@@ -184,6 +187,9 @@ static void update_screen_and_leds(const bridge_state_t *st) {
     in.phone_connected = st->phone_connected;
     in.live_on = st->live_on;
     in.last_state_ms = st->last_state_ms > s_live_ms ? st->last_state_ms : s_live_ms;
+    bool flowing = st->solo_attached && st->last_data_ms != 0 &&
+                   (st->last_data_ms >= st->now_ms || st->now_ms - st->last_data_ms < FLOW_GAP_MS);
+    in.flow_start_ms = flowing ? s_flow_start_ms : 0;
     in.solo = st->solo_attached;
     in.solo_had_line = st->solo_had_line;
     in.solo_attach_ms = st->solo_attach_ms;

@@ -55,12 +55,23 @@ TEST_SUITE(test_ui_state) {
 
     in = healthy();
     in.live_on = true;
+    in.flow_start_ms = in.now_ms - 60000;
     in.last_state_ms = in.now_ms - 10001;
     CHECK(ui_pick(&in) == UI_PHONE_NOT_RESPONDING);
     CHECK_STR_EQ(text(&in), "PHONE NOT RESPONDING");
     in.last_state_ms = in.now_ms - 9999;
     CHECK(ui_pick(&in) != UI_PHONE_NOT_RESPONDING);
+    // With no data flowing the app has no reading and sends no STATE: fine.
+    in.last_state_ms = in.now_ms - 20000;
+    in.flow_start_ms = 0;
+    CHECK(ui_pick(&in) != UI_PHONE_NOT_RESPONDING);
+    // The 10 s count from when the flow (re)started, not from the old STATE.
+    in.flow_start_ms = in.now_ms - 9999;
+    CHECK(ui_pick(&in) != UI_PHONE_NOT_RESPONDING);
+    in.flow_start_ms = in.now_ms - 10001;
+    CHECK(ui_pick(&in) == UI_PHONE_NOT_RESPONDING);
     // Without LIVE ON a silent phone is fine.
+    in.flow_start_ms = in.now_ms - 60000;
     in.live_on = false;
     in.last_state_ms = in.now_ms - 20000;
     CHECK(ui_pick(&in) == UI_IDLE);

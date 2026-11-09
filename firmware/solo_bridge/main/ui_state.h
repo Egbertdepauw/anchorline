@@ -35,6 +35,10 @@ typedef struct {
     // STATE has come yet, the caller sets this to the time LIVE ON arrived so
     // the 10 s start there.
     uint64_t last_state_ms;
+    // When the SOLO's current unbroken data flow began; 0 = no data flowing
+    // now. The app only sends STATE while it has a reading, so the phone is
+    // judged silent only while data flows, and only 10 s after it (re)started.
+    uint64_t flow_start_ms;
     bool solo, solo_had_line;  // solo_had_line: a line since this attach
     uint64_t solo_attach_ms;
     bool held_waiting_fb, full;
