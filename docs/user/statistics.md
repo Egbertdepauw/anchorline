@@ -11,9 +11,9 @@ Totals and records over your whole logbook, one year or one month. All figures a
 ## On this screen
 
 - **Total / Yearly / Monthly**: choose the period. Yearly and Monthly add a row of years (and months) to pick from.
-- **Records**: **Total dives** and **Total time**, then **Deepest**, **Longest dive**, **Longest deco**, **Coldest** and **Warmest**. Each record names the site and month where it happened. Depth, time and temperature come from the dive computer; site names come from you.
+- **Records**: **Total dives** and **Total time**, then **Deepest**, **Longest dive**, **Longest deco**, **Coldest** and **Warmest**. Each record names the month where it happened, and the site if you set one. **Deepest**, **Longest dive** and **Total time** come from the dive computer's log. **Longest deco** is worked out by the app from its deco replay. **Coldest** and **Warmest** are the lowest and highest water temperature in the computer's samples. Site names come from you.
 - **By dive mode**: a bar for each mode (for example Closed circuit) with its dive count and time.
-- **Dives per month**: a bar chart for the chosen year. On the Total period you see **Dives per year** instead.
+- **Dives per month**: a bar chart for the chosen year. On Total you see **Dives per year** instead, once you have dives in two or more years. Monthly shows no chart.
 
 ## Good to know
 

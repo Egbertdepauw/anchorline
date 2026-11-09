@@ -18,6 +18,6 @@ Everyone you have entered as a buddy, with how often and over what period you di
 
 ## Good to know
 
-- With no buddies yet, the screen reads "Add buddies to your dives and they'll show up here."
+- With no buddies yet, the screen reads "No buddies recorded yet." and "Add buddies to your dives and they'll show up here."
 - Add a buddy to a dive on the **Details** tab, in the **Buddies** field below the chart. Names you have used before are offered as you type.
 - Renaming is the way to fix a spelling or to combine two spellings of one person.

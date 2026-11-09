@@ -1,4 +1,4 @@
-# Dive sites map
+# Dive sites
 
 Where: **Dives** tab, map button in the top bar.
 

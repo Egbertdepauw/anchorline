@@ -15,7 +15,7 @@ Written for Anchorline 1.1.0
 - [Dive information](dive-information.md)
 - [Dive media](dive-media.md)
 - [Dive equipment](dive-equipment.md)
-- [Dive sites map](sites-map.md)
+- [Dive sites](sites-map.md)
 - [Statistics](statistics.md)
 - [Buddies](buddies.md)
 

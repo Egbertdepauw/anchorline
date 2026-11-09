@@ -10,9 +10,9 @@ Anchorline logs dives from your Shearwater computer and shows them in a way that
 
 ## On this screen
 
-- **Top bar**: the Anchorline name, which takes you back to the dive list from anywhere, and three buttons: **Buddies**, **Statistics** and **Dive sites map**.
+- **Top bar**: the Anchorline name, which takes you back to the dive list from anywhere, and up to four buttons: **Buddies**, **Statistics** and **Dive sites map**, plus **Push to Subsurface Cloud** where supported.
 - **Bottom bar**: six tabs. **Dives** is your logbook, **Plan** the planner, **Gas** the blending and analysing tools, **Import** downloads dives from your computer, **Equipment** holds your computers, cells, scrubbers and cylinders, and **Settings** holds the options.
-- **Search dives** and the filter button: narrow the list. See [Dives](dives.md).
+- **Search dives** and the filter button: narrow the list. See [Dives](/manual/dives).
 - **Dive rows**: each row is one logged dive, newest first.
 
 ## Good to know
