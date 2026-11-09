@@ -92,8 +92,17 @@ class PhomemoBlePrinter implements LabelPrinter {
   /// refuses to work without pairing (the M110 on Windows).
   late BlePeripheral _device;
 
-  /// The classic serial link worked last time: try it first.
-  bool _serialPreferred = false;
+  /// Printers whose classic serial link worked: tried first from then on,
+  /// for every instance (the app makes one per print), this run.
+  static final Set<String> _serialFirst = {};
+
+  bool get _serialPreferred => _serialFirst.contains(_remoteId);
+  set _serialPreferred(bool on) =>
+      on ? _serialFirst.add(_remoteId) : _serialFirst.remove(_remoteId);
+
+  /// Forgets which printers go over classic serial.
+  @visibleForTesting
+  static void resetSerialPreference() => _serialFirst.clear();
 
   /// Whether this connection runs over classic Bluetooth serial.
   @visibleForTesting
@@ -171,7 +180,23 @@ class PhomemoBlePrinter implements LabelPrinter {
 
       // The central connects without an MTU request (a refusal would fail
       // the connect). We ask for 247 ourselves below and ignore a refusal.
-      await _device.connect(timeout: _kConnectTimeout);
+      try {
+        await _device.connect(timeout: _kConnectTimeout);
+      } on Object catch (e) {
+        if (e is! BleException && e is! TimeoutException) rethrow;
+        // LE out of reach (a dual-mode printer may stop answering on LE
+        // once its classic side is in use): try the classic serial link.
+        bleLog('Phomemo BLE: LE connect failed ($e), trying classic serial');
+        await _le.disconnect();
+        final serial = await _connectSerial(session);
+        if (serial == null) rethrow;
+        _serialPreferred = true;
+        _commit(serial.notify.notifications.listen(
+          _onNotification,
+          onError: (Object e) => bleLog('Phomemo BLE: serial error: $e'),
+        ), serial.write, notifying: false);
+        return;
+      }
       _ensureCurrent(session);
 
       try {

@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../_helpers/fake_ble_central.dart';
 
 void main() {
+  setUp(PhomemoBlePrinter.resetSerialPreference);
+
   test('a connect the BLE layer refuses says why, after "Printer not found"',
       () async {
     final central = FakeBleCentral();
@@ -199,5 +201,57 @@ void main() {
       expect(serial.connectCalls, 0);
       await printer.disconnect();
     });
+  });
+
+  test('the serial choice holds for a new printer instance', () async {
+    final central = FakeBleCentral();
+    final le = central.peripheral('AABBCCDDEEFF');
+    le.characteristics = [
+      writeChar(),
+      notifyChar()..notifyError = const BleException(kBleErrorGatt, 'auth'),
+    ];
+    final serial = FakeBlePeripheral('AABBCCDDEEFF', central)
+      ..characteristics = [
+        FakeBleCharacteristic(
+          kPhomemoServiceUuid,
+          kPhomemoWriteUuid,
+          properties: const BleCharacteristicProperties(write: true),
+        ),
+        notifyChar(),
+      ];
+    central.serialPeripherals['AABBCCDDEEFF'] = serial;
+
+    final first = PhomemoBlePrinter(remoteId: 'AABBCCDDEEFF', central: central);
+    await first.connect();
+    await first.disconnect();
+
+    final leConnects = le.connectCalls;
+    final second =
+        PhomemoBlePrinter(remoteId: 'AABBCCDDEEFF', central: central);
+    await second.connect();
+    expect(second.usingClassicSerial, isTrue);
+    expect(le.connectCalls, leConnects);
+    await second.disconnect();
+  });
+
+  test('an LE printer out of reach is tried over classic serial', () async {
+    final central = FakeBleCentral();
+    central.peripheral('AABBCCDDEEFF').reachable = false;
+    final serial = FakeBlePeripheral('AABBCCDDEEFF', central)
+      ..characteristics = [
+        FakeBleCharacteristic(
+          kPhomemoServiceUuid,
+          kPhomemoWriteUuid,
+          properties: const BleCharacteristicProperties(write: true),
+        ),
+        notifyChar(),
+      ];
+    central.serialPeripherals['AABBCCDDEEFF'] = serial;
+    final printer =
+        PhomemoBlePrinter(remoteId: 'AABBCCDDEEFF', central: central);
+
+    await printer.connect();
+    expect(printer.usingClassicSerial, isTrue);
+    await printer.disconnect();
   });
 }
