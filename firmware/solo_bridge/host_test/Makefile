@@ -7,8 +7,8 @@ CC ?= cc
 CFLAGS = -std=c11 -Wall -Wextra -Werror -O1 -g -I../main -I.
 
 # Pure modules from ../main, and their tests.
-SRCS = power_logic.c line_splitter.c solo_line.c
-TESTS = test_main.c test_power_logic.c test_line_splitter.c
+SRCS = power_logic.c line_splitter.c solo_line.c bridge_proto.c
+TESTS = test_main.c test_power_logic.c test_line_splitter.c test_bridge_proto.c
 
 all: test_main
 	cd $(CURDIR) && ./test_main
