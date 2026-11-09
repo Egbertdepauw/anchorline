@@ -524,7 +524,17 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
       };
       std::weak_ptr<Impl> weak = weak_from_this();
       const std::string id = d->id;
+      bool first = true;
       for (const Attempt& a : attempts) {
+        // Each attempt needs its own DeviceInformation: a second PairAsync
+        // on the same one throws E_ILLEGAL_METHOD_CALL.
+        if (!first) {
+          info = co_await en::DeviceInformation::CreateFromIdAsync(
+              d->device.DeviceId());
+          pairing = info.Pairing();
+          if (pairing.IsPaired()) co_return true;
+        }
+        first = false;
         en::DeviceInformationCustomPairing custom = pairing.Custom();
         winrt::event_token token = custom.PairingRequested(
             [weak, id](const en::DeviceInformationCustomPairing&,
