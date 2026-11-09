@@ -1,0 +1,3 @@
+HELLO proto=1 fw=0.1.0 bridge=a0b1c2d3e4f5 epoch=1a2b3c4d boot=7 up=123456 solo=1 rec=off vbus=off batt=3987 pending=0
+ST solo=1 data=0 pending=0 batt=3987 up=5000
+L He   0.4 %  O2  19.8 %  Ti  21.7 ~C  1029.5 hPa   2026/11/03 15:19:15
