@@ -120,7 +120,7 @@ GasSafetyReadout? computeGasSafetyReadout(
 
   String tail = '';
   if (isUnsafe && ppo2 != null) {
-    tail = '  ⚠ PPO₂ $ppo2 exceeds 1.51 at '
+    tail = '  ⚠ PPO₂ ${ppo2.toStringAsFixed(2)} exceeds 1.51 at '
         '${evaluatedDepth!.toStringAsFixed(0)} m';
   } else if (isWarning && ppo2 != null && ppo2 > 1.1) {
     tail = '  ⚠ PPO₂ too high to flush';

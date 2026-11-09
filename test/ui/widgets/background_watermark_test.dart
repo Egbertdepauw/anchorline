@@ -52,6 +52,22 @@ void main() {
     );
   });
 
+  testWidgets(
+      'BackgroundWatermark keeps the child\'s state when the opacity drops '
+      'to 0 and comes back (#183)', (tester) async {
+    // The Settings tab hides the watermark. Returning the bare child at
+    // opacity 0 used to rebuild every tab below it from scratch.
+    _probeInits = 0;
+    Future<void> pumpAt(double opacity) => tester.pumpWidget(MaterialApp(
+          home: BackgroundWatermark(opacity: opacity, child: const _Probe()),
+        ));
+    await pumpAt(0.06);
+    await pumpAt(0);
+    await pumpAt(0.06);
+    expect(find.text('probe'), findsOneWidget);
+    expect(_probeInits, 1);
+  });
+
   group('WatermarkSuppressionScope / SuppressWatermark', () {
     testWidgets(
         'SuppressWatermark under a scope counts up after a frame and back '
@@ -118,4 +134,25 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+}
+
+var _probeInits = 0;
+
+/// Counts how often its State is created, to detect remounts.
+class _Probe extends StatefulWidget {
+  const _Probe();
+
+  @override
+  State<_Probe> createState() => _ProbeState();
+}
+
+class _ProbeState extends State<_Probe> {
+  @override
+  void initState() {
+    super.initState();
+    _probeInits++;
+  }
+
+  @override
+  Widget build(BuildContext context) => const Text('probe');
 }

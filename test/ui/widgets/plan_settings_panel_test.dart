@@ -111,4 +111,58 @@ void main() {
     expect(find.text('Bottom SP'), findsNothing);
     expect(find.text('Deco SP'), findsNothing);
   });
+
+  testWidgets('with expanded set, header taps go to onExpandedChanged (#183)',
+      (tester) async {
+    final settings = SettingsNotifier();
+    await settings.load();
+    bool? requested;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PlanSettingsPanel(
+          settings: settings,
+          overrides: const DivePlanSettings(),
+          onChange: (_) {},
+          expanded: true,
+          onExpandedChanged: (v) => requested = v,
+        ),
+      ),
+    ));
+    expect(find.text('GF Low'), findsOneWidget,
+        reason: 'open because the caller says so');
+    await tester.tap(find.byKey(const ValueKey('plan-settings-toggle')));
+    await tester.pumpAndSettle();
+    expect(requested, isFalse);
+    expect(find.text('GF Low'), findsOneWidget,
+        reason: 'stays open until the caller changes expanded');
+  });
+
+  testWidgets('a GF outside 1–100 is flagged and not passed on (#183)',
+      (tester) async {
+    final settings = SettingsNotifier();
+    await settings.load();
+    DivePlanSettings? captured;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: PlanSettingsPanel(
+            settings: settings,
+            overrides: const DivePlanSettings(),
+            onChange: (s) => captured = s,
+            expanded: true,
+            onExpandedChanged: (_) {},
+          ),
+        ),
+      ),
+    ));
+    await tester.enterText(find.byKey(const ValueKey('gf-low')), '350');
+    await tester.pump();
+    expect(captured, isNull);
+    expect(find.text('1–100'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('gf-low')), '40');
+    await tester.pump();
+    expect(captured?.gfLow, 40);
+    expect(find.text('1–100'), findsNothing);
+  });
 }
