@@ -181,4 +181,4 @@ The new `deco_planner_test.dart` covers:
 - A 40m dive on air with GF 50/95 produces a first stop at 15m or 12m, then stops at 9, 6, 3, 0.
 - A no-deco-required dive produces an empty stop list (single-leg straight ascent).
 - The existing `dive_bailout_carry` UI continues to work — adding a carry row changes the gas at each leg of the new deco-driven plan.
-- The Scenario B GUE plan picks a depth-safe bottom mix (Air or 21/35) at the trigger depth, not EAN 50 — same regression test passes.
+- The Scenario B plan picks a depth-safe bottom mix (Air or 21/35) at the trigger depth, not EAN 50 — same regression test passes.

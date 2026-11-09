@@ -236,7 +236,6 @@ void main() {
       final before = s.endCountsOxygen;
       await _pump(tester, s, null);
       expect(find.text('Off: only N₂ counts'), findsOneWidget);
-      expect(find.textContaining('GUE'), findsNothing);
       expect(find.textContaining('TDI'), findsNothing);
       await tester.tap(_k('settings-end-counts-o2'));
       await tester.pumpAndSettle();
@@ -304,11 +303,11 @@ void main() {
       final s = await _plain();
       await _pump(tester, s, null);
       await _tab(tester, 'planning');
-      await tester.tap(_k('settings-gue-diluent'));
+      await tester.tap(_k('settings-bailout-diluent'));
       await tester.tap(_k('settings-tank-68'));
       await tester.tap(_k('settings-tank-12'));
       await tester.pumpAndSettle();
-      expect(s.gueDiluentConfig, isTrue);
+      expect(s.bailoutCapableDiluent, isTrue);
       expect(s.tank68L300Available, isTrue);
       expect(s.tank12L300Available, isTrue);
     });

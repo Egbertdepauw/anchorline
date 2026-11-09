@@ -77,7 +77,7 @@ const double _surfaceAtmBar = 1.013;
 /// ambient × duration everywhere thereafter.
 ///
 /// PPO2 limits are hardcoded to 1.6 for both the bottom mix and deco
-/// switches — the user-facing GUE option (1.4) lives at the bailout
+/// switches — the user-facing bailout-capable-diluent option (1.4) lives at the bailout
 /// planner layer (it affects which mixes get added to [availableGases],
 /// not the safety gate inside the simulator).
 AscentPlan simulateAscent({

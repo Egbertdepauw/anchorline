@@ -14,7 +14,7 @@ of bottom time. Two scenarios:
 
 - **A** — user has defined BO tanks on the dive: compute volumes,
   compare against available, surplus/shortfall verdict
-- **B** — no BO tanks defined: assume GUE-style standard gases,
+- **B** — no BO tanks defined: assume standard gases,
   recommend tank sizes + minimum fill pressures
 
 The user gets a concrete answer to "did I carry enough gas?" or "what
@@ -55,13 +55,13 @@ log does.
 - **Bottom-mix gas selection:**
   1. If DC reports the dive's diluent mix → use it
   2. Otherwise, compute optimal `(O₂, He)` using config-specific target
-     (1.6 PPO2 non-GUE, 1.0 PPO2 GUE) + END ≤ 39 m, then snap to the
+     (1.6 PPO2 full table, 1.0 PPO2 bailout-capable diluent) + END ≤ 39 m, then snap to the
      closest standard mix from the table
-- **GUE/D7 diluent toggle** (Settings, default OFF): when ON, Scenario
+- **Bailout-capable diluent toggle** (Settings, default OFF): when ON, Scenario
   B drops the bottom-mix BO stage and uses diluent for the initial leg
 - **Standard mix tables:**
-  - Non-GUE bottom mixes: `{21/35, 18/45, 15/55, 12/65, 10/70}`
-  - GUE bottom mixes: `{21/35, 18/45, 15/55}`
+  - Full bottom-mix table: `{21/35, 18/45, 15/55, 12/65, 10/70}`
+  - Bailout-capable diluent bottom mixes: `{21/35, 18/45, 15/55}`
   - Deco mixes (both): `{EAN 32, EAN 50, O₂ 100%}`
 - **Tank size catalogue (Settings):** `AL40` (5.7 L) and `AL80`
   (11.1 L) always available at 207 bar. `6.8 L/300 bar` and
@@ -76,9 +76,9 @@ log does.
 
 1. **Bailout planner module** — pure Dart, leans on Track C:
    - `lib/analysis/bailout/standard_mixes.dart` — constant tables for
-     `kNonGueBottomMixes`, `kGueBottomMixes`, `kDecoMixes`.
+     `kBottomMixes`, `kBailoutDiluentBottomMixes`, `kDecoMixes`.
    - `lib/analysis/bailout/mix_resolver.dart` — `resolveBottomMix(dive,
-     gasMixes, isGueConfig) -> GasMix`. Uses DC-recorded diluent first;
+     gasMixes, bailoutCapableDiluent) -> GasMix`. Uses DC-recorded diluent first;
      falls back to compute-then-snap.
    - `lib/analysis/bailout/ascent_simulator.dart` — given a trigger
      point, tissue state, list of available OC gases, and the
@@ -107,20 +107,20 @@ log does.
    - `int get bailoutSacBottom` (default 30), `int get bailoutSacDeco`
      (default 20), `int get bailoutAscentRateFast` (default 18),
      `int get bailoutAscentRateSlow` (default 9), `bool get
-     gueDiluentConfig` (default false), `bool get tankAl40Available`
+     bailoutCapableDiluent` (default false), `bool get tankAl40Available`
      (always true; no setter), `bool get tankAl80Available` (always
      true; no setter), `bool get tank68L300Available` (default false,
      user toggle), `bool get tank12L300Available` (default false, user
      toggle).
    - SharedPreferences keys: `bailout_sac_bottom`, `bailout_sac_deco`,
-     `bailout_ascent_fast`, `bailout_ascent_slow`, `gue_diluent_config`,
+     `bailout_ascent_fast`, `bailout_ascent_slow`, `bailout_capable_diluent`,
      `tank_6_8l_300_available`, `tank_12l_300_available`.
 
 3. **Settings UI** — new "Bailout planning" subsection on the Settings
    screen:
    - Number inputs for the four rate values (with sensible min/max
      clamps: SAC 10–60 L/min, ascent rates 3–30 m/min)
-   - Switch: "Diluent is bailout-capable (GUE / D7 config)"
+   - Switch: "Diluent is bailout-capable (bailout-capable diluent)"
    - Switches: "6.8 L / 300 bar stage available", "12 L / 300 bar stage
      available"
 
@@ -146,8 +146,8 @@ log does.
 
 6. **Tests:**
    - `test/analysis/bailout/mix_resolver_test.dart` — verify the
-     "best gas" math gives the expected snapped mixes (60 m non-GUE →
-     21/35; 60 m GUE → 15/55; 40 m non-GUE → 32/0 if no helium needed;
+     "best gas" math gives the expected snapped mixes (60 m full table →
+     21/35; 60 m bailout-capable diluent → 15/55; 40 m full table → 32/0 if no helium needed;
      edge cases like dive depth < 20 m).
    - `test/analysis/bailout/ascent_simulator_test.dart` — fixture
      dives: known trigger point + tissue state → expected stops, gas
@@ -175,7 +175,7 @@ log does.
   use the configured defaults. Could compute "your actual SAC during
   this dive × 1.5 stress factor" later. Edge case: dives without tank
   pressure data wouldn't support this.
-- **Custom standard-mix tables** — the GUE / non-GUE tables are
+- **Custom standard-mix tables** — the two standard-mix tables are
   hardcoded.
 - **Tank reserve handling** — calculation assumes full usable capacity
   (`pressure × waterCap`). No "leave 500 psi at the surface" reserve.
@@ -217,7 +217,7 @@ BailoutSection renders: banner, summary tiles, ascent table, verdict.
 - `class GasMix { double o2; double he; double get n2 => 1 - o2 - he; }`
   (already exists in the codebase for parsed gas mixes)
 - `class AscentStop { double depthMeters; Duration duration; GasMix gas; double volumeL; }`
-- `enum BailoutScenario { tanksDefined, gueStandards }` (A or B)
+- `enum BailoutScenario { tanksDefined, standardGases }` (A or B)
 - `enum BailoutVerdict { sufficient, partialShortfall, insufficient }`
 - `class TankSpec { String name; double waterCapacityL; int ratedPressureBar; }`
 - `class GasUsage { double requiredL; double? availableL; TankSpec? recommendedTank; int? minFillPressureBar; }`
@@ -278,6 +278,6 @@ BailoutSection renders: banner, summary tiles, ascent table, verdict.
 6. Manual smoke against a real dive: open a CCR trimix dive with BO
    tanks defined → see Scenario A with realistic volumes + verdict.
    Open a similar dive without BO tanks → see Scenario B with 3
-   recommended stages + min fill pressures. Toggle the GUE config in
+   recommended stages + min fill pressures. Toggle the bailout-capable diluent in
    Settings → Scenario B drops to 2 stages. Bump bailoutSacBottom from
    30 to 40 in Settings → volumes recompute upward.

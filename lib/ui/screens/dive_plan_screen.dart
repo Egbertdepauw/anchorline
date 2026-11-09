@@ -513,7 +513,7 @@ class _BailoutTab extends StatelessWidget {
                     triggerDepthMeters: triggerDepth,
                     sacBottom: settings.bailoutSacBottom,
                     sacDeco: settings.bailoutSacDeco,
-                    isGueConfig: settings.gueDiluentConfig,
+                    bailoutCapableDiluent: settings.bailoutCapableDiluent,
                     bottomTimeBeforeTrigger: result.profile.fold(
                       Duration.zero,
                       (sum, leg) => sum + leg.duration,

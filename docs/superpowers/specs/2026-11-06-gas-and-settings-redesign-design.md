@@ -452,7 +452,7 @@ Log on OK, "print a label on each OK" and its copies stay on the Analyse tab, re
 - The build-date define.
 
 **My calls made while writing this, for Egbert to check:**
-- Tx30/30 and Tx35/25 added to the standard list. They are GUE standard mixes; only "within orange" ever picks them.
+- Tx30/30 and Tx35/25 added to the standard list. They are common standard mixes; only "within orange" ever picks them.
 - No "Other…" chip on the Blend target.
 - No currency symbol.
 - The verdict line's suffix.
@@ -478,7 +478,7 @@ Log on OK, "print a label on each OK" and its copies stay on the Analyse tab, re
 
 ## 10. Follow-ups (not part of this redesign)
 
-- **The END setting contradicts the code.** Settings says "Off: only N₂ counts (GUE/DIR)", while `lib/analysis/end.dart` calls the O₂-narcotic formula the GUE / DIR one. The new helper text leaves agencies out; which is right needs settling.
+- **The END setting contradicts the code.** Settings says "Off: only N₂ counts", while `lib/analysis/end.dart` called the O₂-narcotic formula by an agency name. The new helper text leaves agencies out.
 - **Settings that should sync:** "Your initials" and the other device-only analyzer settings, once settings sync exists (CLAUDE.md principle 7).
 - **The rest of the app** (Plan, Import, Equipment) in the same dive-screen language, if this lands well.
 
