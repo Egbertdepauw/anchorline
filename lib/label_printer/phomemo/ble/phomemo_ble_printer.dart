@@ -16,7 +16,6 @@ library;
 import 'dart:async';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show PlatformException;
 
 import '../../../ble/ble_central.dart';
@@ -25,12 +24,18 @@ import '../../label_bitmap.dart';
 import '../../label_printer.dart';
 import '../phomemo_encoder.dart';
 import '../phomemo_status.dart';
+import '../../../ble/ble_log.dart';
 
 /// How long [PhomemoBlePrinter.connect] and the scanner wait for the
 /// Bluetooth adapter to be on.
 const Duration kBluetoothOnTimeout = Duration(seconds: 10);
 
 const Duration _kConnectTimeout = Duration(seconds: 10);
+
+/// How long turning on the status notifications may take. On Windows an
+/// unpaired M110 can leave it waiting on the system's pairing prompt; the
+/// printer then prints without status (see [PhomemoBlePrinter.notifying]).
+const Duration _kNotifyTimeout = Duration(seconds: 8);
 
 /// MTU asked for on Android, as `ble_io_impl.dart` does. iOS, macOS and
 /// Windows negotiate it themselves; the request is a no-op there.
@@ -88,6 +93,12 @@ class PhomemoBlePrinter implements LabelPrinter {
   BleCharacteristic? _writeChar;
   bool _writeWithoutResponse = false;
 
+  /// Whether the printer's status notifications are on for this connection.
+  /// Without them a job can't see faults or job done, so it waits a fixed
+  /// time instead.
+  bool get notifying => _notifying;
+  bool _notifying = false;
+
   /// Bumped by every [connect] and [disconnect]. A [connect] or
   /// [printLabel] that sees a newer value was overtaken and stops.
   int _session = 0;
@@ -133,9 +144,9 @@ class PhomemoBlePrinter implements LabelPrinter {
 
       try {
         final mtu = await _device.requestMtu(_kAndroidMtu);
-        debugPrint('Phomemo BLE: MTU=${mtu}B');
+        bleLog('Phomemo BLE: MTU=${mtu}B');
       } catch (e) {
-        debugPrint('Phomemo BLE: requestMtu failed: $e');
+        bleLog('Phomemo BLE: requestMtu failed: $e');
       }
       _ensureCurrent(session);
 
@@ -147,9 +158,23 @@ class PhomemoBlePrinter implements LabelPrinter {
       // straight away isn't lost.
       sub = notify.notifications.listen(
         _onNotification,
-        onError: (Object e) => debugPrint('Phomemo BLE: notify error: $e'),
+        onError: (Object e) => bleLog('Phomemo BLE: notify error: $e'),
       );
-      await notify.setNotify(true);
+      // Windows only: pair first, in the app, so the printer's status
+      // notifications aren't refused or stuck on the system's pairing
+      // prompt. A no-op elsewhere.
+      final paired = await _device.pair();
+      bleLog('Phomemo BLE: pair → $paired');
+      _ensureCurrent(session);
+      var notifying = true;
+      try {
+        await notify.setNotify(true).timeout(_kNotifyTimeout);
+      } on Object catch (e) {
+        if (e is! BleException && e is! TimeoutException) rethrow;
+        // Print without status rather than not at all.
+        notifying = false;
+        bleLog('Phomemo BLE: notifications unavailable, printing blind: $e');
+      }
       _ensureCurrent(session);
 
       // Commit. Synchronous from the last check, so a disconnect() can't
@@ -158,8 +183,9 @@ class PhomemoBlePrinter implements LabelPrinter {
       _notifySub = sub;
       _writeChar = write;
       _writeWithoutResponse = write.properties.writeWithoutResponse;
+      _notifying = notifying;
       unawaited(previous?.cancel());
-      debugPrint(
+      bleLog(
         'Phomemo BLE: connected. MTU=${_device.mtu}B, '
         'write ${_writeWithoutResponse ? 'without' : 'with'} response',
       );
@@ -169,12 +195,12 @@ class PhomemoBlePrinter implements LabelPrinter {
       if (e is BleException) {
         // Keep the platform's reason visible: on desktop it is the only
         // clue to why a printer the scan found can't be reached.
-        debugPrint('Phomemo BLE: connect failed: $e');
+        bleLog('Phomemo BLE: connect failed: $e');
         throw LabelPrinterException('${_kNotFound.message} (${e.message})');
       }
       if (e is TimeoutException ||
           e is PlatformException) {
-        debugPrint('Phomemo BLE: connect failed: $e');
+        bleLog('Phomemo BLE: connect failed: $e');
         throw _kNotFound;
       }
       rethrow;
@@ -248,7 +274,11 @@ class PhomemoBlePrinter implements LabelPrinter {
 
       // 4. Job done comes before the label is fed out to the tear-off edge;
       // keep the link open while it feeds.
-      if (job.allDone) await Future<void>.delayed(kPhomemoAfterDoneFeedPause);
+      // Without notifications job done never comes: the timeout above
+      // stands in for it, and the label still needs time to feed out.
+      if (job.allDone || !_notifying) {
+        await Future<void>.delayed(kPhomemoAfterDoneFeedPause);
+      }
       return job.warnings;
     } finally {
       job.dispose();
@@ -267,7 +297,7 @@ class PhomemoBlePrinter implements LabelPrinter {
     try {
       await sub?.cancel();
     } catch (e) {
-      debugPrint('Phomemo BLE: cancel notify failed: $e');
+      bleLog('Phomemo BLE: cancel notify failed: $e');
     }
     if (!_events.isClosed) unawaited(_events.close());
     await _closeLink();
@@ -293,7 +323,7 @@ class PhomemoBlePrinter implements LabelPrinter {
         return;
       } on Exception catch (e) {
         if (retry >= _kWriteRetries || _isTimeout(e)) {
-          debugPrint('Phomemo BLE: write failed after $retry retries: $e');
+          bleLog('Phomemo BLE: write failed after $retry retries: $e');
           throw _kConnectionLost;
         }
       }
@@ -304,7 +334,7 @@ class PhomemoBlePrinter implements LabelPrinter {
 
   void _onNotification(List<int> value) {
     final hex = value.map((b) => b.toRadixString(16).padLeft(2, '0'));
-    debugPrint('Phomemo BLE: notify ${hex.join(' ')}');
+    bleLog('Phomemo BLE: notify ${hex.join(' ')}');
     final event = parsePhomemoNotification(value);
     if (event == null || _events.isClosed) return;
     _events.add(event);
@@ -321,7 +351,7 @@ class PhomemoBlePrinter implements LabelPrinter {
     try {
       await sub?.cancel();
     } catch (e) {
-      debugPrint('Phomemo BLE: cancel notify failed: $e');
+      bleLog('Phomemo BLE: cancel notify failed: $e');
     }
     if (session == _latestConnect) await _closeLink();
   }

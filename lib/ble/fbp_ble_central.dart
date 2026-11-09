@@ -24,6 +24,7 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'ble_central.dart';
+import 'ble_log.dart';
 
 bool get _isLinux => !kIsWeb && defaultTargetPlatform == TargetPlatform.linux;
 
@@ -81,7 +82,7 @@ class FbpBleCentral implements BleCentral {
           }
         },
         onError: (Object e) {
-          debugPrint('BLE: scan failed: $e');
+          bleLog('BLE: scan failed: $e');
           if (closed) return;
           out.addError(const BleException(kBleErrorScanFailed, 'Scan failed'));
           close();
@@ -93,7 +94,7 @@ class FbpBleCentral implements BleCentral {
           timeout: timeout,
         );
       } catch (e) {
-        debugPrint('BLE: startScan failed: $e');
+        bleLog('BLE: startScan failed: $e');
         if (closed) return;
         out.addError(const BleException(kBleErrorScanFailed, 'Scan failed'));
         close();
@@ -123,7 +124,7 @@ class FbpBleCentral implements BleCentral {
     try {
       await FlutterBluePlus.stopScan();
     } catch (e) {
-      debugPrint('BLE: stopScan failed: $e');
+      bleLog('BLE: stopScan failed: $e');
     }
   }
 
@@ -228,7 +229,7 @@ class FbpBlePeripheral extends BlePeripheral {
         timeout: _kDisconnectTimeoutSeconds,
       );
     } catch (e) {
-      debugPrint('BLE: disconnect failed: $e');
+      bleLog('BLE: disconnect failed: $e');
     }
   }
 }

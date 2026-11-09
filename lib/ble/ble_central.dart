@@ -172,6 +172,12 @@ abstract class BlePeripheral {
   /// Discovers every service and returns their characteristics.
   Future<List<BleCharacteristic>> discoverServices();
 
+  /// Pairs with the device in the app, without the system's own dialog, for
+  /// devices that refuse notifications until paired. Only Windows needs
+  /// this; elsewhere the platform handles it and this returns false. Never
+  /// throws; true when the device is paired afterwards.
+  Future<bool> pair() async => false;
+
   /// Closes the link, stops an [autoConnect] and cancels a connect in
   /// progress. Never throws.
   Future<void> disconnect();

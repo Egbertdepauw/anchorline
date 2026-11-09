@@ -32,10 +32,10 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'ble_central.dart';
+import 'ble_log.dart';
 
 const String kWindowsBleMethodChannel = 'nl.despaankamer.ccrlogger/ble';
 const String kWindowsBleEventChannel = 'nl.despaankamer.ccrlogger/ble/events';
@@ -99,6 +99,12 @@ class WindowsBleAdapter extends WindowsBleEvent {
   final BleAdapterState state;
 }
 
+/// A line from the native side for the Bluetooth log.
+class WindowsBleLog extends WindowsBleEvent {
+  const WindowsBleLog(this.message);
+  final String message;
+}
+
 /// Decodes one event-channel message, or returns null for anything it
 /// doesn't know (a newer runner, say).
 WindowsBleEvent? decodeWindowsBleEvent(Object? raw) {
@@ -151,6 +157,9 @@ WindowsBleEvent? decodeWindowsBleEvent(Object? raw) {
       return WindowsBleMtu(id, mtu);
     case 'adapter':
       return WindowsBleAdapter(decodeWindowsAdapterState(str('state')));
+    case 'log':
+      final message = str('message');
+      return message == null ? null : WindowsBleLog(message);
   }
   return null;
 }
@@ -235,7 +244,7 @@ class WindowsBleCentral implements BleCentral {
         await _methods.invokeMethod<String>('adapterState'),
       );
     } on PlatformException catch (e) {
-      debugPrint('BLE (Windows): adapterState failed: ${e.message}');
+      bleLog('BLE (Windows): adapterState failed: ${e.message}');
       state = BleAdapterState.unavailable;
     } on MissingPluginException {
       state = BleAdapterState.unavailable;
@@ -255,7 +264,7 @@ class WindowsBleCentral implements BleCentral {
         final e = decodeWindowsBleEvent(raw);
         if (e != null) _onEvent(e);
       },
-      onError: (Object e) => debugPrint('BLE (Windows): event error: $e'),
+      onError: (Object e) => bleLog('BLE (Windows): event error: $e'),
     );
   }
 
@@ -273,6 +282,8 @@ class WindowsBleCentral implements BleCentral {
         _peripherals[id.toUpperCase()]?._mtu = mtu;
       case WindowsBleAdapter(:final state):
         _setAdapter(state);
+      case WindowsBleLog(:final message):
+        bleLog('BLE (Windows native): $message');
     }
   }
 
@@ -299,7 +310,7 @@ class WindowsBleCentral implements BleCentral {
     try {
       await _methods.invokeMethod<void>('stopScan');
     } catch (e) {
-      debugPrint('BLE (Windows): stopScan failed: $e');
+      bleLog('BLE (Windows): stopScan failed: $e');
     }
   }
 
@@ -347,7 +358,7 @@ class _WindowsScan {
     try {
       await _central._methods.invokeMethod<void>('startScan');
     } on PlatformException catch (e) {
-      debugPrint('BLE (Windows): startScan failed: ${e.code} ${e.message}');
+      bleLog('BLE (Windows): startScan failed: ${e.code} ${e.message}');
       _fail(_bleError(e));
     } on MissingPluginException {
       _fail(const BleException(kBleErrorUnavailable, 'No BLE channel'));
@@ -483,6 +494,18 @@ class WindowsBlePeripheral extends BlePeripheral {
     ];
   }
 
+  @override
+  Future<bool> pair() async {
+    try {
+      return await _methods.invokeMethod<bool>('pair', {'id': id}) ?? false;
+    } on PlatformException catch (e) {
+      bleLog('BLE (Windows): pair $id failed: ${e.message}');
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   StreamController<List<int>> _notifyFor(String service, String char) =>
       _notify.putIfAbsent(
         '$service|$char',
@@ -499,7 +522,7 @@ class WindowsBlePeripheral extends BlePeripheral {
     try {
       await _methods.invokeMethod<void>('disconnect', {'id': id});
     } catch (e) {
-      debugPrint('BLE (Windows): disconnect failed: $e');
+      bleLog('BLE (Windows): disconnect failed: $e');
     }
     _setConnected(false);
   }

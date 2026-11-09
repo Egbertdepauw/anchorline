@@ -89,6 +89,10 @@ class FakeBlePeripheral extends BlePeripheral {
   int autoConnectCalls = 0;
   int disconnectCalls = 0;
   int discoverCalls = 0;
+  int pairCalls = 0;
+
+  /// What [pair] returns.
+  bool pairResult = false;
 
   bool _connected = false;
   final _changes = StreamController<bool>.broadcast();
@@ -146,6 +150,12 @@ class FakeBlePeripheral extends BlePeripheral {
   }
 
   @override
+  Future<bool> pair() async {
+    pairCalls++;
+    return pairResult;
+  }
+
+  @override
   Future<void> disconnect() async {
     disconnectCalls++;
     _set(false);
@@ -176,6 +186,9 @@ class FakeBleCharacteristic implements BleCharacteristic {
   /// When set, [write] throws it.
   Object? writeError;
 
+  /// When set, [setNotify] throws it.
+  Object? notifyError;
+
   final _notifications = StreamController<List<int>>.broadcast();
 
   @override
@@ -185,7 +198,11 @@ class FakeBleCharacteristic implements BleCharacteristic {
   void notify(List<int> value) => _notifications.add(value);
 
   @override
-  Future<void> setNotify(bool enable) async => notifyCalls.add(enable);
+  Future<void> setNotify(bool enable) async {
+    notifyCalls.add(enable);
+    final error = notifyError;
+    if (error != null) throw error;
+  }
 
   @override
   Future<void> write(

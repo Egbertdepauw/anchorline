@@ -29,6 +29,7 @@
 #include <winrt/Windows.Devices.Bluetooth.Advertisement.h>
 #include <winrt/Windows.Devices.Bluetooth.GenericAttributeProfile.h>
 #include <winrt/Windows.Devices.Bluetooth.h>
+#include <winrt/Windows.Devices.Enumeration.h>
 #include <winrt/Windows.Devices.Radios.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Foundation.h>
@@ -53,6 +54,7 @@ namespace wf = winrt::Windows::Foundation;
 namespace bt = winrt::Windows::Devices::Bluetooth;
 namespace adv = winrt::Windows::Devices::Bluetooth::Advertisement;
 namespace gatt = winrt::Windows::Devices::Bluetooth::GenericAttributeProfile;
+namespace enumeration = winrt::Windows::Devices::Enumeration;
 namespace radios = winrt::Windows::Devices::Radios;
 namespace streams = winrt::Windows::Storage::Streams;
 
@@ -188,6 +190,30 @@ std::string GattStatusName(gatt::GattCommunicationStatus s) {
   }
 }
 
+// Whether a refused GATT operation may succeed after pairing: the device
+// answered (so it's in range) but refused for lack of security.
+bool MayNeedPairing(gatt::GattCommunicationStatus s) {
+  return s == gatt::GattCommunicationStatus::AccessDenied ||
+         s == gatt::GattCommunicationStatus::ProtocolError;
+}
+
+std::string PairingStatusName(enumeration::DevicePairingResultStatus s) {
+  switch (s) {
+    case enumeration::DevicePairingResultStatus::Paired:
+      return "paired";
+    case enumeration::DevicePairingResultStatus::AlreadyPaired:
+      return "already paired";
+    case enumeration::DevicePairingResultStatus::NotReadyToPair:
+      return "not ready to pair";
+    case enumeration::DevicePairingResultStatus::AuthenticationFailure:
+      return "authentication failure";
+    case enumeration::DevicePairingResultStatus::Failed:
+      return "failed";
+    default:
+      return "status " + std::to_string(static_cast<int>(s));
+  }
+}
+
 std::string BluetoothErrorName(bt::BluetoothError e) {
   switch (e) {
     case bt::BluetoothError::Success:
@@ -264,6 +290,8 @@ struct Device {
   std::map<std::string, winrt::event_token> value_tokens;
   winrt::event_token status_token{};
   winrt::event_token mtu_token{};
+  // PairInApp ran for this connection.
+  bool pair_tried = false;
 };
 
 }  // namespace
@@ -380,6 +408,8 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
       Write(self, id, StringArg(args, "service"),
             StringArg(args, "characteristic"), BytesArg(args, "value"),
             BoolArg(args, "withoutResponse"), result);
+    } else if (method == "pair") {
+      Pair(self, id, result);
     } else if (method == "disconnect") {
       Disconnect(id);
       result->Success();
@@ -410,6 +440,64 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
       auto self = weak.lock();
       if (self && self->sink_) self->sink_->Success(value);
     });
+  }
+
+  // A line for the app's Bluetooth log (lib/ble/ble_log.dart).
+  void Log(const std::string& message) {
+    Emit(EncodableMap{
+        {EncodableValue("event"), EncodableValue("log")},
+        {EncodableValue("message"), EncodableValue(message)},
+    });
+  }
+
+  // Pairs with [d] in the app, without Windows' own pairing dialog, using
+  // the no-PIN ("just works") kinds. Some devices (the Phomemo printers)
+  // refuse notifications until paired; Windows would otherwise show its
+  // "add a device" prompt and the operation would fail. Once per device per
+  // connection. True when the device is paired afterwards.
+  wf::IAsyncOperation<bool> PairInApp(std::shared_ptr<Device> d) {
+    try {
+      if (d->pair_tried) co_return false;
+      d->pair_tried = true;
+      enumeration::DeviceInformationPairing pairing =
+          d->device.DeviceInformation().Pairing();
+      if (pairing.IsPaired()) {
+        Log(d->id + " pair: already paired");
+        co_return false;  // pairing is not what's missing
+      }
+      if (!pairing.CanPair()) {
+        Log(d->id + " pair: device can't pair");
+        co_return false;
+      }
+      enumeration::DeviceInformationCustomPairing custom = pairing.Custom();
+      winrt::event_token token = custom.PairingRequested(
+          [](const enumeration::DeviceInformationCustomPairing&,
+             const enumeration::DevicePairingRequestedEventArgs& args) {
+            switch (args.PairingKind()) {
+              case enumeration::DevicePairingKinds::ConfirmOnly:
+              case enumeration::DevicePairingKinds::ConfirmPinMatch:
+                args.Accept();
+                break;
+              case enumeration::DevicePairingKinds::ProvidePin:
+                args.Accept(L"0000");
+                break;
+              default:
+                break;
+            }
+          });
+      enumeration::DevicePairingResult r = co_await custom.PairAsync(
+          enumeration::DevicePairingKinds::ConfirmOnly |
+              enumeration::DevicePairingKinds::ConfirmPinMatch |
+              enumeration::DevicePairingKinds::ProvidePin,
+          enumeration::DevicePairingProtectionLevel::None);
+      custom.PairingRequested(token);
+      Log(d->id + " pair: " + PairingStatusName(r.Status()));
+      co_return r.Status() == enumeration::DevicePairingResultStatus::Paired ||
+          r.Status() == enumeration::DevicePairingResultStatus::AlreadyPaired;
+    } catch (const winrt::hresult_error& e) {
+      Log(d->id + " pair: " + HresultMessage(e));
+      co_return false;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -807,6 +895,14 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
         gatt::GattCharacteristicsResult r =
             co_await s.GetCharacteristicsAsync(
                 bt::BluetoothCacheMode::Uncached);
+        if (MayNeedPairing(r.Status())) {
+          self->Log(id + " discover " + GuidToString(s.Uuid()) + ": " +
+                    GattStatusName(r.Status()));
+          if (co_await self->PairInApp(d)) {
+            r = co_await s.GetCharacteristicsAsync(
+                bt::BluetoothCacheMode::Uncached);
+          }
+        }
         if (r.Status() != gatt::GattCommunicationStatus::Success) {
           // Some services (GAP, say) refuse access; skip them.
           if (error.empty()) error = GattStatusName(r.Status());
@@ -848,6 +944,24 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
                                 : it->second;
   }
 
+  winrt::fire_and_forget Pair(std::shared_ptr<Impl> self, std::string id,
+                              MethodResultPtr result) {
+    auto d = self->Find(id);
+    if (!d) {
+      self->ReplyError(result, kErrNotConnected, "Not connected");
+      co_return;
+    }
+    co_await winrt::resume_background();
+    bool paired = false;
+    try {
+      paired = d->device.DeviceInformation().Pairing().IsPaired() ||
+               co_await self->PairInApp(d);
+    } catch (const winrt::hresult_error& e) {
+      self->Log(id + " pair: " + HresultMessage(e));
+    }
+    self->Reply(result, EncodableValue(paired));
+  }
+
   winrt::fire_and_forget SetNotify(std::shared_ptr<Impl> self, std::string id,
                                    std::string service, std::string chr,
                                    bool enable, MethodResultPtr result) {
@@ -876,6 +990,14 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
       gatt::GattCommunicationStatus status =
           co_await c.WriteClientCharacteristicConfigurationDescriptorAsync(
               value);
+      if (MayNeedPairing(status)) {
+        self->Log(id + " subscribe " + chr + ": " + GattStatusName(status));
+        if (co_await self->PairInApp(d)) {
+          status =
+              co_await c.WriteClientCharacteristicConfigurationDescriptorAsync(
+                  value);
+        }
+      }
       if (status != gatt::GattCommunicationStatus::Success) {
         error = "Subscribe failed (" + GattStatusName(status) + ")";
       }
@@ -964,9 +1086,15 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
       streams::DataWriter writer;
       writer.WriteBytes(value);
       streams::IBuffer buffer = writer.DetachBuffer();
-      gatt::GattWriteResult r = co_await c.WriteValueWithResultAsync(
-          buffer, without ? gatt::GattWriteOption::WriteWithoutResponse
-                          : gatt::GattWriteOption::WriteWithResponse);
+      const auto option = without ? gatt::GattWriteOption::WriteWithoutResponse
+                                  : gatt::GattWriteOption::WriteWithResponse;
+      gatt::GattWriteResult r = co_await c.WriteValueWithResultAsync(buffer, option);
+      if (MayNeedPairing(r.Status())) {
+        self->Log(id + " write " + chr + ": " + GattStatusName(r.Status()));
+        if (co_await self->PairInApp(d)) {
+          r = co_await c.WriteValueWithResultAsync(buffer, option);
+        }
+      }
       if (r.Status() != gatt::GattCommunicationStatus::Success) {
         error = "Write failed (" + GattStatusName(r.Status()) + ")";
       }

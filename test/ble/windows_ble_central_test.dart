@@ -60,6 +60,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('decodeWindowsBleEvent', () {
+    test('a native log line', () {
+      final e = decodeWindowsBleEvent({'event': 'log', 'message': 'pair: paired'});
+      expect(e, isA<WindowsBleLog>());
+      expect((e! as WindowsBleLog).message, 'pair: paired');
+      expect(decodeWindowsBleEvent({'event': 'log'}), isNull);
+    });
+
     test('scan result, UUIDs normalised', () {
       final e = decodeWindowsBleEvent({
         'event': 'scan',

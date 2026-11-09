@@ -23,6 +23,7 @@ import '../../ble/ble_central_default.dart';
 import '../../ble/ble_device_scan.dart';
 import '../transport/serial_line_buffer.dart';
 import 'bridge_link.dart';
+import '../../ble/ble_log.dart';
 
 /// MTU asked for on Android. iOS and macOS negotiate it themselves;
 /// elsewhere the request is a no-op.
@@ -167,7 +168,7 @@ class CentralBridgeLink implements BridgeLink {
       await _giveUpAndClose(session);
       rethrow;
     } catch (e) {
-      debugPrint('Bridge BLE: connect failed: $e');
+      bleLog('Bridge BLE: connect failed: $e');
       await _giveUpAndClose(session);
       throw _kNotFound;
     }
@@ -193,7 +194,7 @@ class CentralBridgeLink implements BridgeLink {
       if (first != null && !first.isCompleted) first.complete();
     } catch (e) {
       if (session != _session) return;
-      debugPrint('Bridge BLE: setup failed: $e');
+      bleLog('Bridge BLE: setup failed: $e');
       final first = _first;
       if (first != null && !first.isCompleted) {
         // Only the first connection reports to the caller; a later failure
@@ -234,7 +235,7 @@ class CentralBridgeLink implements BridgeLink {
           break;
         } catch (e) {
           lastError = e;
-          debugPrint('Bridge BLE: connect attempt failed: $e');
+          bleLog('Bridge BLE: connect attempt failed: $e');
         }
         if (session != _session) throw _kNotFound;
         await _sleep(_kFirstConnectRetry, until: deadline.future);
@@ -293,10 +294,10 @@ class CentralBridgeLink implements BridgeLink {
         if (session != _session) return;
         try {
           await _attempt(session, attemptTimeout);
-          debugPrint('Bridge BLE: reconnected after ${i + 1} attempt(s)');
+          bleLog('Bridge BLE: reconnected after ${i + 1} attempt(s)');
           return;
         } catch (e) {
-          debugPrint('Bridge BLE: reconnect attempt ${i + 1} failed: $e');
+          bleLog('Bridge BLE: reconnect attempt ${i + 1} failed: $e');
         }
       }
     } finally {
@@ -336,9 +337,9 @@ class CentralBridgeLink implements BridgeLink {
     try {
       try {
         final mtu = await _device.requestMtu(_kAndroidMtu);
-        debugPrint('Bridge BLE: MTU=${mtu}B');
+        bleLog('Bridge BLE: MTU=${mtu}B');
       } catch (e) {
-        debugPrint('Bridge BLE: requestMtu failed: $e');
+        bleLog('Bridge BLE: requestMtu failed: $e');
       }
       if (session != _session) return;
       final chars = await _device.discoverServices();
@@ -349,7 +350,7 @@ class CentralBridgeLink implements BridgeLink {
       // Listen before enabling notifications so nothing is lost.
       sub = tx.notifications.listen(
         _onNotification,
-        onError: (Object e) => debugPrint('Bridge BLE: notify error: $e'),
+        onError: (Object e) => bleLog('Bridge BLE: notify error: $e'),
       );
       await tx.setNotify(true);
       if (session != _session) {
@@ -363,7 +364,7 @@ class CentralBridgeLink implements BridgeLink {
       unawaited(previous?.cancel());
       _everConnected = true;
       _linkUp = true;
-      debugPrint('Bridge BLE: connected. MTU=${_device.mtu}B');
+      bleLog('Bridge BLE: connected. MTU=${_device.mtu}B');
       _setState(BridgeLinkState.connected);
     } catch (e) {
       unawaited(sub?.cancel());
