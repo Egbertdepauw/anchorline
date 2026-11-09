@@ -17,6 +17,7 @@ import '../data/db/dive_plans_dao.dart';
 import '../data/db/gas_analyses_dao.dart';
 import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
+import '../ble/ble_central_default.dart' show bleCentralAvailable;
 import '../label_printer/phomemo/ble/phomemo_ble_printer.dart';
 import '../label_printer/phomemo/ble/phomemo_ble_scanner.dart';
 import '../labels/label_print_service.dart';
@@ -108,7 +109,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final DiveListNotifier _diveListNotifier;
   late final DivePlansDao _divePlansDao;
   late final GasAnalysesDao _gasAnalysesDao;
-  late final LabelPrintService _labelPrintService;
+  /// Null where the app has no Bluetooth LE central (the web).
+  late final LabelPrintService? _labelPrintService;
   late final AnalyzerSession _analyzerSession;
   late final DivePlanNotifier _divePlanNotifier;
   late final BlendNotifier _blendNotifier;
@@ -185,14 +187,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       widget.powerSyncDb,
       SupabaseAuthSessionSource(Supabase.instance.client),
     );
-    _labelPrintService = LabelPrintService(
-      render: renderCylinderLabel,
-      printerFor: (id) => PhomemoBlePrinter(remoteId: id),
-      scanner: PhomemoBleScanner(),
-      printerId: () => widget.settingsNotifier.labelPrinterId,
-      use14ForDeeperMixes: () =>
-          widget.settingsNotifier.labelUse14ForDeeperMixes,
-    );
+    _labelPrintService = !bleCentralAvailable
+        ? null
+        : LabelPrintService(
+            render: renderCylinderLabel,
+            printerFor: (id) => PhomemoBlePrinter(remoteId: id),
+            scanner: PhomemoBleScanner(),
+            printerId: () => widget.settingsNotifier.labelPrinterId,
+            use14ForDeeperMixes: () =>
+                widget.settingsNotifier.labelUse14ForDeeperMixes,
+          );
     _blendNotifier = BlendNotifier(settings: widget.settingsNotifier);
     // Restores the Blend tab's target mix and pressure. Not awaited: the tab
     // shows its defaults until it lands. A failure (say a stored value of the

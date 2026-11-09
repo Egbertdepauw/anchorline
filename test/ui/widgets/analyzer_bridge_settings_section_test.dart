@@ -1,4 +1,4 @@
-import 'package:ccrlogger/analyzer/bridge/bridge_link_fbp.dart'
+import 'package:ccrlogger/analyzer/bridge/bridge_link_ble.dart'
     show FoundBridge;
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/widgets/analyzer/bridge_transport_option.dart';

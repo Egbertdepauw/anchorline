@@ -11,7 +11,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../analyzer/bridge/bridge_link.dart' show BridgeLinkException;
-import '../../analyzer/bridge/bridge_link_fbp.dart';
+import '../../analyzer/bridge/bridge_link_ble.dart';
 import '../components/setting_row.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/tokens.dart';

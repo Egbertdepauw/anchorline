@@ -2,7 +2,7 @@
 
 _Firmware 1.0.0. Last updated: 9 November 2026_
 
-The Anchorline SOLO bridge is a small board that sits between a Divesoft SOLO gas analyzer and the Anchorline app. It reads the SOLO over USB and passes the readings to your phone or Mac over Bluetooth. With it, you can analyse a cylinder with the phone in your pocket: press OK on the SOLO, and the app saves the analysis and, if you want, prints the cylinder label.
+The Anchorline SOLO bridge is a small board that sits between a Divesoft SOLO gas analyzer and the Anchorline app. It reads the SOLO over USB and passes the readings to your phone or computer over Bluetooth. With it, you can analyse a cylinder with the phone in your pocket: press OK on the SOLO, and the app saves the analysis and, if you want, prints the cylinder label.
 
 This manual is for divers and fill-station people. You don't need to be a developer to set it up.
 
@@ -23,7 +23,7 @@ The bridge never judges the gas itself. Mix names, stability and mismatch checks
 | **Espressif ESP32-S3-USB-OTG** board | Version V1.1. Copies sold on AliExpress and similar shops work (the developer uses one). The plugs on a copy can differ slightly from Espressif's original; check the labels printed on your board. |
 | **USB power bank** | Powers the board through its **DEV** plug or its **DEBUG** port. See "Power" below. |
 | **USB cable for the SOLO** | USB-A male to USB-C male, a data cable (not a charge-only cable). It goes from the board's USB-A host socket to the SOLO. |
-| **The Anchorline app** | On iPhone, iPad, Android or a Mac, in a version that has **Settings → Gas → Analyzer bridge**. |
+| **The Anchorline app** | On iPhone, iPad, Android, a Mac, Windows or Linux, in a version that has **Settings → Gas → Analyzer bridge**. Windows needs Windows 10 version 1803 or later (or Windows 11) and Bluetooth LE (Bluetooth 4.0 or later). Linux needs BlueZ, the standard Bluetooth stack of desktop distributions. |
 | **Phomemo M110** label printer (optional) | With **50×30 mm gap labels**. Only needed if you want labels printed. |
 | **A computer with Chrome or Edge** (once) | To install the firmware on the board. Windows, macOS or Linux. |
 
@@ -63,7 +63,7 @@ On the SOLO, open **Menu → Preferences**, set **"Send data to USB"** above zer
 3. Pick **Anchorline Bridge XXXX** from the list. The four characters are the end of the board's ID; the info screen (press MENU) shows the full ID.
 4. The section now says the bridge is set up on this device. **Forget bridge** removes it again.
 
-Each device (phone, tablet, Mac) is paired on its own. The bridge talks to one device at a time.
+Each device (phone, tablet, computer) is paired on its own. There is no pairing in the system's Bluetooth settings: the app finds and connects to the bridge itself. The bridge talks to one device at a time.
 
 ### 4. Settings that matter
 
@@ -243,8 +243,8 @@ esptool is Espressif's flashing tool. It needs Python 3.
 |---|---|
 | The screen says `SOLO: TURN ON SEND DATA TO USB` | On the SOLO: Menu → Preferences → "Send data to USB" above zero, printer mode off |
 | `NO SOLO` with the SOLO plugged in | Use a data cable, not a charge-only cable; plug it into the USB-A host socket; switch the SOLO on |
-| "Find bridge" finds nothing | Switch the bridge on and keep it close. Check Bluetooth is allowed for Anchorline in the phone's settings. The bridge talks to one device at a time: disconnect it from any other phone or Mac |
-| The bridge source is missing in the app | The bridge works on iPhone, iPad, Android and macOS, in a version of Anchorline that has Settings → Gas → Analyzer bridge |
+| "Find bridge" finds nothing | Switch the bridge on and keep it close. Check Bluetooth is allowed for Anchorline in the phone's settings. On a computer, check Bluetooth is on and the computer has Bluetooth LE. The bridge talks to one device at a time: disconnect it from any other phone or computer |
+| The bridge source is missing in the app | The bridge works on iPhone, iPad, Android, macOS, Windows and Linux, in a version of Anchorline that has Settings → Gas → Analyzer bridge |
 | OK presses save but never print | Check "Analysed by" is filled in, "Print a label on each OK" is on, and the printer is on and paired. Presses collected late never print automatically: sign them off in the log |
 | Room air saves as "Hypoxic 20" | The SOLO reads air low. Calibrate it on air |
 | `CONNECTION LOST` all the time | Bring the phone closer. Metal cylinders and bodies block Bluetooth. Presses are kept on the bridge meanwhile |

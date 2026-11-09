@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/widgets.dart' show BuildContext;
 
+import '../../ble/ble_central_default.dart' show bleCentralAvailable;
 import 'analyzer_transport.dart';
 import 'android_usb_transport.dart';
 import 'demo_transport.dart';
@@ -51,21 +52,17 @@ bool get _hasDesktopSerial =>
         defaultTargetPlatform == TargetPlatform.windows ||
         defaultTargetPlatform == TargetPlatform.linux);
 
-/// Whether the SOLO bridge can be used here: Bluetooth LE on iOS, Android
-/// and macOS. Windows and Linux have no bridge in v1.
-bool get analyzerBridgeAvailable =>
-    !kIsWeb &&
-    (defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.macOS);
+/// Whether the SOLO bridge can be used here: wherever the app has a
+/// Bluetooth LE central (iOS, Android, macOS, Windows and Linux; not the
+/// web). See `lib/ble/ble_central_default.dart`.
+bool get analyzerBridgeAvailable => bleCentralAvailable;
 
 /// The transports available on this platform, in picker order (the first is
 /// selected by default):
 ///
 ///  * iOS: Bridge, Demo.
 ///  * Android: USB (Android), Bridge, Demo.
-///  * macOS: USB, Bridge, Demo.
-///  * Windows and Linux: USB, Demo.
+///  * macOS, Windows and Linux: USB, Bridge, Demo.
 ///
 /// [bridge] is the Bridge source; it is left out where
 /// [analyzerBridgeAvailable] is false or when null.
