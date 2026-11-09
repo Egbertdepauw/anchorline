@@ -150,9 +150,9 @@ class PhomemoBlePrinter implements LabelPrinter {
       }
       _ensureCurrent(session);
 
-      final chars = await _device.discoverServices();
+      var chars = await _device.discoverServices();
       _ensureCurrent(session);
-      final (:write, :notify) = _findCharacteristics(chars);
+      var (:write, :notify) = _findCharacteristics(chars);
 
       // Listen before enabling notifications so an answer that arrives
       // straight away isn't lost.
@@ -160,12 +160,6 @@ class PhomemoBlePrinter implements LabelPrinter {
         _onNotification,
         onError: (Object e) => bleLog('Phomemo BLE: notify error: $e'),
       );
-      // Windows only: pair first, in the app, so the printer's status
-      // notifications aren't refused or stuck on the system's pairing
-      // prompt. A no-op elsewhere.
-      final paired = await _device.pair();
-      bleLog('Phomemo BLE: pair → $paired');
-      _ensureCurrent(session);
       var notifying = true;
       try {
         await notify.setNotify(true).timeout(_kNotifyTimeout);
@@ -176,6 +170,23 @@ class PhomemoBlePrinter implements LabelPrinter {
         bleLog('Phomemo BLE: notifications unavailable, printing blind: $e');
       }
       _ensureCurrent(session);
+
+      // A refused subscribe can take the link down with it (on Windows a
+      // failed pairing attempt does). Connect once more and print blind.
+      if (!_device.isConnected) {
+        bleLog('Phomemo BLE: link dropped while connecting, reconnecting');
+        notifying = false;
+        await sub.cancel();
+        sub = null;
+        await _device.connect(timeout: _kConnectTimeout);
+        _ensureCurrent(session);
+        chars = await _device.discoverServices();
+        _ensureCurrent(session);
+        (write: write, notify: notify) = _findCharacteristics(chars);
+        if (!_device.isConnected) {
+          throw const BleException(kBleErrorNotConnected, 'link dropped');
+        }
+      }
 
       // Commit. Synchronous from the last check, so a disconnect() can't
       // slip in between.
@@ -312,6 +323,7 @@ class PhomemoBlePrinter implements LabelPrinter {
   ) async {
     for (var retry = 0; ; retry++) {
       if (session != _session || !_device.isConnected) {
+        bleLog('Phomemo BLE: link down before write');
         throw _kConnectionLost;
       }
       try {

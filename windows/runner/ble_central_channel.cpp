@@ -41,6 +41,7 @@
 #include <cstdlib>
 #include <atomic>
 #include <map>
+#include <set>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -459,6 +460,12 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
     try {
       if (d->pair_tried) co_return false;
       d->pair_tried = true;
+      {
+        // A failed attempt can drop the link; don't repeat it on the
+        // reconnect that follows.
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (pair_failed_.count(d->id)) co_return false;
+      }
       enumeration::DeviceInformationPairing pairing =
           d->device.DeviceInformation().Pairing();
       if (pairing.IsPaired()) {
@@ -492,8 +499,14 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
           enumeration::DevicePairingProtectionLevel::None);
       custom.PairingRequested(token);
       Log(d->id + " pair: " + PairingStatusName(r.Status()));
-      co_return r.Status() == enumeration::DevicePairingResultStatus::Paired ||
+      const bool ok =
+          r.Status() == enumeration::DevicePairingResultStatus::Paired ||
           r.Status() == enumeration::DevicePairingResultStatus::AlreadyPaired;
+      if (!ok) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pair_failed_.insert(d->id);
+      }
+      co_return ok;
     } catch (const winrt::hresult_error& e) {
       Log(d->id + " pair: " + HresultMessage(e));
       co_return false;
@@ -1125,6 +1138,8 @@ class BleCentralChannel::Impl : public std::enable_shared_from_this<Impl> {
   // finds a device with a random address (the Phomemo printers use one)
   // when it is told the type.
   std::map<uint64_t, bt::BluetoothAddressType> address_types_;
+  // Devices a pairing attempt failed for, this run.
+  std::set<std::string> pair_failed_;
   adv::BluetoothLEAdvertisementWatcher watcher_{nullptr};
   winrt::event_token received_token_{};
   winrt::event_token stopped_token_{};

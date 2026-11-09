@@ -82,6 +82,9 @@ class FakeBlePeripheral extends BlePeripheral {
   /// What [discoverServices] returns.
   List<BleCharacteristic> characteristics = [];
 
+  /// Runs on every successful [discoverServices] call.
+  void Function()? onDiscover;
+
   @override
   int mtu = 23;
 
@@ -146,6 +149,7 @@ class FakeBlePeripheral extends BlePeripheral {
     if (!_connected) {
       throw const BleException(kBleErrorNotConnected, 'not connected');
     }
+    onDiscover?.call();
     return characteristics;
   }
 
@@ -189,6 +193,9 @@ class FakeBleCharacteristic implements BleCharacteristic {
   /// When set, [setNotify] throws it.
   Object? notifyError;
 
+  /// Runs on every [setNotify], before [notifyError] is thrown.
+  void Function()? onSetNotify;
+
   final _notifications = StreamController<List<int>>.broadcast();
 
   @override
@@ -200,6 +207,7 @@ class FakeBleCharacteristic implements BleCharacteristic {
   @override
   Future<void> setNotify(bool enable) async {
     notifyCalls.add(enable);
+    onSetNotify?.call();
     final error = notifyError;
     if (error != null) throw error;
   }

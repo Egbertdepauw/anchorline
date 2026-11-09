@@ -40,15 +40,16 @@ void main() {
         properties: const BleCharacteristicProperties(notify: true),
       );
 
-  test('connect pairs first, then turns notifications on', () async {
+  test('connect turns notifications on without pairing up front', () async {
     final central = FakeBleCentral();
-    final p = central.peripheral('AABBCCDDEEFF')..pairResult = true;
+    final p = central.peripheral('AABBCCDDEEFF');
     final n = notifyChar();
     p.characteristics = [writeChar(), n];
     final printer = PhomemoBlePrinter(remoteId: 'AABBCCDDEEFF', central: central);
 
     await printer.connect();
-    expect(p.pairCalls, 1);
+    // Pairing up front drops the M110's link on Windows.
+    expect(p.pairCalls, 0);
     expect(n.notifyCalls, [true]);
     expect(printer.notifying, isTrue);
     await printer.disconnect();
@@ -65,6 +66,41 @@ void main() {
 
     await printer.connect();
     expect(printer.notifying, isFalse);
+    await printer.disconnect();
+  });
+
+  test('a link that drops during subscribe is reconnected once, blind',
+      () async {
+    final central = FakeBleCentral();
+    final p = central.peripheral('AABBCCDDEEFF');
+    final w = writeChar();
+    final n = notifyChar()
+      ..notifyError = const BleException(kBleErrorGatt, 'invalid parameter');
+    n.onSetNotify = p.drop;
+    p.characteristics = [w, n];
+    final printer = PhomemoBlePrinter(remoteId: 'AABBCCDDEEFF', central: central);
+
+    await printer.connect();
+    expect(p.connectCalls, 2);
+    expect(p.isConnected, isTrue);
+    expect(printer.notifying, isFalse);
+    await printer.disconnect();
+  });
+
+  test('a link that drops again after the reconnect fails the connect',
+      () async {
+    final central = FakeBleCentral();
+    final p = central.peripheral('AABBCCDDEEFF');
+    final n = notifyChar()..onSetNotify = p.drop;
+    p.characteristics = [writeChar(), n];
+    final printer = PhomemoBlePrinter(remoteId: 'AABBCCDDEEFF', central: central);
+    // Drops on the second discover too.
+    var discovers = 0;
+    p.onDiscover = () {
+      if (++discovers == 2) p.drop();
+    };
+
+    await expectLater(printer.connect(), throwsA(isA<LabelPrinterException>()));
     await printer.disconnect();
   });
 }
