@@ -40,7 +40,11 @@ class BleDeviceScan {
         _error = error {
     _out = StreamController<List<BleFoundDevice>>(
       onListen: () => unawaited(_start()),
-      onCancel: end,
+      onCancel: () {
+        // Nobody listens any more: nothing to close.
+        _cancelled = true;
+        end();
+      },
     );
   }
 
@@ -65,6 +69,7 @@ class BleDeviceScan {
   StreamSubscription<BleScanResult>? _results;
   Timer? _timer;
   bool _ended = false;
+  bool _cancelled = false;
 
   Stream<List<BleFoundDevice>> get stream => _out.stream;
 
@@ -122,6 +127,6 @@ class BleDeviceScan {
     _timer = null;
     unawaited(_results?.cancel());
     _results = null;
-    unawaited(_out.close());
+    if (!_cancelled) unawaited(_out.close());
   }
 }

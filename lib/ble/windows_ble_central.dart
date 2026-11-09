@@ -327,6 +327,7 @@ class _WindowsScan {
       },
       onCancel: () {
         final wasClosed = _closed;
+        _cancelled = true;
         close();
         if (!wasClosed) unawaited(_central._stopNativeScan());
       },
@@ -338,6 +339,7 @@ class _WindowsScan {
   late final StreamController<BleScanResult> _out;
   Timer? _timer;
   bool _closed = false;
+  bool _cancelled = false;
 
   Stream<BleScanResult> get stream => _out.stream;
 
@@ -379,7 +381,8 @@ class _WindowsScan {
     _timer?.cancel();
     _timer = null;
     if (identical(_central._scan, this)) _central._scan = null;
-    unawaited(_out.close());
+    // After a cancel nobody listens: nothing to close.
+    if (!_cancelled) unawaited(_out.close());
   }
 }
 

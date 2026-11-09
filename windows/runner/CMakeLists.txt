@@ -55,6 +55,10 @@ target_compile_definitions(ble_central PRIVATE "NOMINMAX"
 target_link_libraries(ble_central PRIVATE flutter flutter_wrapper_app
   "windowsapp.lib")
 target_include_directories(ble_central PRIVATE "${CMAKE_SOURCE_DIR}")
+# Keep the .lib out of runner/<config>, which is the app folder the installer
+# packs.
+set_target_properties(ble_central PROPERTIES
+  ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ble_central")
 
 # Add dependency libraries and include directories. Add any application-specific
 # dependencies here.

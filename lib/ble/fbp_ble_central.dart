@@ -57,6 +57,7 @@ class FbpBleCentral implements BleCentral {
     StreamSubscription<List<ScanResult>>? results;
     StreamSubscription<bool>? scanning;
     var closed = false;
+    var cancelled = false;
     late final StreamController<BleScanResult> out;
 
     void close() {
@@ -64,7 +65,8 @@ class FbpBleCentral implements BleCentral {
       closed = true;
       unawaited(results?.cancel());
       unawaited(scanning?.cancel());
-      unawaited(out.close());
+      // After a cancel nobody listens: nothing to close.
+      if (!cancelled) unawaited(out.close());
     }
 
     Future<void> start() async {
@@ -108,6 +110,7 @@ class FbpBleCentral implements BleCentral {
       onListen: () => unawaited(start()),
       onCancel: () {
         final wasClosed = closed;
+        cancelled = true;
         close();
         if (!wasClosed) unawaited(stopScan());
       },

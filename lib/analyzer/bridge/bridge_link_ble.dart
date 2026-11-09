@@ -213,29 +213,34 @@ class CentralBridgeLink implements BridgeLink {
     _connectionSub = _device.connectionChanges.listen(
       (up) => _onManualConnectionState(up, session),
     );
-    final deadline = DateTime.now().add(firstConnectTimeout);
+    // Completes with false when the first connection has had its time.
+    final deadline = Completer<bool>();
+    final timer = Timer(firstConnectTimeout, () => deadline.complete(false));
     Object? lastError;
-    while (true) {
-      if (session != _session) throw _kNotFound;
-      final left = deadline.difference(DateTime.now());
-      if (left <= Duration.zero) break;
-      try {
-        await _attempt(session, left < attemptTimeout ? left : attemptTimeout);
-        return;
-      } on BridgeLinkException catch (e) {
-        // Reached the device, and it is not a bridge: retrying won't help.
-        lastError = e;
-        break;
-      } catch (e) {
-        lastError = e;
-        debugPrint('Bridge BLE: connect attempt failed: $e');
+    try {
+      while (!deadline.isCompleted) {
+        if (session != _session) throw _kNotFound;
+        try {
+          final done = await Future.any([
+            _attempt(session, attemptTimeout).then((_) => true),
+            deadline.future,
+          ]);
+          if (done) return;
+          break;
+        } on BridgeLinkException catch (e) {
+          // Reached the device, and it is not a bridge: retrying won't
+          // help. (Also a session ended by disconnect().)
+          lastError = e;
+          break;
+        } catch (e) {
+          lastError = e;
+          debugPrint('Bridge BLE: connect attempt failed: $e');
+        }
+        if (session != _session) throw _kNotFound;
+        await _sleep(_kFirstConnectRetry, until: deadline.future);
       }
-      if (session != _session) throw _kNotFound;
-      final pause = deadline.difference(DateTime.now());
-      if (pause <= Duration.zero) break;
-      await Future<void>.delayed(
-        pause < _kFirstConnectRetry ? pause : _kFirstConnectRetry,
-      );
+    } finally {
+      timer.cancel();
     }
     await _giveUpAndClose(session);
     if (lastError is BridgeLinkException) throw lastError;
@@ -284,7 +289,7 @@ class CentralBridgeLink implements BridgeLink {
         final delay = reconnectDelays.isEmpty
             ? const Duration(seconds: 1)
             : reconnectDelays[min(i, reconnectDelays.length - 1)];
-        await Future<void>.delayed(delay);
+        await _sleep(delay);
         if (session != _session) return;
         try {
           await _attempt(session, attemptTimeout);
@@ -297,6 +302,27 @@ class CentralBridgeLink implements BridgeLink {
     } finally {
       _reconnecting = false;
     }
+  }
+
+  Timer? _sleepTimer;
+  Completer<void>? _sleeping;
+
+  /// Waits [d], or until [until] completes, or until [disconnect] wakes
+  /// it, whichever comes first.
+  Future<void> _sleep(Duration d, {Future<Object?>? until}) {
+    _wake();
+    final c = _sleeping = Completer<void>();
+    _sleepTimer = Timer(d, _wake);
+    until?.then((_) => _wake());
+    return c.future;
+  }
+
+  void _wake() {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    final c = _sleeping;
+    _sleeping = null;
+    if (c != null && !c.isCompleted) c.complete();
   }
 
   // -------------------------------------------------------------------------
@@ -382,6 +408,7 @@ class CentralBridgeLink implements BridgeLink {
     _session++;
     _first = null;
     _linkUp = false;
+    _wake();
     await _closeLink();
     _setState(BridgeLinkState.disconnected);
   }
@@ -406,6 +433,7 @@ class CentralBridgeLink implements BridgeLink {
     _session++;
     _first = null;
     _linkUp = false;
+    _wake();
     await _closeLink();
     _setState(BridgeLinkState.disconnected);
   }

@@ -104,6 +104,40 @@ later start succeeds. `lib/data/app_data_folder.dart` decides the folder.
 
 (Inno Setup 7: same command with `Inno Setup 7\ISCC.exe`.)
 
+## 5a. Bluetooth LE (SOLO bridge, label printer)
+
+`flutter_blue_plus` 1.x has no Windows backend, and 2.x moved to a
+non-open-source licence, so the Windows runner carries its own small BLE
+central instead of a plugin: `windows/runner/ble_central_channel.cpp`, a
+C++/WinRT implementation over `Windows.Devices.Bluetooth`, exposed as the
+method channel `nl.despaankamer.ccrlogger/ble` and the event channel
+`nl.despaankamer.ccrlogger/ble/events`. The Dart side is
+`lib/ble/windows_ble_central.dart` (which documents the protocol); the SOLO
+bridge and the Phomemo label printer reach it through the shared
+`BleCentral` seam in `lib/ble/`. The Shearwater dive-computer import does not
+use it and stays unavailable on Windows.
+
+- **Build.** It compiles as its own static library (`ble_central` in
+  `windows/runner/CMakeLists.txt`) with C++20 and exceptions, which C++/WinRT
+  needs and the runner's standard settings turn off. The C++/WinRT headers
+  come with the Windows 10/11 SDK of the Visual Studio workload; nothing else
+  to install. It links `windowsapp.lib`.
+- **Threading.** Blocking WinRT calls run in C++/WinRT coroutines on the
+  thread pool; results and events hop back to the Flutter platform thread
+  through a message-only window (`windows/runner/platform_dispatcher.cpp`).
+- **No capability or manifest entry.** The app is an unpackaged Win32
+  desktop app, and those use the Bluetooth WinRT APIs without declaring a
+  capability (`<DeviceCapability Name="bluetooth"/>` is for packaged
+  MSIX/UWP apps only; add it if the app is ever packaged as MSIX). No
+  pairing in Windows Settings is needed either: the app connects by
+  Bluetooth address.
+- **Requirements on the user's PC.** Windows 10 version 1803 or later, or
+  Windows 11, and a Bluetooth LE (4.0+) adapter. Without one, the app says
+  "Bluetooth LE is not available"; with Bluetooth switched off, "Bluetooth
+  is off".
+- **Reconnects** after a drop are done in Dart (`CentralBridgeLink`, backoff
+  0.5 s → 10 s), not by Windows.
+
 ## 6. Code signing / SmartScreen
 
 The installer and .exe are currently **unsigned**. First-launch shows
