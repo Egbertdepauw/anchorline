@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../analyzer/transport/analyzer_transport_options.dart'
+    show analyzerBridgeAvailable;
 import '../../../labels/label_print_service.dart';
 import '../../components/setting_row.dart';
 import '../../notifiers/settings_notifier.dart';
 import '../../theme/tokens.dart';
+import '../../widgets/analyzer_bridge_settings_section.dart';
 import '../../widgets/label_printer_settings_section.dart';
 import 'settings_fields.dart';
 
@@ -222,6 +225,13 @@ class GasSettingsTab extends StatelessWidget {
                   settings: notifier,
                   printing: labelPrinting!,
                 ),
+              ],
+            ),
+          if (analyzerBridgeAvailable)
+            SettingsGroup(
+              title: 'Analyzer bridge',
+              children: [
+                AnalyzerBridgeSettingsSection(settings: notifier),
               ],
             ),
         ],

@@ -5,6 +5,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../../analyzer/transport/analyzer_transport.dart';
+import '../../../analyzer/transport/ble_bridge_transport.dart';
 import '../../notifiers/analyzer_session.dart';
 import '../../theme/safety_colors.dart';
 import '../../theme/tokens.dart';
@@ -23,7 +24,7 @@ class ConnectionStrip extends StatelessWidget {
     final busy = controller.isBusy;
     final (text, color) = switch (controller.status) {
       AnalyzerConnectionStatus.connected => (
-          'SOLO connected · ${controller.transport?.name ?? ''}',
+          _connectedText(controller.transport),
           SafetyColors.success
         ),
       AnalyzerConnectionStatus.connecting =>
@@ -87,6 +88,29 @@ class ConnectionStrip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// `SOLO connected · USB`, or for the bridge `Bridge · SOLO connected` with
+/// the bridge's battery (or `USB powered`) and `5 V on` after it.
+String _connectedText(AnalyzerTransport? transport) {
+  if (transport is! BleBridgeTransport) {
+    return 'SOLO connected · ${transport?.name ?? ''}';
+  }
+  final status = transport.lastStatus;
+  final buf = StringBuffer(
+    status != null && status.soloAttached
+        ? 'Bridge · SOLO connected'
+        : 'Bridge · no SOLO',
+  );
+  if (status != null) {
+    if (status.batteryMv >= 3000) {
+      buf.write(' · battery ${(status.batteryMv / 1000).toStringAsFixed(1)} V');
+    } else {
+      buf.write(' · USB powered');
+    }
+  }
+  if (transport.vbusOn) buf.write(' · 5 V on');
+  return buf.toString();
 }
 
 class _SourcePicker extends StatelessWidget {

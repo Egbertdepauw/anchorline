@@ -784,6 +784,31 @@ Each step is its own issue and PR, and each one is useful on its own.
 - OK logging over a direct USB cable, by porting the hold rule to Dart with the same fixtures.
 - Firmware CI, and OTA updates.
 
+## Bench results, step 1 (2026-11-09)
+
+Board: ESP32-S3-USB-OTG V1.1, powered from its DEBUG port (so the host port can't get 5 V from the
+board). SOLO on the USB-A host port, on its own battery. App: macOS debug build of
+`feat/173-solo-bridge-v0`.
+
+| Check | Result |
+|---|---|
+| SOLO enumerates with the bridge's 5 V **off** | **Yes.** `vid=a600 pid=e212 class=02`, attach in under 1 s, lines at 5 Hz. |
+| Live readings over Bluetooth on the Mac | **Yes**, after one app fix (below). Readings, the stable pill and `Bridge · SOLO connected · USB powered`. |
+| Live readings on the iPhone | Not done yet. |
+| SOLO off and on, out of range and back | Not done yet. |
+| Meter readings with the bridge's 5 V on | Not done yet: needs the board on the DEV plug. |
+
+- **`host_vbus` reads 5.09 V with the bridge's 5 V off** and the SOLO plugged in. Nothing on the
+  board drives that rail in this state, so the SOLO seems to put its own 5 V on VBUS. Check with the
+  meter between the port and the cable before trusting this.
+- **App bug found and fixed:** the bridge sends `HELLO` as soon as notifications are on, before the
+  link layer reports `connected`. The transport then skipped `TIME`/`CFG`/`LIVE ON`, so no live lines
+  came. A test now pins that order.
+- **macOS needs WCH's CH34x driver** for the DEBUG port (a CH342, `1a86:7522`); macOS has none built
+  in.
+- **The 5 V switch:** the SOLO does not need host 5 V, so the default stays **off**. Whether "on"
+  stays available at all waits for the meter readings.
+
 ## Risks and things to verify on hardware
 
 - **A future SOLO firmware could change what OK does on USB.** The captures, as fixtures, make
