@@ -26,6 +26,37 @@ static void host_lib_task(void *arg) {
     }
 }
 
+// Logs every device the host port sees, so a SOLO that enumerates with other
+// ids (or not at all) shows up in the log.
+static void watch_cb(const usb_host_client_event_msg_t *msg, void *arg) {
+    usb_host_client_handle_t client = *(usb_host_client_handle_t *)arg;
+    if (msg->event == USB_HOST_CLIENT_EVENT_NEW_DEV) {
+        usb_device_handle_t dev;
+        if (usb_host_device_open(client, msg->new_dev.address, &dev) != ESP_OK) {
+            ESP_LOGI(TAG, "usb device at addr %d", msg->new_dev.address);
+            return;
+        }
+        const usb_device_desc_t *d;
+        if (usb_host_get_device_descriptor(dev, &d) == ESP_OK)
+            ESP_LOGI(TAG, "usb device addr=%d vid=%04x pid=%04x class=%02x", msg->new_dev.address,
+                     d->idVendor, d->idProduct, d->bDeviceClass);
+        usb_host_device_close(client, dev);
+    } else if (msg->event == USB_HOST_CLIENT_EVENT_DEV_GONE) {
+        ESP_LOGI(TAG, "usb device gone");
+    }
+}
+
+static void watch_task(void *arg) {
+    (void)arg;
+    static usb_host_client_handle_t client;
+    const usb_host_client_config_t cfg = {.is_synchronous = false,
+                                          .max_num_event_msg = 5,
+                                          .async = {.client_event_callback = watch_cb,
+                                                    .callback_arg = &client}};
+    ESP_ERROR_CHECK(usb_host_client_register(&cfg, &client));
+    for (;;) usb_host_client_handle_events(client, portMAX_DELAY);
+}
+
 static void emit_line(const char *line, void *ctx) {
     (void)ctx;
     s_ev.on_line((uint64_t)(esp_timer_get_time() / 1000), line);
@@ -91,6 +122,7 @@ void usb_solo_start(const usb_solo_events_t *ev) {
     const usb_host_config_t host = {.skip_phy_setup = false, .intr_flags = ESP_INTR_FLAG_LEVEL1};
     ESP_ERROR_CHECK(usb_host_install(&host));
     xTaskCreate(host_lib_task, "usb_host", 4096, NULL, 10, NULL);
+    xTaskCreate(watch_task, "usb_watch", 3072, NULL, 5, NULL);
     ESP_ERROR_CHECK(cdc_acm_host_install(NULL));
     xTaskCreate(open_loop_task, "usb_solo", 4096, NULL, 5, NULL);
 }
