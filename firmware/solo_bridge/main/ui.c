@@ -153,7 +153,7 @@ void ui_start(void) {
     lv_obj_t *scr = lv_screen_active();
     lv_obj_set_style_bg_color(scr, COL_BG, 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
-    lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollable(scr, false);
 
     s_status = make_label(&lv_font_montserrat_14, COL_DIM, STATUS_Y);
     s_pending_lbl = make_label(&lv_font_montserrat_16, COL_AMBER, PENDING_Y);

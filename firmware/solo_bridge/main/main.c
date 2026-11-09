@@ -15,6 +15,8 @@
 #include "board.h"
 #include "bridge_proto.h"
 #include "bridge_state.h"
+#include "ui.h"
+#include "ui_state.h"
 #include "driver/gpio.h"
 #include "esp_littlefs.h"
 #include "esp_log.h"
@@ -33,7 +35,7 @@
 #include "solo_line.h"
 #include "usb_solo.h"
 
-#define FW_VERSION "0.1.0"
+#define FW_VERSION "1.0.0"
 #define STATUS_EVERY_MS 5000
 #define DATA_FRESH_MS 1000  // ST data=1 when a data line came this recently
 #define HOLD_TICK_MS 200    // how often the hold detector is asked
@@ -163,11 +165,46 @@ static void send_status(void) {
     if (proto_fmt_status(msg, sizeof msg, &s) > 0) ble_link_send(msg);
 }
 
-static void update_leds(void) {
-    // Yellow: no SOLO, or the store is full. The screen task owns the rest of
-    // the LED rules (Task 11).
-    gpio_set_level(PIN_LED_YELLOW, !usb_solo_attached() || record_store_full(&s_store));
+static uint64_t s_live_ms;      // when LIVE ON arrived; stands in for STATE until the first one
+static uint64_t s_ack_blink_ms;  // when the last ACK came, for the green blink
+#define ACK_BLINK_MS 300
+
+static void copy_str(char *dst, size_t cap, const char *src) {
+    strncpy(dst, src, cap - 1);
+    dst[cap - 1] = '\0';
 }
+
+// Hands the snapshot to the screen and sets the LEDs from the same picture:
+// green blinks on each ACK; yellow is on while records wait, or the store is
+// full, the phone is lost, or the battery is low or empty.
+static void update_screen_and_leds(const bridge_state_t *st) {
+    ui_inputs_t in = {0};
+    in.now_ms = st->now_ms;
+    in.phone_ever = st->phone_ever;
+    in.phone_connected = st->phone_connected;
+    in.live_on = st->live_on;
+    in.last_state_ms = st->last_state_ms > s_live_ms ? st->last_state_ms : s_live_ms;
+    in.solo = st->solo_attached;
+    in.solo_had_line = st->solo_had_line;
+    in.solo_attach_ms = st->solo_attach_ms;
+    in.held_waiting_fb = st->held_waiting_fb;
+    in.full = st->store_full;
+    in.batt_mv = st->batt_mv;
+    in.last_fb_ms = st->last_fb_ms;
+    copy_str(in.fb_code, sizeof in.fb_code, st->fb_code);
+    copy_str(in.fb_text, sizeof in.fb_text, st->fb_text);
+    copy_str(in.live_state, sizeof in.live_state, st->state);
+    copy_str(in.live_mix, sizeof in.live_mix, st->mix);
+    ui_set_inputs(&in, st->pending, st->vbus_on);
+
+    ui_main_t m = ui_pick(&in);
+    bool yellow = st->pending > 0 || m == UI_FULL || m == UI_CONNECTION_LOST ||
+                  m == UI_BATTERY_LOW || m == UI_BATTERY_EMPTY;
+    gpio_set_level(PIN_LED_YELLOW, yellow);
+    gpio_set_level(PIN_LED_GREEN,
+                   s_ack_blink_ms != 0 && st->now_ms - s_ack_blink_ms < ACK_BLINK_MS);
+}
+
 
 static void refresh_state(void) {
     uint64_t now = now_ms();
@@ -196,6 +233,7 @@ static void refresh_state(void) {
     strcpy(st.state, s_state);
     strcpy(st.mix, s_mix);
     bridge_state_publish(&st);
+    update_screen_and_leds(&st);
 }
 
 // Sends one stored record: its REC, W and H lines, then END. False when the
@@ -234,7 +272,6 @@ static void make_record(void) {
     if (record_store_full(&s_store)) {
         // Never overwrite an unconfirmed record: no record, and the yellow LED says so.
         ESP_LOGW(TAG, "hold at %" PRIu64 " ms, but the store is full", s_hold.held_at_ms);
-        update_leds();
         return;
     }
     record_meta_t m = {.boot = settings_boot(),
@@ -263,6 +300,7 @@ static void handle_command(const proto_cmd_t *c) {
     switch (c->kind) {
         case CMD_LIVE:
             s_live = c->live_on;
+            if (c->live_on) s_live_ms = now_ms();
             ESP_LOGI(TAG, "live %s", c->live_on ? "on" : "off");
             break;
         case CMD_CFG:
@@ -282,7 +320,7 @@ static void handle_command(const proto_cmd_t *c) {
         case CMD_ACK:
             outbox_on_ack(&s_outbox, &s_store, c->rid);
             if (strcmp(s_waiting_rid, c->rid) == 0) s_waiting_rid[0] = '\0';
-            update_leds();
+            s_ack_blink_ms = now_ms();
             ESP_LOGI(TAG, "ack %s, %u waiting", c->rid, (unsigned)s_store.count);
             send_status();  // pending dropped
             break;
@@ -304,6 +342,17 @@ static void handle_command(const proto_cmd_t *c) {
     }
 }
 
+// MENU (active low) shows the info screen for 5 s.
+static void poll_menu(void) {
+    static bool was_down;
+    bool down = gpio_get_level(PIN_BTN_MENU) == 0;
+    if (down && !was_down) {
+        ui_show_info(s_bridge_id, FW_VERSION, power_battery_mv(), power_host_vbus_mv(),
+                     power_source_name(power_vbus_source()), settings_epoch());
+    }
+    was_down = down;
+}
+
 static void main_task(void *arg) {
     (void)arg;
     uint64_t next_status = now_ms() + STATUS_EVERY_MS;
@@ -314,17 +363,14 @@ static void main_task(void *arg) {
             switch (ev.kind) {
                 case EV_SUBSCRIBED:
                     s_phone_ever = true;
-                    gpio_set_level(PIN_LED_GREEN, 1);
                     send_hello();
                     next_status = now_ms() + STATUS_EVERY_MS;
                     break;
                 case EV_DISCONNECTED:
                     outbox_on_disconnect(&s_outbox);
-                    gpio_set_level(PIN_LED_GREEN, 0);
                     break;
                 case EV_ATTACH:
                 case EV_DETACH:
-                    update_leds();
                     send_status();
                     break;
                 case EV_COMMAND:
@@ -342,6 +388,7 @@ static void main_task(void *arg) {
             next_status = now + STATUS_EVERY_MS;
             send_status();
         }
+        poll_menu();
         refresh_state();
     }
 }
@@ -355,8 +402,12 @@ static void led_init(int pin, int level) {
 void app_main(void) {
     // Power first: the host port's 5 V must be off before anything else runs.
     power_init();
+    ui_start();
     led_init(PIN_LED_GREEN, 0);
-    led_init(PIN_LED_YELLOW, 1);  // on while no SOLO is attached
+    led_init(PIN_LED_YELLOW, 0);
+    gpio_reset_pin(PIN_BTN_MENU);
+    gpio_set_direction(PIN_BTN_MENU, GPIO_MODE_INPUT);
+    gpio_pullup_en(PIN_BTN_MENU);
     settings_init();
 
     esp_vfs_littlefs_conf_t fs = {
