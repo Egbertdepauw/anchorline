@@ -69,3 +69,14 @@ printf '\x00\x00\x00' | dd of=appimagetool-x86_64.AppImage bs=1 seek=8 count=3 c
 rm appimagetool-x86_64.AppImage
 ln -sf "$tools_dir/squashfs-root/AppRun" /usr/local/bin/appimagetool
 echo "appimagetool ${APPIMAGETOOL_VERSION}, runtime ${RUNTIME_VERSION} installed in ${tools_dir}"
+
+# nfpm builds the .deb, .rpm and Arch packages (build_packages.sh), pinned
+# and checked by sha256 like the AppImage tools.
+NFPM_VERSION=2.48.0
+NFPM_SHA256=6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750
+curl -fsSL -o /tmp/nfpm.tar.gz \
+  "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+echo "${NFPM_SHA256}  /tmp/nfpm.tar.gz" | sha256sum -c -
+tar -xzf /tmp/nfpm.tar.gz -C /usr/local/bin nfpm
+rm /tmp/nfpm.tar.gz
+echo "nfpm ${NFPM_VERSION} installed"

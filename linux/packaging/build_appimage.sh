@@ -152,3 +152,7 @@ ARCH=x86_64 "$appimagetool" --no-appstream --runtime-file "$runtime" \
 echo
 echo "AppImage: $out/$appimage_name"
 ( cd "$out" && sha256sum "$appimage_name" )
+
+# The same AppDir, as installable .deb, .rpm and Arch packages.
+"$script_dir/build_packages.sh" --version "$version" --build "$build" \
+  --appdir "$appdir" --out "$out"

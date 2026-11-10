@@ -1,0 +1,73 @@
+# nfpm recipe for the installable Linux packages: .deb (Debian, Ubuntu,
+# Mint, Pop!_OS), .rpm (Fedora, RHEL, openSUSE) and .pkg.tar.zst (Arch,
+# Manjaro, EndeavourOS). build_packages.sh fills in the ${...} values.
+#
+# The Flutter bundle goes to /opt/anchorline, with /usr/bin/anchorline as
+# the command and a desktop entry and icon so the app shows up in the menu.
+name: anchorline
+arch: amd64
+platform: linux
+version: ${ANCHORLINE_VERSION}
+release: ${ANCHORLINE_BUILD}
+section: utils
+priority: optional
+maintainer: Egbert de Pauw <support@anchorline.eu>
+vendor: Anchorline
+homepage: https://anchorline.eu
+license: GPL-2.0-only
+description: |-
+  Dive log and post-dive analysis for CCR and technical divers.
+  Imports Shearwater dive computers over Bluetooth and shows cell health,
+  ppO2, gas density and decompression data for every dive.
+
+contents:
+  - src: ${ANCHORLINE_BUNDLE}/
+    dst: /opt/anchorline/
+    type: tree
+  - src: /opt/anchorline/anchorline
+    dst: /usr/bin/anchorline
+    type: symlink
+  - src: ${ANCHORLINE_PACKAGING}/nl.despaankamer.ccrlogger.desktop
+    dst: /usr/share/applications/nl.despaankamer.ccrlogger.desktop
+    file_info:
+      mode: 0644
+  - src: ${ANCHORLINE_ICON}
+    dst: /usr/share/icons/hicolor/512x512/apps/nl.despaankamer.ccrlogger.png
+    file_info:
+      mode: 0644
+
+# System libraries the bundle links (GTK, libsecret for the keyring,
+# curl and zlib for Sentry, lzma) plus BlueZ for Bluetooth. Package names
+# differ per distribution family.
+depends:
+  - libgtk-3-0
+  - libsecret-1-0
+  - libcurl4 | libcurl4t64
+  - zlib1g
+  - liblzma5
+  - bluez
+overrides:
+  rpm:
+    depends:
+      - gtk3
+      - libsecret
+      - libcurl
+      - zlib
+      - xz-libs
+      - bluez
+  archlinux:
+    depends:
+      - gtk3
+      - libsecret
+      - curl
+      - zlib
+      - xz
+      - bluez
+
+rpm:
+  group: Applications/Productivity
+  compression: zstd
+deb:
+  compression: zstd
+archlinux:
+  packager: Egbert de Pauw <support@anchorline.eu>

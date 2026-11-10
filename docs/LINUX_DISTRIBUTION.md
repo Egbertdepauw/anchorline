@@ -133,6 +133,32 @@ BlueZ only connects to a device it has seen recently, so a connect starts
 with a short scan; and `autoConnect` is not honoured there, so the bridge
 link reconnects in Dart after a drop, as on Windows.
 
+## 3b. Installable packages: .deb, .rpm and Arch
+
+The AppImage runs from wherever the user puts it, but doesn't install: no
+menu entry, and the user has to `chmod +x` it first. So the same build
+also makes three installable packages from the AppDir, with nfpm
+(`build_packages.sh`, recipe in `nfpm.yaml`; `build_appimage.sh` calls it
+at the end):
+
+| File | For | Install with |
+|---|---|---|
+| `Anchorline-<x.y.z>-linux-x64.deb` | Debian, Ubuntu, Mint, Pop!_OS | double-click, or `sudo apt install ./Anchorline-….deb` |
+| `Anchorline-<x.y.z>-linux-x64.rpm` | Fedora, RHEL, openSUSE | double-click, or `sudo dnf install ./Anchorline-….rpm` |
+| `Anchorline-<x.y.z>-linux-x64.pkg.tar.zst` | Arch, Manjaro, EndeavourOS | `sudo pacman -U ./Anchorline-….pkg.tar.zst` |
+
+All three put the Flutter bundle in `/opt/anchorline`, the command in
+`/usr/bin/anchorline`, and the desktop entry and 512 px icon in
+`/usr/share`, so Anchorline appears in the app menu and uninstalls with
+the package manager. They depend on the distribution's GTK 3, libsecret,
+curl, zlib, xz and BlueZ packages; the package manager pulls those in.
+The package version is `<x.y.z>-<build>`, so an upgrade replaces the
+older install.
+
+Tested 2026-11-10 with a dummy bundle: each package installs, runs its
+command and places the desktop entry and icon on Ubuntu 24.04, Fedora
+(latest) and Arch (latest). Not yet tried with a real release bundle.
+
 ## 4. Known quirks (handled in the recipe)
 
 | Symptom | Cause | Status |
