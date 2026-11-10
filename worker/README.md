@@ -23,13 +23,45 @@ presign needed because the binding has direct write access).
 
 | Method | Path             | Body                                                                    | Returns                                              |
 | ------ | ---------------- | ----------------------------------------------------------------------- | ---------------------------------------------------- |
-| POST   | `/sign-upload`   | `{ dive_id, filename, mime_type, size_bytes }`                          | `{ object_key, upload_url, expires_at }`             |
+| POST   | `/sign-upload`   | `{ dive_id, filename, mime_type, size_bytes }`                          | `{ object_key, upload_url, expires_at, ...usage }`   |
 | POST   | `/sign-download` | `{ object_key }`                                                        | `{ download_url, expires_at }`                       |
 | POST   | `/delete`        | `{ object_key }`                                                        | `{ ok: true }`                                       |
+| POST   | `/usage`         | (none)                                                                  | `{ used_bytes, limit_bytes, used_files, limit_files, uploads_enabled }` |
 | OPTIONS| `*`              | —                                                                       | 204 + CORS headers                                   |
 
 All routes require `Authorization: Bearer <supabase-jwt>`. Errors are
 JSON `{ error: "..." }` with appropriate 4xx/5xx status codes.
+
+`/sign-upload` additionally refuses with:
+
+| Status | Body                                                                                     | Meaning                                  |
+| ------ | ---------------------------------------------------------------------------------------- | ---------------------------------------- |
+| 503    | `{ "error": "uploads_disabled" }`                                                        | kill switch (`UPLOADS_ENABLED`) is off   |
+| 429    | `{ "error": "rate_limited" }`                                                            | per-account rate limit hit               |
+| 413    | `{ "error": "quota_exceeded", used_bytes, limit_bytes, used_files, limit_files }`        | the file would exceed the account quota  |
+
+Checks run in that order. A misconfigured `QUOTA_BYTES`/`QUOTA_FILES`
+fails closed with a 500 `internal_error`. `/usage` is read-only and is
+not affected by the kill switch or the rate limiter.
+
+## Upload limits (issue #196)
+
+Configured in `wrangler.toml`:
+
+- `QUOTA_BYTES` / `QUOTA_FILES`: default per-account limits (integers as strings).
+- `QUOTA_OVERRIDES`: JSON `{ "<user uuid>": { "bytes": n, "files": n } }`
+  for accounts with their own limits. `wrangler deploy` replaces
+  dashboard-edited vars, so edit it in `wrangler.toml`, not the dashboard.
+- `UPLOADS_ENABLED`: kill switch; only the exact string `"true"` allows uploads.
+- `SIGN_UPLOAD_LIMITER`: Workers Rate Limiting binding (20 requests per
+  60 s per account) on `/sign-upload`, declared as `[[unsafe.bindings]]`
+  because wrangler 3 has no first-class key for it.
+
+Usage is measured by listing the account's objects in R2, not from a
+counter, so it cannot drift.
+
+Second exception to the Worker freeze (2026-11-10, #196): upload limits
+only. Moves to the Dart service when it takes over signing.
 
 ## Deployment
 

@@ -61,6 +61,10 @@ export interface SignUploadRequest {
   size_bytes: number;
 }
 
+export interface UsageResponse extends Usage {
+  uploads_enabled: boolean;
+}
+
 export interface SignUploadResponse extends Usage {
   object_key: string;
   upload_url: string;
