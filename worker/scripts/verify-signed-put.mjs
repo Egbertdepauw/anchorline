@@ -110,8 +110,15 @@ async function attempt(signedMime, signedSize, putMime, body) {
     ({ object_key, upload_url } = await res.json());
   }
   const put = await fetch(upload_url, { method: "PUT", headers: { "Content-Type": putMime }, body });
-  if (put.status >= 200 && put.status < 300) await cleanup(object_key);
-  return { status: put.status };
+  if (put.status >= 200 && put.status < 300) {
+    await cleanup(object_key);
+    return { status: put.status };
+  }
+  // R2's error code (e.g. SignatureDoesNotMatch, AccessDenied) tells a
+  // refused size apart from a bad token. Only the code is printed: the
+  // rest of the body can echo the credential scope.
+  const code = (await put.text()).match(/<Code>([^<]+)<\/Code>/)?.[1];
+  return { status: put.status, code };
 }
 
 const cases = [
@@ -124,11 +131,11 @@ let failed = false;
 let sizeNotEnforced = false;
 for (const [i, c] of cases.entries()) {
   try {
-    const { status } = await c.run();
+    const { status, code } = await c.run();
     const pass = status === c.expect;
     if (!pass) failed = true;
     if (i === 1 && status >= 200 && status < 300) sizeNotEnforced = true;
-    console.log(`case ${i + 1} (${c.name}): expected ${c.expect}, got ${status} ${pass ? "PASS" : "FAIL"}`);
+    console.log(`case ${i + 1} (${c.name}): expected ${c.expect}, got ${status}${code ? ` ${code}` : ""} ${pass ? "PASS" : "FAIL"}`);
   } catch (err) {
     failed = true;
     console.log(`case ${i + 1} (${c.name}): ERROR ${err.message} FAIL`);
