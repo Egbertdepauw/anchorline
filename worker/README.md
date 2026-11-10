@@ -41,8 +41,10 @@ JSON `{ error: "..." }` with appropriate 4xx/5xx status codes.
 | 413    | `{ "error": "quota_exceeded", used_bytes, limit_bytes, used_files, limit_files }`        | the file would exceed the account quota  |
 
 Checks run in that order. A misconfigured `QUOTA_BYTES`/`QUOTA_FILES`
-fails closed with a 500 `internal_error`. `/usage` is read-only and is
-not affected by the kill switch or the rate limiter.
+fails closed with a 500 `internal_error`. `/usage` is read-only, so the kill
+switch does not affect it, but it does a full R2 list and is rate-limited
+on the same binding with its own budget (key `usage:<sub>`), returning
+the same 429.
 
 ## Upload limits (issue #196)
 

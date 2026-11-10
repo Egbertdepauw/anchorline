@@ -10,6 +10,14 @@ import type { Env, Usage } from "./types";
 
 export type GateResult = { ok: true; usage: Usage } | { ok: false; response: Response };
 
+// Shared by /sign-upload and /usage. Returns the 429 response when the
+// key is over budget, otherwise null. Callers use distinct keys so the
+// two routes keep separate budgets on the one limiter binding.
+export async function rateLimitResponse(env: Env, key: string): Promise<Response | null> {
+  const { success } = await env.SIGN_UPLOAD_LIMITER.limit({ key });
+  return success ? null : Response.json({ error: "rate_limited" }, { status: 429 });
+}
+
 export async function gateSignUpload(
   env: Env,
   sub: string,
@@ -20,10 +28,8 @@ export async function gateSignUpload(
     return { ok: false, response: Response.json({ error: "uploads_disabled" }, { status: 503 }) };
   }
 
-  const { success } = await env.SIGN_UPLOAD_LIMITER.limit({ key: sub });
-  if (!success) {
-    return { ok: false, response: Response.json({ error: "rate_limited" }, { status: 429 }) };
-  }
+  const limited = await rateLimitResponse(env, sub);
+  if (limited) return { ok: false, response: limited };
 
   const usage = await usageFor(env, sub);
   if (wouldExceed(usage, sizeBytes)) {

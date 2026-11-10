@@ -18,7 +18,7 @@ import { handlePreflight, withCors } from "./cors";
 import { keepAlive } from "./keepalive";
 import { extractBearerToken, JwtError, verifySupabaseJwt } from "./jwt";
 import { usageFor } from "./quota";
-import { gateSignUpload } from "./upload_gate";
+import { gateSignUpload, rateLimitResponse } from "./upload_gate";
 import { buildObjectKey, presignDownload, presignUpload } from "./r2";
 import {
   objectKeyBelongsToUser,
@@ -177,10 +177,14 @@ async function handleDelete(request: Request, env: Env): Promise<Response> {
   return Response.json(payload);
 }
 
-// Read-only: deliberately not behind UPLOADS_ENABLED or the rate limiter.
+// Read-only, so not behind UPLOADS_ENABLED. It does a full R2 list(), so
+// it is rate-limited on its own budget ("usage:" key prefix).
 async function handleUsage(request: Request, env: Env): Promise<Response> {
   const auth = await authenticate(request, env);
   if (auth instanceof Response) return auth;
+
+  const limited = await rateLimitResponse(env, `usage:${auth.sub}`);
+  if (limited) return limited;
 
   const payload: UsageResponse = {
     ...(await usageFor(env, auth.sub)),

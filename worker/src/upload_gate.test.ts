@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { gateSignUpload } from "./upload_gate";
+import { gateSignUpload, rateLimitResponse } from "./upload_gate";
 import type { Env } from "./types";
 
 function fakeEnv(opts: { enabled?: string; allowed?: boolean; usedBytes?: number } = {}) {
@@ -81,5 +81,26 @@ describe("gateSignUpload", () => {
     const { env } = fakeEnv();
     (env as { QUOTA_BYTES: string }).QUOTA_BYTES = "";
     await expect(gateSignUpload(env, "u1", 10)).rejects.toThrow();
+  });
+
+  it("allows a file that lands exactly on the byte limit", async () => {
+    const { env } = fakeEnv({ usedBytes: 999_999_990 });
+    const r = await gateSignUpload(env, "u1", 10);
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe("rateLimitResponse", () => {
+  it("passes the given key to the limiter and returns null when allowed", async () => {
+    const { env, limit } = fakeEnv();
+    expect(await rateLimitResponse(env, "usage:u1")).toBeNull();
+    expect(limit).toHaveBeenCalledWith({ key: "usage:u1" });
+  });
+
+  it("returns 429 rate_limited when over budget", async () => {
+    const { env } = fakeEnv({ allowed: false });
+    const res = await rateLimitResponse(env, "usage:u1");
+    expect(res?.status).toBe(429);
+    expect(await res?.json()).toEqual({ error: "rate_limited" });
   });
 });
