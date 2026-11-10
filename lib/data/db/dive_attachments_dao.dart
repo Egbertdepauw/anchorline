@@ -414,14 +414,25 @@ class DiveAttachmentsDao {
   /// exactly these rows, and lets the purge sweep's 24 h grace period count
   /// from when the dive was deleted. Idempotent; a dive row that hasn't
   /// synced down yet is simply not matched.
-  Future<int> softDeleteUnderDeletedDives() async {
+  ///
+  /// Only dives deleted at least [minDiveAge] before [now] are matched. An
+  /// older build's dive UNDO doesn't restore attachments, so backfilling a
+  /// dive that is still inside its UNDO window could leave the restored
+  /// dive with deleted attachments, which the sweep would then purge for
+  /// good. Ten minutes is far longer than that window.
+  Future<int> softDeleteUnderDeletedDives({
+    DateTime? now,
+    Duration minDiveAge = const Duration(minutes: 10),
+  }) async {
     const where = "WHERE parent_kind = 'dive' AND deleted_at IS NULL "
         'AND EXISTS (SELECT 1 FROM dives '
         'WHERE dives.id = dive_attachments.parent_id '
-        'AND dives.deleted_at IS NOT NULL)';
-    final now = DateTime.now().millisecondsSinceEpoch;
+        'AND dives.deleted_at IS NOT NULL AND dives.deleted_at <= ?)';
+    final at = now ?? DateTime.now();
+    final cutoff = at.subtract(minDiveAge).millisecondsSinceEpoch;
     return _db.writeTransaction((tx) async {
-      final rows = await tx.getAll('SELECT id FROM dive_attachments $where');
+      final rows =
+          await tx.getAll('SELECT id FROM dive_attachments $where', [cutoff]);
       if (rows.isEmpty) return 0;
       await tx.execute(
         'UPDATE dive_attachments SET '
@@ -431,7 +442,7 @@ class DiveAttachmentsDao {
         'updated_at = ?, '
         'version = COALESCE(version, 0) + 1 '
         '$where',
-        [_ownerId, now],
+        [_ownerId, at.millisecondsSinceEpoch, cutoff],
       );
       return rows.length;
     });

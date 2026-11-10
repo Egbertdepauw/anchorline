@@ -236,5 +236,16 @@ void main() {
       await liveFileUnderDive('a1', 'k1', const Duration(hours: 1));
       expect(await purger().hasPurgeable(), isTrue);
     });
+
+    test('a dive deleted under 10 minutes ago is left alone', () async {
+      // An older build's UNDO doesn't restore attachments, so the backfill
+      // waits until the dive is past its UNDO window.
+      await liveFileUnderDive('a1', 'k1', const Duration(minutes: 1));
+
+      expect(await purger().hasPurgeable(), isFalse);
+      expect(await purger().purgeDeleted(minAge: Duration.zero), 0);
+      expect(deleted, isEmpty);
+      expect((await dao.get('a1'))!.deletedAt, isNull);
+    });
   });
 }

@@ -558,6 +558,24 @@ void main() {
       expect((await row('earlier'))['deleted_at'], 10);
     });
 
+    test('skips a dive deleted less than 10 minutes ago', () async {
+      final now = DateTime.fromMillisecondsSinceEpoch(10000000);
+      final recent =
+          now.subtract(const Duration(minutes: 9)).millisecondsSinceEpoch;
+      final old =
+          now.subtract(const Duration(minutes: 10)).millisecondsSinceEpoch;
+      await dive('recent', deletedAt: recent);
+      await dive('old', deletedAt: old);
+      await dao.insertFile(_file(id: 'f-recent', diveId: 'recent'));
+      await dao.insertFile(_file(id: 'f-old', diveId: 'old'));
+
+      expect(await dao.softDeleteUnderDeletedDives(now: now), 1);
+
+      // Still inside an older build's UNDO window: left live.
+      expect((await row('f-recent'))['deleted_at'], isNull);
+      expect((await row('f-old'))['deleted_at'], old);
+    });
+
     test('is idempotent', () async {
       await dive('gone', deletedAt: 1000);
       await dao.insertFile(_file(id: 'f1', diveId: 'gone'));
