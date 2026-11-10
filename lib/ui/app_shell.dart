@@ -26,6 +26,7 @@ import '../labels/render/cylinder_label_renderer.dart';
 import '../sync/attachments/attachment_cache.dart';
 import '../sync/attachments/attachment_downloader.dart';
 import '../sync/attachments/attachment_object_wiper.dart';
+import '../sync/attachments/attachment_purger.dart';
 import '../sync/attachments/attachment_signer.dart';
 import '../sync/attachments/attachment_uploader.dart';
 import '../sync/attachments/attachment_uploader_impl.dart';
@@ -132,6 +133,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final AttachmentUploader _attachmentUploader;
   late final PendingUploadStore _pendingUploadStore;
   late final AttachmentObjectWiper _attachmentObjectWiper;
+  late final AttachmentPurger _attachmentPurger;
   late final AccountDeleter _accountDeleter;
 
   // Subsurface git sync (Phase E). Constructed asynchronously because
@@ -243,6 +245,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     ) {
       if (event.session != null) {
         _syncHealthService.start();
+        _purgeDeletedAttachments();
       } else {
         _syncHealthService.stop();
       }
@@ -270,6 +273,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       dao: _diveAttachmentsDao,
       signer: _attachmentSigner,
     );
+    _attachmentPurger = AttachmentPurger(
+      dao: _diveAttachmentsDao,
+      deleteObject: (k) => _attachmentSigner.deleteObject(objectKey: k),
+    );
+    _purgeDeletedAttachments();
     _accountDeleter = AccountDeleter(
       session: SupabaseAuthSessionSource(Supabase.instance.client),
       backend: SupabaseAccountDeletionBackend(Supabase.instance.client),
@@ -358,7 +366,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // the SyncStatus indicator reflecting it. No-op when signed out.
     if (state == AppLifecycleState.resumed) {
       widget.cloudSyncCoordinator.forceReconnect();
+      _purgeDeletedAttachments();
     }
+  }
+
+  /// Fire-and-forget sweep that deletes the R2 objects of attachments
+  /// soft-deleted more than 24 h ago. Signed-in only (the Worker needs the
+  /// JWT); overlapping triggers share one run inside the purger.
+  void _purgeDeletedAttachments() {
+    if (Supabase.instance.client.auth.currentSession == null) return;
+    _attachmentPurger.purgeDeleted().then<void>((_) {}).catchError((Object e) {
+      debugPrint('Attachment purge failed: $e');
+    });
   }
 
   void _onViewDives() {
