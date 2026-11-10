@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/widgets.dart' show BuildContext;
 
+import '../../ble/ble_central_default.dart' show bleCentralAvailable;
 import 'analyzer_transport.dart';
 import 'android_usb_transport.dart';
 import 'demo_transport.dart';
@@ -51,10 +52,23 @@ bool get _hasDesktopSerial =>
         defaultTargetPlatform == TargetPlatform.windows ||
         defaultTargetPlatform == TargetPlatform.linux);
 
-/// The transports available on this platform: desktop USB serial (#108)
-/// on macOS/Windows/Linux, USB OTG on Android (#109), and the demo
-/// simulator everywhere.
-List<AnalyzerTransportOption> defaultAnalyzerTransportOptions() => [
+/// Whether the SOLO bridge can be used here: wherever the app has a
+/// Bluetooth LE central (iOS, Android, macOS, Windows and Linux; not the
+/// web). See `lib/ble/ble_central_default.dart`.
+bool get analyzerBridgeAvailable => bleCentralAvailable;
+
+/// The transports available on this platform, in picker order (the first is
+/// selected by default):
+///
+///  * iOS: Bridge, Demo.
+///  * Android: USB (Android), Bridge, Demo.
+///  * macOS, Windows and Linux: USB, Bridge, Demo.
+///
+/// [bridge] is the Bridge source; it is left out where
+/// [analyzerBridgeAvailable] is false or when null.
+List<AnalyzerTransportOption> defaultAnalyzerTransportOptions({
+  AnalyzerTransportOption? bridge,
+}) => [
       if (_hasDesktopSerial)
         AnalyzerTransportOption(
           label: 'USB',
@@ -74,15 +88,16 @@ List<AnalyzerTransportOption> defaultAnalyzerTransportOptions() => [
             return DesktopSerialTransport(portPath: port);
           },
         ),
-      AnalyzerTransportOption(
-        label: 'Demo',
-        isDemo: true,
-        create: () => DemoAnalyzerTransport(),
-      ),
       if (!kIsWeb && Platform.isAndroid)
         AnalyzerTransportOption(
           label: 'USB (Android)',
           create: () => AndroidUsbTransport(),
           note: 'The phone powers the analyzer over the USB OTG cable.',
         ),
+      if (bridge != null && analyzerBridgeAvailable) bridge,
+      AnalyzerTransportOption(
+        label: 'Demo',
+        isDemo: true,
+        create: () => DemoAnalyzerTransport(),
+      ),
     ];

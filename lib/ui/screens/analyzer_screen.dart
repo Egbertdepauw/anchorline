@@ -238,7 +238,9 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   /// connected and there is a log. Started, it is remembered on the device
   /// and runs again on the next connect; the session runs the logger.
   bool get _canStartLogOnOk =>
-      _controller.isConnected && !_session.sourceIsDemo && _analysesDao != null;
+      _controller.isConnected &&
+      !_session.sourceIsDemo &&
+      _analysesDao != null;
 
   /// Whether the save card is shown; see [_saveCard].
   bool get _showsSaveCard {

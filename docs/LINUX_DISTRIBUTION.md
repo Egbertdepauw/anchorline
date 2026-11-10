@@ -116,6 +116,23 @@ starts and works, but Subsurface sync can't load libgit2. Ubuntu 24.04,
 Debian 13 and Fedora 39 or newer are fine. Fixing this needs a libgit2
 built on an older glibc, upstream or here.
 
+### Bluetooth LE
+
+The SOLO bridge, the Phomemo label printer and the BLE import go through
+`flutter_blue_plus` 1.x, whose Linux backend talks to **BlueZ** over the
+system D-Bus. Nothing is bundled for it: the AppImage needs no extra
+library, only a running `bluetoothd` on the user's machine, which every
+desktop distribution with Bluetooth has. The user must be allowed to use
+BlueZ over D-Bus; on a normal desktop session that is the default (BlueZ's
+D-Bus policy allows the logged-in user), so no group membership is needed.
+If "Find bridge" says Bluetooth is off, check `bluetoothctl show` reports
+`Powered: yes`.
+
+Two Linux differences are handled in the app (`lib/ble/fbp_ble_central.dart`):
+BlueZ only connects to a device it has seen recently, so a connect starts
+with a short scan; and `autoConnect` is not honoured there, so the bridge
+link reconnects in Dart after a drop, as on Windows.
+
 ## 4. Known quirks (handled in the recipe)
 
 | Symptom | Cause | Status |
@@ -138,9 +155,10 @@ built on an older glibc, upstream or here.
   up (cloud-builds spec, §6).
 - **Signing, update information, AppStream metainfo.** None yet;
   appimagetool runs with `--no-appstream`.
-- **Hardware paths.** BLE import (BlueZ over D-Bus), Subsurface sync
-  (libgit2) and the gas analyzer's serial port have not been tried from
-  the AppImage on a real machine (cloud-builds spec, §12).
+- **Hardware paths.** BLE import (BlueZ over D-Bus), the SOLO bridge and
+  the Phomemo label printer (BLE, same path), Subsurface sync (libgit2) and
+  the gas analyzer's serial port have not been tried from the AppImage on a
+  real machine (cloud-builds spec, §12).
 
 ## 6. Versioning
 

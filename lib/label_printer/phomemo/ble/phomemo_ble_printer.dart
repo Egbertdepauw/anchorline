@@ -1,7 +1,8 @@
 /// BLE transport for the Phomemo M110 label printer (issue #114).
 ///
-/// A thin `flutter_blue_plus` layer, mirroring
-/// `lib/shearwater/ble/ble_io_impl.dart`: it connects, runs the write plan
+/// A thin layer over the shared [BleCentral] seam (`lib/ble/`), which is
+/// `flutter_blue_plus` on Android, iOS, macOS and Linux and the in-app
+/// WinRT channel on Windows: it connects, runs the write plan
 /// from [planPhomemoM110Writes] and turns notifications into
 /// [PrinterFault]s with [parsePhomemoNotification]. It holds no protocol
 /// logic, so it has no unit tests; everything testable is in
@@ -9,20 +10,22 @@
 /// hardware in Task 15 of the issue #114 plan.
 ///
 /// This directory is the only place under `lib/label_printer/` that may
-/// import Flutter or `flutter_blue_plus`.
+/// import Flutter or the BLE seam.
 library;
 
 import 'dart:async';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/services.dart' show PlatformException;
 
+import '../../../ble/ble_central.dart';
+import '../../../ble/ble_central_default.dart';
 import '../../label_bitmap.dart';
 import '../../label_printer.dart';
 import '../phomemo_encoder.dart';
 import '../phomemo_status.dart';
+import '../../../ble/ble_log.dart';
 
 /// How long [PhomemoBlePrinter.connect] and the scanner wait for the
 /// Bluetooth adapter to be on.
@@ -30,8 +33,13 @@ const Duration kBluetoothOnTimeout = Duration(seconds: 10);
 
 const Duration _kConnectTimeout = Duration(seconds: 10);
 
-/// MTU asked for on Android, as `ble_io_impl.dart` does. iOS and macOS
-/// negotiate it themselves.
+/// How long turning on the status notifications may take. On Windows an
+/// unpaired M110 can leave it waiting on the system's pairing prompt; the
+/// printer then prints without status (see [PhomemoBlePrinter.notifying]).
+const Duration _kNotifyTimeout = Duration(seconds: 8);
+
+/// MTU asked for on Android, as `ble_io_impl.dart` does. iOS, macOS and
+/// Windows negotiate it themselves; the request is a no-op there.
 const int _kAndroidMtu = 247;
 
 /// Gap between the three status queries before a print.
@@ -46,16 +54,11 @@ const Duration _kQueryAnswerWait = Duration(milliseconds: 300);
 const Duration _kWriteRetryDelay = Duration(milliseconds: 25);
 const int _kWriteRetries = 40;
 
-/// Per-write timeout, in seconds as `flutter_blue_plus` takes it. A write
+/// Per-write timeout. A write
 /// normally completes within one connection interval. A timed-out write is
 /// not retried: it may have reached the printer, and a resent chunk would
 /// corrupt the raster.
-const int _kWriteTimeoutSeconds = 5;
-
-/// How long `disconnect()` waits for the link to report closed, in seconds.
-/// Shorter than the `flutter_blue_plus` default of 35 s, so a stuck stack
-/// can't hold up the print service's `finally`.
-const int _kDisconnectTimeoutSeconds = 5;
+const Duration _kWriteTimeout = Duration(seconds: 5);
 
 const LabelPrinterException _kNotFound = LabelPrinterException(
   'Printer not found',
@@ -67,43 +70,6 @@ const LabelPrinterException _kConnectionLost = LabelPrinterException(
   'Printer connection lost',
 );
 
-/// Waits up to [timeout] for the Bluetooth adapter to be on, and returns
-/// whether it is.
-///
-/// On macOS and iOS the adapter starts as `unknown` and only reaches `on`
-/// once the OS has initialised it and the user has answered the Bluetooth
-/// prompt (see `ImportNotifier._startRealScan`), so the current state alone
-/// isn't enough. Unlike `.first.timeout()`, this cancels its subscription
-/// and timer on every exit.
-Future<bool> waitForBluetoothOn(Duration timeout) async {
-  if (FlutterBluePlus.adapterStateNow == BluetoothAdapterState.on) {
-    return true;
-  }
-  final on = Completer<bool>();
-  void settle(bool value) {
-    if (!on.isCompleted) on.complete(value);
-  }
-
-  final timer = Timer(timeout, () => settle(false));
-  final sub = FlutterBluePlus.adapterState.listen(
-    (state) {
-      if (state == BluetoothAdapterState.on) settle(true);
-    },
-    onError: (Object e) {
-      debugPrint('Phomemo BLE: adapter state failed: $e');
-      settle(false);
-    },
-  );
-  try {
-    return await on.future;
-  } finally {
-    timer.cancel();
-    // Not awaited: adapterState is an async* stream, and cancelling it
-    // waits for a pending platform call that could hang.
-    unawaited(sub.cancel());
-  }
-}
-
 /// A Phomemo M110 reached over BLE by its remote id.
 ///
 /// Call [connect], then [printLabel], then [disconnect]. [disconnect] is
@@ -111,10 +77,36 @@ Future<bool> waitForBluetoothOn(Duration timeout) async {
 /// running: those then fail and leave the link closed. The instance can be
 /// connected again after a [disconnect].
 class PhomemoBlePrinter implements LabelPrinter {
-  PhomemoBlePrinter({required String remoteId})
-    : _device = BluetoothDevice.fromId(remoteId);
+  PhomemoBlePrinter({required String remoteId, BleCentral? central})
+    : _central = central ?? defaultBleCentral(),
+      _remoteId = remoteId {
+    _le = _central.peripheral(remoteId);
+    _device = _le;
+  }
 
-  final BluetoothDevice _device;
+  final BleCentral _central;
+  final String _remoteId;
+  late final BlePeripheral _le;
+
+  /// The link in use: [_le], or the classic serial link where the LE side
+  /// refuses to work without pairing (the M110 on Windows).
+  late BlePeripheral _device;
+
+  /// Printers whose classic serial link worked: tried first from then on,
+  /// for every instance (the app makes one per print), this run.
+  static final Set<String> _serialFirst = {};
+
+  bool get _serialPreferred => _serialFirst.contains(_remoteId);
+  set _serialPreferred(bool on) =>
+      on ? _serialFirst.add(_remoteId) : _serialFirst.remove(_remoteId);
+
+  /// Forgets which printers go over classic serial.
+  @visibleForTesting
+  static void resetSerialPreference() => _serialFirst.clear();
+
+  /// Whether this connection runs over classic Bluetooth serial.
+  @visibleForTesting
+  bool get usingClassicSerial => !identical(_device, _le);
 
   /// Everything the printer has told us, as it arrives. Closed by
   /// [disconnect]; [connect] opens a new one.
@@ -122,8 +114,18 @@ class PhomemoBlePrinter implements LabelPrinter {
       StreamController<PhomemoEvent>.broadcast();
 
   StreamSubscription<List<int>>? _notifySub;
-  BluetoothCharacteristic? _writeChar;
+  BleCharacteristic? _writeChar;
   bool _writeWithoutResponse = false;
+
+  /// Whether the printer's status notifications are on for this connection.
+  /// Without them a job can't see faults or job done, so it waits a fixed
+  /// time instead.
+  bool get notifying => _notifying;
+  bool _notifying = false;
+
+  /// Whether label data goes out as writes without response.
+  @visibleForTesting
+  bool get writesWithoutResponse => _writeWithoutResponse;
 
   /// Bumped by every [connect] and [disconnect]. A [connect] or
   /// [printLabel] that sees a newer value was overtaken and stops.
@@ -153,62 +155,126 @@ class PhomemoBlePrinter implements LabelPrinter {
       _events = StreamController<PhomemoEvent>.broadcast();
     }
 
-    if (!await waitForBluetoothOn(kBluetoothOnTimeout)) {
-      throw const LabelPrinterException('Bluetooth is off');
-    }
+    final problem = bleAdapterProblem(
+      await waitForAdapterOn(_central, kBluetoothOnTimeout),
+    );
+    if (problem != null) throw LabelPrinterException(problem);
     // Overtaken while waiting: the link hasn't been touched, so there is
     // nothing to close.
     _ensureCurrent(session);
 
     StreamSubscription<List<int>>? sub;
+    _device = _le;
     try {
-      // mtu: null stops flutter_blue_plus from asking for 512 inside
-      // connect(), where a refusal would fail the connect. We ask for 247
-      // ourselves below and ignore a refusal.
-      await _device.connect(timeout: _kConnectTimeout, mtu: null);
-      _ensureCurrent(session);
-
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        try {
-          final mtu = await _device.requestMtu(_kAndroidMtu);
-          debugPrint('Phomemo BLE: negotiated MTU=${mtu}B');
-        } catch (e) {
-          debugPrint('Phomemo BLE: requestMtu failed: $e');
+      if (_serialPreferred) {
+        final serial = await _connectSerial(session);
+        if (serial != null) {
+          _commit(serial.notify.notifications.listen(
+            _onNotification,
+            onError: (Object e) => bleLog('Phomemo BLE: serial error: $e'),
+          ), serial.write, notifying: false);
+          return;
         }
-        _ensureCurrent(session);
+        _serialPreferred = false;
       }
 
-      final services = await _device.discoverServices();
+      // The central connects without an MTU request (a refusal would fail
+      // the connect). We ask for 247 ourselves below and ignore a refusal.
+      try {
+        await _device.connect(timeout: _kConnectTimeout);
+      } on Object catch (e) {
+        if (e is! BleException && e is! TimeoutException) rethrow;
+        // LE out of reach (a dual-mode printer may stop answering on LE
+        // once its classic side is in use): try the classic serial link.
+        bleLog('Phomemo BLE: LE connect failed ($e), trying classic serial');
+        await _le.disconnect();
+        final serial = await _connectSerial(session);
+        if (serial == null) rethrow;
+        _serialPreferred = true;
+        _commit(serial.notify.notifications.listen(
+          _onNotification,
+          onError: (Object e) => bleLog('Phomemo BLE: serial error: $e'),
+        ), serial.write, notifying: false);
+        return;
+      }
       _ensureCurrent(session);
-      final (:write, :notify) = _findCharacteristics(services);
+
+      try {
+        final mtu = await _device.requestMtu(_kAndroidMtu);
+        bleLog('Phomemo BLE: MTU=${mtu}B');
+      } catch (e) {
+        bleLog('Phomemo BLE: requestMtu failed: $e');
+      }
+      _ensureCurrent(session);
+
+      var chars = await _device.discoverServices();
+      _ensureCurrent(session);
+      var (:write, :notify) = _findCharacteristics(chars);
 
       // Listen before enabling notifications so an answer that arrives
       // straight away isn't lost.
-      sub = notify.onValueReceived.listen(
+      sub = notify.notifications.listen(
         _onNotification,
-        onError: (Object e) => debugPrint('Phomemo BLE: notify error: $e'),
+        onError: (Object e) => bleLog('Phomemo BLE: notify error: $e'),
       );
-      await notify.setNotifyValue(true);
+      var notifying = true;
+      try {
+        await notify.setNotify(true).timeout(_kNotifyTimeout);
+      } on Object catch (e) {
+        if (e is! BleException && e is! TimeoutException) rethrow;
+        // Print without status rather than not at all.
+        notifying = false;
+        bleLog('Phomemo BLE: notifications unavailable, printing blind: $e');
+      }
       _ensureCurrent(session);
 
-      // Commit. Synchronous from the last check, so a disconnect() can't
-      // slip in between.
-      final previous = _notifySub;
-      _notifySub = sub;
-      _writeChar = write;
-      _writeWithoutResponse = write.properties.writeWithoutResponse;
-      unawaited(previous?.cancel());
-      debugPrint(
-        'Phomemo BLE: connected. MTU=${_device.mtuNow}B, '
-        'write ${_writeWithoutResponse ? 'without' : 'with'} response',
-      );
+      // Refused status over LE (the M110 wants LE pairing, which Windows
+      // can't do for it): its classic side takes the same bytes over a
+      // serial link, once paired in Windows Settings.
+      if (!notifying) {
+        final serial = await _connectSerial(session);
+        if (serial != null) {
+          await sub.cancel();
+          await _le.disconnect();
+          _serialPreferred = true;
+          _commit(serial.notify.notifications.listen(
+            _onNotification,
+            onError: (Object e) => bleLog('Phomemo BLE: serial error: $e'),
+          ), serial.write, notifying: false);
+          return;
+        }
+      }
+
+      // A refused subscribe can take the link down with it (on Windows a
+      // failed pairing attempt does). Connect once more and print blind.
+      if (!_device.isConnected) {
+        bleLog('Phomemo BLE: link dropped while connecting, reconnecting');
+        notifying = false;
+        await sub.cancel();
+        sub = null;
+        await _device.connect(timeout: _kConnectTimeout);
+        _ensureCurrent(session);
+        chars = await _device.discoverServices();
+        _ensureCurrent(session);
+        (write: write, notify: notify) = _findCharacteristics(chars);
+        if (!_device.isConnected) {
+          throw const BleException(kBleErrorNotConnected, 'link dropped');
+        }
+      }
+
+      _commit(sub, write, notifying: notifying);
     } catch (e) {
       await _abandon(session, sub);
       if (e is LabelPrinterException) rethrow;
-      if (e is FlutterBluePlusException ||
-          e is TimeoutException ||
+      if (e is BleException) {
+        // Keep the platform's reason visible: on desktop it is the only
+        // clue to why a printer the scan found can't be reached.
+        bleLog('Phomemo BLE: connect failed: $e');
+        throw LabelPrinterException('${_kNotFound.message} (${e.message})');
+      }
+      if (e is TimeoutException ||
           e is PlatformException) {
-        debugPrint('Phomemo BLE: connect failed: $e');
+        bleLog('Phomemo BLE: connect failed: $e');
         throw _kNotFound;
       }
       rethrow;
@@ -237,7 +303,7 @@ class PhomemoBlePrinter implements LabelPrinter {
     final plan = planPhomemoM110Writes(
       bitmap,
       copies: count,
-      chunkSize: min(kPhomemoChunkSize, _device.mtuNow - 3),
+      chunkSize: min(kPhomemoChunkSize, _device.maxWritePayload),
     );
 
     // Watch the printer for the whole job, from the status queries on, so
@@ -276,8 +342,16 @@ class PhomemoBlePrinter implements LabelPrinter {
       // job done.
       await job.waitForDone(kPhomemoDoneTimeout * count);
       job.throwIfFatal();
-      if (!job.allDone && (session != _session || _device.isDisconnected)) {
+      if (!job.allDone && (session != _session || !_device.isConnected)) {
         throw _kConnectionLost;
+      }
+
+      // 4. Job done comes before the label is fed out to the tear-off edge;
+      // keep the link open while it feeds.
+      // Without notifications job done never comes: the timeout above
+      // stands in for it, and the label still needs time to feed out.
+      if (job.allDone || !_notifying) {
+        await Future<void>.delayed(kPhomemoAfterDoneFeedPause);
       }
       return job.warnings;
     } finally {
@@ -297,7 +371,7 @@ class PhomemoBlePrinter implements LabelPrinter {
     try {
       await sub?.cancel();
     } catch (e) {
-      debugPrint('Phomemo BLE: cancel notify failed: $e');
+      bleLog('Phomemo BLE: cancel notify failed: $e');
     }
     if (!_events.isClosed) unawaited(_events.close());
     await _closeLink();
@@ -305,25 +379,26 @@ class PhomemoBlePrinter implements LabelPrinter {
 
   /// Writes [bytes], retrying while the printer pushes back.
   Future<void> _send(
-    BluetoothCharacteristic c,
+    BleCharacteristic c,
     List<int> bytes,
     int session,
     _PrintJob job,
   ) async {
     for (var retry = 0; ; retry++) {
-      if (session != _session || _device.isDisconnected) {
+      if (session != _session || !_device.isConnected) {
+        bleLog('Phomemo BLE: link down before write');
         throw _kConnectionLost;
       }
       try {
         await c.write(
           bytes,
           withoutResponse: _writeWithoutResponse,
-          timeout: _kWriteTimeoutSeconds,
+          timeout: _kWriteTimeout,
         );
         return;
       } on Exception catch (e) {
         if (retry >= _kWriteRetries || _isTimeout(e)) {
-          debugPrint('Phomemo BLE: write failed after $retry retries: $e');
+          bleLog('Phomemo BLE: write failed after $retry retries: $e');
           throw _kConnectionLost;
         }
       }
@@ -334,13 +409,67 @@ class PhomemoBlePrinter implements LabelPrinter {
 
   void _onNotification(List<int> value) {
     final hex = value.map((b) => b.toRadixString(16).padLeft(2, '0'));
-    debugPrint('Phomemo BLE: notify ${hex.join(' ')}');
+    bleLog('Phomemo BLE: notify ${hex.join(' ')}');
     final event = parsePhomemoNotification(value);
     if (event == null || _events.isClosed) return;
     _events.add(event);
   }
 
   /// Throws when a [disconnect] or a newer [connect] overtook [session].
+  /// Makes the connection just set up the current one. Synchronous from
+  /// the caller's last session check, so a disconnect() can't slip in.
+  void _commit(
+    StreamSubscription<List<int>>? sub,
+    BleCharacteristic write, {
+    required bool notifying,
+  }) {
+    final previous = _notifySub;
+    _notifySub = sub;
+    _writeChar = write;
+    // Blind, a write without response that the printer refuses (it wants
+    // pairing, say) is lost without a word; with response it fails, and
+    // Windows can pair and retry.
+    _writeWithoutResponse = write.properties.writeWithoutResponse &&
+        (notifying || !write.properties.write);
+    _notifying = notifying;
+    unawaited(previous?.cancel());
+    bleLog(
+      'Phomemo BLE: connected${usingClassicSerial ? ' (classic serial)' : ''}. '
+      'MTU=${_device.mtu}B, '
+      'write ${_writeWithoutResponse ? 'without' : 'with'} response',
+    );
+  }
+
+  /// Opens the printer's classic Bluetooth serial link where the platform
+  /// has one, and makes it [_device]. Null (with [_device] left alone)
+  /// when there is none or it can't be opened.
+  Future<({BleCharacteristic write, BleCharacteristic notify})?>
+      _connectSerial(int session) async {
+    final serial = _central.classicSerialPeripheral(
+      _remoteId,
+      serviceUuid: kPhomemoServiceUuid,
+      writeUuid: kPhomemoWriteUuid,
+      notifyUuid: kPhomemoNotifyUuid,
+    );
+    if (serial == null) return null;
+    try {
+      await serial.connect(timeout: _kConnectTimeout);
+      _ensureCurrent(session);
+      final found = _findCharacteristics(await serial.discoverServices());
+      _ensureCurrent(session);
+      _device = serial;
+      return found;
+    } on LabelPrinterException {
+      await serial.disconnect();
+      rethrow;
+    } on Object catch (e) {
+      if (e is! BleException && e is! TimeoutException) rethrow;
+      bleLog('Phomemo BLE: classic serial unavailable: $e');
+      await serial.disconnect();
+      return null;
+    }
+  }
+
   void _ensureCurrent(int session) {
     if (session != _session) throw _kNotFound;
   }
@@ -351,63 +480,42 @@ class PhomemoBlePrinter implements LabelPrinter {
     try {
       await sub?.cancel();
     } catch (e) {
-      debugPrint('Phomemo BLE: cancel notify failed: $e');
+      bleLog('Phomemo BLE: cancel notify failed: $e');
     }
     if (session == _latestConnect) await _closeLink();
   }
 
-  Future<void> _closeLink() async {
-    try {
-      // queue: false skips the flutter_blue_plus operation queue, so this
-      // also cancels a connect that is still in progress.
-      await _device.disconnect(
-        queue: false,
-        timeout: _kDisconnectTimeoutSeconds,
-      );
-    } catch (e) {
-      debugPrint('Phomemo BLE: disconnect failed: $e');
-    }
-  }
+  /// Also cancels a connect that is still in progress. Never throws.
+  Future<void> _closeLink() => _device.disconnect();
 }
 
-/// The Phomemo service's write and notify characteristics in [services].
+/// The Phomemo service's write and notify characteristics in [chars].
 /// Throws `'Not a supported Phomemo printer'` when either is missing or
 /// can't be written to or notify.
-({BluetoothCharacteristic write, BluetoothCharacteristic notify})
-_findCharacteristics(List<BluetoothService> services) {
-  final serviceUuid = Guid(kPhomemoServiceUuid);
-  final writeUuid = Guid(kPhomemoWriteUuid);
-  final notifyUuid = Guid(kPhomemoNotifyUuid);
-
-  BluetoothService? service;
-  for (final s in services) {
-    if (s.uuid == serviceUuid) {
-      service = s;
-      break;
-    }
-  }
-  if (service == null) throw _kNotSupported;
-
-  BluetoothCharacteristic? write;
-  BluetoothCharacteristic? notify;
-  for (final c in service.characteristics) {
-    if (c.uuid == writeUuid) write = c;
-    if (c.uuid == notifyUuid) notify = c;
-  }
+({BleCharacteristic write, BleCharacteristic notify}) _findCharacteristics(
+  List<BleCharacteristic> chars,
+) {
+  final write = findCharacteristic(
+    chars,
+    kPhomemoServiceUuid,
+    kPhomemoWriteUuid,
+  );
+  final notify = findCharacteristic(
+    chars,
+    kPhomemoServiceUuid,
+    kPhomemoNotifyUuid,
+  );
   if (write == null || notify == null) throw _kNotSupported;
-  final w = write.properties;
-  final n = notify.properties;
-  if (!(w.write || w.writeWithoutResponse) || !(n.notify || n.indicate)) {
+  if (!write.properties.canWrite || !notify.properties.canNotify) {
     throw _kNotSupported;
   }
   return (write: write, notify: notify);
 }
 
+/// A write that ran out of time: not retried, since it may have reached
+/// the printer.
 bool _isTimeout(Exception e) =>
-    e is TimeoutException ||
-    (e is FlutterBluePlusException &&
-        e.platform == ErrorPlatform.fbp &&
-        e.code == FbpErrorCode.timeout.index);
+    e is TimeoutException || (e is BleException && e.code == kBleErrorTimeout);
 
 PrinterFault? _faultFor(PhomemoEvent event) => switch (event) {
   PhomemoEvent.jobDone => null,

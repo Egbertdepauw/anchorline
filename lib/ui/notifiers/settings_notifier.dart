@@ -54,6 +54,9 @@ class SettingsNotifier extends ChangeNotifier {
   /// Where the analyzer's "Fill pressure" starts when a cylinder is saved.
   static const double kDefaultFillPressureStartBar = 230;
   static const _kLabelUse14 = 'label_use_14_for_deeper_mixes';
+  static const _kAnalyzerBridgeId = 'analyzer_bridge_id';
+  static const _kAnalyzerBridgeName = 'analyzer_bridge_name';
+  static const _kAnalyzerBridgeVbus = 'analyzer_bridge_vbus';
   static const _kLabelPrinterId = 'label_printer_id';
   static const _kLabelPrinterName = 'label_printer_name';
 
@@ -132,6 +135,10 @@ class SettingsNotifier extends ChangeNotifier {
   double _analyzerFillPressureStartBar = kDefaultFillPressureStartBar;
   // ── Cylinder labels (device-local, never synced) ────────────────
   bool _labelUse14ForDeeperMixes = false;
+  // The SOLO bridge paired on this device (device-local, never synced).
+  String? _analyzerBridgeId;
+  String? _analyzerBridgeName;
+  bool _analyzerBridgeVbus = false;
   String? _labelPrinterId;
   String? _labelPrinterName;
 
@@ -197,6 +204,15 @@ class SettingsNotifier extends ChangeNotifier {
 
   /// The label printer saved on this device: its BLE id and the name shown
   /// in Settings. Both null when none is set up.
+  /// The SOLO bridge saved on this device: its BLE id and the name shown in
+  /// Settings. Both null when none is set up.
+  String? get analyzerBridgeId => _analyzerBridgeId;
+  String? get analyzerBridgeName => _analyzerBridgeName;
+
+  /// Whether the bridge supplies 5 V to the SOLO (which also charges it).
+  /// Off by default: the SOLO runs on its own battery.
+  bool get analyzerBridgeVbus => _analyzerBridgeVbus;
+
   String? get labelPrinterId => _labelPrinterId;
   String? get labelPrinterName => _labelPrinterName;
 
@@ -331,6 +347,9 @@ class SettingsNotifier extends ChangeNotifier {
         prefs.getDouble(_kAnalyzerFillPressureStart) ??
             kDefaultFillPressureStartBar;
     _labelUse14ForDeeperMixes = prefs.getBool(_kLabelUse14) ?? false;
+    _analyzerBridgeId = prefs.getString(_kAnalyzerBridgeId);
+    _analyzerBridgeName = prefs.getString(_kAnalyzerBridgeName);
+    _analyzerBridgeVbus = prefs.getBool(_kAnalyzerBridgeVbus) ?? false;
     _labelPrinterId = prefs.getString(_kLabelPrinterId);
     _labelPrinterName = prefs.getString(_kLabelPrinterName);
 
@@ -727,6 +746,39 @@ class SettingsNotifier extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kLabelPrinterId, id);
     await prefs.setString(_kLabelPrinterName, name);
+  }
+
+  /// Saves the SOLO bridge for this device. [id] is the BLE id used to
+  /// reconnect; [name] is only for display.
+  Future<void> setAnalyzerBridge({
+    required String id,
+    required String name,
+  }) async {
+    if (_analyzerBridgeId == id && _analyzerBridgeName == name) return;
+    _analyzerBridgeId = id;
+    _analyzerBridgeName = name;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kAnalyzerBridgeId, id);
+    await prefs.setString(_kAnalyzerBridgeName, name);
+  }
+
+  Future<void> forgetAnalyzerBridge() async {
+    if (_analyzerBridgeId == null && _analyzerBridgeName == null) return;
+    _analyzerBridgeId = null;
+    _analyzerBridgeName = null;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kAnalyzerBridgeId);
+    await prefs.remove(_kAnalyzerBridgeName);
+  }
+
+  Future<void> setAnalyzerBridgeVbus(bool on) async {
+    if (_analyzerBridgeVbus == on) return;
+    _analyzerBridgeVbus = on;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kAnalyzerBridgeVbus, on);
   }
 
   Future<void> forgetLabelPrinter() async {

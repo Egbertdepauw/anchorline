@@ -1,0 +1,7 @@
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+host_test/test_main
+host_test/test_main.dSYM/
+host_test/golden/*.out

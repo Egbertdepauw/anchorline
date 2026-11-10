@@ -129,6 +129,13 @@ const Duration kPhomemoAfterFooterPause = Duration(milliseconds: 500);
 /// Reaching the timeout counts as printed: the M110 may not send one.
 const Duration kPhomemoDoneTimeout = Duration(seconds: 3);
 
+/// How long the link stays open after the last job-done notification. The
+/// M110 reports job done once the raster is printed, then feeds the label
+/// out to the tear-off edge; disconnecting at once stopped that feed on the
+/// iPhone bench (2026-11-09). SpoolmanScale notes a 30 mm label takes about
+/// 1.5 s after the last byte.
+const Duration kPhomemoAfterDoneFeedPause = Duration(milliseconds: 2000);
+
 /// Most copies one job prints; more is clamped.
 const int kPhomemoMaxCopies = 9;
 

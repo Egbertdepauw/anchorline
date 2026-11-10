@@ -24,9 +24,9 @@
 /// desired mix is confirmed before anything is saved; a print that fails
 /// leaves the analysis saved.
 ///
-/// With a [UsbOkLogger] bound (Log on OK over USB) the form is the setup for
-/// the OK presses: its fields are what the next OK press saves ([okSetup]),
-/// and the outcome of each press is kept in [okResult] for Edit.
+/// With an [OkLogger] bound (Log on OK, over USB or the bridge) the form is
+/// the setup for the OK presses: its fields are what the next OK press saves
+/// ([okSetup]), and the outcome of each press is kept in [okResult] for Edit.
 library;
 
 import 'dart:async';
@@ -41,7 +41,7 @@ import '../../analyzer/bridge/bridge_protocol.dart';
 import '../../analyzer/bridge/record_to_analysis.dart';
 import '../../analyzer/protocol/analyzer_reading.dart';
 import '../../analyzer/stability.dart';
-import '../../analyzer/usb_ok_logger.dart';
+import '../../analyzer/ok_logger.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../../labels/label_print_service.dart';
 import '../notifiers/settings_notifier.dart';
@@ -565,7 +565,7 @@ class AnalysisSaveController extends ChangeNotifier {
   }
 
   // ── Log on OK ───────────────────────────────────────────────────
-  UsbOkLogger? _okLogger;
+  OkLogger? _okLogger;
   StreamSubscription<OkLogResult>? _okSub;
 
   /// The latest OK press of this logger, shown with Edit.
@@ -612,7 +612,7 @@ class AnalysisSaveController extends ChangeNotifier {
   /// Becomes the setup of [logger] and listens to what its presses did. A
   /// new logger starts a new run, and null ends it. The results are not
   /// replayed, so the controller listens for as long as it has the logger.
-  void bindLogger(UsbOkLogger? logger) {
+  void bindLogger(OkLogger? logger) {
     if (identical(logger, _okLogger)) return;
     _unbindLogger();
     _okResult = null;
@@ -648,7 +648,7 @@ class AnalysisSaveController extends ChangeNotifier {
   /// from its held reading ([LogOnOkSetup.autoPickMix]), and works out its
   /// role from that unless the diver tapped one or the cylinder has one.
   ///
-  /// It is the logger's [UsbOkLogger.setupProvider], asked once per press,
+  /// It is the logger's [OkLogger.setupProvider], asked once per press,
   /// and it has one side effect: the unused Blend target goes to one press
   /// at a time. The press that gets it holds it until its outcome is known
   /// ([_onOkResult]), so a press queued behind it gets none. It writes
