@@ -504,4 +504,67 @@ void main() {
       expect(UploadState.fromWire(3), UploadState.purged);
     });
   });
+
+  group('softDeleteUnderDeletedDives (#198 backfill)', () {
+    // Bare dives rows are enough: only id and deleted_at are read.
+    Future<void> dive(String id, {int? deletedAt}) => db.execute(
+          'INSERT INTO dives (id, deleted_at) VALUES (?, ?)',
+          [id, deletedAt],
+        );
+
+    Future<Map<String, dynamic>> row(String id) => db.get(
+          'SELECT deleted_at, version, owner_id FROM dive_attachments '
+          'WHERE id = ?',
+          [id],
+        );
+
+    test('soft-deletes live attachments of a deleted dive with its deleted_at',
+        () async {
+      await dive('gone', deletedAt: 1000);
+      await dao.insertFile(_file(id: 'f1', diveId: 'gone'));
+      await dao.insertLink(_link(id: 'l1', diveId: 'gone'));
+      final before = (await row('f1'))['version'] as int;
+
+      expect(await dao.softDeleteUnderDeletedDives(), 2);
+
+      expect((await row('f1'))['deleted_at'], 1000);
+      expect((await row('l1'))['deleted_at'], 1000);
+      expect((await row('f1'))['version'], before + 1);
+      expect((await row('f1'))['owner_id'], 'owner-1');
+      expect(
+        (await dao.listPurgeable(DateTime.fromMillisecondsSinceEpoch(1001)))
+            .map((a) => a.id),
+        ['f1'],
+      );
+    });
+
+    test('leaves live dives, unknown dives and earlier deletes alone',
+        () async {
+      await dive('live');
+      await dive('gone', deletedAt: 5000);
+      await dao.insertFile(_file(id: 'on-live', diveId: 'live'));
+      // Parent dive not synced down yet: no dives row to go by.
+      await dao.insertFile(_file(id: 'no-dive', diveId: 'missing'));
+      await dao.insertFile(_file(id: 'earlier', diveId: 'gone'));
+      await db.execute(
+        'UPDATE dive_attachments SET deleted_at = 10 WHERE id = ?',
+        ['earlier'],
+      );
+
+      expect(await dao.softDeleteUnderDeletedDives(), 0);
+
+      expect((await row('on-live'))['deleted_at'], isNull);
+      expect((await row('no-dive'))['deleted_at'], isNull);
+      expect((await row('earlier'))['deleted_at'], 10);
+    });
+
+    test('is idempotent', () async {
+      await dive('gone', deletedAt: 1000);
+      await dao.insertFile(_file(id: 'f1', diveId: 'gone'));
+      expect(await dao.softDeleteUnderDeletedDives(), 1);
+      final version = (await row('f1'))['version'];
+      expect(await dao.softDeleteUnderDeletedDives(), 0);
+      expect((await row('f1'))['version'], version);
+    });
+  });
 }
