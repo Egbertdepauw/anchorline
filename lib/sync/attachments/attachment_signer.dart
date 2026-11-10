@@ -12,6 +12,9 @@
 ///
 /// Errors:
 ///   * 401 → [SignerAuthException] (caller may prompt for sign-in)
+///   * 413 `quota_exceeded` → [AttachmentQuotaExceededException]
+///   * 429 → [AttachmentRateLimitedException]
+///   * 503 `uploads_disabled` → [AttachmentUploadsDisabledException]
 ///   * other non-2xx → [SignerException] with status + raw body
 ///   * IO / parse failures → bubble up as the underlying `Exception`
 library;
@@ -21,6 +24,52 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../cloud/ccrlogger_backend_connector.dart' show SessionSource;
+
+/// Per-account attachment usage reported by the Worker.
+class AttachmentUsage {
+  final int usedBytes;
+  final int limitBytes;
+  final int usedFiles;
+  final int limitFiles;
+
+  /// Only present on `POST /usage`; null when the Worker didn't say.
+  final bool? uploadsEnabled;
+
+  const AttachmentUsage({
+    required this.usedBytes,
+    required this.limitBytes,
+    required this.usedFiles,
+    required this.limitFiles,
+    this.uploadsEnabled,
+  });
+
+  /// Returns null unless all four counters are present and are ints, so
+  /// responses from an older Worker (no usage fields) still parse.
+  static AttachmentUsage? tryParse(Map<String, dynamic> json) {
+    final usedBytes = json['used_bytes'];
+    final limitBytes = json['limit_bytes'];
+    final usedFiles = json['used_files'];
+    final limitFiles = json['limit_files'];
+    if (usedBytes is! int ||
+        limitBytes is! int ||
+        usedFiles is! int ||
+        limitFiles is! int) {
+      return null;
+    }
+    final enabled = json['uploads_enabled'];
+    return AttachmentUsage(
+      usedBytes: usedBytes,
+      limitBytes: limitBytes,
+      usedFiles: usedFiles,
+      limitFiles: limitFiles,
+      uploadsEnabled: enabled is bool ? enabled : null,
+    );
+  }
+
+  @override
+  String toString() =>
+      'AttachmentUsage(bytes: $usedBytes/$limitBytes, files: $usedFiles/$limitFiles)';
+}
 
 /// Successful response from `POST /sign-upload`.
 class SignUploadResponse {
@@ -36,10 +85,14 @@ class SignUploadResponse {
   /// Server-stamped Unix epoch seconds when the URL stops working.
   final DateTime expiresAt;
 
+  /// Usage before this upload; null when the Worker didn't report it.
+  final AttachmentUsage? usage;
+
   const SignUploadResponse({
     required this.objectKey,
     required this.uploadUrl,
     required this.expiresAt,
+    this.usage,
   });
 }
 
@@ -74,6 +127,31 @@ class SignerException implements Exception {
 
   @override
   String toString() => 'SignerException($statusCode): $body';
+}
+
+/// Thrown on a 413 `quota_exceeded`: the account is out of space or files.
+class AttachmentQuotaExceededException implements Exception {
+  final AttachmentUsage usage;
+  const AttachmentQuotaExceededException(this.usage);
+
+  @override
+  String toString() => 'AttachmentQuotaExceededException: $usage';
+}
+
+/// Thrown on a 429: too many signing requests; the caller may retry later.
+class AttachmentRateLimitedException implements Exception {
+  const AttachmentRateLimitedException();
+
+  @override
+  String toString() => 'AttachmentRateLimitedException: rate limited';
+}
+
+/// Thrown on a 503 `uploads_disabled`: the Worker has uploads switched off.
+class AttachmentUploadsDisabledException implements Exception {
+  const AttachmentUploadsDisabledException();
+
+  @override
+  String toString() => 'AttachmentUploadsDisabledException: uploads disabled';
 }
 
 /// Thrown when the signer is asked to make a request but the
@@ -125,6 +203,7 @@ class AttachmentSigner {
       objectKey: body['object_key'] as String,
       uploadUrl: Uri.parse(body['upload_url'] as String),
       expiresAt: _parseExpiresAt(body['expires_at']),
+      usage: AttachmentUsage.tryParse(body),
     );
   }
 
@@ -140,6 +219,16 @@ class AttachmentSigner {
 
   Future<void> deleteObject({required String objectKey}) async {
     await _post('/delete', {'object_key': objectKey});
+  }
+
+  /// Current usage and limits for the signed-in account (`POST /usage`).
+  Future<AttachmentUsage> fetchUsage() async {
+    final body = await _post('/usage', {});
+    final usage = AttachmentUsage.tryParse(body);
+    if (usage == null) {
+      throw SignerException(200, 'missing usage fields: $body');
+    }
+    return usage;
   }
 
   /// Closes the underlying http client. Call once at app shutdown if
@@ -170,6 +259,21 @@ class AttachmentSigner {
     if (response.statusCode == 401) {
       throw SignerAuthException(response.body);
     }
+    if (response.statusCode == 429) {
+      throw const AttachmentRateLimitedException();
+    }
+    if (response.statusCode == 413 || response.statusCode == 503) {
+      final err = _decodeObject(response.body);
+      if (err != null) {
+        if (response.statusCode == 413 && err['error'] == 'quota_exceeded') {
+          final usage = AttachmentUsage.tryParse(err);
+          if (usage != null) throw AttachmentQuotaExceededException(usage);
+        } else if (response.statusCode == 503 &&
+            err['error'] == 'uploads_disabled') {
+          throw const AttachmentUploadsDisabledException();
+        }
+      }
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw SignerException(response.statusCode, response.body);
     }
@@ -179,6 +283,15 @@ class AttachmentSigner {
           response.statusCode, 'expected JSON object, got: ${response.body}');
     }
     return decoded;
+  }
+
+  Map<String, dynamic>? _decodeObject(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } on FormatException {
+      return null;
+    }
   }
 
   DateTime _parseExpiresAt(Object? raw) {

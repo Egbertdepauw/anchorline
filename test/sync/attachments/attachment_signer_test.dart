@@ -224,6 +224,142 @@ void main() {
       );
     });
 
+    group('quota and refusals', () {
+      AttachmentSigner signerWith(http.Response Function(http.Request) h) {
+        final session = FakeSessionSource()..setUserId('u1');
+        return AttachmentSigner(
+          baseUrl: 'https://signer.example.com',
+          session: session,
+          httpClient: MockClient((req) async => h(req)),
+        );
+      }
+
+      Future<SignUploadResponse> sign(AttachmentSigner s) => s.signUpload(
+            diveId: 'd1',
+            filename: 'a.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 10,
+          );
+
+      const usageJson = {
+        'used_bytes': 999999990,
+        'limit_bytes': 1000000000,
+        'used_files': 5,
+        'limit_files': 1000,
+      };
+
+      test('413 quota_exceeded throws AttachmentQuotaExceededException',
+          () async {
+        final s = signerWith((_) => http.Response(
+            jsonEncode({'error': 'quota_exceeded', ...usageJson}), 413));
+        await expectLater(
+          sign(s),
+          throwsA(isA<AttachmentQuotaExceededException>()
+              .having((e) => e.usage.usedBytes, 'usedBytes', 999999990)
+              .having((e) => e.usage.limitFiles, 'limitFiles', 1000)),
+        );
+      });
+
+      test('413 with malformed body is a plain SignerException', () async {
+        for (final body in [
+          'not json',
+          jsonEncode({'error': 'quota_exceeded'}),
+          jsonEncode({'error': 'too_big', ...usageJson}),
+          jsonEncode({'error': 'quota_exceeded', ...usageJson, 'used_files': 'x'}),
+        ]) {
+          final s = signerWith((_) => http.Response(body, 413));
+          await expectLater(
+            sign(s),
+            throwsA(isA<SignerException>()
+                .having((e) => e.statusCode, 'statusCode', 413)),
+          );
+        }
+      });
+
+      test('429 throws AttachmentRateLimitedException regardless of body',
+          () async {
+        for (final body in [jsonEncode({'error': 'rate_limited'}), 'garbage']) {
+          final s = signerWith((_) => http.Response(body, 429));
+          await expectLater(
+              sign(s), throwsA(isA<AttachmentRateLimitedException>()));
+        }
+      });
+
+      test('503 uploads_disabled throws AttachmentUploadsDisabledException',
+          () async {
+        final s = signerWith((_) =>
+            http.Response(jsonEncode({'error': 'uploads_disabled'}), 503));
+        await expectLater(
+            sign(s), throwsA(isA<AttachmentUploadsDisabledException>()));
+      });
+
+      test('503 with another body is a plain SignerException', () async {
+        final s = signerWith((_) => http.Response('boom', 503));
+        await expectLater(
+          sign(s),
+          throwsA(isA<SignerException>()
+              .having((e) => e.statusCode, 'statusCode', 503)),
+        );
+      });
+
+      test('success with usage fields parses usage', () async {
+        final s = signerWith((_) => http.Response(
+            jsonEncode({
+              'object_key': 'k',
+              'upload_url': 'https://r2.example.com/put',
+              'expires_at': 1700000000,
+              ...usageJson,
+            }),
+            200));
+        final res = await sign(s);
+        expect(res.usage!.limitFiles, 1000);
+        expect(res.usage!.usedBytes, 999999990);
+        expect(res.usage!.uploadsEnabled, isNull);
+      });
+
+      test('success without usage fields has null usage', () async {
+        final s = signerWith((_) => http.Response(
+            jsonEncode({
+              'object_key': 'k',
+              'upload_url': 'https://r2.example.com/put',
+              'expires_at': 1700000000,
+            }),
+            200));
+        expect((await sign(s)).usage, isNull);
+      });
+
+      test('tryParse rejects missing or non-int fields', () {
+        expect(AttachmentUsage.tryParse({...usageJson}..remove('used_bytes')),
+            isNull);
+        expect(AttachmentUsage.tryParse({...usageJson, 'limit_bytes': '1'}),
+            isNull);
+        expect(AttachmentUsage.tryParse({...usageJson, 'limit_bytes': 1.5}),
+            isNull);
+      });
+
+      test('fetchUsage posts to /usage and parses uploads_enabled', () async {
+        String? path;
+        Map<String, dynamic>? sent;
+        final s = signerWith((req) {
+          path = req.url.path;
+          sent = jsonDecode(req.body) as Map<String, dynamic>;
+          return http.Response(
+              jsonEncode({...usageJson, 'uploads_enabled': false}), 200);
+        });
+        final u = await s.fetchUsage();
+        expect(path, '/usage');
+        expect(sent, isEmpty);
+        expect(u.usedFiles, 5);
+        expect(u.uploadsEnabled, isFalse);
+      });
+
+      test('fetchUsage without valid usage fields throws SignerException',
+          () async {
+        final s = signerWith((_) => http.Response(jsonEncode({'ok': true}), 200));
+        await expectLater(s.fetchUsage(), throwsA(isA<SignerException>()));
+      });
+    });
+
     test('no session throws SignerNoSessionException', () async {
       final session = FakeSessionSource(); // no setUserId
       var called = false;
