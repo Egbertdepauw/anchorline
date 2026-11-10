@@ -37,13 +37,19 @@ class _StorageFullDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final u = state.usage;
+    // The files of a multi-file add after the refused one.
+    final more = switch (state.remainingFiles) {
+      <= 0 => '',
+      1 => " 1 more file wasn't added.",
+      final n => " ${formatCount(n)} more files weren't added.",
+    };
     return AlertDialog(
       title: const Text('Attachment storage full'),
       content: Text(
         '${formatGb(u.usedBytes)} of ${formatGb(u.limitBytes)} used '
         '(${formatCount(u.usedFiles)} of ${formatCount(u.limitFiles)} files). '
         'This file needs ${formatMb(state.fileSizeBytes)}. '
-        'Delete attachments you no longer need to make room.',
+        'Delete attachments you no longer need to make room.$more',
       ),
       actions: [
         if (state.canFreeSpace)

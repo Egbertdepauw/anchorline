@@ -118,14 +118,9 @@ class _DiveMediaTabState extends State<DiveMediaTab> {
   Future<void> _addFiles() async {
     final picked = await widget.pickFiles(context);
     if (picked == null || picked.isEmpty) return;
-    for (final p in picked) {
-      // Sequential — see the legacy section: parallel adds race the
-      // DAO's display_order computation.
-      await _n.addFile(p);
-      // Storage is full: the rest would be refused too, each with its
-      // own dialog on top of the first.
-      if (_n.storageFull != null) break;
-    }
+    // One after another; a storage-full refusal stops the batch and
+    // keeps the rest for "Free space now".
+    await _n.addFiles(picked);
   }
 
   Future<void> _addLink() async {

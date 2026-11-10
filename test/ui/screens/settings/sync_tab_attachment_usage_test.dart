@@ -123,6 +123,46 @@ void main() {
     expect(calls, 1);
   });
 
+  testWidgets('a direct switch to another account loads its usage',
+      (tester) async {
+    final h = _signedIn();
+    addTearDown(() {
+      h.auth.dispose();
+      h.client.dispose();
+    });
+    var calls = 0;
+    await _pump(tester, h.auth, () async {
+      calls++;
+      return AttachmentUsage(
+        usedBytes: calls * 100000000,
+        limitBytes: 1000000000,
+        usedFiles: calls,
+        limitFiles: 1000,
+      );
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('0.1 GB of 1 GB · 1 of 1,000 files'), findsOneWidget);
+
+    // Another account signs in without a sign-out in between.
+    final other = User(
+      id: 'other-uid',
+      appMetadata: const {},
+      userMetadata: const {},
+      aud: 'authenticated',
+      email: 'other@example.test',
+      createdAt: DateTime.now().toIso8601String(),
+    );
+    h.client.user = other;
+    h.client.session =
+        Session(accessToken: 'token-2', tokenType: 'bearer', user: other);
+    h.client._ctrl.add(AuthState(AuthChangeEvent.signedIn, h.client.session));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byKey(_rowKey), findsOneWidget);
+    expect(find.text('0.2 GB of 1 GB · 2 of 1,000 files'), findsOneWidget);
+  });
+
   testWidgets('shows Unavailable when the loader throws', (tester) async {
     final h = _signedIn();
     addTearDown(() {

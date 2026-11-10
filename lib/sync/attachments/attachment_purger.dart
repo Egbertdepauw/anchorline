@@ -68,7 +68,8 @@ class AttachmentPurger {
         try {
           await _deleteObject(key);
         } catch (e) {
-          debugPrint('Attachment purge: delete of $key failed: $e');
+          // The key holds the user id; log the attachment id instead.
+          debugPrint('Attachment purge: delete for ${row.id} failed: $e');
           await _dao.revertPurge(
             row.id,
             expectedKey: key,

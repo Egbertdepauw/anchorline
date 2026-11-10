@@ -425,8 +425,10 @@ void main() {
       );
 
       expect(signs, 3);
+      // 25 s apart, so three re-signs span more than the Worker's
+      // 60 s window.
       expect(delays,
-          [const Duration(seconds: 15), const Duration(seconds: 15)]);
+          [const Duration(seconds: 25), const Duration(seconds: 25)]);
       final row = await dao.get('f1') as FileAttachment;
       expect(row.uploadState, UploadState.uploaded);
     });

@@ -21,6 +21,7 @@ class _FakeNotifier extends ChangeNotifier implements DiveAttachmentsNotifier {
   final List<({String url, String? title, String? description})> addLinkCalls =
       [];
   final List<PickedAttachmentFile> addFileCalls = [];
+  final List<List<PickedAttachmentFile>> addFilesCalls = [];
   final List<String> softDeleteCalls = [];
   final List<String> restoreCalls = [];
   final List<String> retryCalls = [];
@@ -76,6 +77,26 @@ class _FakeNotifier extends ChangeNotifier implements DiveAttachmentsNotifier {
     addFileCalls.add(picked);
     final refusal = refuseAddsWith;
     if (refusal != null) setStorageFull(refusal);
+  }
+
+  /// Mirrors the real batch: adds in order and stops at the first
+  /// refusal, which counts the picks after it.
+  @override
+  Future<void> addFiles(List<PickedAttachmentFile> picks) async {
+    addFilesCalls.add(picks);
+    for (var i = 0; i < picks.length; i++) {
+      addFileCalls.add(picks[i]);
+      final refusal = refuseAddsWith;
+      if (refusal != null) {
+        setStorageFull(StorageFullState(
+          usage: refusal.usage,
+          fileSizeBytes: refusal.fileSizeBytes,
+          canFreeSpace: refusal.canFreeSpace,
+          remainingFiles: picks.length - i - 1,
+        ));
+        return;
+      }
+    }
   }
 
   @override
@@ -585,8 +606,15 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Add file'));
       await tester.pumpAndSettle();
 
+      // The widget hands the whole pick to the notifier in one batch;
+      // the refused first file leaves two behind.
+      expect(n.addFilesCalls, hasLength(1));
+      expect(n.addFilesCalls.single.map((p) => p.originalFilename),
+          ['a.pdf', 'b.pdf', 'c.pdf']);
       expect(n.addFileCalls.map((p) => p.originalFilename), ['a.pdf']);
       expect(find.text('Attachment storage full'), findsOneWidget);
+      expect(find.textContaining("2 more files weren't added."),
+          findsOneWidget);
     });
 
     testWidgets('a failed row refused for quota reads Storage full',

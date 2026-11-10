@@ -76,6 +76,32 @@ void main() {
     expect(find.text('OK'), findsOneWidget);
   });
 
+  testWidgets('counts the files of a multi-file add that were not added',
+      (tester) async {
+    for (final (n, sentence) in [
+      (1, " 1 more file wasn't added."),
+      (2, " 2 more files weren't added."),
+    ]) {
+      await _open(
+        tester,
+        StorageFullState(
+          usage: _usage,
+          fileSizeBytes: 4200000,
+          canFreeSpace: true,
+          remainingFiles: n,
+        ),
+      );
+      expect(
+        find.text('0.98 GB of 1 GB used (412 of 1,000 files). This file needs '
+            '4.2 MB. Delete attachments you no longer need to make room.'
+            '$sentence'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+    }
+  });
+
   testWidgets('hides Free space now when nothing is purgeable',
       (tester) async {
     await _open(

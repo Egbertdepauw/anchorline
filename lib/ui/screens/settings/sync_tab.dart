@@ -72,7 +72,13 @@ class SyncTab extends StatelessWidget {
                             syncStatusSource: syncStatusSource,
                           ),
                           if (loadAttachmentUsage != null)
-                            _AttachmentUsageRow(load: loadAttachmentUsage!),
+                            _AttachmentUsageRow(
+                              // A direct switch to another account
+                              // recreates the row, so it loads that
+                              // account's usage.
+                              key: ValueKey<String?>(auth.currentUser?.id),
+                              load: loadAttachmentUsage!,
+                            ),
                           if (onDeleteAccount != null)
                             SettingRow(
                               key: const ValueKey('settings-account-delete'),
@@ -151,10 +157,11 @@ class _SignInRow extends StatelessWidget {
 
 /// The Attachments row. Holds the usage future in State so it loads once
 /// when the signed-in branch first builds (and again after a sign-out and
-/// sign-in, which disposes and recreates it), not on every rebuild.
+/// sign-in, which disposes and recreates it, or a switch to another
+/// account, which changes its key), not on every rebuild.
 class _AttachmentUsageRow extends StatefulWidget {
   final Future<AttachmentUsage> Function() load;
-  const _AttachmentUsageRow({required this.load});
+  const _AttachmentUsageRow({super.key, required this.load});
 
   @override
   State<_AttachmentUsageRow> createState() => _AttachmentUsageRowState();

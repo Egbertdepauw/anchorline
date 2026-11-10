@@ -75,10 +75,16 @@ class StorageFullState {
   /// Whether "Free space now" has anything to purge.
   final bool canFreeSpace;
 
+  /// Files of the same multi-file add that came after the refused one
+  /// and weren't added. "Free space now" adds them after the refused
+  /// file; "OK" drops them.
+  final int remainingFiles;
+
   const StorageFullState({
     required this.usage,
     required this.fileSizeBytes,
     required this.canFreeSpace,
+    this.remainingFiles = 0,
   });
 }
 
@@ -114,6 +120,9 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
   /// [_storageFull] is.
   PickedAttachmentFile? _refusedPick;
   String? _refusedRowId;
+
+  /// The picks of a multi-file add after [_refusedPick], not added yet.
+  List<PickedAttachmentFile> _refusedRemaining = const [];
 
   /// Failed rows whose last failure was a quota refusal. Session only.
   final Set<String> _storageFullIds = {};
@@ -185,7 +194,7 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
   /// [DiveAttachmentsDao.watchChanges].
   Future<void> reload() async {
     final diveId = _diveId;
-    if (diveId == null) return;
+    if (_disposed || diveId == null) return;
     try {
       _attachments = await _dao.listForDive(diveId);
       _error = null;
@@ -227,6 +236,27 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
   /// once when it's done so the UI sees the terminal state in one
   /// notify rather than two.
   Future<void> addFile(PickedAttachmentFile picked) async {
+    await _addFile(picked);
+  }
+
+  /// Adds [picks] one after another. Sequential: a parallel burst would
+  /// race the display_order computation. A quota refusal stops the
+  /// batch; the refused pick and the ones after it are kept with
+  /// [storageFull], so "Free space now" can add them all.
+  Future<void> addFiles(List<PickedAttachmentFile> picks) async {
+    for (var i = 0; i < picks.length; i++) {
+      final refused =
+          await _addFile(picks[i], remaining: picks.sublist(i + 1));
+      if (refused) break;
+    }
+  }
+
+  /// Returns whether the Worker refused [picked] for quota and
+  /// [storageFull] now holds it (and [remaining]).
+  Future<bool> _addFile(
+    PickedAttachmentFile picked, {
+    List<PickedAttachmentFile> remaining = const [],
+  }) async {
     final diveId = _requireDiveId('addFile');
     final id = _idGenerator.next();
     final now = DateTime.now();
@@ -266,12 +296,21 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
       uploadError = e;
     }
     final cause = _causeOf(uploadError);
+    var refused = false;
     if (cause is AttachmentQuotaExceededException) {
+      if (_disposed) {
+        // Nobody is left to show the dialog. Keep the row `failed` so
+        // the diver sees "Upload failed" next time instead of the file
+        // silently vanishing.
+        return false;
+      }
       // The file isn't added: drop the row and its cached bytes so
       // nothing is stuck in `failed` or retried later.
       await _dao.softDelete(id);
       await _uploader.discard(id);
-      await _setStorageFull(cause.usage, picked.sizeBytes, pick: picked);
+      await _setStorageFull(cause.usage, picked.sizeBytes,
+          pick: picked, remaining: remaining);
+      refused = true;
     } else {
       _uploadsPaused = cause is AttachmentUploadsDisabledException;
     }
@@ -282,6 +321,7 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
       _error = uploadError.toString();
       notifyListeners();
     }
+    return refused;
   }
 
   Future<void> updateMetadata(
@@ -353,7 +393,9 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
       _storageFullIds.add(id);
       await _setStorageFull(cause.usage, row.sizeBytes ?? 0, rowId: id);
     } else {
-      if (err == null) _storageFullIds.remove(id);
+      // Only a quota refusal keeps the label; any other outcome,
+      // including another kind of failure, replaces it.
+      _storageFullIds.remove(id);
       _uploadsPaused = cause is AttachmentUploadsDisabledException;
     }
     await reload();
@@ -364,10 +406,13 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
   }
 
   /// "Free space now": purges every soft-deleted attachment, then
-  /// retries the refused add or row once. Another refusal sets
-  /// [storageFull] again; it never retries further by itself.
+  /// retries the refused add or row once. For a refused multi-file add
+  /// the files after it are added too, in order, until one is refused
+  /// again. Another refusal sets [storageFull] again; it never retries
+  /// further by itself.
   Future<void> freeSpaceAndRetry() async {
     final pick = _refusedPick;
+    final remaining = _refusedRemaining;
     final rowId = _refusedRowId;
     _clearStorageFull();
     notifyListeners();
@@ -381,13 +426,14 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
       }
     }
     if (pick != null) {
-      await addFile(pick);
+      await addFiles([pick, ...remaining]);
     } else if (rowId != null) {
       await retryUpload(rowId);
     }
   }
 
-  /// Closes the storage-full dialog without retrying.
+  /// Closes the storage-full dialog without retrying. The files of a
+  /// multi-file add that weren't added are dropped.
   void dismissStorageFull() {
     if (_storageFull == null) return;
     _clearStorageFull();
@@ -418,6 +464,7 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
     AttachmentUsage usage,
     int fileSizeBytes, {
     PickedAttachmentFile? pick,
+    List<PickedAttachmentFile> remaining = const [],
     String? rowId,
   }) async {
     final purger = _purger;
@@ -433,14 +480,17 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
       usage: usage,
       fileSizeBytes: fileSizeBytes,
       canFreeSpace: canFreeSpace,
+      remainingFiles: remaining.length,
     );
     _refusedPick = pick;
+    _refusedRemaining = remaining;
     _refusedRowId = rowId;
   }
 
   void _clearStorageFull() {
     _storageFull = null;
     _refusedPick = null;
+    _refusedRemaining = const [];
     _refusedRowId = null;
   }
 
@@ -458,6 +508,14 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
             .map((a) => a.displayOrder)
             .fold<int>(0, (a, b) => a > b ? a : b) +
         1;
+  }
+
+  /// An upload can finish after the screen is gone; its notify then
+  /// has nobody to tell.
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
   }
 
   @override

@@ -59,9 +59,11 @@ class AttachmentUploaderImpl implements AttachmentUploader {
   /// Re-signs after a 429 before giving up.
   static const rateLimitRetries = 3;
 
-  /// Wait before each re-sign. The Worker allows 20 signs per 60 s, so
-  /// a burst that hits the limit has room again well within a minute.
-  static const rateLimitWait = Duration(seconds: 15);
+  /// Wait before each re-sign. The Worker allows 20 signs per 60 s
+  /// window, so the retries must span more than a minute or the last
+  /// one can still land in the window that refused the first:
+  /// [rateLimitRetries] × 25 s = 75 s.
+  static const rateLimitWait = Duration(seconds: 25);
 
   final AttachmentSigner _signer;
   final DiveAttachmentsDao _dao;

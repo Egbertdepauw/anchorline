@@ -62,6 +62,24 @@ Configured in `wrangler.toml`:
 Usage is measured by listing the account's objects in R2, not from a
 counter, so it cannot drift.
 
+### Kill switch runbook
+
+To stop all uploads (abuse, a runaway client, an R2 bill spike):
+
+1. Set `UPLOADS_ENABLED = "false"` in `wrangler.toml`.
+2. Run `wrangler deploy`.
+
+From then on every `/sign-upload` returns 503 `uploads_disabled`; the
+app shows "Uploads are paused right now" and keeps the rows `failed` so
+they can be retried later. Downloads, deletes and `/usage` keep working.
+To turn uploads back on, set it to `"true"` and deploy again.
+
+Editing the variable in the Cloudflare dashboard takes effect at once,
+which is handy in an emergency, but the next `wrangler deploy` resets
+it to the value in `wrangler.toml` (the same caveat as
+`QUOTA_OVERRIDES`). After a dashboard edit, change `wrangler.toml` to
+match before anyone deploys.
+
 Second exception to the Worker freeze (2026-11-10, #196): upload limits
 only. Moves to the Dart service when it takes over signing.
 
@@ -151,10 +169,15 @@ curl -sS -X POST "$WORKER/sign-upload" \
   }'
 # => { "object_key": "attachments/<sub>/test-dive-001/<uuid>.txt",
 #      "upload_url": "https://<account>.r2.cloudflarestorage.com/...",
-#      "expires_at": 1700000000 }
+#      "expires_at": 1700000000,
+#      "used_bytes": 0, "limit_bytes": 1000000000,
+#      "used_files": 0, "limit_files": 1000 }
+# The four usage fields describe the account before this upload.
 
-# PUT the file to the upload_url. Content-Type MUST match what you
-# claimed above — it's part of the signature.
+# PUT the file to the upload_url. Both Content-Type and Content-Length
+# are part of the signature: Content-Type MUST equal the mime_type
+# above and Content-Length MUST equal size_bytes (11 here), or R2
+# answers 403. curl sets Content-Length from the body.
 echo -n "hello world" | curl -sS -X PUT \
   -H "Content-Type: text/plain" \
   --data-binary @- \

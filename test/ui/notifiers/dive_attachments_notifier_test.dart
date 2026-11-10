@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:ccrlogger/data/db/dive_attachments_dao.dart';
@@ -644,6 +645,238 @@ void main() {
       expect(n.isStorageFull('f1'), isFalse);
       expect((n.attachments.single as FileAttachment).uploadState,
           UploadState.uploaded);
+    });
+
+    test('a later non-quota retry failure drops the Storage full label',
+        () async {
+      final now = DateTime.now();
+      await dao.insertFile(FileAttachment(
+        id: 'f1',
+        parentKind: DiveAttachmentParentKind.dive,
+        parentId: 'd1',
+        storageKey: 'pending:f1',
+        mimeType: 'image/jpeg',
+        uploadState: UploadState.pending,
+        createdAt: now,
+        updatedAt: now,
+      ));
+      await dao.markUploadFailed('f1');
+      uploader.retryStub = (row) => _refuseWith(
+          dao, const AttachmentQuotaExceededException(_fullUsage))(row.id);
+      final n = DiveAttachmentsNotifier(
+        dao,
+        uploader,
+        idGenerator: _FixedIdGenerator(const []),
+      );
+      await n.load('d1');
+      await n.retryUpload('f1');
+      expect(n.isStorageFull('f1'), isTrue);
+      n.dismissStorageFull();
+
+      uploader.retryStub =
+          (row) => _refuseWith(dao, Exception('network down'))(row.id);
+      await n.retryUpload('f1');
+
+      expect(n.isStorageFull('f1'), isFalse);
+      expect(n.error, isNotNull);
+      expect((n.attachments.single as FileAttachment).uploadState,
+          UploadState.failed);
+    });
+
+    group('multi-file add', () {
+      List<PickedAttachmentFile> threePicks() => [
+            _picked(name: 'a.pdf'),
+            _picked(name: 'b.pdf', size: 4200000),
+            _picked(name: 'c.pdf'),
+          ];
+
+      /// Refuses uploads of the given ids for quota; the rest succeed.
+      void refuseIds(Set<String> ids) {
+        uploader.uploadStub = (id) async {
+          if (ids.contains(id)) {
+            await _refuseWith(
+                dao, const AttachmentQuotaExceededException(_fullUsage))(id);
+          }
+          await dao.markUploaded(id,
+              checksumSha256: 'cs-$id', storageKey: 'attachments/owner-1/$id');
+        };
+      }
+
+      test('a refusal on the 2nd of 3 stops there and counts 1 more file',
+          () async {
+        refuseIds({'file-2'});
+        final n = DiveAttachmentsNotifier(
+          dao,
+          uploader,
+          idGenerator: _FixedIdGenerator(['file-1', 'file-2', 'file-3']),
+          purger: _FakePurger(),
+        );
+        await n.load('d1');
+
+        await n.addFiles(threePicks());
+
+        expect(uploader.uploads.map((u) => u.attachmentId),
+            ['file-1', 'file-2']);
+        expect(n.storageFull, isNotNull);
+        expect(n.storageFull!.fileSizeBytes, 4200000);
+        expect(n.storageFull!.remainingFiles, 1);
+        final names = n.attachments
+            .map((a) => (a as FileAttachment).originalFilename)
+            .toList();
+        expect(names, ['a.pdf']);
+      });
+
+      test('Free space now re-adds the refused file and the rest, in order',
+          () async {
+        refuseIds({'file-2'});
+        final n = DiveAttachmentsNotifier(
+          dao,
+          uploader,
+          idGenerator:
+              _FixedIdGenerator(['file-1', 'file-2', 'file-3', 'file-4']),
+          purger: _FakePurger(),
+        );
+        await n.load('d1');
+        await n.addFiles(threePicks());
+
+        refuseIds(const {});
+        await n.freeSpaceAndRetry();
+
+        expect(n.storageFull, isNull);
+        expect(uploader.uploads.map((u) => u.attachmentId),
+            ['file-1', 'file-2', 'file-3', 'file-4']);
+        final names = n.attachments
+            .map((a) => (a as FileAttachment).originalFilename)
+            .toList();
+        expect(names, ['a.pdf', 'b.pdf', 'c.pdf']);
+      });
+
+      test('a second refusal mid-retry keeps the rest and sets one new '
+          'storageFull', () async {
+        // a.pdf is refused; after Free space now a.pdf fits but b.pdf is
+        // refused again.
+        refuseIds({'file-1'});
+        final purger = _FakePurger();
+        final n = DiveAttachmentsNotifier(
+          dao,
+          uploader,
+          idGenerator: _FixedIdGenerator(
+              ['file-1', 'file-2', 'file-3', 'file-4', 'file-5']),
+          purger: purger,
+        );
+        await n.load('d1');
+        await n.addFiles(threePicks());
+        final first = n.storageFull;
+        expect(first!.remainingFiles, 2);
+
+        var states = 0;
+        StorageFullState? last;
+        n.addListener(() {
+          final s = n.storageFull;
+          if (s != null && !identical(s, last)) states++;
+          last = s;
+        });
+        refuseIds({'file-3'});
+        await n.freeSpaceAndRetry();
+
+        expect(states, 1);
+        expect(identical(n.storageFull, first), isFalse);
+        expect(n.storageFull!.fileSizeBytes, 4200000);
+        expect(n.storageFull!.remainingFiles, 1);
+        expect(uploader.uploads.map((u) => u.attachmentId),
+            ['file-1', 'file-2', 'file-3']);
+
+        // Nothing goes on by itself.
+        await pumpEventQueue();
+        expect(uploader.uploads, hasLength(3));
+        expect(purger.purgeCalls, hasLength(1));
+
+        // Free space again adds b.pdf and the still-kept c.pdf.
+        refuseIds(const {});
+        await n.freeSpaceAndRetry();
+        final names = n.attachments
+            .map((a) => (a as FileAttachment).originalFilename)
+            .toList();
+        expect(names, ['a.pdf', 'b.pdf', 'c.pdf']);
+      });
+
+      test('OK drops the files that were not added', () async {
+        refuseIds({'file-2'});
+        final n = DiveAttachmentsNotifier(
+          dao,
+          uploader,
+          idGenerator: _FixedIdGenerator(['file-1', 'file-2']),
+          purger: _FakePurger(),
+        );
+        await n.load('d1');
+        await n.addFiles(threePicks());
+
+        n.dismissStorageFull();
+        await n.freeSpaceAndRetry();
+
+        expect(uploader.uploads, hasLength(2));
+        expect(n.attachments, hasLength(1));
+      });
+    });
+
+    group('after dispose', () {
+      test('a quota refusal leaves the row failed, with no dialog state',
+          () async {
+        final gate = Completer<void>();
+        uploader.uploadStub = (id) async {
+          await gate.future;
+          await _refuseWith(
+              dao, const AttachmentQuotaExceededException(_fullUsage))(id);
+        };
+        final n = DiveAttachmentsNotifier(
+          dao,
+          uploader,
+          idGenerator: _FixedIdGenerator(['file-1']),
+          purger: _FakePurger(),
+        );
+        await n.load('d1');
+        final adding = n.addFile(_picked());
+        while (uploader.uploads.isEmpty) {
+          await pumpEventQueue();
+        }
+
+        // The diver leaves the dive while the sign is in flight.
+        n.dispose();
+        gate.complete();
+        await adding;
+
+        final row = await dao.get('file-1') as FileAttachment;
+        expect(row.uploadState, UploadState.failed);
+        expect(row.deletedAt, isNull);
+        expect(uploader.discards, isEmpty);
+        expect(n.storageFull, isNull);
+      });
+
+      test('reload and late failures do not notify a disposed notifier',
+          () async {
+        final gate = Completer<void>();
+        uploader.uploadStub = (id) async {
+          await gate.future;
+          await _refuseWith(dao, Exception('network down'))(id);
+        };
+        final n = DiveAttachmentsNotifier(
+          dao,
+          uploader,
+          idGenerator: _FixedIdGenerator(['file-1']),
+        );
+        await n.load('d1');
+        final adding = n.addFile(_picked());
+        while (uploader.uploads.isEmpty) {
+          await pumpEventQueue();
+        }
+
+        n.dispose();
+        // A notify on a disposed ChangeNotifier throws in debug mode.
+        await n.reload();
+        gate.complete();
+        await adding;
+        n.dismissUploadsPaused();
+      });
     });
   });
 
