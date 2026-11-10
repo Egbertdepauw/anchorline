@@ -146,8 +146,8 @@ void main() {
       final ann = r.annotation!;
       expect(ann.diveId, dive.id);
       expect(ann.notes,
-          'Nou rondje gedaan, niets gezien, Wendy na een paar minuten kwijt....');
-      expect(ann.buddies, ['Wendy De Joode']);
+          'Nou rondje gedaan, niets gezien, Alex na een paar minuten kwijt....');
+      expect(ann.buddies, ['Alex Marlin']);
       expect(ann.tags, ['CCR', 'X-CCR']);
       expect(ann.rating, 2);
       expect(ann.suit, isNull); // suit "" → empty → not stored
@@ -265,7 +265,7 @@ void main() {
       expect(result, isNotNull);
       final ann = result!.annotation!;
       // Multi-name buddy splits on `,` and trims.
-      expect(ann.buddies, ['Wendy De Joode', 'Wilmar van Hees']);
+      expect(ann.buddies, ['Alex Marlin', 'Robin Kelp']);
       // Notes preserve the raw embedded newline.
       expect(ann.notes, isNotNull);
       expect(ann.notes!.contains('\n'), isTrue);

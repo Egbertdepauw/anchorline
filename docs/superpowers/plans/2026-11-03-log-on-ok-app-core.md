@@ -113,12 +113,12 @@ The five inputs most likely to bite that the spec implies but no test would othe
   ```dart
   test('add round-trips the bridge fields', () async {
     // add(NewGasAnalysis(... needsSignoff: true, captureSource: CaptureSource.bridgeOk,
-    //   bridgeRecordId: 'a1b2c3d4e5f6/1a2b3c4d-7', analysedFor: 'Wendy'))
+    //   bridgeRecordId: 'a1b2c3d4e5f6/1a2b3c4d-7', analysedFor: 'Alex'))
     final a = (await dao.list()).single;
     expect(a.needsSignoff, isTrue);
     expect(a.captureSource, CaptureSource.bridgeOk);
     expect(a.bridgeRecordId, 'a1b2c3d4e5f6/1a2b3c4d-7');
-    expect(a.analysedFor, 'Wendy');
+    expect(a.analysedFor, 'Alex');
   });
   test('a row without the new columns reads as an unflagged screen save', () async {
     await insertRawAnalysis(ps, 'old-1');
@@ -141,13 +141,13 @@ The five inputs most likely to bite that the spec implies but no test would othe
   });
   test('setNeedsSignoff bumps version and updated_at', () async { /* version 1 → 2, updated_at > 0 */ });
   test('update writes cylinder, fill pressure and analysed for, never measured values', () async {
-    // edit with cylinderId 'c1', fillPressureBar 210.0, analysedFor 'Wendy';
+    // edit with cylinderId 'c1', fillPressureBar 210.0, analysedFor 'Alex';
     // o2Percent, hePercent, analysedAt, stable, captureSource, bridgeRecordId unchanged
   });
   test('update with signOff clears needs_signoff; without it the flag stays', () async {});
   ```
 
-  In `gas_analysis_csv_test.dart`, the header ends with `'analysed_for', 'needs_signoff'`, and an entry with `analysedFor: 'Wendy', needsSignoff: true` has row values `'Wendy'` and `'true'`.
+  In `gas_analysis_csv_test.dart`, the header ends with `'analysed_for', 'needs_signoff'`, and an entry with `analysedFor: 'Alex', needsSignoff: true` has row values `'Alex'` and `'true'`.
 
   In `gas_analysis_test.dart`: `applyEdit` with `signOff: true` gives `needsSignoff == false`; with `signOff: false` the flag is kept.
 
@@ -438,7 +438,7 @@ The five inputs most likely to bite that the spec implies but no test would othe
   - `bridgeId = 'a1b2c3d4e5f6'`, `clock = BridgeClock(boot: 3, upMs: 100000)`;
   - records have `boot: 3, upMs: 99000, live: true`;
   - `now = DateTime(2026, 11, 3, 16)`, `active: true`;
-  - `full = LogOnOkSetup(analysedBy: 'EdP', desiredMix: DesiredMix(21, 35), gasRole: GasRole.diluent, analysedFor: 'Wendy', printOnOk: true, printerConfigured: true, cylinderId: 'cyl-1', fillPressureBar: 210, notes: 'top-up', modPpo2s: [1.1, 1.4, 1.6])`.
+  - `full = LogOnOkSetup(analysedBy: 'EdP', desiredMix: DesiredMix(21, 35), gasRole: GasRole.diluent, analysedFor: 'Alex', printOnOk: true, printerConfigured: true, cylinderId: 'cyl-1', fillPressureBar: 210, notes: 'top-up', modPpo2s: [1.1, 1.4, 1.6])`.
 
   ```dart
   test('complete live Tx21/35 with printing on: save flagged until printed, print', () {
@@ -670,7 +670,7 @@ Behaviour (spec §9):
 - [ ] **Step 1: Write the failing tests**
 
   ```dart
-  testWidgets('cylinder, fill pressure and for are saved', ...);       // update gets cylinderId 'c2', 210.0, 'Wendy'
+  testWidgets('cylinder, fill pressure and for are saved', ...);       // update gets cylinderId 'c2', 210.0, 'Alex'
   testWidgets('picking a cylinder takes the desired mix and role from its latest analysis', ...);
   //   fake has an older entry for 'c2' with DesiredMix(32, 0), bailout → sheet shows EAN32 picked
   testWidgets('an unknown cylinder survives an unrelated edit', ...);

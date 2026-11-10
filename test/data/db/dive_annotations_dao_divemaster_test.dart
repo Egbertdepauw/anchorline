@@ -13,7 +13,7 @@ void main() {
     final now = DateTime.utc(2026, 5, 12);
     final ann = DiveAnnotation(
       diveId: 'dive_dm_1',
-      divemaster: 'Wendy De Joode',
+      divemaster: 'Alex Marlin',
       createdAt: now,
       updatedAt: now,
     );
@@ -22,7 +22,7 @@ void main() {
     final back = await dao.get('dive_dm_1');
 
     expect(back, isNotNull);
-    expect(back!.divemaster, 'Wendy De Joode');
+    expect(back!.divemaster, 'Alex Marlin');
   });
 
   test('divemaster null round-trips as null', () async {

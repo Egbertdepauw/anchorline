@@ -80,3 +80,15 @@ supabase/.env.deploy.local
 # Sentry auth token for macos/scripts/upload_sentry_dsyms.sh. Local-only,
 # NEVER commit. sentry.env.example IS committed as the template.
 macos/scripts/sentry.env.local
+
+# Defence in depth for a public repository: never commit environment files,
+# signing keys, certificates or provisioning profiles, wherever they land.
+.env
+.env.*
+!.env.example
+*.p8
+AuthKey_*
+*.p12
+*.pfx
+*.pem
+*.mobileprovision

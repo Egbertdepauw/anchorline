@@ -95,9 +95,9 @@ void main() {
     await n.load('dive_dm_3');
     expect(n.divemaster, isNull);
 
-    n.setDivemaster('Wendy');
+    n.setDivemaster('Alex');
 
-    expect(n.divemaster, 'Wendy');
+    expect(n.divemaster, 'Alex');
     expect(n.dirty, isTrue);
   });
 

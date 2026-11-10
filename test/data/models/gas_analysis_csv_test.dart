@@ -91,12 +91,12 @@ void main() {
         o2Percent: 21.4,
         hePercent: 34.6,
         stable: true,
-        analysedFor: 'Wendy',
+        analysedFor: 'Alex',
         needsSignoff: true,
       ),
     ]);
     final lines = csv.trimRight().split('\n');
-    expect(lines[1], endsWith(',"bailout","Wendy","true"'));
+    expect(lines[1], endsWith(',"bailout","Alex","true"'));
   });
 
   test('mod ppO2 set round-trips and tolerates garbage', () {

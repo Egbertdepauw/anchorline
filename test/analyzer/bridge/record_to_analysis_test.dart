@@ -72,7 +72,7 @@ LogOnOkSetup _setup({
   String? analysedBy = 'EdP',
   DesiredMix? desiredMix = const DesiredMix(21, 35),
   GasRole gasRole = GasRole.diluent,
-  String? analysedFor = 'Wendy',
+  String? analysedFor = 'Alex',
   bool printOnOk = true,
   bool printerConfigured = true,
   String? cylinderId = 'cyl-1',
@@ -132,7 +132,7 @@ void main() {
       expect(r.analysis.hePercent, 35.0);
       expect(r.analysis.stable, isTrue);
       expect(r.analysis.analysedBy, 'EdP');
-      expect(r.analysis.analysedFor, 'Wendy');
+      expect(r.analysis.analysedFor, 'Alex');
       expect(r.analysis.cylinderId, 'cyl-1');
       expect(r.analysis.fillPressureBar, 210);
       expect(r.analysis.desiredMix, const DesiredMix(21, 35));

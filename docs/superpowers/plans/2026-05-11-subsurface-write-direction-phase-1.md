@@ -956,7 +956,7 @@ rating 2
 tags "CCR", "X-CCR"
 divesiteid 211b8868
 divemaster ""
-buddy "Wendy De Joode"
+buddy "Alex Marlin"
 suit ""
 cylinder vol=3.0l workpressure=232.0bar description="user-manually-tuned" o2=18.0% he=23.0% use="diluent" depth=6.249m
 ```

@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-05
 **Status:** Approved design (mockup + decisions), ready for implementation plan
-**Source:** Wendy's wishlist, item "Dive statistics" (second of three; deco shipped on PR #60, renumbering still queued)
+**Source:** Alex's wishlist, item "Dive statistics" (second of three; deco shipped on PR #60, renumbering still queued)
 
 > Note: the project roadmap lists generalized cross-dive stats as Phase 3. This is being pulled forward at the user's explicit request, kept deliberately focused (the per-cell longitudinal view remains separate and out of scope here).
 

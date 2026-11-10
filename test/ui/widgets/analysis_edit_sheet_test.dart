@@ -347,14 +347,14 @@ void main() {
       await _pickCylinder(tester, 'AL40 deco');
       expect(_cylinderShown(tester), 'AL40 deco');
       await tester.enterText(_key('analysis-edit-pressure'), '210');
-      await tester.enterText(_key('analysis-edit-for'), '  Wendy ');
+      await tester.enterText(_key('analysis-edit-for'), '  Alex ');
       await _tapAndSettle(tester, _key('analysis-edit-save'));
 
       final (id, edit) = dao.updated.single;
       expect(id, 'tx');
       expect(edit.cylinderId, 'c2');
       expect(edit.fillPressureBar, 210.0);
-      expect(edit.analysedFor, 'Wendy');
+      expect(edit.analysedFor, 'Alex');
       // The measured values and the entry stay as they were.
       expect(dao.analyses.single.o2Percent, 22.5);
     });
@@ -667,16 +667,16 @@ void main() {
         (tester) async {
       final dao = FakeGasAnalysesDao(
           analyses: [_tx(analysedBy: null, needsSignoff: true)]);
-      await _open(tester, dao: dao, suggestedAnalysedBy: 'Wendy');
-      expect(_field(tester, 'analysis-edit-diver'), 'Wendy');
+      await _open(tester, dao: dao, suggestedAnalysedBy: 'Alex');
+      expect(_field(tester, 'analysis-edit-diver'), 'Alex');
       await _tapAndSettle(tester, _key('analysis-edit-save'));
-      expect(dao.updated.single.$2.analysedBy, 'Wendy');
+      expect(dao.updated.single.$2.analysedBy, 'Alex');
     });
 
     testWidgets('an old unflagged entry with no name stays without one',
         (tester) async {
       final dao = FakeGasAnalysesDao(analyses: [_tx(analysedBy: null)]);
-      await _open(tester, dao: dao, suggestedAnalysedBy: 'Wendy');
+      await _open(tester, dao: dao, suggestedAnalysedBy: 'Alex');
       expect(_field(tester, 'analysis-edit-diver'), '');
       await tester.enterText(_key('analysis-edit-notes'), 'Checked');
       await _tapAndSettle(tester, _key('analysis-edit-save'));
@@ -687,7 +687,7 @@ void main() {
     testWidgets('keeps the entry\'s own name over the suggestion',
         (tester) async {
       final dao = FakeGasAnalysesDao(analyses: [_tx()]);
-      await _open(tester, dao: dao, suggestedAnalysedBy: 'Wendy');
+      await _open(tester, dao: dao, suggestedAnalysedBy: 'Alex');
       expect(_field(tester, 'analysis-edit-diver'), 'Egbert');
     });
 
@@ -818,7 +818,7 @@ void main() {
       expect(_key('analysis-edit-signoff-hint'), findsOneWidget);
 
       // A name and a mix.
-      await tester.enterText(_key('analysis-edit-diver'), 'Wendy');
+      await tester.enterText(_key('analysis-edit-diver'), 'Alex');
       await tester.pumpAndSettle();
       expect(_enabled(tester, 'analysis-edit-signoff'), isTrue);
       expect(_key('analysis-edit-signoff-hint'), findsNothing);
@@ -827,7 +827,7 @@ void main() {
       final (id, edit) = dao.updated.single;
       expect(id, 'tx');
       expect(edit.signOff, isTrue);
-      expect(edit.analysedBy, 'Wendy');
+      expect(edit.analysedBy, 'Alex');
       expect(edit.desiredMix, const DesiredMix(32, 0));
       expect(results, [AnalysisEditOutcome.signedOff]);
       expect(_sheet, findsNothing);
@@ -849,7 +849,7 @@ void main() {
       expect(_enabled(tester, 'analysis-edit-signoff-print'), isFalse);
 
       // A name alone is enough, for both buttons.
-      await tester.enterText(_key('analysis-edit-diver'), 'Wendy');
+      await tester.enterText(_key('analysis-edit-diver'), 'Alex');
       await tester.pumpAndSettle();
       expect(_enabled(tester, 'analysis-edit-signoff'), isTrue);
       expect(_enabled(tester, 'analysis-edit-signoff-print'), isTrue);
@@ -858,7 +858,7 @@ void main() {
 
       final (_, edit) = dao.updated.single;
       expect(edit.signOff, isTrue);
-      expect(edit.analysedBy, 'Wendy');
+      expect(edit.analysedBy, 'Alex');
       expect(edit.desiredMix, isNull);
       expect(results, [AnalysisEditOutcome.signedOff]);
       expect(dao.analyses.single.needsSignoff, isFalse);
@@ -868,7 +868,7 @@ void main() {
         (tester) async {
       final dao = FakeGasAnalysesDao(analyses: [
         _tx(
-            analysedBy: 'Wendy',
+            analysedBy: 'Alex',
             targetO2: null,
             targetHe: null,
             needsSignoff: true),
@@ -945,7 +945,7 @@ void main() {
           analyses: [_tx(analysedBy: null, needsSignoff: true)]);
       await _open(tester, dao: dao, canPrint: true);
       expect(_enabled(tester, 'analysis-edit-signoff-print'), isFalse);
-      await tester.enterText(_key('analysis-edit-diver'), 'Wendy');
+      await tester.enterText(_key('analysis-edit-diver'), 'Alex');
       await tester.pumpAndSettle();
       expect(_enabled(tester, 'analysis-edit-signoff-print'), isTrue);
     });

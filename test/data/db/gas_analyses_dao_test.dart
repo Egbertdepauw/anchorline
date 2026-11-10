@@ -344,20 +344,20 @@ void main() {
       needsSignoff: true,
       captureSource: CaptureSource.bridgeOk,
       bridgeRecordId: bridgeId,
-      analysedFor: '  Wendy ',
+      analysedFor: '  Alex ',
     ));
 
     final a = (await dao.list()).single;
     expect(a.needsSignoff, isTrue);
     expect(a.captureSource, CaptureSource.bridgeOk);
     expect(a.bridgeRecordId, bridgeId);
-    expect(a.analysedFor, 'Wendy'); // trimmed
+    expect(a.analysedFor, 'Alex'); // trimmed
 
     final row = await ps.get('SELECT * FROM gas_analyses WHERE id = ?', [id]);
     expect(row['needs_signoff'], 1);
     expect(row['capture_source'], 'bridge_ok');
     expect(row['bridge_record_id'], bridgeId);
-    expect(row['analysed_for'], 'Wendy');
+    expect(row['analysed_for'], 'Alex');
   });
 
   test('add of a plain screen save stores 0 and nulls, never a null flag',
@@ -472,14 +472,14 @@ void main() {
 
     await dao.update(
       'b-1',
-      sameEdit(cylinderId: 'c1', fillPressureBar: 210.0, analysedFor: ' Wendy '),
+      sameEdit(cylinderId: 'c1', fillPressureBar: 210.0, analysedFor: ' Alex '),
     );
 
     final a = (await dao.list()).single;
     expect(a.cylinderId, 'c1');
     expect(a.cylinderLabel, 'S80 #2'); // re-joined on read
     expect(a.fillPressureBar, 210.0);
-    expect(a.analysedFor, 'Wendy'); // trimmed
+    expect(a.analysedFor, 'Alex'); // trimmed
 
     final row =
         await ps.get('SELECT * FROM gas_analyses WHERE id = ?', ['b-1']);

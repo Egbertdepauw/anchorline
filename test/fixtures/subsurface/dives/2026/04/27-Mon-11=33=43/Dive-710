@@ -3,10 +3,10 @@ rating 4
 tags "X-CCR", "CCR"
 divesiteid a2315b95
 divemaster ""
-buddy "Wendy De Joode, Wilmar van Hees"
+buddy "Alex Marlin, Robin Kelp"
 suit "ScubaForce Xpedition SE Droogpak - X-Nine onderpak"
 notes "De Kiekuut bekeken en in geweest, ook in het wrakje wat er bovenop weg is gelegd.
-	Grote snoekbaarzen, prachtig, 1 was heel agressief en heeft Wendy en Wilmar gebeten."
+	Grote snoekbaarzen, prachtig, 1 was heel agressief en heeft Alex en Robin gebeten."
 cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=18.0% he=23.0% use="diluent" depth=6.198m
 cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=50.0% use="oxygen" depth=22.345m
 cylinder vol=6.8l workpressure=300.0bar description="6.8L 300 bar" o2=18.0% he=23.0% start=200.0bar end=200.0bar depth=80.326m
