@@ -194,4 +194,58 @@ void main() {
     await p.purgeDeleted(minAge: Duration.zero);
     expect(await p.hasPurgeable(), isFalse);
   });
+
+  group('attachments of deleted dives (#198)', () {
+    Future<void> liveFileUnderDive(
+        String id, String key, Duration diveDeletedAgo) async {
+      final t = now.subtract(diveDeletedAgo);
+      await db.execute('INSERT INTO dives (id, deleted_at) VALUES (?, ?)',
+          ['dive-$id', t.millisecondsSinceEpoch]);
+      await dao.insertFile(FileAttachment(
+        id: id,
+        parentKind: DiveAttachmentParentKind.dive,
+        parentId: 'dive-$id',
+        storageKey: key,
+        mimeType: 'image/jpeg',
+        uploadState: UploadState.uploaded,
+        createdAt: t,
+        updatedAt: t,
+      ));
+    }
+
+    test('purges a live attachment of a dive deleted over 24 h ago',
+        () async {
+      await liveFileUnderDive('a1', 'k1', const Duration(days: 3));
+
+      expect(await purger().purgeDeleted(), 1);
+      expect(deleted, ['k1']);
+      expect(await stateOf('a1'), UploadState.purged);
+    });
+
+    test('a recently deleted dive gets the grace period', () async {
+      await liveFileUnderDive('a1', 'k1', const Duration(hours: 1));
+
+      expect(await purger().purgeDeleted(), 0);
+      expect(deleted, isEmpty);
+      // Soft-deleted with the dive's timestamp, so a dive UNDO still works.
+      expect((await dao.get('a1'))!.deletedAt!.millisecondsSinceEpoch,
+          now.subtract(const Duration(hours: 1)).millisecondsSinceEpoch);
+    });
+
+    test('hasPurgeable counts them', () async {
+      await liveFileUnderDive('a1', 'k1', const Duration(hours: 1));
+      expect(await purger().hasPurgeable(), isTrue);
+    });
+
+    test('a dive deleted under 10 minutes ago is left alone', () async {
+      // An older build's UNDO doesn't restore attachments, so the backfill
+      // waits until the dive is past its UNDO window.
+      await liveFileUnderDive('a1', 'k1', const Duration(minutes: 1));
+
+      expect(await purger().hasPurgeable(), isFalse);
+      expect(await purger().purgeDeleted(minAge: Duration.zero), 0);
+      expect(deleted, isEmpty);
+      expect((await dao.get('a1'))!.deletedAt, isNull);
+    });
+  });
 }

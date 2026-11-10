@@ -2,9 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/db/dive_attachments_dao.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
+import 'package:ccrlogger/data/db/dive_merge_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/data/models/dive.dart' as model;
+import 'package:ccrlogger/data/models/dive_attachment.dart';
 import 'package:powersync/powersync.dart';
 import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
@@ -390,6 +393,152 @@ void main() {
       await diveDao.restoreDive(diveId);
       final live = await equipDao.listBailoutCarry(diveId);
       expect(live.map((b) => b.cylinderId), ['cyl-a']);
+    });
+  });
+
+  group('cascade-delete dive_attachments (#198)', () {
+    late DiveDao diveDao;
+    late DiveAttachmentsDao attDao;
+    late PowerSyncDatabase ps;
+    late String diveId;
+
+    FileAttachment file(String id, String parentId) {
+      final t = DateTime.now();
+      return FileAttachment(
+        id: id,
+        parentKind: DiveAttachmentParentKind.dive,
+        parentId: parentId,
+        storageKey: 'attachments/test-user/$parentId/$id.jpg',
+        mimeType: 'image/jpeg',
+        uploadState: UploadState.uploaded,
+        createdAt: t,
+        updatedAt: t,
+      );
+    }
+
+    LinkAttachment link(String id, String parentId) {
+      final t = DateTime.now();
+      return LinkAttachment(
+        id: id,
+        parentKind: DiveAttachmentParentKind.dive,
+        parentId: parentId,
+        url: 'https://example.com/$id',
+        createdAt: t,
+        updatedAt: t,
+      );
+    }
+
+    Future<String> importFixture(int n) async {
+      final converted = _convertFixture(n);
+      await diveDao.importDive(
+        converted: converted,
+        rawBlob: File('test/fixtures/dives/dive_$n.bin').readAsBytesSync(),
+        parserVersion: 1,
+      );
+      return converted.dive.id;
+    }
+
+    Future<int?> deletedAtOf(String table, String id) async =>
+        (await ps.get('SELECT deleted_at FROM $table WHERE id = ?', [id]))[
+            'deleted_at'] as int?;
+
+    Future<List<String>> liveIds(String parentId) async =>
+        (await attDao.listForDive(parentId)).map((a) => a.id).toList()..sort();
+
+    setUp(() async {
+      // Own rig so DiveDao and DiveAttachmentsDao share ONE PowerSync handle.
+      final rig = await openDiveDaoForTest(db);
+      diveDao = rig.dao;
+      ps = rig.ps;
+      attDao = DiveAttachmentsDao(rig.ps, rig.session);
+      diveId = await importFixture(711);
+      await attDao.insertFile(file('f1', diveId));
+      await attDao.insertFile(file('f2', diveId));
+      await attDao.insertLink(link('l1', diveId));
+    });
+
+    test('softDeleteDive soft-deletes its attachments with the same deleted_at',
+        () async {
+      await diveDao.softDeleteDive(diveId);
+      expect(await attDao.listForDive(diveId), isEmpty);
+      final diveDeletedAt = await deletedAtOf('dives', diveId);
+      expect(diveDeletedAt, isNotNull);
+      for (final id in ['f1', 'f2', 'l1']) {
+        expect(await deletedAtOf('dive_attachments', id), diveDeletedAt,
+            reason: id);
+      }
+    });
+
+    test('softDeleteDive leaves other dives\' attachments alone', () async {
+      final other = await importFixture(712);
+      await attDao.insertFile(file('other', other));
+      await diveDao.softDeleteDive(diveId);
+      expect(await liveIds(other), ['other']);
+    });
+
+    test('the cascaded file rows become purgeable', () async {
+      await diveDao.softDeleteDive(diveId);
+      final purgeable = await attDao
+          .listPurgeable(DateTime.now().add(const Duration(seconds: 1)));
+      expect(purgeable.map((a) => a.id).toList()..sort(), ['f1', 'f2']);
+    });
+
+    test('restoreDive restores the cascaded attachments', () async {
+      await diveDao.softDeleteDive(diveId);
+      await diveDao.restoreDive(diveId);
+      expect(await liveIds(diveId), ['f1', 'f2', 'l1']);
+    });
+
+    test('restoreDive keeps an attachment deleted on its own beforehand',
+        () async {
+      // As if the user removed f2 well before deleting the dive. A direct
+      // write keeps the timestamp distinct regardless of test speed.
+      await ps.execute(
+        'UPDATE dive_attachments SET deleted_at = 1 WHERE id = ?',
+        ['f2'],
+      );
+      await diveDao.softDeleteDive(diveId); // cascades f1 and l1 only
+      expect(await deletedAtOf('dive_attachments', 'f2'), 1);
+      await diveDao.restoreDive(diveId);
+      expect(await liveIds(diveId), ['f1', 'l1']);
+      expect(await deletedAtOf('dive_attachments', 'f2'), 1);
+    });
+
+    test('restoreDive keeps an already-purged attachment deleted', () async {
+      await diveDao.softDeleteDive(diveId);
+      expect(
+        await attDao.markPurged('f1',
+            expectedKey: 'attachments/test-user/$diveId/f1.jpg'),
+        isTrue,
+      );
+      await diveDao.restoreDive(diveId);
+      expect(await liveIds(diveId), ['f2', 'l1']);
+      final f1 = (await attDao.get('f1'))! as FileAttachment;
+      expect(f1.deletedAt, isNotNull);
+      expect(f1.uploadState, UploadState.purged);
+    });
+
+    test('merged dive: deleting each member cascades the attachments '
+        'anchored to the earliest member', () async {
+      // A merged dive's synthetic id has no dives row, so its media are
+      // written against the earliest real member (annotationsDiveId).
+      final later = await importFixture(712);
+      final mergeDao = DiveMergeDao(db, ps, FakeSessionSource());
+      final groupId = await mergeDao.mergeDives([diveId, later]);
+      await attDao.insertFile(file('later-file', later));
+
+      // Nothing is ever written against the synthetic group id.
+      expect(await attDao.listForDive(groupId), isEmpty);
+
+      await diveDao.softDeleteDive(diveId);
+      await diveDao.softDeleteDive(later);
+      expect(await attDao.listForDive(diveId), isEmpty);
+      expect(await attDao.listForDive(later), isEmpty);
+
+      await diveDao.restoreDive(diveId);
+      await diveDao.restoreDive(later);
+      expect(await liveIds(diveId), ['f1', 'f2', 'l1']);
+      expect(await liveIds(later), ['later-file']);
     });
   });
 }

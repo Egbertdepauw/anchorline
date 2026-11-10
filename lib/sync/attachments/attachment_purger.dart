@@ -50,14 +50,19 @@ class AttachmentPurger {
   }
 
   /// Whether any soft-deleted file row still has an R2 object to purge,
-  /// ignoring the grace period. `pending:` rows never reached R2 and free
-  /// no bytes, so they don't count.
+  /// ignoring the grace period. Soft-deletes the attachments of deleted
+  /// dives first, as [purgeDeleted] does, so those count. `pending:` rows
+  /// never reached R2 and free no bytes, so they don't count.
   Future<bool> hasPurgeable() async {
+    await _dao.softDeleteUnderDeletedDives(now: _now());
     return (await _dao.listPurgeable(_now()))
         .any((r) => !r.storageKey.startsWith('pending:'));
   }
 
   Future<int> _run(Duration minAge) async {
+    // Attachments of a deleted dive count as deleted too (#198). The
+    // dive delete cascades now; this catches dives deleted before that.
+    await _dao.softDeleteUnderDeletedDives(now: _now());
     final rows = await _dao.listPurgeable(_now().subtract(minAge));
     var purged = 0;
     for (final row in rows) {
