@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../../data/db/dive_dao.dart';
@@ -251,8 +252,16 @@ class _AuthSheetState extends State<_AuthSheet> {
   final _passwordCtrl = TextEditingController();
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
+  final _codeCtrl = TextEditingController();
+  final _codeFocus = FocusNode();
   bool _busy = false;
   String? _error;
+
+  /// Set while the sheet asks for the code from the "Confirm signup" email.
+  String? _pendingEmail;
+
+  /// A non-error note on the code step, such as "New code sent".
+  String? _info;
 
   @override
   void initState() {
@@ -271,6 +280,8 @@ class _AuthSheetState extends State<_AuthSheet> {
     _passwordCtrl.dispose();
     _emailFocus.dispose();
     _passwordFocus.dispose();
+    _codeCtrl.dispose();
+    _codeFocus.dispose();
     super.dispose();
   }
 
@@ -281,9 +292,53 @@ class _AuthSheetState extends State<_AuthSheet> {
       setState(() => _error = 'Email and password are both required');
       return;
     }
+    await _submit(op);
+  }
+
+  Future<void> _verify() async {
+    final email = _pendingEmail!;
+    final code = _codeCtrl.text.trim();
+    if (code.isEmpty) {
+      setState(() => _error = 'Enter the code from the email');
+      return;
+    }
+    await _submit(() => widget.authService.verifyEmailCode(
+          email: email,
+          code: code,
+          password: _passwordCtrl.text,
+        ));
+  }
+
+  Future<void> _resend() async {
+    final email = _pendingEmail!;
     setState(() {
       _busy = true;
       _error = null;
+      _info = null;
+    });
+    final err = await widget.authService.resendEmailCode(email: email);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (err == null) {
+        _info = 'New code sent to $email.';
+      } else {
+        _error = err;
+      }
+    });
+  }
+
+  void _backToForm() => setState(() {
+        _pendingEmail = null;
+        _error = null;
+        _info = null;
+      });
+
+  Future<void> _submit(Future<AuthResult> Function() op) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+      _info = null;
     });
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
@@ -296,17 +351,107 @@ class _AuthSheetState extends State<_AuthSheet> {
         messenger.showSnackBar(
           SnackBar(content: Text('Signed in as ${user.email ?? user.id}')),
         );
-      case AuthEmailConfirmationRequired():
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Check your inbox to confirm your email')),
-        );
+      case AuthEmailConfirmationRequired(:final email):
+        _codeCtrl.clear();
+        setState(() => _pendingEmail = email);
+        // Same macOS dialog focus workaround as the email field.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _codeFocus.requestFocus();
+        });
       case AuthFailure(:final message):
         setState(() => _error = message);
+        // The disabled field lost focus while busy; put the cursor back so
+        // a mistyped code can be fixed straight away.
+        if (_pendingEmail != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _codeFocus.requestFocus();
+          });
+        }
     }
+  }
+
+  Widget? _messages(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    if (_error != null) {
+      return Text(_error!, style: TextStyle(color: scheme.error));
+    }
+    if (_info != null) return Text(_info!);
+    return null;
+  }
+
+  Widget _busyOr(String label) => _busy
+      ? const SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        )
+      : Text(label);
+
+  Widget _buildCodeStep(BuildContext context, String email) {
+    final messages = _messages(context);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Confirm your email',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 16),
+          Text('Enter the code from the newest email we sent to $email. '
+              'No email after a few minutes? Check your spam folder, or '
+              'press Resend code.'),
+          const SizedBox(height: 16),
+          TextField(
+            key: const ValueKey('auth-code-field'),
+            controller: _codeCtrl,
+            focusNode: _codeFocus,
+            keyboardType: TextInputType.number,
+            autofillHints: const [AutofillHints.oneTimeCode],
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(labelText: 'Code'),
+            enabled: !_busy,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) {
+              if (!_busy) _verify();
+            },
+          ),
+          if (messages != null) ...[
+            const SizedBox(height: 8),
+            messages,
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _busy ? null : _resend,
+                  child: const Text('Resend code'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _busy ? null : _verify,
+                  child: _busyOr('Verify'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _busy ? null : _backToForm,
+            child: const Text('Back'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final pending = _pendingEmail;
+    if (pending != null) return _buildCodeStep(context, pending);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -364,13 +509,7 @@ class _AuthSheetState extends State<_AuthSheet> {
                             email: _emailCtrl.text.trim(),
                             password: _passwordCtrl.text,
                           )),
-                  child: _busy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Sign in'),
+                  child: _busyOr('Sign in'),
                 ),
               ),
             ],
