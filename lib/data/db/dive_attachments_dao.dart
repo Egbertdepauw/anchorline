@@ -329,14 +329,47 @@ class DiveAttachmentsDao {
     });
   }
 
-  /// Records that the row's R2 object was deleted by the purge sweep.
-  /// Same write pattern as [markUploadFailed].
-  Future<void> markPurged(String id) async {
+  /// Claims a soft-deleted file row for purging: sets `upload_state = 3`
+  /// (bumping version, updated_at, owner_id like [markUploadFailed]) only if
+  /// the row is still soft-deleted, still has [expectedKey], and is not
+  /// already purged. Returns whether the claim succeeded. The purger claims
+  /// BEFORE deleting the R2 object so a concurrent UNDO ([restore]) or a
+  /// finishing upload ([markUploaded]) can't race the delete.
+  Future<bool> markPurged(String id, {required String expectedKey}) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return _db.writeTransaction((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT version FROM dive_attachments '
+        'WHERE id = ? AND deleted_at IS NOT NULL AND storage_key = ? '
+        'AND upload_state != ?',
+        [id, expectedKey, UploadState.purged.wire],
+      );
+      if (existing == null) return false;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE dive_attachments SET '
+        'owner_id = ?, upload_state = ?, updated_at = ?, version = ? '
+        'WHERE id = ?',
+        [_ownerId, UploadState.purged.wire, now, newVersion, id],
+      );
+      return true;
+    });
+  }
+
+  /// Undoes a [markPurged] claim when the R2 delete failed, restoring the
+  /// row's [previous] upload state so the next sweep retries it. Only
+  /// touches a row that is still purged with [expectedKey].
+  Future<void> revertPurge(
+    String id, {
+    required String expectedKey,
+    required UploadState previous,
+  }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await _db.writeTransaction((tx) async {
       final existing = await tx.getOptional(
-        'SELECT version FROM dive_attachments WHERE id = ?',
-        [id],
+        'SELECT version FROM dive_attachments '
+        'WHERE id = ? AND upload_state = ? AND storage_key = ?',
+        [id, UploadState.purged.wire, expectedKey],
       );
       if (existing == null) return;
       final newVersion = (existing['version'] as int? ?? 0) + 1;
@@ -344,7 +377,7 @@ class DiveAttachmentsDao {
         'UPDATE dive_attachments SET '
         'owner_id = ?, upload_state = ?, updated_at = ?, version = ? '
         'WHERE id = ?',
-        [_ownerId, UploadState.purged.wire, now, newVersion, id],
+        [_ownerId, previous.wire, now, newVersion, id],
       );
     });
   }

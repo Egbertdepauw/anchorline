@@ -245,7 +245,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     ) {
       if (event.session != null) {
         _syncHealthService.start();
-        _purgeDeletedAttachments();
+        if (event.event == AuthChangeEvent.signedIn) {
+          _purgeDeletedAttachments();
+        }
       } else {
         _syncHealthService.stop();
       }

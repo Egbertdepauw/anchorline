@@ -113,6 +113,79 @@ void main() {
     expect(deleted, ['k1']);
   });
 
+  test('UNDO during the run keeps the row live and issues no delete',
+      () async {
+    await addDeleted('a1', 'k1', const Duration(hours: 30));
+    await addDeleted('a2', 'k2', const Duration(hours: 30));
+    // Whichever row is processed first, its delete restores the other one.
+    deleteFn = (k) async {
+      deleted.add(k);
+      await dao.restore(k == 'k1' ? 'a2' : 'a1');
+    };
+
+    expect(await purger().purgeDeleted(), 1);
+    expect(deleted, hasLength(1));
+    final survivor = deleted.single == 'k1' ? 'a2' : 'a1';
+    final got = (await dao.get(survivor))! as FileAttachment;
+    expect(got.deletedAt, isNull);
+    expect(got.uploadState, isNot(UploadState.purged));
+  });
+
+  test('a key rewritten between list and claim is not claimed', () async {
+    await addDeleted('a1', 'pending:a1', const Duration(hours: 30));
+    deleteFn = (k) async => deleted.add(k);
+    final p = AttachmentPurger(
+      dao: dao,
+      now: () => now,
+      deleteObject: deleteFn,
+    );
+    // Simulate the upload finishing right after the row was listed.
+    final run = p.purgeDeleted();
+    await dao.markUploaded('a1', checksumSha256: 'x', storageKey: 'real/a1');
+    await run;
+
+    expect(deleted, isNot(contains('pending:a1')));
+    final got = (await dao.get('a1'))! as FileAttachment;
+    expect(got.uploadState, isNot(equals(UploadState.pending)));
+  });
+
+  test('a failing delete reverts the claim and the row is listed again',
+      () async {
+    await addDeleted('a1', 'k1', const Duration(hours: 30));
+    deleteFn = (k) async => throw Exception('boom');
+
+    expect(await purger().purgeDeleted(), 0);
+    expect(await stateOf('a1'), UploadState.pending);
+    expect(
+        (await dao.listPurgeable(now)).map((a) => a.id), ['a1']);
+  });
+
+  test('a zero-age call during a 24h run chains and purges the fresh row',
+      () async {
+    await addDeleted('old', 'k-old', const Duration(hours: 30));
+    await addDeleted('fresh', 'k-fresh', const Duration(seconds: 1));
+    final gate = Completer<void>();
+    deleteFn = (k) async {
+      await gate.future;
+      deleted.add(k);
+    };
+    final p = purger();
+
+    final slow = p.purgeDeleted();
+    final now0 = p.purgeDeleted(minAge: Duration.zero);
+    gate.complete();
+
+    expect(await slow, 1);
+    expect(await now0, 1);
+    expect(deleted..sort(), ['k-fresh', 'k-old']);
+    expect(await stateOf('fresh'), UploadState.purged);
+  });
+
+  test('hasPurgeable ignores pending: keys', () async {
+    await addDeleted('a1', 'pending:a1', const Duration(hours: 30));
+    expect(await purger().hasPurgeable(), isFalse);
+  });
+
   test('hasPurgeable ignores the grace period', () async {
     final p = purger();
     expect(await p.hasPurgeable(), isFalse);

@@ -28,35 +28,55 @@ class AttachmentPurger {
   final DateTime Function() _now;
 
   Future<int>? _inFlight;
+  Duration _inFlightMinAge = Duration.zero;
 
   /// Purges every file row soft-deleted at least [minAge] ago. Returns the
-  /// number of rows marked purged. A failed delete leaves that row unpurged
-  /// (the next run retries it) and does not stop the others. Concurrent
-  /// calls share one in-flight run.
+  /// number of rows marked purged. Each row is claimed (`markPurged`) before
+  /// its object is deleted, so a concurrent UNDO or upload can't lose data;
+  /// a failed delete reverts the claim (the next run retries it) and does
+  /// not stop the others. A call whose [minAge] is not shorter than the
+  /// in-flight run's shares that run; a shorter one runs after it.
   Future<int> purgeDeleted({Duration minAge = const Duration(hours: 24)}) {
-    return _inFlight ??= _run(minAge).whenComplete(() => _inFlight = null);
+    final running = _inFlight;
+    if (running == null) {
+      _inFlightMinAge = minAge;
+      return _inFlight = _run(minAge).whenComplete(() => _inFlight = null);
+    }
+    if (minAge >= _inFlightMinAge) return running;
+    return running.then(
+      (_) => purgeDeleted(minAge: minAge),
+      onError: (Object _) => purgeDeleted(minAge: minAge),
+    );
   }
 
   /// Whether any soft-deleted file row still has an R2 object to purge,
-  /// ignoring the grace period.
+  /// ignoring the grace period. `pending:` rows never reached R2 and free
+  /// no bytes, so they don't count.
   Future<bool> hasPurgeable() async {
-    return (await _dao.listPurgeable(_now())).isNotEmpty;
+    return (await _dao.listPurgeable(_now()))
+        .any((r) => !r.storageKey.startsWith('pending:'));
   }
 
   Future<int> _run(Duration minAge) async {
     final rows = await _dao.listPurgeable(_now().subtract(minAge));
     var purged = 0;
     for (final row in rows) {
+      final key = row.storageKey;
+      if (!await _dao.markPurged(row.id, expectedKey: key)) continue;
       // `pending:<id>` rows never reached R2; nothing to delete.
-      if (!row.storageKey.startsWith('pending:')) {
+      if (!key.startsWith('pending:')) {
         try {
-          await _deleteObject(row.storageKey);
+          await _deleteObject(key);
         } catch (e) {
-          debugPrint('Attachment purge: delete of ${row.storageKey} failed: $e');
+          debugPrint('Attachment purge: delete of $key failed: $e');
+          await _dao.revertPurge(
+            row.id,
+            expectedKey: key,
+            previous: row.uploadState,
+          );
           continue;
         }
       }
-      await _dao.markPurged(row.id);
       purged++;
     }
     return purged;

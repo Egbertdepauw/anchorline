@@ -443,7 +443,7 @@ void main() {
       final before = cutoff.subtract(const Duration(hours: 1));
       await deletedAt('purged', before);
       await deletedAt('link', before);
-      await dao.markPurged('purged');
+      await dao.markPurged('purged', expectedKey: 'attachments/u/d/x.pdf');
 
       expect(await dao.listPurgeable(cutoff), isEmpty);
     });
@@ -452,7 +452,8 @@ void main() {
       await dao.insertFile(_file(id: 'a1', diveId: 'd1'));
       await dao.softDelete('a1');
       final before = (await dao.get('a1'))!.version;
-      await dao.markPurged('a1');
+      expect(
+          await dao.markPurged('a1', expectedKey: 'attachments/u/d/x.pdf'), isTrue);
 
       final got = (await dao.get('a1'))! as FileAttachment;
       expect(got.uploadState, UploadState.purged);
@@ -462,10 +463,37 @@ void main() {
       expect(row['owner_id'], 'owner-1');
     });
 
+    test('markPurged refuses a live row, a changed key and a purged row',
+        () async {
+      await dao.insertFile(_file(id: 'a1', diveId: 'd1'));
+      const key = 'attachments/u/d/x.pdf';
+      expect(await dao.markPurged('a1', expectedKey: key), isFalse); // live
+      await dao.softDelete('a1');
+      expect(await dao.markPurged('a1', expectedKey: 'other'), isFalse);
+      expect(await dao.markPurged('a1', expectedKey: key), isTrue);
+      expect(await dao.markPurged('a1', expectedKey: key), isFalse);
+    });
+
+    test('revertPurge restores the previous state and relists the row',
+        () async {
+      await dao.insertFile(_file(id: 'a1', diveId: 'd1'));
+      const key = 'attachments/u/d/x.pdf';
+      await dao.softDelete('a1');
+      await dao.markPurged('a1', expectedKey: key);
+      await dao.revertPurge('a1',
+          expectedKey: key, previous: UploadState.uploaded);
+
+      final got = (await dao.get('a1'))! as FileAttachment;
+      expect(got.uploadState, UploadState.uploaded);
+      expect((await dao.listPurgeable(DateTime.now().add(const Duration(days: 1)))).map((a) => a.id),
+          ['a1']);
+    });
+
     test('restore leaves a purged row deleted', () async {
       await dao.insertFile(_file(id: 'a1', diveId: 'd1'));
       await dao.softDelete('a1');
-      await dao.markPurged('a1');
+      expect(
+          await dao.markPurged('a1', expectedKey: 'attachments/u/d/x.pdf'), isTrue);
       await dao.restore('a1');
 
       expect((await dao.get('a1'))!.deletedAt, isNotNull);
