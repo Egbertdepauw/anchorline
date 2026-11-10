@@ -6,7 +6,8 @@
 //
 // Never prints the token, password or presigned URLs.
 
-const { WORKER, TOKEN, SUPABASE_URL, SUPABASE_ANON_KEY, ANCHORLINE_EMAIL, ANCHORLINE_PASSWORD } = process.env;
+const { WORKER: WORKER_RAW, TOKEN, SUPABASE_URL, SUPABASE_ANON_KEY, ANCHORLINE_EMAIL, ANCHORLINE_PASSWORD } = process.env;
+const WORKER = WORKER_RAW?.replace(/\/+$/, "");
 const DIVE_ID = "00000000-0000-4000-8000-000000000196"; // synthetic
 
 if (!WORKER) {
@@ -56,9 +57,9 @@ async function attempt(signedMime, signedSize, putMime, body) {
   const put = await fetch(upload_url, { method: "PUT", headers: { "Content-Type": putMime }, body });
   if (put.status >= 200 && put.status < 300) {
     const del = await workerPost("/delete", { object_key });
-    if (!del.ok) console.warn(`  warning: cleanup of ${object_key} failed (${del.status})`);
+    if (!del.ok) console.warn(`  warning: cleanup of ${object_key} failed (${del.status}) - delete it manually`);
   }
-  return { status: put.status, key: object_key };
+  return { status: put.status };
 }
 
 const cases = [
@@ -70,11 +71,16 @@ const cases = [
 let failed = false;
 let sizeNotEnforced = false;
 for (const [i, c] of cases.entries()) {
-  const { status, key } = await c.run();
-  const pass = status === c.expect;
-  if (!pass) failed = true;
-  if (i === 1 && status >= 200 && status < 300) sizeNotEnforced = true;
-  console.log(`case ${i + 1} (${c.name}): expected ${c.expect}, got ${status} ${pass ? "PASS" : "FAIL"} [${key}]`);
+  try {
+    const { status } = await c.run();
+    const pass = status === c.expect;
+    if (!pass) failed = true;
+    if (i === 1 && status >= 200 && status < 300) sizeNotEnforced = true;
+    console.log(`case ${i + 1} (${c.name}): expected ${c.expect}, got ${status} ${pass ? "PASS" : "FAIL"}`);
+  } catch (err) {
+    failed = true;
+    console.log(`case ${i + 1} (${c.name}): ERROR ${err.message} FAIL`);
+  }
 }
 
 if (sizeNotEnforced) {

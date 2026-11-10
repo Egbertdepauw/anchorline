@@ -28,5 +28,8 @@ describe("presignUpload", () => {
     // Same key + type, different length: the canonical request differs,
     // so the signature must too (not merely list the header name).
     expect(await sig(1234)).not.toEqual(await sig(1235));
+    // Positive control: identical inputs are deterministic, so the
+    // difference above is caused by the size alone.
+    expect(await sig(1234)).toEqual(await sig(1234));
   });
 });
