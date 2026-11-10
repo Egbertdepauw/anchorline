@@ -29,6 +29,27 @@ export interface Env {
   // Comma-separated list of allowed CORS origins. `http://localhost:*`
   // matches any localhost port for dev convenience.
   ALLOWED_ORIGINS: string;
+
+  // Per-account attachment limits (see quota.ts). Plain integers as
+  // strings; QUOTA_OVERRIDES is optional JSON {"<sub>":{"bytes":N,"files":N}}.
+  QUOTA_BYTES: string;
+  QUOTA_FILES: string;
+  QUOTA_OVERRIDES?: string;
+
+  // Kill switch for new uploads; anything other than "true" disables them.
+  UPLOADS_ENABLED: string;
+
+  // Workers Rate Limiting binding guarding sign-upload (the route does a
+  // bucket list, so it must not be hammerable).
+  SIGN_UPLOAD_LIMITER: RateLimit;
+}
+
+// Current usage and limits for one account.
+export interface Usage {
+  used_bytes: number;
+  limit_bytes: number;
+  used_files: number;
+  limit_files: number;
 }
 
 // ---- Route request/response shapes -----------------------------------------
@@ -40,7 +61,7 @@ export interface SignUploadRequest {
   size_bytes: number;
 }
 
-export interface SignUploadResponse {
+export interface SignUploadResponse extends Usage {
   object_key: string;
   upload_url: string;
   expires_at: number;
