@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:ccrlogger/data/models/dive_attachment.dart';
+import 'package:ccrlogger/sync/attachments/attachment_signer.dart';
 import 'package:ccrlogger/sync/attachments/attachment_uploader.dart';
 import 'package:ccrlogger/ui/notifiers/dive_attachments_notifier.dart';
 import 'package:ccrlogger/ui/widgets/dive_attachments_section.dart';
@@ -81,6 +82,8 @@ class _FakeNotifier extends ChangeNotifier implements DiveAttachmentsNotifier {
   @override
   Future<void> addFile(PickedAttachmentFile picked) async {
     addFileCalls.add(picked);
+    final refusal = refuseAddsWith;
+    if (refusal != null) setStorageFull(refusal);
   }
 
   @override
@@ -109,6 +112,54 @@ class _FakeNotifier extends ChangeNotifier implements DiveAttachmentsNotifier {
   @override
   Future<void> retryUpload(String id) async {
     retryCalls.add(id);
+  }
+
+  StorageFullState? storageFullValue;
+
+  /// When set, every [addFile] is refused for quota with this state.
+  StorageFullState? refuseAddsWith;
+  bool uploadsPausedValue = false;
+  final Set<String> storageFullIds = {};
+  int freeSpaceCalls = 0;
+  int dismissStorageFullCalls = 0;
+  int dismissPausedCalls = 0;
+
+  void setStorageFull(StorageFullState? s) {
+    storageFullValue = s;
+    notifyListeners();
+  }
+
+  void setUploadsPaused(bool v) {
+    uploadsPausedValue = v;
+    notifyListeners();
+  }
+
+  @override
+  StorageFullState? get storageFull => storageFullValue;
+  @override
+  bool get uploadsPaused => uploadsPausedValue;
+  @override
+  bool isStorageFull(String id) => storageFullIds.contains(id);
+
+  @override
+  Future<void> freeSpaceAndRetry() async {
+    freeSpaceCalls++;
+    storageFullValue = null;
+    notifyListeners();
+  }
+
+  @override
+  void dismissStorageFull() {
+    dismissStorageFullCalls++;
+    storageFullValue = null;
+    notifyListeners();
+  }
+
+  @override
+  void dismissUploadsPaused() {
+    dismissPausedCalls++;
+    uploadsPausedValue = false;
+    notifyListeners();
   }
 
   @override
@@ -293,5 +344,110 @@ void main() {
     await tester.tap(find.text('UNDO'));
     await tester.pumpAndSettle();
     expect(n.restoreCalls, ['l1']);
+  });
+
+  group('storage refusals', () {
+    const full = StorageFullState(
+      usage: AttachmentUsage(
+        usedBytes: 980000000,
+        limitBytes: 1000000000,
+        usedFiles: 412,
+        limitFiles: 1000,
+      ),
+      fileSizeBytes: 4200000,
+      canFreeSpace: true,
+    );
+
+    testWidgets('storage-full dialog shows once per refusal; OK dismisses',
+        (tester) async {
+      final n = _FakeNotifier();
+      await tester.pumpWidget(_harness(n));
+      n.setStorageFull(full);
+      await tester.pumpAndSettle();
+      expect(find.text('Attachment storage full'), findsOneWidget);
+
+      // A rebuild with the same refusal doesn't stack a second dialog.
+      n.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(find.text('Attachment storage full'), findsOneWidget);
+
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.text('Attachment storage full'), findsNothing);
+      expect(n.dismissStorageFullCalls, 1);
+      expect(n.freeSpaceCalls, 0);
+    });
+
+    testWidgets('a refusal pending at mount shows the dialog',
+        (tester) async {
+      final n = _FakeNotifier()..storageFullValue = full;
+      await tester.pumpWidget(_harness(n));
+      await tester.pumpAndSettle();
+      expect(find.text('Attachment storage full'), findsOneWidget);
+    });
+
+    testWidgets('Free space now calls freeSpaceAndRetry', (tester) async {
+      final n = _FakeNotifier();
+      await tester.pumpWidget(_harness(n));
+      n.setStorageFull(full);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Free space now'));
+      await tester.pumpAndSettle();
+      expect(n.freeSpaceCalls, 1);
+      expect(n.dismissStorageFullCalls, 0);
+      expect(find.text('Attachment storage full'), findsNothing);
+    });
+
+    testWidgets('uploads paused shows the paused copy; Dismiss clears it',
+        (tester) async {
+      final n = _FakeNotifier();
+      await tester.pumpWidget(_harness(n));
+      n.setUploadsPaused(true);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+            'Uploads are paused right now. Your existing attachments are fine.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Dismiss'));
+      await tester.pumpAndSettle();
+      expect(n.dismissPausedCalls, 1);
+      expect(find.textContaining('Uploads are paused'), findsNothing);
+    });
+
+    testWidgets('a storage-full refusal stops the rest of a multi-file add',
+        (tester) async {
+      final n = _FakeNotifier()..refuseAddsWith = full;
+      final picks = [
+        for (final name in ['a.pdf', 'b.pdf', 'c.pdf'])
+          PickedAttachmentFile(
+            file: File('/tmp/$name'),
+            originalFilename: name,
+            mimeType: 'application/pdf',
+            sizeBytes: 1234,
+          ),
+      ];
+      await tester.pumpWidget(_harness(n, pickFiles: (_) async => picks));
+      await tester.tap(find.widgetWithText(FilledButton, 'Add file'));
+      await tester.pumpAndSettle();
+
+      expect(n.addFileCalls.map((p) => p.originalFilename), ['a.pdf']);
+      expect(find.text('Attachment storage full'), findsOneWidget);
+    });
+
+    testWidgets('a failed row refused for quota reads Storage full',
+        (tester) async {
+      final n = _FakeNotifier(initial: [
+        _file(id: 'f1', state: UploadState.failed),
+        _file(id: 'f2', order: 2, state: UploadState.failed),
+      ])
+        ..storageFullIds.add('f1');
+      await tester.pumpWidget(_harness(n));
+      await tester.pumpAndSettle();
+      expect(find.text('Storage full'), findsOneWidget);
+      expect(find.text('Upload failed'), findsOneWidget);
+    });
   });
 }

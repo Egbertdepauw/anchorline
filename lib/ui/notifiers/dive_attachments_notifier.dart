@@ -12,6 +12,12 @@
 /// in `pending` immediately, awaits the uploader, then reloads — the
 /// row's terminal state (`uploaded` or `failed`) was flipped by the
 /// uploader via the DAO before the future resolved.
+///
+/// Worker refusals (issue #196) get their own state instead of the
+/// generic [DiveAttachmentsNotifier.error]: a quota refusal sets
+/// [DiveAttachmentsNotifier.storageFull] (the widgets show the storage-
+/// full dialog for it) and an uploads-disabled one sets
+/// [DiveAttachmentsNotifier.uploadsPaused].
 library;
 
 import 'dart:async';
@@ -22,7 +28,11 @@ import 'package:flutter/foundation.dart';
 
 import '../../data/db/dive_attachments_dao.dart';
 import '../../data/models/dive_attachment.dart';
+import '../../sync/attachments/attachment_purger.dart';
+import '../../sync/attachments/attachment_signer.dart';
 import '../../sync/attachments/attachment_uploader.dart';
+import '../../sync/attachments/attachment_uploader_impl.dart'
+    show UploadFailedException;
 
 /// Tiny seam over UUID generation so tests can pin row ids. Production
 /// uses [UuidV4IdGenerator]; tests inject a deterministic counter.
@@ -54,16 +64,40 @@ class UuidV4IdGenerator implements IdGenerator {
   }
 }
 
+/// A quota refusal waiting for the storage-full dialog. A new instance
+/// per refusal, so a widget can tell a fresh refusal from a rebuild.
+class StorageFullState {
+  final AttachmentUsage usage;
+
+  /// Size of the file the Worker refused.
+  final int fileSizeBytes;
+
+  /// Whether "Free space now" has anything to purge.
+  final bool canFreeSpace;
+
+  const StorageFullState({
+    required this.usage,
+    required this.fileSizeBytes,
+    required this.canFreeSpace,
+  });
+}
+
 class DiveAttachmentsNotifier extends ChangeNotifier {
   final DiveAttachmentsDao _dao;
   final AttachmentUploader _uploader;
   final IdGenerator _idGenerator;
 
+  /// Frees space for "Free space now". Without one, the dialog never
+  /// offers it.
+  final AttachmentPurger? _purger;
+
   DiveAttachmentsNotifier(
     this._dao,
     this._uploader, {
     IdGenerator? idGenerator,
-  }) : _idGenerator = idGenerator ?? const UuidV4IdGenerator();
+    AttachmentPurger? purger,
+  })  : _idGenerator = idGenerator ?? const UuidV4IdGenerator(),
+        _purger = purger;
 
   String? _diveId;
   List<DiveAttachment> _attachments = const [];
@@ -72,6 +106,18 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
   bool _disposed = false;
   StreamSubscription<void>? _watchSub;
 
+  StorageFullState? _storageFull;
+  bool _uploadsPaused = false;
+
+  /// What "Free space now" retries: the refused pick (an add) or the
+  /// refused row id (a manual retry). Exactly one is set while
+  /// [_storageFull] is.
+  PickedAttachmentFile? _refusedPick;
+  String? _refusedRowId;
+
+  /// Failed rows whose last failure was a quota refusal. Session only.
+  final Set<String> _storageFullIds = {};
+
   // ── Read accessors ────────────────────────────────────────────────────
 
   List<DiveAttachment> get attachments => List.unmodifiable(_attachments);
@@ -79,6 +125,18 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
   String? get error => _error;
   bool get loaded => _diveId != null && !_loading;
   String? get diveId => _diveId;
+
+  /// Set by a quota refusal until [dismissStorageFull] or
+  /// [freeSpaceAndRetry].
+  StorageFullState? get storageFull => _storageFull;
+
+  /// Set when the Worker has uploads switched off, until
+  /// [dismissUploadsPaused] or the next upload or retry that the Worker
+  /// doesn't refuse that way.
+  bool get uploadsPaused => _uploadsPaused;
+
+  /// Whether [id] is a failed row the Worker refused for quota.
+  bool isStorageFull(String id) => _storageFullIds.contains(id);
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -207,10 +265,20 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
     } catch (e) {
       uploadError = e;
     }
+    final cause = _causeOf(uploadError);
+    if (cause is AttachmentQuotaExceededException) {
+      // The file isn't added: drop the row and its cached bytes so
+      // nothing is stuck in `failed` or retried later.
+      await _dao.softDelete(id);
+      await _uploader.discard(id);
+      await _setStorageFull(cause.usage, picked.sizeBytes, pick: picked);
+    } else {
+      _uploadsPaused = cause is AttachmentUploadsDisabledException;
+    }
     // The uploader has already flipped the row state via the DAO; we
     // just re-pull so the UI sees `uploaded` or `failed`.
     await reload();
-    if (uploadError != null) {
+    if (uploadError != null && _isGenericFailure(cause)) {
       _error = uploadError.toString();
       notifyListeners();
     }
@@ -257,6 +325,7 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
   }
 
   Future<void> softDelete(String id) async {
+    _storageFullIds.remove(id);
     await _dao.softDelete(id);
     await reload();
   }
@@ -278,14 +347,102 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
     } catch (e) {
       err = e;
     }
+    final cause = _causeOf(err);
+    if (cause is AttachmentQuotaExceededException) {
+      // Unlike an add, the row stays `failed` so the user can retry it.
+      _storageFullIds.add(id);
+      await _setStorageFull(cause.usage, row.sizeBytes ?? 0, rowId: id);
+    } else {
+      if (err == null) _storageFullIds.remove(id);
+      _uploadsPaused = cause is AttachmentUploadsDisabledException;
+    }
     await reload();
-    if (err != null) {
+    if (err != null && _isGenericFailure(cause)) {
       _error = err.toString();
       notifyListeners();
     }
   }
 
+  /// "Free space now": purges every soft-deleted attachment, then
+  /// retries the refused add or row once. Another refusal sets
+  /// [storageFull] again; it never retries further by itself.
+  Future<void> freeSpaceAndRetry() async {
+    final pick = _refusedPick;
+    final rowId = _refusedRowId;
+    _clearStorageFull();
+    notifyListeners();
+    final purger = _purger;
+    if (purger != null) {
+      try {
+        await purger.purgeDeleted(minAge: Duration.zero);
+      } catch (e) {
+        // Retry anyway: whatever the purge did free still counts.
+        debugPrint('Attachment purge for free space failed: $e');
+      }
+    }
+    if (pick != null) {
+      await addFile(pick);
+    } else if (rowId != null) {
+      await retryUpload(rowId);
+    }
+  }
+
+  /// Closes the storage-full dialog without retrying.
+  void dismissStorageFull() {
+    if (_storageFull == null) return;
+    _clearStorageFull();
+    notifyListeners();
+  }
+
+  /// Hides the uploads-paused message.
+  void dismissUploadsPaused() {
+    if (!_uploadsPaused) return;
+    _uploadsPaused = false;
+    notifyListeners();
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────
+
+  /// The uploader wraps every failure in [UploadFailedException]; the
+  /// refusals we handle specially are its cause.
+  Object? _causeOf(Object? error) =>
+      error is UploadFailedException ? error.cause : error;
+
+  /// Quota and uploads-disabled refusals have their own state; every
+  /// other failure shows the generic [error].
+  bool _isGenericFailure(Object? cause) =>
+      cause is! AttachmentQuotaExceededException &&
+      cause is! AttachmentUploadsDisabledException;
+
+  Future<void> _setStorageFull(
+    AttachmentUsage usage,
+    int fileSizeBytes, {
+    PickedAttachmentFile? pick,
+    String? rowId,
+  }) async {
+    final purger = _purger;
+    var canFreeSpace = false;
+    if (purger != null) {
+      try {
+        canFreeSpace = await purger.hasPurgeable();
+      } catch (_) {
+        // Can't tell: leave the button out rather than offer a no-op.
+      }
+    }
+    _storageFull = StorageFullState(
+      usage: usage,
+      fileSizeBytes: fileSizeBytes,
+      canFreeSpace: canFreeSpace,
+    );
+    _refusedPick = pick;
+    _refusedRowId = rowId;
+  }
+
+  void _clearStorageFull() {
+    _storageFull = null;
+    _refusedPick = null;
+    _refusedRowId = null;
+  }
 
   String _requireDiveId(String op) {
     final id = _diveId;

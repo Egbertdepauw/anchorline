@@ -595,6 +595,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                               attachmentsDao: _diveAttachmentsDao,
                               attachmentUploader: _attachmentUploader,
                               attachmentDownloader: _attachmentDownloader,
+                              attachmentPurger: _attachmentPurger,
                               settingsNotifier: widget.settingsNotifier,
                             ),
                           ),

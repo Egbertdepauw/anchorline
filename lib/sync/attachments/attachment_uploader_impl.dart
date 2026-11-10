@@ -17,6 +17,11 @@
 ///      the row to `failed` and rethrow [UploadFailedException] so the
 ///      notifier surfaces it.
 ///
+/// A rate-limited signer call (429) is retried in place: up to
+/// [AttachmentUploaderImpl.rateLimitRetries] re-signs,
+/// [AttachmentUploaderImpl.rateLimitWait] apart, before the upload fails
+/// as above with the [AttachmentRateLimitedException] as its cause.
+///
 /// Progress reporting: v1 uses `http.StreamedRequest` so the chunked-
 /// stream sink emits progress callbacks roughly per chunk. The actual
 /// resolution is dominated by `package:http`'s internal buffering — for
@@ -37,7 +42,8 @@ import 'pending_upload_store.dart';
 
 /// Thrown when the upload pipeline can't deliver bytes to R2. The
 /// underlying cause (signer error, http error, etc.) is preserved in
-/// [cause] so callers can pattern-match if they care.
+/// [cause] so callers can pattern-match if they care: the notifier
+/// tells quota and uploads-disabled refusals apart this way.
 class UploadFailedException implements Exception {
   final String message;
   final Object? cause;
@@ -50,20 +56,32 @@ class UploadFailedException implements Exception {
 }
 
 class AttachmentUploaderImpl implements AttachmentUploader {
+  /// Re-signs after a 429 before giving up.
+  static const rateLimitRetries = 3;
+
+  /// Wait before each re-sign. The Worker allows 20 signs per 60 s, so
+  /// a burst that hits the limit has room again well within a minute.
+  static const rateLimitWait = Duration(seconds: 15);
+
   final AttachmentSigner _signer;
   final DiveAttachmentsDao _dao;
   final PendingUploadStore _pendingStore;
   final http.Client _http;
+  final Future<void> Function(Duration) _rateLimitDelay;
 
+  /// [rateLimitDelay] waits between re-signs after a 429; tests inject
+  /// one that returns at once.
   AttachmentUploaderImpl({
     required AttachmentSigner signer,
     required DiveAttachmentsDao dao,
     required PendingUploadStore pendingStore,
     http.Client? httpClient,
+    Future<void> Function(Duration)? rateLimitDelay,
   })  : _signer = signer,
         _dao = dao,
         _pendingStore = pendingStore,
-        _http = httpClient ?? http.Client();
+        _http = httpClient ?? http.Client(),
+        _rateLimitDelay = rateLimitDelay ?? Future<void>.delayed;
 
   @override
   Future<void> upload({
@@ -97,7 +115,7 @@ class AttachmentUploaderImpl implements AttachmentUploader {
 
     SignUploadResponse signed;
     try {
-      signed = await _signer.signUpload(
+      signed = await _signWithRateLimitRetry(
         diveId: diveId,
         filename: filename,
         mimeType: mimeType,
@@ -165,6 +183,10 @@ class AttachmentUploaderImpl implements AttachmentUploader {
     );
   }
 
+  @override
+  Future<void> discard(String attachmentId) =>
+      _pendingStore.clear(attachmentId);
+
   /// Closes the underlying http client. The signer owns its own client
   /// (passed in at construction) — we don't close that here, the caller
   /// that created it should.
@@ -173,6 +195,27 @@ class AttachmentUploaderImpl implements AttachmentUploader {
   }
 
   // ── internals ───────────────────────────────────────────────────────
+
+  Future<SignUploadResponse> _signWithRateLimitRetry({
+    required String diveId,
+    required String filename,
+    required String mimeType,
+    required int sizeBytes,
+  }) async {
+    for (var retries = 0;; retries++) {
+      try {
+        return await _signer.signUpload(
+          diveId: diveId,
+          filename: filename,
+          mimeType: mimeType,
+          sizeBytes: sizeBytes,
+        );
+      } on AttachmentRateLimitedException {
+        if (retries >= rateLimitRetries) rethrow;
+        await _rateLimitDelay(rateLimitWait);
+      }
+    }
+  }
 
   Future<void> _markFailed(String id) async {
     // Best-effort: a DAO failure here is itself a problem, but we don't
