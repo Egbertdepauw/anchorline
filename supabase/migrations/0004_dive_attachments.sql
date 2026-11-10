@@ -21,10 +21,12 @@
 -- {dive_id}/{uuid}.{ext}. The owner_id prefix lets future
 -- bucket-policy or cleanup tooling scope per-user with a single match.
 --
--- `upload_state` (0 pending, 1 uploaded, 2 failed) is the only column
--- the client mutates after the row exists; everything else is
--- write-once-on-create + soft-delete. The retry sweep on app
--- foreground re-tries `pending`/`failed` rows.
+-- `upload_state` (0 pending, 1 uploaded, 2 failed, 3 purged) is the
+-- only column the client mutates after the row exists; everything else
+-- is write-once-on-create + soft-delete. There is no automatic upload
+-- retry: a `failed` row is retried by the user from the app. State 3
+-- (added by #196) marks a soft-deleted row whose R2 object the app has
+-- deleted, 24 hours after `deleted_at`.
 
 create table if not exists dive_attachments (
   id text primary key,
