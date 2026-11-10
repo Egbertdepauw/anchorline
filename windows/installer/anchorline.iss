@@ -3,20 +3,31 @@
 ; To produce an .msi-like installer .exe:
 ;   1. Build the Flutter Windows release: `flutter build windows --release`
 ;      (must run ON a Windows machine — Flutter doesn't cross-compile
-;      Windows binaries from macOS or Linux).
+;      Windows binaries from macOS or Linux). For the nightly, build with
+;      the environment variable ANCHORLINE_CHANNEL=nightly set AND
+;      `flutter build windows --release --dart-define=BUILD_CHANNEL=nightly`.
+;      The first switches the native identity (see windows/CMakeLists.txt);
+;      the second makes the Dart side use the nightly's own data folder.
+;      With only one of them the app shares the release's data folder or its
+;      identity. Then pass /DChannel=nightly to ISCC below.
 ;   2. Install Inno Setup 6 (https://jrsoftware.org/isdl.php).
 ;   3. From the repo root, run:
-;        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\installer\anchorline.iss
+;        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ^
+;          /DMyAppVersion=<V> /DMyAppBuild=<N> /DChannel=<release|nightly> ^
+;          windows\installer\anchorline.iss
 ;      ISCC reads ..\..\build\windows\x64\runner\Release\ and packages
-;      everything into windows\installer\Output\Anchorline-Setup-x.y.z.exe.
+;      everything into windows\installer\Output. The file is
+;      Anchorline-<V>-windows-x64.exe for the release channel and
+;      Anchorline-Nightly-<V>-<N>-windows-x64.exe for the nightly. Without the
+;      flags you get a release 1.0.0 build 0, which is enough for a local run.
 ;
 ; Output is a standard NSIS-style installer .exe (Inno Setup doesn't
 ; produce true .msi files — for .msi you'd use WiX, which is a much
 ; bigger lift). The landing page on staging.despaankamer.nl serves
-; this .exe as Anchorline-Setup-<version>.exe (despite the .msi naming
-; convention the user originally asked for — Inno is the path of
-; least resistance and the result behaves identically from a user's
-; perspective).
+; this .exe (despite the .msi naming convention the user originally
+; asked for — Inno is the path of least resistance and the result
+; behaves identically from a user's perspective). The cloud publish
+; step will upload it under the name it is built with.
 ;
 ; Code signing: for production we want to avoid Windows SmartScreen
 ; warnings. That requires an EV Code Signing Certificate (~€350-700/yr
@@ -24,23 +35,49 @@
 ; protected your PC" prompt on first launch — they click "More info"
 ; → "Run anyway". Acceptable for beta, not for store release.
 
-#define MyAppName "Anchorline"
 #define MyAppPublisher "De Spaankamer"
 #define MyAppURL "https://staging.despaankamer.nl/anchorline"
 #define MyAppExeName "Anchorline.exe"
-; Version is overridden by ISCC's /DMyAppVersion=1.0.0+5 flag from CI.
-; Default below is for local manual runs.
+; CI overrides these with ISCC's /DMyAppVersion=<V> /DMyAppBuild=<N>
+; /DChannel=<release|nightly> flags. MyAppVersion is plain X.Y.Z (no +N
+; build suffix); MyAppBuild is the build counter and becomes the fourth part
+; of the file version. The defaults below are for local manual runs.
 #ifndef MyAppVersion
 #define MyAppVersion "1.0.0"
+#endif
+#ifndef MyAppBuild
+#define MyAppBuild "0"
+#endif
+#ifndef Channel
+#define Channel "release"
+#endif
+#if Channel != "release" && Channel != "nightly"
+#error Channel must be release or nightly: pass /DChannel=release or /DChannel=nightly
+#endif
+
+; The nightly is a separate app that installs next to the release: its own
+; name (and so install folder and Start-menu entry) and its own AppId (below).
+#if Channel == "nightly"
+#define MyAppName "Anchorline Nightly"
+#else
+#define MyAppName "Anchorline"
 #endif
 
 [Setup]
 ; AppId must NEVER change across versions — Windows uses it to recognise
 ; "this is an upgrade of the same app". Generated once via Inno Setup's
-; Tools → Generate GUID; do not regenerate.
+; Tools → Generate GUID; do not regenerate. The same goes for the nightly's
+; own AppId: it is what keeps the nightly from upgrading the release.
+#if Channel == "nightly"
+AppId={{077F972D-571A-4826-A633-D89426861B47}
+OutputBaseFilename=Anchorline-Nightly-{#MyAppVersion}-{#MyAppBuild}-windows-x64
+#else
 AppId={{8C5A1F90-2B4E-4A6A-9D3F-7B1C2E8A0F65}
+OutputBaseFilename=Anchorline-{#MyAppVersion}-windows-x64
+#endif
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersion}.{#MyAppBuild}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
@@ -50,7 +87,6 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 LicenseFile=
-OutputBaseFilename=Anchorline-Setup-{#MyAppVersion}
 OutputDir=Output
 Compression=lzma2/ultra
 SolidCompression=yes
@@ -93,8 +129,15 @@ Filename: "{app}\{#MyAppExeName}"; \
     Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; Anchorline keeps its local database + secrets under %LOCALAPPDATA%.
+; Anchorline keeps its user data outside {app}:
+;   %LOCALAPPDATA%\De Spaankamer\Anchorline  databases (ccrlogger.sqlite,
+;       powersync.db), subsurface_clone\, the BLE debug log and the
+;       attachments\ cache. Builds before #135 kept the first four in the
+;       user's Documents folder; the app moves them here on first start.
+;       The folder is decided in lib/data/app_data_folder.dart.
+;   %APPDATA%\De Spaankamer\Anchorline  preferences and the encrypted
+;       secure-storage file (its key lives in Windows Credential Manager).
 ; Uninstall removes the app binaries but PRESERVES user data — same
 ; convention as macOS / iOS. Testers who reinstall keep their imported
-; dives.
+; dives. "{app}\data" below is Flutter's asset folder, not user data.
 Type: filesandordirs; Name: "{app}\data"

@@ -41,6 +41,19 @@ class _FakeAuthClient implements AuthClient {
       AuthResponse();
 
   @override
+  Future<AuthResponse> verifyEmailCode({
+    required String email,
+    required String code,
+  }) async =>
+      AuthResponse();
+
+  @override
+  Future<void> resendEmailCode({required String email}) async {}
+
+  @override
+  Future<void> setPassword(String password) async {}
+
+  @override
   Future<void> signOut() async {
     user = null;
     session = null;
@@ -247,5 +260,110 @@ void main() {
 
     expect(h.target.connectCalls, 0);
     expect(h.target.disconnectCalls, 0);
+  });
+
+  group('pause', () {
+    test('pause disconnects a connected coordinator', () async {
+      final h = _build(signedIn: true);
+      addTearDown(() {
+        h.coord.dispose();
+        h.auth.dispose();
+        h.client.dispose();
+      });
+
+      h.coord.start();
+      await Future<void>.delayed(Duration.zero);
+      expect(h.coord.isConnected, isTrue);
+
+      await h.coord.pause();
+
+      expect(h.target.disconnectCalls, 1);
+      expect(h.coord.isConnected, isFalse);
+    });
+
+    test('auth changes do not reconnect while paused', () async {
+      final h = _build(signedIn: true);
+      addTearDown(() {
+        h.coord.dispose();
+        h.auth.dispose();
+        h.client.dispose();
+      });
+
+      h.coord.start();
+      await Future<void>.delayed(Duration.zero);
+      await h.coord.pause();
+      expect(h.target.connectCalls, 1);
+
+      final u = _user('uid', 'me@test.test');
+      h.client.signInResponder =
+          () => AuthResponse(session: Session(
+                accessToken: 't2',
+                tokenType: 'bearer',
+                user: u,
+              ), user: u);
+      await h.auth.signIn(email: 'me@test.test', password: 'pw');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(h.target.connectCalls, 1);
+      expect(h.coord.isConnected, isFalse);
+    });
+
+    test('forceReconnect is a no-op while paused', () async {
+      final h = _build(signedIn: true);
+      addTearDown(() {
+        h.coord.dispose();
+        h.auth.dispose();
+        h.client.dispose();
+      });
+
+      h.coord.start();
+      await Future<void>.delayed(Duration.zero);
+      await h.coord.pause();
+
+      await h.coord.forceReconnect();
+
+      expect(h.target.connectCalls, 1);
+      expect(h.target.disconnectCalls, 1);
+      expect(h.coord.isConnected, isFalse);
+    });
+
+    test('resume reconnects when signed in', () async {
+      final h = _build(signedIn: true);
+      addTearDown(() {
+        h.coord.dispose();
+        h.auth.dispose();
+        h.client.dispose();
+      });
+
+      h.coord.start();
+      await Future<void>.delayed(Duration.zero);
+      await h.coord.pause();
+
+      await h.coord.resume();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(h.target.connectCalls, 2);
+      expect(h.coord.isConnected, isTrue);
+    });
+
+    test('resume stays disconnected when signed out', () async {
+      final h = _build(signedIn: true);
+      addTearDown(() {
+        h.coord.dispose();
+        h.auth.dispose();
+        h.client.dispose();
+      });
+
+      h.coord.start();
+      await Future<void>.delayed(Duration.zero);
+      await h.coord.pause();
+      await h.auth.signOut();
+
+      await h.coord.resume();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(h.target.connectCalls, 1);
+      expect(h.coord.isConnected, isFalse);
+    });
   });
 }

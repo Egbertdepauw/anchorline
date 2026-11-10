@@ -7,7 +7,8 @@ void main() {
     expect(
         gasAnalysesToCsv(const []),
         '"time","cylinder","diver","mix","o2","he","mod_1_1","mod_1_4",'
-        '"mod_1_6","pressure_bar","temp_c","stable"\n');
+        '"mod_1_6","pressure_bar","temp_c","stable","desired_mix","gas_role",'
+        '"analysed_for","needs_signoff"\n');
   });
 
   test('rows: whole-number mix, one-decimal values, derived MODs', () {
@@ -38,12 +39,64 @@ void main() {
     expect(
         lines[1],
         '"2026-10-30T18:05:00.000Z","S80 ""left""","Egbert","Tx21/35",'
-        '"21.4","34.6","41.4","55.4","64.8","232.0","21.4","true"');
+        '"21.4","34.6","41.4","55.4","64.8","232.0","21.4","true","","bailout",'
+        '"","false"');
     // Pure O2: MODs 1 / 4 / 6 m; no cylinder, no pressure → blank.
     expect(
         lines[2],
         '"2026-10-29T00:00:00.000Z","","","O2","100.0","0.0","1.0","4.0",'
-        '"6.0","","","false"');
+        '"6.0","","","false","","bailout","","false"');
+  });
+
+  test('desired mix and gas role columns', () {
+    final csv = gasAnalysesToCsv([
+      GasAnalysis(
+        id: '1',
+        analysedAt: DateTime.utc(2026, 10, 30, 18, 5),
+        o2Percent: 21.4,
+        hePercent: 34.6,
+        stable: true,
+        targetO2Percent: 21,
+        targetHePercent: 35,
+        gasRole: GasRole.diluent,
+      ),
+      GasAnalysis(
+        id: '2',
+        analysedAt: DateTime.utc(2026, 10, 29),
+        o2Percent: 32,
+        hePercent: 0,
+        stable: true,
+        targetO2Percent: 32, // a null target He counts as 0
+      ),
+      GasAnalysis(
+        id: '3',
+        analysedAt: DateTime.utc(2026, 10, 28),
+        o2Percent: 32,
+        hePercent: 0,
+        stable: true,
+      ),
+    ]);
+    final lines = csv.trimRight().split('\n');
+    expect(lines[1], endsWith(',"Tx21/35","diluent","","false"'));
+    expect(lines[2], endsWith(',"EAN32","bailout","","false"'));
+    // No desired mix: empty column; no stored role reads as bailout.
+    expect(lines[3], endsWith(',"","bailout","","false"'));
+  });
+
+  test('analysed for and needs sign-off are the last two columns', () {
+    final csv = gasAnalysesToCsv([
+      GasAnalysis(
+        id: '1',
+        analysedAt: DateTime.utc(2026, 10, 30, 18, 5),
+        o2Percent: 21.4,
+        hePercent: 34.6,
+        stable: true,
+        analysedFor: 'Alex',
+        needsSignoff: true,
+      ),
+    ]);
+    final lines = csv.trimRight().split('\n');
+    expect(lines[1], endsWith(',"bailout","Alex","true"'));
   });
 
   test('mod ppO2 set round-trips and tolerates garbage', () {

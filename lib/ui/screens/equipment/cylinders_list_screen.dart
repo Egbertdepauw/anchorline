@@ -4,6 +4,7 @@ import '../../../data/db/database.dart';
 import '../../../data/db/equipment_dao.dart';
 import '../../../data/db/gas_analyses_dao.dart';
 import '../../../data/models/equipment.dart';
+import '../../../labels/label_print_service.dart';
 import '../../notifiers/equipment_notifiers.dart';
 import 'cylinder_detail_screen.dart';
 
@@ -13,7 +14,11 @@ class CylindersListScreen extends StatefulWidget {
   /// Cylinder analysis log (#111), passed through to the detail screen.
   final GasAnalysesDaoLike? analysesDao;
 
-  const CylindersListScreen({super.key, required this.dao, this.analysesDao});
+  /// Cylinder label printing (#114), passed through to the log.
+  final LabelPrintService? labelPrinting;
+
+  const CylindersListScreen(
+      {super.key, required this.dao, this.analysesDao, this.labelPrinting});
 
   @override
   State<CylindersListScreen> createState() => _CylindersListScreenState();
@@ -107,6 +112,7 @@ class _CylindersListScreenState extends State<CylindersListScreen> {
                 dao: widget.dao,
                 id: c.id,
                 analysesDao: widget.analysesDao,
+                labelPrinting: widget.labelPrinting,
               ),
             ));
             await _n.load();

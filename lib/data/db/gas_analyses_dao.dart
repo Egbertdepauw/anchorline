@@ -30,6 +30,19 @@ abstract class GasAnalysesDaoLike {
   /// Live analyses, newest first. With [cylinderId], only that cylinder's.
   Future<List<GasAnalysis>> list({String? cylinderId});
 
+  /// Inserts [a] under [id] unless a row with that id exists, soft-deleted
+  /// rows included. True when it inserted.
+  Future<bool> addFromBridge(String id, NewGasAnalysis a);
+
+  /// Replaces the editable fields (desired mix, gas role, analysed by,
+  /// notes, cylinder, fill pressure, analysed for) of one analysis, and
+  /// clears needs_signoff when [GasAnalysisEdit.signOff]. The measured
+  /// values, capture_source and bridge_record_id are never touched.
+  Future<void> update(String id, GasAnalysisEdit edit);
+
+  /// Sets needs_signoff, bumps version and updated_at.
+  Future<void> setNeedsSignoff(String id, bool needsSignoff);
+
   Future<void> softDelete(String id);
 
   /// The user's live cylinders, for the "which cylinder" picker.
@@ -68,35 +81,60 @@ class GasAnalysesDao implements GasAnalysesDaoLike {
 
   @override
   Future<String> add(NewGasAnalysis a) async {
-    final now = DateTime.now().millisecondsSinceEpoch;
     final id = _newId();
-    String? blankToNull(String? s) =>
-        (s == null || s.trim().isEmpty) ? null : s.trim();
-    await _ps.execute(
+    await _ps.execute(_insertSql, _insertArgs(id, a));
+    return id;
+  }
+
+  @override
+  Future<bool> addFromBridge(String id, NewGasAnalysis a) =>
+      _ps.writeTransaction((tx) async {
+        // No deleted_at filter: a record the diver deleted stays deleted.
+        final existing = await tx.getOptional(
+          'SELECT 1 FROM gas_analyses WHERE id = ?',
+          [id],
+        );
+        if (existing != null) return false;
+        await tx.execute(_insertSql, _insertArgs(id, a));
+        return true;
+      });
+
+  static const _insertSql =
       'INSERT INTO gas_analyses (id, owner_id, cylinder_id, analysed_by, '
       'analysed_at, o2_percent, he_percent, fill_pressure_bar, temp_c, '
-      'baro_hpa, mod_ppo2s, stable, notes, created_at, updated_at, '
+      'baro_hpa, mod_ppo2s, stable, notes, target_o2_percent, '
+      'target_he_percent, gas_role, needs_signoff, capture_source, '
+      'bridge_record_id, analysed_for, created_at, updated_at, '
       'deleted_at, version, sync_status) '
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, 0)',
-      [
-        id,
-        _ownerId,
-        a.cylinderId,
-        blankToNull(a.analysedBy),
-        a.analysedAt.millisecondsSinceEpoch,
-        a.o2Percent,
-        a.hePercent,
-        a.fillPressureBar,
-        a.tempC,
-        a.baroHpa,
-        encodeModPpo2s(a.modPpo2s),
-        a.stable ? 1 : 0,
-        blankToNull(a.notes),
-        now,
-        now,
-      ],
-    );
-    return id;
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+      '?, ?, NULL, 1, 0)';
+
+  List<Object?> _insertArgs(String id, NewGasAnalysis a) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return [
+      id,
+      _ownerId,
+      a.cylinderId,
+      _blankToNull(a.analysedBy),
+      a.analysedAt.millisecondsSinceEpoch,
+      a.o2Percent,
+      a.hePercent,
+      a.fillPressureBar,
+      a.tempC,
+      a.baroHpa,
+      encodeModPpo2s(a.modPpo2s),
+      a.stable ? 1 : 0,
+      _blankToNull(a.notes),
+      a.desiredMix?.o2Percent,
+      a.desiredMix?.hePercent,
+      a.gasRole.dbValue,
+      a.needsSignoff ? 1 : 0,
+      a.captureSource.dbValue,
+      a.bridgeRecordId,
+      _blankToNull(a.analysedFor),
+      now,
+      now,
+    ];
   }
 
   @override
@@ -124,6 +162,58 @@ class GasAnalysesDao implements GasAnalysesDaoLike {
   }
 
   @override
+  Future<void> update(String id, GasAnalysisEdit edit) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _ps.writeTransaction((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT version FROM gas_analyses WHERE id = ?',
+        [id],
+      );
+      if (existing == null) return;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE gas_analyses SET target_o2_percent = ?, '
+        'target_he_percent = ?, gas_role = ?, analysed_by = ?, notes = ?, '
+        'cylinder_id = ?, fill_pressure_bar = ?, analysed_for = ?, '
+        'needs_signoff = CASE WHEN ? THEN 0 ELSE needs_signoff END, '
+        'updated_at = ?, version = ? WHERE id = ?',
+        [
+          edit.desiredMix?.o2Percent,
+          edit.desiredMix?.hePercent,
+          edit.gasRole.dbValue,
+          _blankToNull(edit.analysedBy),
+          _blankToNull(edit.notes),
+          edit.cylinderId,
+          edit.fillPressureBar,
+          _blankToNull(edit.analysedFor),
+          edit.signOff ? 1 : 0,
+          now,
+          newVersion,
+          id,
+        ],
+      );
+    });
+  }
+
+  @override
+  Future<void> setNeedsSignoff(String id, bool needsSignoff) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _ps.writeTransaction((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT version FROM gas_analyses WHERE id = ?',
+        [id],
+      );
+      if (existing == null) return;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE gas_analyses SET needs_signoff = ?, updated_at = ?, '
+        'version = ? WHERE id = ?',
+        [needsSignoff ? 1 : 0, now, newVersion, id],
+      );
+    });
+  }
+
+  @override
   Future<void> softDelete(String id) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await _ps.writeTransaction((tx) async {
@@ -144,7 +234,7 @@ class GasAnalysesDao implements GasAnalysesDaoLike {
   @override
   Future<List<CylinderChoice>> listCylinderChoices() async {
     final rows = await _ps.getAll(
-      'SELECT id, label FROM cylinders WHERE deleted_at IS NULL '
+      'SELECT id, label, role FROM cylinders WHERE deleted_at IS NULL '
       'ORDER BY label COLLATE NOCASE',
     );
     return [
@@ -152,11 +242,15 @@ class GasAnalysesDao implements GasAnalysesDaoLike {
         CylinderChoice(
           id: r['id'] as String,
           label: (r['label'] as String?) ?? 'Cylinder',
+          role: r['role'] as String?,
         ),
     ];
   }
 
   static double? _real(Object? v) => (v as num?)?.toDouble();
+
+  static String? _blankToNull(String? s) =>
+      (s == null || s.trim().isEmpty) ? null : s.trim();
 
   static GasAnalysis _rowToAnalysis(Map<String, dynamic> r) => GasAnalysis(
         id: r['id'] as String,
@@ -174,5 +268,12 @@ class GasAnalysesDao implements GasAnalysesDaoLike {
         modPpo2s: decodeModPpo2s(r['mod_ppo2s'] as String?),
         stable: (r['stable'] as int? ?? 0) != 0,
         notes: r['notes'] as String?,
+        targetO2Percent: (r['target_o2_percent'] as num?)?.toInt(),
+        targetHePercent: (r['target_he_percent'] as num?)?.toInt(),
+        gasRole: GasRole.fromDb(r['gas_role'] as String?),
+        needsSignoff: (r['needs_signoff'] as int? ?? 0) != 0,
+        captureSource: CaptureSource.fromDb(r['capture_source'] as String?),
+        bridgeRecordId: r['bridge_record_id'] as String?,
+        analysedFor: r['analysed_for'] as String?,
       );
 }

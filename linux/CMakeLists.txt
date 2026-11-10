@@ -4,10 +4,34 @@ project(runner LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "ccrlogger")
-# The unique GTK application identifier for this application. See:
+set(BINARY_NAME "anchorline")
+
+# Release and nightly builds are separate apps that install side by side.
+# `ANCHORLINE_CHANNEL=nightly flutter build linux` selects the nightly identity;
+# unset (or empty) and `release` build the release. Any other value stops the
+# configure step: a typo must not quietly build the release identity, which a
+# nightly would then share its state with. The environment is read when CMake
+# configures, and `flutter build` re-configures on every run.
+# The Dart side has its own switch, `--dart-define=BUILD_CHANNEL=nightly`
+# (it picks the data folder), so a nightly build needs both.
+#
+# APPLICATION_ID is the unique GTK application identifier. See:
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
-set(APPLICATION_ID "com.example.ccrlogger")
+# lib/data/app_data_folder.dart pins the same two ids for the Linux data
+# folder. APP_DISPLAY_NAME is the window title.
+# The release values come first and the nightly branch overrides them:
+# flutter_tools reads the application id from the first
+# `set(APPLICATION_ID ...)` in this file, and that has to be the release's.
+set(APPLICATION_ID "nl.despaankamer.ccrlogger")
+set(APP_DISPLAY_NAME "Anchorline")
+if("$ENV{ANCHORLINE_CHANNEL}" STREQUAL "nightly")
+  set(APPLICATION_ID "nl.despaankamer.ccrlogger.nightly")
+  set(APP_DISPLAY_NAME "Anchorline Nightly")
+elseif(NOT "$ENV{ANCHORLINE_CHANNEL}" STREQUAL ""
+    AND NOT "$ENV{ANCHORLINE_CHANNEL}" STREQUAL "release")
+  message(FATAL_ERROR
+    "ANCHORLINE_CHANNEL must be unset, release or nightly; got '$ENV{ANCHORLINE_CHANNEL}'")
+endif()
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.

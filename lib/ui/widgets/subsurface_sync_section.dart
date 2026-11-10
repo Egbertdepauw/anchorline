@@ -60,7 +60,12 @@ class SubsurfaceSyncSection extends StatefulWidget {
     required this.lastSyncedAt,
     this.onBootstrapImport,
     this.now,
+    this.showHeading = true,
   });
+
+  /// Whether to draw the section's own "Subsurface sync" heading. The Sync
+  /// tab provides its own group heading and turns this off.
+  final bool showHeading;
 
   /// Credentials store. Read on first build, written on "Save".
   final SubsurfaceCredentialsSource credentials;
@@ -414,16 +419,17 @@ class _SubsurfaceSyncSectionState extends State<SubsurfaceSyncSection> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: EdgeInsets.fromLTRB(16, widget.showHeading ? 16 : 8, 16, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Subsurface sync',
-              style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          if (widget.showHeading) ...[
+            Text('Subsurface sync',
+                style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+          ],
+          Padding(
+              padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -452,7 +458,6 @@ class _SubsurfaceSyncSectionState extends State<SubsurfaceSyncSection> {
                   _buildStatusRow(context),
                 ],
               ),
-            ),
           ),
         ],
       ),

@@ -16,13 +16,17 @@ class SyncHealthBanner extends StatelessWidget {
 
   const SyncHealthBanner({super.key, required this.service});
 
+  /// Whether the banner shows for [service]'s snapshot now.
+  static bool showsFor(SyncHealthService service) =>
+      service.snapshot?.shouldShowBanner ?? false;
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: service,
       builder: (context, _) {
         final snap = service.snapshot;
-        if (snap == null || !snap.shouldShowBanner) {
+        if (snap == null || !showsFor(service)) {
           return const SizedBox.shrink();
         }
         final isCritical = snap.severity == SyncHealthSeverity.critical;
@@ -85,6 +89,44 @@ class SyncHealthBanner extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// [SyncHealthBanner] above [child], the app shell's body.
+///
+/// While the banner shows, its [SafeArea] takes the status-bar inset, so
+/// [child] is told there is none left above it. A destination with no shell
+/// app bar and a top bar of its own (Gas, Settings) would otherwise add the
+/// inset a second time.
+class SyncHealthBannerColumn extends StatelessWidget {
+  const SyncHealthBannerColumn({
+    super.key,
+    required this.service,
+    required this.child,
+  });
+
+  final SyncHealthService service;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: service,
+      builder: (context, _) => Column(
+        children: [
+          SyncHealthBanner(service: service),
+          Expanded(
+            // Always a MediaQuery, shown or not, so the banner coming and
+            // going keeps the state of [child].
+            child: MediaQuery.removePadding(
+              context: context,
+              removeTop: SyncHealthBanner.showsFor(service),
+              child: child,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

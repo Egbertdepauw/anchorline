@@ -43,6 +43,9 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Golden mismatch images that flutter_test writes next to a failing test.
+test/**/failures/
+
 # Symbolication related
 app.*.symbols
 
@@ -81,3 +84,15 @@ macos/scripts/sentry.env.local
 # Library packages inside the repo resolve their own dev deps; their
 # lockfiles are not committed (the app's pubspec.lock is).
 packages/*/pubspec.lock
+
+# Defence in depth for a public repository: never commit environment files,
+# signing keys, certificates or provisioning profiles, wherever they land.
+.env
+.env.*
+!.env.example
+*.p8
+AuthKey_*
+*.p12
+*.pfx
+*.pem
+*.mobileprovision

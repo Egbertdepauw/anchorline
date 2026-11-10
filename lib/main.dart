@@ -3,12 +3,12 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'build_info.dart';
+import 'data/app_data_folder.dart';
 import 'data/db/database.dart';
 import 'data/db/equipment_dao.dart';
 import 'dev/fixture_seeder.dart';
@@ -44,8 +44,11 @@ void main() async {
     anonKey: CloudConfig.supabaseAnonKey,
   );
 
-  final dbDir = await getApplicationDocumentsDirectory();
-  final dbFile = File(p.join(dbDir.path, 'ccrlogger.sqlite'));
+  // Decides where the local files live and, on Windows and Linux, moves
+  // them out of Documents on the first start after the update (#135). Must
+  // run before either database opens.
+  final appData = await appDataPaths();
+  final dbFile = File(appData.driftDatabase);
   final db = AppDatabase(NativeDatabase(dbFile));
 
   // PowerSync owns dive metadata + samples now (Phase 2.5), so the
@@ -136,6 +139,14 @@ void main() async {
         // tracesSampleRate: 0 keeps overhead minimal and stays inside
         // the free-tier quota for a small beta cohort.
         options.tracesSampleRate = 0;
+        // CI builds report the channel as the environment and a release
+        // name that carries the build number. Builds made without those
+        // defines (hand-built store builds, until CI ships them) keep
+        // Sentry's own defaults.
+        final environment = BuildInfo.sentryEnvironment;
+        if (environment != null) options.environment = environment;
+        final release = BuildInfo.sentryRelease;
+        if (release != null) options.release = release;
         // Drop benign network noise the Supabase SDK reports while it's
         // retrying internally. AuthRetryableFetchException is the SDK's
         // own "this attempt failed, I'll retry" signal — the diver's
@@ -155,11 +166,26 @@ void main() async {
           return event;
         };
       },
-      appRunner: () => runApp(app),
+      appRunner: () {
+        _reportAppDataMoveProblems(appData);
+        runApp(app);
+      },
     );
   } else {
     runApp(app);
   }
+}
+
+/// Tells Sentry when data could not leave Documents (locked, no access) or
+/// sits in both folders, so stuck desktop installs don't go unnoticed. The
+/// lines name items and OS error codes only, no paths.
+void _reportAppDataMoveProblems(AppDataPaths appData) {
+  final problems = appData.migration?.problems ?? const <String>[];
+  if (problems.isEmpty) return;
+  Sentry.captureMessage(
+    'App data not fully moved out of Documents: ${problems.join('; ')}',
+    level: SentryLevel.warning,
+  );
 }
 
 class CCRLogApp extends StatelessWidget {

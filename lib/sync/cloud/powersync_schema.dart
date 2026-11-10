@@ -110,6 +110,15 @@ const appSchema = Schema([
   // reference to cylinders.id (no FK, nullable). mod_ppo2s is a JSON array
   // of the ppO2 limits (bar) the MODs were shown for; the mix label and MOD
   // depths are derived from o2/he, never stored. stable is 0/1.
+  // target_o2_percent / target_he_percent are the desired mix in whole
+  // percents (null target O2 = none set); gas_role is 'diluent' or 'bailout'
+  // (null = bailout/deco). Issue #114 (cylinder labels).
+  // needs_signoff is 0/1: the entry waits in the log for the diver to sign
+  // it off. capture_source is null for a screen save, 'bridge_ok' for a
+  // capture made on the SOLO's OK press through the ESP32 bridge and 'usb_ok'
+  // for one the app made itself on a USB cable (Log on OK); bridge_record_id
+  // is '<bridge>/<rid>'; analysed_for is who the gas is for (free text).
+  // Issue #113.
   Table('gas_analyses', [
     Column.text('owner_id'),
     Column.text('cylinder_id'),
@@ -123,6 +132,13 @@ const appSchema = Schema([
     Column.text('mod_ppo2s'),
     Column.integer('stable'),
     Column.text('notes'),
+    Column.integer('target_o2_percent'),
+    Column.integer('target_he_percent'),
+    Column.text('gas_role'),
+    Column.integer('needs_signoff'),
+    Column.text('capture_source'),
+    Column.text('bridge_record_id'),
+    Column.text('analysed_for'),
     Column.integer('created_at'),
     Column.integer('updated_at'),
     Column.integer('deleted_at'),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
 import 'package:ccrlogger/sync/cloud/auth_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
@@ -42,6 +43,19 @@ class _FakeAuthClient implements AuthClient {
     required String password,
   }) async =>
       AuthResponse();
+
+  @override
+  Future<AuthResponse> verifyEmailCode({
+    required String email,
+    required String code,
+  }) async =>
+      AuthResponse();
+
+  @override
+  Future<void> resendEmailCode({required String email}) async {}
+
+  @override
+  Future<void> setPassword(String password) async {}
 
   @override
   Future<void> signOut() async {
@@ -154,6 +168,70 @@ void main() {
     expect(dives.single['owner_id'], 'uid-123');
     expect(n, greaterThanOrEqualTo(3));
   });
+
+  test(
+      'claims a gas analysis saved while signed out, so the analysis log '
+      'shows it after sign-in (#149)', () async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final ps = await openPowerSyncForTest();
+
+    final session = FakeSessionSource();
+    final dao = GasAnalysesDao(ps, session);
+    await dao.add(NewGasAnalysis(
+      analysedAt: DateTime.utc(2026, 11, 3, 9),
+      o2Percent: 32.0,
+      hePercent: 0.0,
+      stable: true,
+    ));
+
+    // Signed in, the log filters on owner_id, so the NULL-owner row is
+    // hidden until something claims it.
+    session.setUserId('uid-123');
+    expect(await dao.list(), isEmpty);
+
+    await OwnerIdBackfiller(db, ps).backfillIfNeeded('uid-123');
+
+    final rows = await ps.getAll('SELECT owner_id FROM gas_analyses');
+    expect(rows.single['owner_id'], 'uid-123');
+    expect(await dao.list(), hasLength(1));
+  });
+
+  // Same gap as gas_analyses (#149): these tables hold an owner_id column
+  // that RLS checks, are written with the session's user id (NULL when
+  // signed out), and were never listed in the backfiller.
+  const signedOutRows = {
+    'dive_plans': 'INSERT INTO dive_plans '
+        '(id, owner_id, name, mode, created_at, updated_at, version, '
+        'sync_status) VALUES (?, NULL, NULL, ?, ?, ?, 1, 0)',
+    'dive_bailout_carry': 'INSERT INTO dive_bailout_carry '
+        '(id, owner_id, dive_id, cylinder_id, created_at, updated_at, '
+        'version, sync_status) VALUES (?, NULL, ?, ?, ?, ?, 1, 0)',
+    'dive_merge_links': 'INSERT INTO dive_merge_links '
+        '(id, owner_id, group_id, created_at, updated_at, version, '
+        'sync_status) VALUES (?, NULL, ?, ?, ?, 1, 0)',
+  };
+  for (final entry in signedOutRows.entries) {
+    test('stamps owner_id on ${entry.key} rows written while signed out (#149)',
+        () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final ps = await openPowerSyncForTest();
+
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final args = switch (entry.key) {
+        'dive_plans' => ['row1', 'ccr', now, now],
+        'dive_bailout_carry' => ['d1:cyl1', 'd1', 'cyl1', now, now],
+        _ => ['d1', 'group1', now, now],
+      };
+      await ps.execute(entry.value, args);
+
+      await OwnerIdBackfiller(db, ps).backfillIfNeeded('uid-123');
+
+      final rows = await ps.getAll('SELECT owner_id FROM ${entry.key}');
+      expect(rows.single['owner_id'], 'uid-123');
+    });
+  }
 
   test(
       'rewrites already-queued ps_crud PUT payloads to inject owner_id, '

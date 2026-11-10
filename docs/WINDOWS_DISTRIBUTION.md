@@ -48,8 +48,11 @@ disabled. Include it for any build you intend to distribute.
 ```powershell
 flutter build windows --release `
   --build-number=<N> --build-name=<x.y.z> `
-  --dart-define-from-file=dart_defines.json
+  --dart-define-from-file=dart_defines.json `
+  --dart-define=BUILD_CHANNEL=release --dart-define=DISTRIBUTION_CHANNEL=website --dart-define=APP_VERSION=<x.y.z> --dart-define=APP_BUILD=<N> --dart-define=APP_BUILD_DATE=<yyyy-MM-dd>
 ```
+
+The last five defines label the build (Settings → About, Sentry release).
 
 Output: `build\windows\x64\runner\Release\` — `Anchorline.exe` plus
 runtime DLLs and the `data\` tree. **The whole folder is the app**; the
@@ -74,16 +77,66 @@ bare .exe does not run without its siblings. Sanity checks:
 
 ```powershell
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
-  /DMyAppVersion=<x.y.z> windows\installer\anchorline.iss
+  /DMyAppVersion=<x.y.z> /DMyAppBuild=<n> /DChannel=release `
+  windows\installer\anchorline.iss
 ```
 
-Output: `windows\installer\Output\Anchorline-Setup-<x.y.z>.exe` — a
+The manual recipe in this doc is release-only. Nightlies are built by CI; a
+hand-built nightly must follow the full recipe at the top of
+`windows\installer\anchorline.iss` (it needs both `ANCHORLINE_CHANNEL=nightly`
+and `--dart-define=BUILD_CHANNEL=nightly`).
+
+Output: `windows\installer\Output\Anchorline-<x.y.z>-windows-x64.exe` (release;
+the nightly is `Anchorline-Nightly-<x.y.z>-<n>-windows-x64.exe`) — a
 per-machine (admin-elevated) installer that bundles the entire
 `Release\` folder, creates Start-menu/desktop entries, and preserves
-user data (`%LOCALAPPDATA%` database) on uninstall. Details and the
-AppId contract live as comments in `anchorline.iss`.
+user data on uninstall (databases, Subsurface clone and BLE log in
+`%LOCALAPPDATA%\De Spaankamer\Anchorline`, preferences and secrets in
+`%APPDATA%\De Spaankamer\Anchorline`). Details and the AppId contract
+live as comments in `anchorline.iss`.
+
+Builds before issue #135 kept `ccrlogger.sqlite`, `powersync.db`,
+`subsurface_clone\` and `ble-debug.log` loose in the user's Documents
+folder. The app moves them to `%LOCALAPPDATA%\De Spaankamer\Anchorline`
+on its first start; anything it can't move (a file held open by another
+program, for example) stays in Documents and is used from there until a
+later start succeeds. `lib/data/app_data_folder.dart` decides the folder.
 
 (Inno Setup 7: same command with `Inno Setup 7\ISCC.exe`.)
+
+## 5a. Bluetooth LE (SOLO bridge, label printer)
+
+`flutter_blue_plus` 1.x has no Windows backend, and 2.x moved to a
+non-open-source licence, so the Windows runner carries its own small BLE
+central instead of a plugin: `windows/runner/ble_central_channel.cpp`, a
+C++/WinRT implementation over `Windows.Devices.Bluetooth`, exposed as the
+method channel `nl.despaankamer.ccrlogger/ble` and the event channel
+`nl.despaankamer.ccrlogger/ble/events`. The Dart side is
+`lib/ble/windows_ble_central.dart` (which documents the protocol); the SOLO
+bridge and the Phomemo label printer reach it through the shared
+`BleCentral` seam in `lib/ble/`. The Shearwater dive-computer import does not
+use it and stays unavailable on Windows.
+
+- **Build.** It compiles as its own static library (`ble_central` in
+  `windows/runner/CMakeLists.txt`) with C++20 and exceptions, which C++/WinRT
+  needs and the runner's standard settings turn off. The C++/WinRT headers
+  come with the Windows 10/11 SDK of the Visual Studio workload; nothing else
+  to install. It links `windowsapp.lib`.
+- **Threading.** Blocking WinRT calls run in C++/WinRT coroutines on the
+  thread pool; results and events hop back to the Flutter platform thread
+  through a message-only window (`windows/runner/platform_dispatcher.cpp`).
+- **No capability or manifest entry.** The app is an unpackaged Win32
+  desktop app, and those use the Bluetooth WinRT APIs without declaring a
+  capability (`<DeviceCapability Name="bluetooth"/>` is for packaged
+  MSIX/UWP apps only; add it if the app is ever packaged as MSIX). No
+  pairing in Windows Settings is needed either: the app connects by
+  Bluetooth address.
+- **Requirements on the user's PC.** Windows 10 version 1803 or later, or
+  Windows 11, and a Bluetooth LE (4.0+) adapter. Without one, the app says
+  "Bluetooth LE is not available"; with Bluetooth switched off, "Bluetooth
+  is off".
+- **Reconnects** after a drop are done in Dart (`CentralBridgeLink`, backoff
+  0.5 s → 10 s), not by Windows.
 
 ## 6. Code signing / SmartScreen
 

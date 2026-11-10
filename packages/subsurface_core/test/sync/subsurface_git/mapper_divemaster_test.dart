@@ -13,7 +13,7 @@ void main() {
     final mapper = CcrlogToSubsurfaceMapper();
     final ann = DiveAnnotation(
       diveId: 'dive-id-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-      divemaster: 'Wendy De Joode',
+      divemaster: 'Alex Marlin',
       createdAt: DateTime.utc(2026, 5, 12),
       updatedAt: DateTime.utc(2026, 5, 12),
     );
@@ -27,7 +27,7 @@ void main() {
       nextSubsurfaceDiveNumber: 1,
     );
     final text = serializeSubsurfaceFile(SubsurfaceFile(lines: mapped.diveLines));
-    expect(text, contains('divemaster "Wendy De Joode"'));
+    expect(text, contains('divemaster "Alex Marlin"'));
   });
 
   test('mapDive emits empty divemaster when annotation field is null', () {

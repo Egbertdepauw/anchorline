@@ -158,6 +158,10 @@ developer account active):
      divers, requires a Shearwater BLE dive computer for the import
      feature (review can skip BT testing — the Plan and Blend tabs
      are fully exercisable without one).
+   - Account deletion: Settings → Sync → Delete account, type DELETE;
+     deletion is immediate.
+   - Create a fresh review account before each submission; the reviewer
+     may delete it.
 
 ## 9. Screenshots — → action
 
@@ -204,8 +208,9 @@ Mandatory contents (Apple's checklist):
 - How it's used + retained
 - Third parties involved (Supabase, Cloudflare R2 via the
   attachment uploader, PowerSync, Sentry)
-- How to request deletion ("delete your account in Settings, or
-  email …")
+- How to request deletion: in the app (Settings → Sync → Delete
+  account), or by email; the public page is
+  `https://anchorline.eu/delete-account`
 - Children's data (we don't target under-13)
 - Contact email
 

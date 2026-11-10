@@ -1,0 +1,335 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Gas tabs: Blend, Analyse, Log</title>
+<style>body{margin:0;padding:32px;background:#1d1d1f;color:#f5f5f7;font-family:system-ui,-apple-system,sans-serif}
+h2{font-size:24px;margin:0 0 6px} h3{font-size:18px;margin:32px 0 6px} .subtitle{color:#a1a1a6;max-width:960px;margin:0 0 24px;line-height:1.45}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  .al-row { display:flex; flex-wrap:wrap; gap:28px; align-items:flex-start; }
+  .al-col { display:flex; flex-direction:column; gap:10px; }
+  .al-cap { font: 600 14px/1.3 Inter, system-ui, sans-serif; max-width:393px; }
+  .al-cap small { display:block; font-weight:400; opacity:.75; margin-top:2px; }
+
+  .al { --bg:#0A1518; --card:#142028; --raised:#1F2E38; --bezel:#2A3A45;
+        --t1:#E0E8EC; --t2:#A0AEB6; --t3:#6B7D88; --acc:#C97B3A; --he:#5BC0EB;
+        --ok:#4ADE80; --warn:#F39C12; --bad:#E74C3C; --caution:#F59E0B; --over:#DC2626;
+        width:393px; height:852px; border-radius:46px; border:9px solid #2b2f33;
+        background:var(--bg); color:var(--t1); overflow:hidden; position:relative;
+        font: 400 14px/1.35 Inter, system-ui, sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+  .al * { box-sizing:border-box; }
+  .al .mono { font-family:'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .al .sb { height:59px; padding-top:8px; display:flex; justify-content:space-between; align-items:center; padding:0 28px; font:600 15px Inter; }
+  .al .ab { height:52px; display:flex; align-items:center; gap:14px; padding:0 8px 0 14px; }
+  .al .ab .t { font:600 19px Inter; flex:1; letter-spacing:-.2px; }
+  .al .ic { width:40px; height:40px; display:grid; place-items:center; color:var(--t2); font-size:20px; }
+  .al .body { position:absolute; top:96px; bottom:98px; left:0; right:0; overflow-y:auto; }
+  .al .lab { font:600 10px/1 Inter; letter-spacing:1.2px; color:var(--t2); text-transform:uppercase; }
+  .al .lab.m { color:var(--t3); }
+
+  /* connection strip */
+  .al .conn { height:36px; display:flex; align-items:center; gap:8px; padding:0 8px 0 16px; background:var(--card); border-top:1px solid var(--raised); border-bottom:1px solid var(--raised); font-size:13px; color:var(--t2); }
+  .al .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); }
+  .al .conn .sp { flex:1; }
+  .al .tbtn { color:var(--acc); font:600 13px Inter; padding:6px 10px; }
+
+  /* hero band, like the dive summary */
+  .al .hero { background:var(--raised); padding:12px 16px 12px; }
+  .al .hero .top { display:flex; align-items:center; justify-content:space-between; }
+  .al .mix { font:700 26px/1.1 Inter; letter-spacing:-.4px; }
+  .al .pill { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px; font:700 11px Inter; letter-spacing:1.2px; }
+  .al .pill.ok { color:var(--ok); background:rgba(74,222,128,.15); }
+  .al .pill.ok::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--ok); }
+  .al .stats { display:flex; margin-top:10px; }
+  .al .stat { flex:1; text-align:center; }
+  .al .stat + .stat { border-left:1px solid var(--bezel); }
+  .al .stat .v { font:600 30px/1 'JetBrains Mono', monospace; font-variant-numeric:tabular-nums; }
+  .al .stat .v span { font-size:13px; color:var(--t2); margin-left:2px; font-weight:500; }
+  .al .stat .lab { margin-top:6px; }
+
+  /* planning grid */
+  .al .sec { padding:12px 16px; border-bottom:1px solid var(--raised); }
+  .al .sech { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .al .sech .lab { color:var(--acc); }
+  .al .grid { display:grid; grid-template-columns: repeat(4, 1fr); row-gap:12px; column-gap:8px; }
+  .al .cell .lab { font-size:9.5px; letter-spacing:.8px; color:var(--t3); }
+  .al .cell .v { font:600 17px/1 'JetBrains Mono', monospace; margin-top:5px; font-variant-numeric:tabular-nums; }
+  .al .cell .v small { font-size:11px; color:var(--t2); font-weight:500; }
+  .al .tag { color:var(--acc); font-weight:700; }
+  .al .foot { font-size:10.5px; color:var(--t3); margin-top:10px; }
+
+  /* trend, collapsed */
+  .al .trend { height:38px; display:flex; align-items:center; gap:10px; padding:0 16px; border-bottom:1px solid var(--raised); color:var(--t2); font-size:13px; }
+  .al .trend svg { flex:none; }
+  .al .trend .sp { flex:1; }
+
+  /* save form */
+  .al .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .al .chip { padding:6px 10px; border-radius:2px; border:1px solid var(--bezel); background:var(--raised); font:500 13px Inter; color:var(--t1); }
+  .al .chip.sel { border-color:var(--acc); background:rgba(201,123,58,.18); color:var(--t1); }
+  .al .chip.sel::before { content:'✓ '; color:var(--acc); }
+  .al .verdict { margin-top:7px; font:500 12px Inter; color:var(--ok); display:flex; align-items:center; gap:6px; }
+  .al .verdict::before { content:''; width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .al .seg { display:flex; border:1px solid var(--bezel); border-radius:2px; overflow:hidden; margin-top:10px; height:36px; }
+  .al .seg div { flex:1; display:grid; place-items:center; font:500 13px Inter; color:var(--t2); }
+  .al .seg div + div { border-left:1px solid var(--bezel); }
+  .al .seg .on { background:rgba(201,123,58,.18); color:var(--t1); }
+  .al .two { display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:8px; }
+  .al .fld { background:var(--card); border:1px solid var(--bezel); border-radius:2px; padding:5px 10px 6px; height:44px; }
+  .al .fld .l { font-size:10.5px; color:var(--t3); }
+  .al .fld .x { font-size:14px; margin-top:1px; display:flex; justify-content:space-between; }
+  .al .fld .x .u { color:var(--t3); }
+  .al .fld .x.ph { color:var(--t3); }
+  .al .more { margin-top:8px; font:600 13px Inter; color:var(--acc); padding:4px 0; }
+
+  /* bottom action bar */
+  .al .bar { position:absolute; left:0; right:0; bottom:0; height:98px; background:var(--card); border-top:1px solid var(--bezel); padding:10px 16px 0; }
+  .al .btns { display:flex; gap:8px; align-items:center; }
+  .al .btn { height:44px; border-radius:2px; display:grid; place-items:center; font:600 14px Inter; }
+  .al .btn.o { border:1px solid var(--bezel); color:var(--acc); flex:0 0 84px; }
+  .al .btn.f { background:var(--acc); color:#0A1518; flex:1; }
+  .al .step { flex:0 0 auto; display:flex; align-items:center; border:1px solid var(--bezel); border-radius:2px; height:44px; }
+  .al .step b { width:30px; text-align:center; color:var(--t2); font-weight:500; font-size:18px; }
+  .al .step i { font-style:normal; width:22px; text-align:center; font:600 15px 'JetBrains Mono', monospace; }
+  .al .home { position:absolute; bottom:8px; left:50%; transform:translateX(-50%); width:134px; height:5px; border-radius:3px; background:#E0E8EC; opacity:.6; }
+
+  /* Log on OK variants */
+  .al .okstat { display:flex; align-items:center; gap:10px; height:44px; padding:0 12px; border-radius:2px; background:rgba(201,123,58,.12); border:1px solid rgba(201,123,58,.55); }
+  .al .pulse { width:10px; height:10px; border-radius:50%; background:var(--acc); box-shadow:0 0 0 4px rgba(201,123,58,.25); flex:none; }
+  .al .okstat .tx { flex:1; font:600 13.5px Inter; }
+  .al .okstat .tx small { display:block; font:400 11.5px Inter; color:var(--t2); margin-top:1px; }
+  .al .stop { font:600 13px Inter; color:var(--t1); border:1px solid var(--bezel); border-radius:2px; padding:6px 10px; background:var(--raised); }
+  .al .result { display:flex; align-items:center; gap:8px; margin-top:10px; padding:8px 10px; background:var(--card); border:1px solid var(--raised); border-left:3px solid var(--ok); border-radius:2px; font-size:13px; }
+  .al .result .sp { flex:1; }
+  .al .result a { color:var(--acc); font-weight:600; }
+  .al .swrow { display:flex; align-items:center; justify-content:space-between; margin-top:10px; font-size:13px; color:var(--t1); }
+  .al .sw { width:40px; height:24px; border-radius:12px; background:var(--acc); position:relative; }
+  .al .sw::after { content:''; position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%; background:#0A1518; }
+  .al .sechint { font-size:11.5px; color:var(--t3); margin:-4px 0 8px; }
+  .al .armbtn { flex:0 0 auto; height:44px; padding:0 12px; border:1px solid var(--bezel); border-radius:2px; display:flex; align-items:center; gap:7px; font:600 13px Inter; color:var(--t1); }
+  .al .armbtn::before { content:''; width:9px; height:9px; border-radius:50%; border:2px solid var(--acc); }
+</style>
+<style>
+  /* top tab bar in place of the app bar */
+  .al .tabs { height:56px; display:flex; align-items:stretch; border-bottom:1px solid var(--raised); padding:0 4px; }
+  .al .tabs div { flex:1; display:flex; align-items:center; justify-content:center; gap:7px; color:var(--t2); font:600 14px Inter; position:relative; }
+  .al .tabs div.on { color:var(--acc); }
+  .al .tabs div.on::after { content:''; position:absolute; left:14px; right:14px; bottom:0; height:2px; background:var(--acc); }
+  .al .tabs .ti { font-size:15px; }
+  .al .tabs .live { width:7px; height:7px; border-radius:50%; background:var(--ok); margin-left:-2px; }
+  .al .body.t { top:115px; }
+  .al .tabs .anc { flex:0 0 42px; display:grid; place-items:center; color:var(--acc); font-size:19px; border-right:1px solid var(--raised); margin:10px 2px 10px 0; }
+  .al .tabs.lbl div { font-size:12.5px; }
+  .al .body.t.hasnav { bottom:90px; }
+  .al .body.t.hasnav.withbar { bottom:154px; }
+  .al .bar.abovenav { bottom:90px; height:64px; padding-top:10px; border-bottom:0; }
+  .al .nav { position:absolute; left:0; right:0; bottom:0; height:90px; background:var(--card); border-top:1px solid var(--bezel); display:flex; padding:6px 4px 0; }
+  .al .nav div { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; font:500 10.5px Inter; color:var(--t3); }
+  .al .nav div b { font-size:19px; font-weight:400; line-height:24px; }
+  .al .nav div.on { color:var(--acc); }
+  .al .info { width:16px; height:16px; border-radius:50%; border:1.3px solid var(--t3); color:var(--t3); display:inline-grid; place-items:center; font:700 10px Inter; }
+
+  /* Blend */
+  .al .bhero { background:var(--raised); padding:12px 16px 12px; }
+  .al .bhero .top { display:flex; align-items:baseline; gap:10px; }
+  .al .bhero .to { color:var(--t2); font-size:14px; }
+  .al .bhero .ok2 { margin-left:auto; }
+  .al .steps { display:flex; margin-top:12px; }
+  .al .steps .st { flex:1; text-align:center; }
+  .al .steps .st + .st { border-left:1px solid var(--bezel); }
+  .al .steps .v { font:600 24px/1 'JetBrains Mono', monospace; }
+  .al .steps .v span { font-size:12px; color:var(--t2); margin-left:2px; font-weight:500; }
+  .al .steps .lab { margin-top:6px; }
+  .al .steps .sub { font:500 11px 'JetBrains Mono', monospace; color:var(--t3); margin-top:3px; }
+  .al .costln { display:flex; justify-content:space-between; margin-top:12px; padding-top:9px; border-top:1px solid var(--bezel); font:500 12px 'JetBrains Mono', monospace; color:var(--t2); }
+  .al .costln b { color:var(--t1); font-weight:600; }
+  .al .four { display:grid; grid-template-columns: 1fr 1fr 1.25fr 1fr; gap:8px; margin-top:8px; }
+  .al .three { display:grid; grid-template-columns: 1fr 1fr 1.3fr; gap:8px; margin-top:8px; }
+  .al .optrow { height:40px; display:flex; align-items:center; gap:10px; padding:0 16px; color:var(--t2); font-size:13px; border-top:1px solid var(--raised); }
+  .al .optrow .sp { flex:1; }
+  .al .optrow .val { color:var(--t3); font-size:12px; }
+
+  /* Log */
+  .al .tool { display:flex; align-items:center; gap:6px; padding:10px 12px 10px 16px; border-bottom:1px solid var(--raised); }
+  .al .tool .sp { flex:1; }
+  .al .fchip { padding:5px 10px; border:1px solid var(--bezel); border-radius:2px; font:500 12.5px Inter; color:var(--t2); }
+  .al .fchip.on { border-color:var(--acc); background:rgba(201,123,58,.18); color:var(--t1); }
+  .al .fchip.warn { border-color:rgba(243,156,18,.6); color:var(--warn); }
+  .al .row { display:flex; align-items:center; gap:10px; padding:9px 8px 9px 12px; border-left:3px solid var(--acc); border-bottom:1px solid var(--raised); }
+  .al .row.bo { border-left-color:#3A6477; }
+  .al .row .main { flex:1; min-width:0; }
+  .al .row .l1 { display:flex; align-items:baseline; gap:7px; }
+  .al .row .role { font:600 11px Inter; letter-spacing:.8px; color:var(--acc); }
+  .al .row.bo .role { color:#7FA7BA; }
+  .al .row .name { font:600 15px 'JetBrains Mono', monospace; }
+  .al .row .date { margin-left:auto; font-size:11px; color:var(--t3); white-space:nowrap; }
+  .al .row .l2 { font:500 12px 'JetBrains Mono', monospace; color:var(--t2); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .al .row .l3 { font-size:11.5px; margin-top:2px; }
+  .al .row .pr { width:36px; height:36px; display:grid; place-items:center; color:var(--t2); font-size:17px; }
+  .al .row .so { font:600 10.5px Inter; color:var(--warn); border:1px solid rgba(243,156,18,.6); padding:1px 5px; border-radius:2px; }
+  .al .daysep { padding:8px 16px 4px; font:600 10px Inter; letter-spacing:1.2px; color:var(--t3); text-transform:uppercase; }
+  .al .body.withbar .hero { padding:10px 16px; }
+  .al .body.withbar .stats { margin-top:8px; }
+  .al .body.withbar .sec { padding:10px 16px; }
+  .al .body.withbar .trend { height:30px; }
+  .al .body.withbar .conn { height:32px; }
+  .al .body.withbar .stats { margin-top:6px; }
+  .al .body.withbar .fld { height:40px; padding-top:3px; }
+</style>
+</head><body><h2>One "Gas" destination with three tabs: Blend, Analyse, Log</h2>
+<p class="subtitle">The bottom-nav "Blend" becomes <b>Gas</b>. Its top bar is one 56 pt row: a small anchor (tap = back to Dives) and the three tabs, so the analyzer fits with the bottom nav showing. Phones are drawn at real iPhone 15 size (59 pt top inset, 34 pt home area). Same dive-screen style throughout.</p>
+
+<div class="al-row">
+
+  <!-- Blend tab -->
+  <div class="al-col">
+    <div class="al-cap">Blend tab<small>The fill plan is the summary band at the top and updates as you type below it. Target first, then what's in the cylinder, then the top-off gas. Fill order, real gas and temperatures fold away.</small></div>
+    <div class="al">
+      <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="tabs"><span class="anc">⚓</span><div class="on"><span class="ti">⚗</span>Blend</div><div><span class="ti">◎</span>Analyse</div><div><span class="ti">☰</span>Log</div></div>
+      <div class="body t hasnav">
+        <div class="bhero">
+          <div class="top"><span class="mix">Tx21/35</span><span class="to">to 230 bar</span></div>
+          <div class="steps">
+            <div class="st"><div class="v" style="color:var(--he)">+81<span>bar</span></div><div class="lab">1 · Helium</div><div class="sub">to 131</div></div>
+            <div class="st"><div class="v" style="color:var(--ok)">+21<span>bar</span></div><div class="lab">2 · Oxygen</div><div class="sub">to 152</div></div>
+            <div class="st"><div class="v">+78<span>bar</span></div><div class="lab">3 · Air</div><div class="sub">to 230</div></div>
+          </div>
+          <div class="costln"><span>He 966 L · O₂ 257 L · Air 937 L</span><b>41.40</b></div>
+        </div>
+        <div class="sec">
+          <div class="sech"><span class="lab">Target</span></div>
+          <div class="chips"><span class="chip sel">Tx21/35</span><span class="chip">Tx18/45</span><span class="chip">Tx15/55</span><span class="chip">EAN32</span><span class="chip">EAN50</span></div>
+          <div class="three">
+            <div class="fld"><div class="l">O₂</div><div class="x">21 <span class="u">%</span></div></div>
+            <div class="fld"><div class="l">He</div><div class="x">35 <span class="u">%</span></div></div>
+            <div class="fld"><div class="l">Pressure</div><div class="x">230 <span class="u">bar</span></div></div>
+          </div>
+        </div>
+        <div class="sec">
+          <div class="sech"><span class="lab">In the cylinder now</span></div>
+          <div class="four" style="margin-top:0">
+            <div class="fld"><div class="l">O₂</div><div class="x">21 <span class="u">%</span></div></div>
+            <div class="fld"><div class="l">He</div><div class="x">0 <span class="u">%</span></div></div>
+            <div class="fld"><div class="l">Pressure</div><div class="x">50 <span class="u">bar</span></div></div>
+            <div class="fld"><div class="l">Size</div><div class="x">12 <span class="u">L</span></div></div>
+          </div>
+        </div>
+        <div class="sec" style="border-bottom:0">
+          <div class="sech"><span class="lab">Top off with</span></div>
+          <div class="chips"><span class="chip sel">Air</span><span class="chip">EAN32</span><span class="chip">EAN50</span><span class="chip">Other…</span></div>
+        </div>
+        <div class="optrow"><span>▸</span><span>Fill options</span><span class="sp"></span><span class="val">He → O₂ → top-off · real gas · 20 °C</span></div>
+      </div>
+      <div class="nav"><div><b>⛵</b>Dives</div><div><b>▤</b>Plan</div><div class="on"><b>⚗</b>Gas</div><div><b>ᛒ</b>Import</div><div><b>⚙</b>Equipment</div><div><b>☰</b>Settings</div></div>
+      <div class="home"></div>
+    </div>
+  </div>
+
+  <!-- Analyse tab -->
+  <div class="al-col">
+    <div class="al-cap">Analyse tab<small>Fits exactly on an iPhone 15 with the bottom nav. To make room, the planning footnote sits behind the ⓘ. The dot on the tab shows the SOLO is connected (green) or Log on OK is running (accent).</small></div>
+    <div class="al">
+      <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="tabs"><span class="anc">⚓</span><div><span class="ti">⚗</span>Blend</div><div class="on"><span class="ti">◎</span>Analyse<span class="live"></span></div><div><span class="ti">☰</span>Log</div></div>
+      <div class="body t hasnav withbar">
+        <div class="conn"><span class="dot"></span><span>SOLO connected · USB</span><span class="sp"></span><span class="tbtn">Disconnect</span></div>
+        <div class="hero">
+          <div class="top"><span class="mix">Tx20.6/33.8</span><span class="pill ok">STABLE</span></div>
+          <div class="stats">
+            <div class="stat"><div class="v" style="color:var(--acc)">20.6<span>%</span></div><div class="lab">Oxygen</div></div>
+            <div class="stat"><div class="v" style="color:var(--he)">33.8<span>%</span></div><div class="lab">Helium</div></div>
+            <div class="stat"><div class="v">45.6<span>%</span></div><div class="lab">N₂ balance</div></div>
+          </div>
+        </div>
+        <div class="sec">
+          <div class="sech"><span class="lab">Planning</span><span class="info">i</span></div>
+          <div class="grid">
+            <div class="cell"><div class="lab">MOD 1.1 <span class="tag">DIL</span></div><div class="v">42<small> m</small></div></div>
+            <div class="cell"><div class="lab">MOD 1.4</div><div class="v">57<small> m</small></div></div>
+            <div class="cell"><div class="lab">MOD 1.6</div><div class="v">66<small> m</small></div></div>
+            <div class="cell"><div class="lab">END</div><div class="v">35<small> m</small></div></div>
+            <div class="cell"><div class="lab">Density</div><div class="v" style="color:var(--over)">6.3<small> g/L</small></div></div>
+            <div class="cell"><div class="lab">Min. depth</div><div class="v" style="font-size:14px">surface</div></div>
+            <div class="cell"><div class="lab">Gas temp</div><div class="v">21.4<small> °C</small></div></div>
+            <div class="cell"><div class="lab">Ambient</div><div class="v">1013<small> hPa</small></div></div>
+          </div>
+        </div>
+        <div class="trend">
+          <span>▸</span><span>Trend, last 2 minutes</span><span class="sp"></span>
+          <svg width="96" height="18" viewBox="0 0 96 18"><polyline fill="none" stroke="#C97B3A" stroke-width="1.5" points="0,14 10,9 20,6 30,5 40,5 50,5 60,5 70,5 80,5 96,5"/><polyline fill="none" stroke="#5BC0EB" stroke-width="1.5" points="0,16 10,15 20,12 30,11 40,10 50,10 60,10 70,10 80,10 96,10"/></svg>
+        </div>
+        <div class="sec" style="border-bottom:0">
+          <div class="sech"><span class="lab">Save analysis</span><span class="arm" style="display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 10px;border:1px solid var(--bezel);border-radius:2px;font:600 12.5px Inter;color:var(--t1);letter-spacing:0;text-transform:none"><span style="width:8px;height:8px;border-radius:50%;border:2px solid var(--acc)"></span>Log on OK</span></div>
+          <div class="chips"><span class="chip sel">Tx21/35</span><span class="chip">Tx18/45</span><span class="chip">EAN50</span><span class="chip">Other…</span></div>
+          <div class="verdict">Matches Tx21/35, the nearest standard mix</div>
+          <div class="seg"><div class="on">Diluent</div><div>Bailout / deco</div></div>
+          <div class="two">
+            <div class="fld"><div class="l">Cylinder</div><div class="x ph">No cylinder <span>▾</span></div></div>
+            <div class="fld"><div class="l">Fill pressure</div><div class="x">230 <span class="u">bar</span></div></div>
+          </div>
+          <div class="two">
+            <div class="fld"><div class="l">Analysed by</div><div class="x">EdP</div></div>
+            <div class="fld"><div class="l">For</div><div class="x ph">Optional</div></div>
+          </div>
+          <div class="more">+ Add a note</div>
+        </div>
+      </div>
+      <div class="bar abovenav"><div class="btns"><span class="btn o">Save</span><span class="btn f">⎙  Save &amp; print</span><span class="step"><b>−</b><i>1</i><b>+</b></span></div></div>
+      <div class="nav"><div><b>⛵</b>Dives</div><div><b>▤</b>Plan</div><div class="on"><b>⚗</b>Gas</div><div><b>ᛒ</b>Import</div><div><b>⚙</b>Equipment</div><div><b>☰</b>Settings</div></div>
+      <div class="home"></div>
+    </div>
+  </div>
+
+  <!-- Log tab -->
+  <div class="al-col">
+    <div class="al-cap">Log tab<small>Rows in the dive-list style: coloured edge for the role (orange diluent, steel bailout/deco), the analysed mix's name, the measured numbers, then how it compares with the desired mix. Tap a row to edit or sign off; swipe to delete, as today.</small></div>
+    <div class="al">
+      <div class="sb"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="tabs"><span class="anc">⚓</span><div><span class="ti">⚗</span>Blend</div><div><span class="ti">◎</span>Analyse</div><div class="on"><span class="ti">☰</span>Log</div></div>
+      <div class="body t hasnav">
+        <div class="tool"><span class="fchip on">All 24</span><span class="fchip warn">Needs sign-off 2</span><span class="sp"></span><span class="ic" style="width:34px;height:34px">⇪</span></div>
+        <div class="daysep">Today</div>
+        <div class="row">
+          <div class="main"><div class="l1"><span class="role">DIL</span><span class="name">Tx21/34</span><span class="date">14:02</span></div>
+          <div class="l2">20.6 / 33.8 · 230 bar · EdP · D3 #2</div>
+          <div class="l3" style="color:var(--ok)">Matches Tx21/35</div></div>
+          <span class="pr">⎙</span>
+        </div>
+        <div class="row bo">
+          <div class="main"><div class="l1"><span class="role">BO</span><span class="name">EAN31</span><span class="so">Needs sign-off</span><span class="date">13:51</span></div>
+          <div class="l2">31.2 / 0.4 · 230 bar · no name</div>
+          <div class="l3" style="color:var(--warn)">Saved before stable</div></div>
+          <span class="pr" style="opacity:.25">⎙</span>
+        </div>
+        <div class="row bo">
+          <div class="main"><div class="l1"><span class="role">BO</span><span class="name">EAN49</span><span class="date">13:40</span></div>
+          <div class="l2">49.2 / 0.3 · 200 bar · EdP · S40 #1</div>
+          <div class="l3" style="color:var(--ok)">Matches EAN50</div></div>
+          <span class="pr">⎙</span>
+        </div>
+        <div class="row">
+          <div class="main"><div class="l1"><span class="role">DIL</span><span class="name">Tx19/43</span><span class="date">13:22</span></div>
+          <div class="l2">19.1 / 43.0 · 230 bar · EdP · for Alex</div>
+          <div class="l3" style="color:var(--warn)">O₂ 1.1 off Tx18/45</div></div>
+          <span class="pr">⎙</span>
+        </div>
+        <div class="daysep">3 Nov 2026</div>
+        <div class="row bo">
+          <div class="main"><div class="l1"><span class="role">BO</span><span class="name">O2</span><span class="date">19:05</span></div>
+          <div class="l2">99.6 / 0.2 · 180 bar · EdP · S40 #2</div>
+          <div class="l3" style="color:var(--ok)">Matches O2</div></div>
+          <span class="pr">⎙</span>
+        </div>
+        <div class="row">
+          <div class="main"><div class="l1"><span class="role">DIL</span><span class="name">Air</span><span class="date">18:47</span></div>
+          <div class="l2">20.8 / 0.4 · 220 bar · EdP</div></div>
+          <span class="pr">⎙</span>
+        </div>
+      </div>
+      <div class="nav"><div><b>⛵</b>Dives</div><div><b>▤</b>Plan</div><div class="on"><b>⚗</b>Gas</div><div><b>ᛒ</b>Import</div><div><b>⚙</b>Equipment</div><div><b>☰</b>Settings</div></div>
+      <div class="home"></div>
+    </div>
+  </div>
+
+</div>
+
+</body></html>

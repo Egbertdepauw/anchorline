@@ -1,7 +1,9 @@
 # Subsurface git-format fixtures
 
-These files are real, unmodified copies from the maintainer's personal
-Subsurface git repository (kept locally, never pushed). They live here so the
+These files are real copies from the maintainer's personal Subsurface git
+repository (kept locally, never pushed), with one change: the names of other
+people (dive buddies, in `buddy` lines and in free-text notes) were replaced
+with made-up names. Everything else is unmodified. They live here so the
 parser/serializer can be tested against actual Subsurface output rather than a
 synthetic approximation.
 

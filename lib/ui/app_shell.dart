@@ -3,13 +3,12 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/material.dart' as material show Column;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart' hide SyncStatus;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/app_data_folder.dart';
 import '../data/db/database.dart';
+import '../data/local_data_wiper.dart';
 import '../data/db/dive_annotations_dao.dart';
 import '../data/db/dive_attachments_dao.dart';
 import '../data/db/dive_dao.dart';
@@ -19,6 +18,11 @@ import '../data/db/dive_plans_dao.dart';
 import '../data/db/gas_analyses_dao.dart';
 import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
+import '../ble/ble_central_default.dart' show bleCentralAvailable;
+import '../label_printer/phomemo/ble/phomemo_ble_printer.dart';
+import '../label_printer/phomemo/ble/phomemo_ble_scanner.dart';
+import '../labels/label_print_service.dart';
+import '../labels/render/cylinder_label_renderer.dart';
 import '../sync/attachments/attachment_cache.dart';
 import '../sync/attachments/attachment_downloader.dart';
 import '../sync/attachments/attachment_object_wiper.dart';
@@ -26,6 +30,7 @@ import '../sync/attachments/attachment_signer.dart';
 import '../sync/attachments/attachment_uploader.dart';
 import '../sync/attachments/attachment_uploader_impl.dart';
 import '../sync/attachments/pending_upload_store.dart';
+import '../sync/cloud/account_deleter.dart';
 import '../sync/cloud/auth_service.dart';
 import '../sync/cloud/ccrlogger_backend_connector.dart'
     show SupabaseAuthSessionSource;
@@ -39,12 +44,13 @@ import '../sync/subsurface_git/bootstrap_importer.dart';
 import '../sync/subsurface_git/credentials.dart';
 import '../sync/subsurface_git/dao_subsurface_sync_data_source.dart';
 import '../sync/subsurface_git/sync_orchestrator.dart';
+import 'notifiers/analyzer_session.dart';
 import 'notifiers/blend_notifier.dart';
 import 'notifiers/dive_list_notifier.dart';
 import 'notifiers/dive_plan_notifier.dart';
 import 'notifiers/import_notifier.dart';
 import 'notifiers/settings_notifier.dart';
-import 'screens/blend_screen.dart';
+import 'screens/gas_screen.dart';
 import 'screens/buddies_list_screen.dart';
 import 'screens/dive_list_screen.dart';
 import 'screens/dive_plan_screen.dart';
@@ -105,6 +111,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final DiveListNotifier _diveListNotifier;
   late final DivePlansDao _divePlansDao;
   late final GasAnalysesDao _gasAnalysesDao;
+  /// Null where the app has no Bluetooth LE central (the web).
+  late final LabelPrintService? _labelPrintService;
+  late final AnalyzerSession _analyzerSession;
   late final DivePlanNotifier _divePlanNotifier;
   late final BlendNotifier _blendNotifier;
   late final ImportNotifier _importNotifier;
@@ -123,10 +132,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final AttachmentUploader _attachmentUploader;
   late final PendingUploadStore _pendingUploadStore;
   late final AttachmentObjectWiper _attachmentObjectWiper;
+  late final AccountDeleter _accountDeleter;
 
   // Subsurface git sync (Phase E). Constructed asynchronously because
-  // path_provider.getApplicationDocumentsDirectory() returns a Future
-  // and our [initState] is sync. Until [_initSubsurfaceSync] resolves,
+  // appDataPaths() returns a Future and our [initState] is sync. Until [_initSubsurfaceSync] resolves,
   // these stay null and the Settings UI hides the Subsurface card.
   // SettingsScreen already gates the section behind non-null checks.
   late final SubsurfaceCredentialsSource _subsurfaceCredentials;
@@ -181,12 +190,37 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       widget.powerSyncDb,
       SupabaseAuthSessionSource(Supabase.instance.client),
     );
+    _labelPrintService = !bleCentralAvailable
+        ? null
+        : LabelPrintService(
+            render: renderCylinderLabel,
+            printerFor: (id) => PhomemoBlePrinter(remoteId: id),
+            scanner: PhomemoBleScanner(),
+            printerId: () => widget.settingsNotifier.labelPrinterId,
+            use14ForDeeperMixes: () =>
+                widget.settingsNotifier.labelUse14ForDeeperMixes,
+          );
+    _blendNotifier = BlendNotifier(settings: widget.settingsNotifier);
+    // Restores the Blend tab's target mix and pressure. Not awaited: the tab
+    // shows its defaults until it lands. A failure (say a stored value of the
+    // wrong type) is logged, so it can't become an unhandled async error.
+    unawaited(
+      _blendNotifier.loadTarget().catchError((Object e, StackTrace st) {
+        debugPrint('Blend target restore failed: $e\n$st');
+      }),
+    );
+    // Log on OK uses up the Blend target, so the session gets the notifier.
+    _analyzerSession = AnalyzerSession(
+      settings: widget.settingsNotifier,
+      analysesDao: _gasAnalysesDao,
+      labelPrinting: _labelPrintService,
+      blend: _blendNotifier,
+    );
     _divePlanNotifier = DivePlanNotifier(
       dao: _divePlansDao,
       settings: widget.settingsNotifier,
     );
     _divePlanNotifier.load();
-    _blendNotifier = BlendNotifier(settings: widget.settingsNotifier);
     _importNotifier = ImportNotifier(
       dao: _diveDao,
       importStateDao: _importStateDao,
@@ -236,19 +270,43 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       dao: _diveAttachmentsDao,
       signer: _attachmentSigner,
     );
+    _accountDeleter = AccountDeleter(
+      session: SupabaseAuthSessionSource(Supabase.instance.client),
+      backend: SupabaseAccountDeletionBackend(Supabase.instance.client),
+      sync: widget.cloudSyncCoordinator,
+      localStorageKeys: _diveAttachmentsDao.listAllStorageKeys,
+      deleteObject: (k) => _attachmentSigner.deleteObject(objectKey: k),
+      signOut: widget.authService.signOut,
+      wipeLocal: () async {
+        try {
+          await LocalDataWiper(db: widget.db, powerSyncDb: widget.powerSyncDb)
+              .wipe();
+        } finally {
+          // Runs even when the wipe throws: the account is already gone, so
+          // clear what can be cleared. The pending-upload paths are best
+          // effort (a leftover entry names a row that no longer exists), and
+          // go first so a cache failure cannot skip them.
+          try {
+            await _pendingUploadStore.clearAll();
+          } catch (e) {
+            debugPrint('Account deletion: pending-upload clear failed: $e');
+          }
+          await _attachmentCache.clear();
+        }
+      },
+    );
 
     _subsurfaceCredentials = SecureStorageSubsurfaceCredentials();
     // Fire-and-forget — _initSubsurfaceSync calls setState when the
     // orchestrator is ready, which re-renders SettingsScreen with the
-    // Subsurface card visible. Errors are logged but non-fatal: if
-    // path_provider fails the section just stays hidden.
+    // Subsurface card visible. Errors are logged but non-fatal: if the
+    // data folder can't be resolved the section just stays hidden.
     _initSubsurfaceSync();
   }
 
   Future<void> _initSubsurfaceSync() async {
     try {
-      final docsDir = await getApplicationDocumentsDirectory();
-      final cloneRoot = Directory(p.join(docsDir.path, 'subsurface_clone'));
+      final cloneRoot = Directory((await appDataPaths()).subsurfaceClone);
       if (!mounted) return;
       setState(() {
         _subsurfaceOrchestrator = SubsurfaceSyncOrchestrator(
@@ -285,6 +343,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _syncHealthService.dispose();
     _diveListNotifier.dispose();
     _divePlanNotifier.dispose();
+    // The session first: it uses the Blend notifier for Log on OK.
+    _analyzerSession.dispose();
     _blendNotifier.dispose();
     _importNotifier.dispose();
     _watermarkSuppressors.dispose();
@@ -372,7 +432,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     return ListenableBuilder(
       listenable: _diveListNotifier,
       builder: (context, _) => Scaffold(
-      appBar: isLandscape
+      appBar: isLandscape || _currentIndex == 2 || _currentIndex == 5
           ? null
           : (_currentIndex == 0 && _diveListNotifier.selectionMode
               ? _buildSelectionAppBar(context)
@@ -452,10 +512,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             ),
         ],
       )),
-      body: material.Column(
-        children: [
-          SyncHealthBanner(service: _syncHealthService),
-          Expanded(
+      body: SyncHealthBannerColumn(
+        service: _syncHealthService,
             // Lets media surfaces anywhere in the IndexedStack — including
             // routes pushed onto the Dives tab's nested Navigator — find
             // the suppression counter and zero the watermark while mounted.
@@ -524,10 +582,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           notifier: _divePlanNotifier,
                           settings: widget.settingsNotifier,
                         ),
-                        BlendScreen(
-                          notifier: _blendNotifier,
+                        GasScreen(
+                          blend: _blendNotifier,
                           settings: widget.settingsNotifier,
+                          session: _analyzerSession,
                           analysesDao: _gasAnalysesDao,
+                          labelPrinting: _labelPrintService,
+                          onHome: _goHome,
                         ),
                         ImportScreen(
                           notifier: _importNotifier,
@@ -539,20 +600,24 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           annotationsDao: _diveAnnotationsDao,
                           settingsNotifier: widget.settingsNotifier,
                           analysesDao: _gasAnalysesDao,
+                          labelPrinting: _labelPrintService,
                         ),
                         SettingsScreen(
                           notifier: widget.settingsNotifier,
+                          onHome: _goHome,
                           authService: widget.authService,
                           syncStatusSource: _syncStatusSource,
                           db: widget.db,
                           powerSyncDb: widget.powerSyncDb,
                           cloudDataWiper: widget.cloudDataWiper,
                           attachmentObjectWiper: _attachmentObjectWiper,
+                          accountDeleter: _accountDeleter,
                           subsurfaceOrchestrator: _subsurfaceOrchestrator,
                           subsurfaceCredentials: _subsurfaceCredentials,
                           diveDao: _diveDao,
                           subsurfaceBootstrapImporter:
                               _subsurfaceBootstrapImporter,
+                          labelPrinting: _labelPrintService,
                         ),
                       ],
                     ),
@@ -560,36 +625,39 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 },
               ),
             ),
-          ),
-        ],
       ),
-      bottomNavigationBar: isLandscape ? null : BottomNavigationBar(
+      bottomNavigationBar: isLandscape ? null : ListenableBuilder(
+        // The Gas item's dot follows the analyzer connection.
+        listenable: _analyzerSession,
+        builder: (context, _) => BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
         type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
+        items: [
+          const BottomNavigationBarItem(
             icon: Icon(Icons.scuba_diving),
             label: 'Dives',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.event_note_outlined),
             label: 'Plan',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.science_outlined),
-            label: 'Blend',
+          gasNavItem(
+            connected: _analyzerSession.controller.isConnected,
+            okRunning: _analyzerSession.okRunning,
+            selected: _currentIndex == 2,
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: 'Import'),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(icon: Icon(Icons.bluetooth), label: 'Import'),
+          const BottomNavigationBarItem(
             icon: Icon(Icons.build_outlined),
             label: 'Equipment',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),
             label: 'Settings',
           ),
         ],
+      ),
       ),
     ));
   }

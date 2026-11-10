@@ -1,0 +1,6 @@
+#!/bin/sh
+# AppImage entry point. The Flutter bundle lives in usr/bin and finds its
+# data/ and lib/ folders next to its own executable, so nothing else needs
+# setting up here.
+HERE="${APPDIR:-$(dirname "$(readlink -f "$0")")}"
+exec "$HERE/usr/bin/anchorline" "$@"

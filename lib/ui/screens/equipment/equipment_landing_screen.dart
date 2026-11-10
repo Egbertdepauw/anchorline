@@ -4,6 +4,7 @@ import '../../../data/db/dive_annotations_dao.dart';
 import '../../../data/db/dive_dao.dart';
 import '../../../data/db/equipment_dao.dart';
 import '../../../data/db/gas_analyses_dao.dart';
+import '../../../labels/label_print_service.dart';
 import '../../notifiers/settings_notifier.dart';
 import 'cells_list_screen.dart';
 import 'cylinders_list_screen.dart';
@@ -19,6 +20,9 @@ class EquipmentLandingScreen extends StatefulWidget {
   /// Cylinder analysis log (#111); null hides the per-cylinder entry.
   final GasAnalysesDaoLike? analysesDao;
 
+  /// Cylinder label printing (#114), for reprints from a cylinder's log.
+  final LabelPrintService? labelPrinting;
+
   const EquipmentLandingScreen({
     super.key,
     required this.dao,
@@ -26,6 +30,7 @@ class EquipmentLandingScreen extends StatefulWidget {
     required this.annotationsDao,
     required this.settingsNotifier,
     this.analysesDao,
+    this.labelPrinting,
   });
 
   @override
@@ -115,6 +120,7 @@ class _EquipmentLandingScreenState extends State<EquipmentLandingScreen> {
                 builder: (_) => CylindersListScreen(
                   dao: widget.dao,
                   analysesDao: widget.analysesDao,
+                  labelPrinting: widget.labelPrinting,
                 ),
               ));
               await _refresh();

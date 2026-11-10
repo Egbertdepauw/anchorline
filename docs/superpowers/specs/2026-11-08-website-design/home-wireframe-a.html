@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Anchorline home page — approved wireframe (option A, 2026-11-08)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  .al { --hull:#0A1419; --orange:#C97B3A; --white:#E4E9E6; --steel:#3A6477; --card:#142028; --raised:#1F2E38; --muted:#6B7D88; --sec:#A0AEB6; }
+  .al .wire { background:var(--hull); color:var(--white); font-family:Inter,system-ui,sans-serif; border-radius:10px; padding:14px; min-height:560px; display:flex; flex-direction:column; gap:10px; border:1px solid #1f2e38; }
+  .al .wm { height:22px; display:block; }
+  .al .tag { font-size:11px; color:var(--sec); line-height:1.35; }
+  .al .h1 { font-size:14px; font-weight:600; letter-spacing:-0.2px; line-height:1.2; }
+  .al .blk { background:var(--card); border-radius:6px; padding:8px; font-size:10px; color:var(--sec); }
+  .al .blk b { color:var(--white); font-weight:600; display:block; font-size:10px; letter-spacing:.6px; text-transform:uppercase; margin-bottom:4px; }
+  .al .row { display:flex; gap:6px; flex-wrap:wrap; }
+  .al .btn { background:var(--orange); color:#0A1419; font-weight:600; font-size:9px; padding:5px 8px; border-radius:4px; white-space:nowrap; }
+  .al .btn.ghost { background:transparent; color:var(--white); border:1px solid var(--steel); }
+  .al .badge { background:#000; color:#fff; border:1px solid #333; font-size:8px; padding:4px 6px; border-radius:4px; white-space:nowrap; }
+  .al .shots { display:flex; gap:8px; justify-content:center; align-items:flex-end; }
+  .al .shots img { width:34%; border-radius:8px; border:1px solid #2A3A45; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+  .al .shots img.lead { width:42%; }
+  .al .strip { display:flex; gap:6px; overflow:hidden; }
+  .al .strip img { width:23%; border-radius:5px; border:1px solid #2A3A45; }
+  .al .feat { display:flex; gap:8px; align-items:center; }
+  .al .feat img { width:28%; border-radius:5px; border:1px solid #2A3A45; }
+  .al .feat .t { flex:1; }
+  .al .mono { font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--sec); }
+  .al .road li { margin:2px 0; }
+  .al .road ul { padding-left:14px; margin:0; }
+  .al .pill { display:inline-block; font-size:8px; padding:1px 5px; border-radius:3px; background:var(--raised); color:var(--sec); margin-left:4px; vertical-align:middle; }
+  .al .pill.now { background:#1b3a2a; color:#4ADE80; }
+  .al .pill.soon { background:#3a2e1b; color:#FFCC66; }
+  .al .cards3 { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .al .pc { background:var(--card); border:1px solid #2A3A45; border-radius:6px; padding:7px; font-size:9px; }
+  .al .pc.you { border-color:var(--orange); }
+  .al .pc b { color:var(--white); display:block; font-size:10px; margin-bottom:2px; }
+  .al .pc .btn { margin-top:5px; display:inline-block; }
+  .al .foot { font-size:8px; color:var(--muted); margin-top:auto; padding-top:6px; border-top:1px solid #1F2E38; }
+  .al .profile { height:84px; background:var(--card); border-radius:6px; position:relative; overflow:hidden; }
+  .al .profile svg { width:100%; height:100%; display:block; }
+  .al .scroll-hint { font-size:9px; color:var(--muted); text-align:center; }
+</style>
+<style>
+  body { margin:0; padding:24px; background:#f4f5f6; font-family:Inter,system-ui,sans-serif; color:#222; }
+  .note { max-width:720px; margin:0 auto 18px; font-size:14px; line-height:1.5; }
+  .card { max-width:420px; margin:0 auto; background:#fff; border:1px solid #ddd; border-radius:12px; overflow:hidden; }
+  .card-image { padding:12px; background:#e9ecef; }
+  .card-body { padding:14px 16px; }
+  .card-body h3 { margin:0 0 6px; font-size:16px; }
+  .card-body p { margin:0; font-size:13px; line-height:1.45; color:#444; }
+</style></head><body>
+<div class="note"><strong>Approved home-page wireframe, option A ("App first"), 2026-11-08.</strong>
+Phone-width wireframe shown to Egbert during the spec refresh; he chose this over "live profile first" and "download first".
+Section order and content are normative; exact spacing, type sizes and the desktop layout are the builder's.
+Screenshots are the May 2026 Play Store shots and are placeholders for the current build. Open from the repository so the relative image paths resolve.
+See <code>../2026-11-08-website-design.md</code> §4.1.</div>
+<div class="al">
+<div class="card" data-choice="a" >
+    <div class="card-image">
+      <div class="wire">
+        <img class="wm" src="../../../../assets/brand/anchorline-wordmark-dark.svg" alt="Anchorline">
+        <div class="h1">Dive logging built for CCR.</div>
+        <div class="tag">Imports your Shearwater over Bluetooth and shows you what the log is really saying: cell health, scrubber time, PPO₂ against setpoint.</div>
+        <div class="shots">
+          <img src="../../../../assets/screenshots/Screenshot_20260522_161732.jpg" alt="">
+          <img class="lead" src="../../../../assets/screenshots/Screenshot_20260522_161807.jpg" alt="">
+          <img src="../../../../assets/screenshots/Screenshot_20260522_161724.jpg" alt="">
+        </div>
+        <div class="row">
+          <span class="btn">Download for Windows</span>
+          <span class="badge"> App Store</span>
+          <span class="badge">▶ Google Play</span>
+          <span class="badge"> Mac App Store</span>
+          <span class="btn ghost">Linux AppImage</span>
+        </div>
+        <div class="blk feat"><img src="../../../../assets/screenshots/Screenshot_20260522_161807.jpg" alt=""><div class="t"><b>What it does today</b>Profile with PPO₂, setpoint and cells · deco replay · cell-mV history · scrubber sessions · gas density and END · blender and planner · Subsurface import</div></div>
+        <div class="blk road"><b>Where it's going</b><ul><li>Cell health across a cell's life <span class="pill soon">next</span></li><li>Two-way Subsurface sync <span class="pill soon">next</span></li><li>Other dive computers <span class="pill">exploring</span></li></ul></div>
+        <div class="blk"><b>Free vs. Sync</b>App and all analysis free · sync, attachments and two-way Subsurface are the subscription</div>
+        <div class="foot">Open source · Privacy · Terms · Support · Delete account</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A · App first</h3>
+      <p>Hero is a one-line pitch, three real screenshots and the download row. Then a "what it does today" tour that alternates screenshot and text, a roadmap, free-vs-paid, footer.</p>
+    </div>
+  </div>
+</div>
+</body></html>

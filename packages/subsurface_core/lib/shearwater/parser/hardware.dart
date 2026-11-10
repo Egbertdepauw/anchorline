@@ -1,3 +1,14 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+//
+// Copyright (C) 2013 Jef Driesen (libdivecomputer)
+// Copyright (C) 2026 Egbert de Pauw
+//
+// Translated to Dart from libdivecomputer's src/shearwater_common.c (the
+// hardware ID to model table) and changed for Anchorline in 2026. Like the
+// original, this file is free software under the GNU Lesser General Public
+// License, version 2.1 or (at your option) any later version. See
+// LICENSES/LGPL-2.1.txt and NOTICE.md.
+
 /// Shearwater dive computer model identification.
 ///
 /// Hardware ID → model mapping from libdivecomputer shearwater_common.c.

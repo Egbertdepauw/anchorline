@@ -36,7 +36,7 @@ void main() {
       final annotation = _annotation(
         diveId: dive.id,
         rating: 4,
-        buddies: ['Wendy De Joode'],
+        buddies: ['Alex Marlin'],
         tags: ['CCR', 'X-CCR'],
         notes: 'Trim test, all cells happy.',
         suit: 'ScubaForce Xpedition SE',
@@ -85,7 +85,7 @@ void main() {
 
       final buddy =
           dive_.whereType<QuotedLine>().firstWhere((l) => l.key == 'buddy');
-      expect(buddy.value, 'Wendy De Joode');
+      expect(buddy.value, 'Alex Marlin');
 
       final suit =
           dive_.whereType<QuotedLine>().firstWhere((l) => l.key == 'suit');

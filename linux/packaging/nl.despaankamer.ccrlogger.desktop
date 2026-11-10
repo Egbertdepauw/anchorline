@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Anchorline
+Comment=Dive log and post-dive analysis for CCR and technical divers
+Exec=anchorline
+Icon=nl.despaankamer.ccrlogger
+Terminal=false
+Categories=Utility;
+Keywords=dive;diving;divelog;rebreather;CCR;Shearwater;
+StartupWMClass=anchorline

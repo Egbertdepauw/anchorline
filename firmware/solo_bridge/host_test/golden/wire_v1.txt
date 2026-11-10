@@ -1,0 +1,9 @@
+HELLO proto=1 fw=0.1.0 bridge=a0b1c2d3e4f5 epoch=1a2b3c4d boot=7 up=123456 solo=1 rec=off vbus=off batt=3987 pending=0
+ST solo=1 data=0 pending=0 batt=3987 up=5000
+L He   0.4 %  O2  19.8 %  Ti  21.7 ~C  1029.5 hPa   2026/11/03 15:19:15
+REC 1a2b3c4d-7 boot=3 up=99000 wall=0 live=1
+REC 1a2b3c4d-8 boot=3 up=99000 wall=1762182000000 live=0
+W -1200 He   0.4 %  O2  19.8 %  Ti  21.7 ~C  1029.5 hPa   2026/11/03 15:19:15
+W 0 He   0.4 %  O2  19.8 %  Ti  21.7 ~C  1029.5 hPa   2026/11/03 15:19:15
+H He   0.4 %  O2  19.8 %  Ti  21.7 ~C  1029.5 hPa   2026/11/03 15:19:15
+END 1a2b3c4d-7

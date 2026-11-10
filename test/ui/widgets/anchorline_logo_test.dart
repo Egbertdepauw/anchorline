@@ -17,6 +17,38 @@ void main() {
     });
   });
 
+  group('square marks', () {
+    // The rounded tile's corners must be see-through. They used to be
+    // filled with the light anchor colour, which showed as white corners
+    // around the logo on the About tab and the top-bar Home button.
+    for (final asset in [
+      'assets/brand/anchorline-mark-icon.svg',
+      'assets/brand/anchorline-mark-full.svg',
+    ]) {
+      testWidgets('$asset has transparent corners', (tester) async {
+        final px = await tester.runAsync(() async {
+          final info = await vg.loadPicture(SvgAssetLoader(asset), null);
+          final w = info.size.width.round();
+          final h = info.size.height.round();
+          final image = await info.picture.toImage(w, h);
+          final data = (await image.toByteData())!;
+          info.picture.dispose();
+          image.dispose();
+          return (w: w, h: h, data: data);
+        });
+        int alpha(int x, int y) =>
+            px!.data.getUint8((y * px.w + x) * 4 + 3);
+        final r = px!.w - 2, b = px.h - 2;
+        for (final (x, y) in [(1, 1), (r, 1), (1, b), (r, b)]) {
+          expect(alpha(x, y), 0, reason: 'corner pixel ($x, $y)');
+        }
+        // The tile itself is still opaque along its edges.
+        expect(alpha(px.w ~/ 2, 2), 255, reason: 'top edge');
+        expect(alpha(2, px.h ~/ 2), 255, reason: 'left edge');
+      });
+    }
+  });
+
   group('HullCutoutMapper', () {
     const surface = Color(0xFF1E1E2E);
     const mapper = HullCutoutMapper(surface);

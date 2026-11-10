@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../analysis/fill_pressure.dart';
 import '../theme/app_themes.dart';
 import '../widgets/map_tile_sources.dart' show MapLayerStyle;
 import '../widgets/trace_segmented_bar.dart' show TraceType;
@@ -42,6 +43,22 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kBlendFillTempC = 'blend_fill_temp_c';
   static const _kBlendSettledTempC = 'blend_settled_temp_c';
   static const _kAnalyzerModPpo2s = 'analyzer_mod_ppo2s';
+  static const _kAnalyzerLogOnOk = 'analyzer_log_on_ok';
+  static const _kAnalyzerPrintOnOk = 'analyzer_print_on_ok';
+  // The name the old save card remembered; read once to start "Your
+  // initials" on a device that had none, then removed (see load()).
+  static const _kAnalyzerAnalysedBy = 'analyzer_analysed_by';
+  static const _kYourInitials = 'your_initials';
+  static const _kAnalyzerFillPressureStart = 'analyzer_fill_pressure_start_bar';
+
+  /// Where the analyzer's "Fill pressure" starts when a cylinder is saved.
+  static const double kDefaultFillPressureStartBar = 230;
+  static const _kLabelUse14 = 'label_use_14_for_deeper_mixes';
+  static const _kAnalyzerBridgeId = 'analyzer_bridge_id';
+  static const _kAnalyzerBridgeName = 'analyzer_bridge_name';
+  static const _kAnalyzerBridgeVbus = 'analyzer_bridge_vbus';
+  static const _kLabelPrinterId = 'label_printer_id';
+  static const _kLabelPrinterName = 'label_printer_name';
 
   /// Default ppO2 limits the gas analyzer shows a MOD for. 1.1 is the
   /// CCR diluent limit, 1.4 / 1.6 the usual OC bottom / deco limits.
@@ -111,6 +128,19 @@ class SettingsNotifier extends ChangeNotifier {
   double _blendSettledTempC = 18;
   // ── Gas analyzer ────────────────────────────────────────────────
   List<double> _analyzerModPpo2s = [...defaultAnalyzerModPpo2s];
+  // Log on OK over USB (device-local, never synced).
+  bool _analyzerLogOnOk = false;
+  bool _analyzerPrintOnOk = true;
+  String? _yourInitials;
+  double _analyzerFillPressureStartBar = kDefaultFillPressureStartBar;
+  // ── Cylinder labels (device-local, never synced) ────────────────
+  bool _labelUse14ForDeeperMixes = false;
+  // The SOLO bridge paired on this device (device-local, never synced).
+  String? _analyzerBridgeId;
+  String? _analyzerBridgeName;
+  bool _analyzerBridgeVbus = false;
+  String? _labelPrinterId;
+  String? _labelPrinterName;
 
   /// Id of the selected theme. Always a registered id.
   String get themeId => _themeId;
@@ -152,6 +182,39 @@ class SettingsNotifier extends ChangeNotifier {
 
   /// ppO2 limits (bar) the gas analyzer shows a MOD row for, ascending.
   List<double> get analyzerModPpo2s => List.unmodifiable(_analyzerModPpo2s);
+
+  /// Whether an OK press on the SOLO, over a USB cable, saves an analysis
+  /// while the analyzer screen is open (issue #113). Off by default.
+  bool get analyzerLogOnOk => _analyzerLogOnOk;
+
+  /// Whether an OK press also prints the label, when a label printer is set
+  /// up (issue #113). On by default.
+  bool get analyzerPrintOnOk => _analyzerPrintOnOk;
+
+  /// The diver's initials (device-local, never synced); they start the
+  /// analyzer's "Analysed by" field. Null until set.
+  String? get yourInitials => _yourInitials;
+
+  /// The pressure in bar the analyzer's "Fill pressure" field starts at.
+  double get analyzerFillPressureStartBar => _analyzerFillPressureStartBar;
+
+  /// Whether a cylinder label uses ppO2 1.4 instead of 1.6 for the MOD of a
+  /// bailout/deco mix under 50 % O2.
+  bool get labelUse14ForDeeperMixes => _labelUse14ForDeeperMixes;
+
+  /// The label printer saved on this device: its BLE id and the name shown
+  /// in Settings. Both null when none is set up.
+  /// The SOLO bridge saved on this device: its BLE id and the name shown in
+  /// Settings. Both null when none is set up.
+  String? get analyzerBridgeId => _analyzerBridgeId;
+  String? get analyzerBridgeName => _analyzerBridgeName;
+
+  /// Whether the bridge supplies 5 V to the SOLO (which also charges it).
+  /// Off by default: the SOLO runs on its own battery.
+  bool get analyzerBridgeVbus => _analyzerBridgeVbus;
+
+  String? get labelPrinterId => _labelPrinterId;
+  String? get labelPrinterName => _labelPrinterName;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -265,6 +328,30 @@ class SettingsNotifier extends ChangeNotifier {
           aMod.map(double.tryParse).whereType<double>());
       if (parsed.isNotEmpty) _analyzerModPpo2s = parsed;
     }
+    _analyzerLogOnOk = prefs.getBool(_kAnalyzerLogOnOk) ?? false;
+    _analyzerPrintOnOk = prefs.getBool(_kAnalyzerPrintOnOk) ?? true;
+    _yourInitials = _initialsOrNull(prefs.getString(_kYourInitials));
+    final rememberedName = prefs.getString(_kAnalyzerAnalysedBy);
+    if (rememberedName != null) {
+      // Upgrade, once: the name remembered by the old save card becomes the
+      // initials, unless they are set already. The old key goes, so
+      // initials cleared later stay cleared.
+      final migrated = _initialsOrNull(rememberedName);
+      if (_yourInitials == null && migrated != null) {
+        _yourInitials = migrated;
+        await prefs.setString(_kYourInitials, migrated);
+      }
+      await prefs.remove(_kAnalyzerAnalysedBy);
+    }
+    _analyzerFillPressureStartBar =
+        prefs.getDouble(_kAnalyzerFillPressureStart) ??
+            kDefaultFillPressureStartBar;
+    _labelUse14ForDeeperMixes = prefs.getBool(_kLabelUse14) ?? false;
+    _analyzerBridgeId = prefs.getString(_kAnalyzerBridgeId);
+    _analyzerBridgeName = prefs.getString(_kAnalyzerBridgeName);
+    _analyzerBridgeVbus = prefs.getBool(_kAnalyzerBridgeVbus) ?? false;
+    _labelPrinterId = prefs.getString(_kLabelPrinterId);
+    _labelPrinterName = prefs.getString(_kLabelPrinterName);
 
     // `get` rather than `getString`: a value of the wrong type must fall
     // back to the default, not throw before the first frame.
@@ -589,6 +676,119 @@ class SettingsNotifier extends ChangeNotifier {
       _kAnalyzerModPpo2s,
       cleaned.map((v) => v.toString()).toList(),
     );
+  }
+
+  Future<void> setAnalyzerLogOnOk(bool v) async {
+    if (_analyzerLogOnOk == v) return;
+    _analyzerLogOnOk = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kAnalyzerLogOnOk, v);
+  }
+
+  Future<void> setAnalyzerPrintOnOk(bool v) async {
+    if (_analyzerPrintOnOk == v) return;
+    _analyzerPrintOnOk = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kAnalyzerPrintOnOk, v);
+  }
+
+  /// [v] trimmed; null when that is blank.
+  static String? _initialsOrNull(String? v) {
+    final t = v?.trim();
+    return t == null || t.isEmpty ? null : t;
+  }
+
+  /// Saves the diver's initials, trimmed. Blank means none.
+  Future<void> setYourInitials(String? v) async {
+    final initials = _initialsOrNull(v);
+    if (_yourInitials == initials) return;
+    _yourInitials = initials;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (initials == null) {
+      await prefs.remove(_kYourInitials);
+    } else {
+      await prefs.setString(_kYourInitials, initials);
+    }
+  }
+
+  /// Sets where the analyzer's fill pressure starts. A value that is not a
+  /// valid pressure (see [parseFillPressure]) is ignored.
+  Future<void> setAnalyzerFillPressureStartBar(double bar) async {
+    if (!parseFillPressure(bar.toString()).valid) return;
+    if (_analyzerFillPressureStartBar == bar) return;
+    _analyzerFillPressureStartBar = bar;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kAnalyzerFillPressureStart, bar);
+  }
+
+  Future<void> setLabelUse14ForDeeperMixes(bool v) async {
+    if (_labelUse14ForDeeperMixes == v) return;
+    _labelUse14ForDeeperMixes = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kLabelUse14, v);
+  }
+
+  /// Saves the label printer for this device. [id] is the BLE id used to
+  /// reconnect; [name] is only for display.
+  Future<void> setLabelPrinter({
+    required String id,
+    required String name,
+  }) async {
+    if (_labelPrinterId == id && _labelPrinterName == name) return;
+    _labelPrinterId = id;
+    _labelPrinterName = name;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLabelPrinterId, id);
+    await prefs.setString(_kLabelPrinterName, name);
+  }
+
+  /// Saves the SOLO bridge for this device. [id] is the BLE id used to
+  /// reconnect; [name] is only for display.
+  Future<void> setAnalyzerBridge({
+    required String id,
+    required String name,
+  }) async {
+    if (_analyzerBridgeId == id && _analyzerBridgeName == name) return;
+    _analyzerBridgeId = id;
+    _analyzerBridgeName = name;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kAnalyzerBridgeId, id);
+    await prefs.setString(_kAnalyzerBridgeName, name);
+  }
+
+  Future<void> forgetAnalyzerBridge() async {
+    if (_analyzerBridgeId == null && _analyzerBridgeName == null) return;
+    _analyzerBridgeId = null;
+    _analyzerBridgeName = null;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kAnalyzerBridgeId);
+    await prefs.remove(_kAnalyzerBridgeName);
+  }
+
+  Future<void> setAnalyzerBridgeVbus(bool on) async {
+    if (_analyzerBridgeVbus == on) return;
+    _analyzerBridgeVbus = on;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kAnalyzerBridgeVbus, on);
+  }
+
+  Future<void> forgetLabelPrinter() async {
+    if (_labelPrinterId == null && _labelPrinterName == null) return;
+    _labelPrinterId = null;
+    _labelPrinterName = null;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kLabelPrinterId);
+    await prefs.remove(_kLabelPrinterName);
   }
 
   /// Drops non-finite and out-of-range values, rounds to 0.01 bar,
