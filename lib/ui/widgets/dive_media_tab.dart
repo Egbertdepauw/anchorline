@@ -28,6 +28,7 @@ import '../notifiers/dive_attachments_notifier.dart';
 import '../screens/add_link_sheet.dart';
 import '../screens/edit_attachment_sheet.dart';
 import '../theme/media_colors.dart';
+import 'storage_full_dialog.dart';
 
 class DiveMediaTab extends StatefulWidget {
   final DiveAttachmentsNotifier notifier;
@@ -72,10 +73,19 @@ class DiveMediaTab extends StatefulWidget {
 class _DiveMediaTabState extends State<DiveMediaTab> {
   DiveAttachmentsNotifier get _n => widget.notifier;
 
+  /// The refusal whose dialog this widget already showed, so a rebuild
+  /// doesn't show it again.
+  StorageFullState? _shownStorageFull;
+
   @override
   void initState() {
     super.initState();
     _n.addListener(_onNotifierChanged);
+    // A refusal that landed while this widget wasn't mounted.
+    if (_n.storageFull != null) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _maybeShowStorageFull());
+    }
   }
 
   @override
@@ -85,17 +95,32 @@ class _DiveMediaTabState extends State<DiveMediaTab> {
   }
 
   void _onNotifierChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    _maybeShowStorageFull();
+  }
+
+  Future<void> _maybeShowStorageFull() async {
+    final state = _n.storageFull;
+    if (!mounted || state == null || identical(state, _shownStorageFull)) {
+      return;
+    }
+    _shownStorageFull = state;
+    final choice = await showStorageFullDialog(context, state: state);
+    if (!mounted || !identical(_n.storageFull, state)) return;
+    if (choice == StorageFullChoice.freeSpace) {
+      await _n.freeSpaceAndRetry();
+    } else {
+      _n.dismissStorageFull();
+    }
   }
 
   Future<void> _addFiles() async {
     final picked = await widget.pickFiles(context);
     if (picked == null || picked.isEmpty) return;
-    for (final p in picked) {
-      // Sequential — see the legacy section: parallel adds race the
-      // DAO's display_order computation.
-      await _n.addFile(p);
-    }
+    // One after another; a storage-full refusal stops the batch and
+    // keeps the rest for "Free space now".
+    await _n.addFiles(picked);
   }
 
   Future<void> _addLink() async {
@@ -162,7 +187,7 @@ class _DiveMediaTabState extends State<DiveMediaTab> {
               padding: EdgeInsets.only(top: 8),
               child: LinearProgressIndicator(minHeight: 2),
             ),
-          if (_n.error != null)
+          if (_n.error != null || _n.uploadsPaused)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Container(
@@ -179,14 +204,20 @@ class _DiveMediaTabState extends State<DiveMediaTab> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        _n.error!,
+                        _n.uploadsPaused ? kUploadsPausedMessage : _n.error!,
                         style: TextStyle(color: scheme.onErrorContainer),
                       ),
                     ),
-                    TextButton(
-                      onPressed: _n.reload,
-                      child: const Text('Retry'),
-                    ),
+                    if (_n.uploadsPaused)
+                      TextButton(
+                        onPressed: _n.dismissUploadsPaused,
+                        child: const Text('Dismiss'),
+                      )
+                    else
+                      TextButton(
+                        onPressed: _n.reload,
+                        child: const Text('Retry'),
+                      ),
                   ],
                 ),
               ),
@@ -219,6 +250,7 @@ class _DiveMediaTabState extends State<DiveMediaTab> {
                             a.uploadState == UploadState.failed
                         ? () => _retry(a)
                         : null,
+                    storageFull: _n.isStorageFull(a.id),
                   );
                 },
               );
@@ -257,6 +289,9 @@ class _MediaTile extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback? onRetry;
 
+  /// A `failed` file the Worker refused because storage is full.
+  final bool storageFull;
+
   const _MediaTile({
     super.key,
     required this.attachment,
@@ -265,6 +300,7 @@ class _MediaTile extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onRetry,
+    required this.storageFull,
   });
 
   @override
@@ -278,6 +314,7 @@ class _MediaTile extends StatelessWidget {
           onEdit: onEdit,
           onDelete: onDelete,
           onRetry: onRetry,
+          storageFull: storageFull,
         ),
       LinkAttachment() => _LinkMediaTile(
           attachment: a,
@@ -296,6 +333,7 @@ class _FileMediaTile extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback? onRetry;
+  final bool storageFull;
 
   const _FileMediaTile({
     required this.attachment,
@@ -304,6 +342,7 @@ class _FileMediaTile extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onRetry,
+    required this.storageFull,
   });
 
   @override
@@ -352,7 +391,7 @@ class _FileMediaTile extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  'Upload failed',
+                  storageFull ? 'Storage full' : 'Upload failed',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,

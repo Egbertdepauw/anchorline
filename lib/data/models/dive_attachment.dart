@@ -38,12 +38,15 @@ enum DiveAttachmentParentKind {
 /// Lifecycle of a [FileAttachment]'s bytes in R2. Ints match the column:
 /// 0 = pending (row exists, bytes haven't reached R2 yet),
 /// 1 = uploaded (bytes are durable, checksum recorded),
-/// 2 = failed (last upload attempt errored; retry sweep will pick it up).
+/// 2 = failed (last upload attempt errored; retry sweep will pick it up),
+/// 3 = purged (the R2 object was deleted after the row was soft-deleted;
+/// such a row is always soft-deleted and must never be restored).
 /// Link attachments don't use this; the column stays at 0 for them.
 enum UploadState {
   pending(0),
   uploaded(1),
-  failed(2);
+  failed(2),
+  purged(3);
 
   final int wire;
   const UploadState(this.wire);

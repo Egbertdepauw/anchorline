@@ -365,4 +365,175 @@ void main() {
     final row = await dao.get('f1') as FileAttachment;
     expect(row.uploadState, UploadState.failed);
   });
+
+  /// Signer + R2 mock whose `/sign-upload` answers come from
+  /// [signStatuses] in order; 2xx answers carry a valid signed URL and
+  /// the R2 PUT always succeeds. [onSign] counts the sign calls.
+  http.Client signQueueClient(
+    List<int> signStatuses, {
+    String? errorBody,
+    void Function()? onSign,
+  }) {
+    var i = 0;
+    return MockClient((req) async {
+      if (req.url.path == '/sign-upload') {
+        onSign?.call();
+        final status = signStatuses[i++];
+        if (status == 200) {
+          return http.Response(
+            jsonEncode({
+              'object_key': 'attachments/owner-1/d1/canonical.bin',
+              'upload_url': 'https://r2.example.com/put?sig=zzz',
+              'expires_at': 1700000300,
+            }),
+            200,
+          );
+        }
+        return http.Response(
+            errorBody ?? jsonEncode({'error': 'rate_limited'}), status);
+      }
+      if (req.method == 'PUT') return http.Response('', 200);
+      return http.Response('unexpected', 500);
+    });
+  }
+
+  group('rate limiting', () {
+    test('two 429s then a success → waits 15 s each time and uploads',
+        () async {
+      await seedPendingRow('f1');
+      final file = await writeTmp('scan.pdf', const [1, 2, 3]);
+      var signs = 0;
+      final client = signQueueClient([429, 429, 200], onSign: () => signs++);
+      final delays = <Duration>[];
+      final uploader = AttachmentUploaderImpl(
+        signer: AttachmentSigner(
+          baseUrl: 'https://signer.example.com',
+          session: session,
+          httpClient: client,
+        ),
+        dao: dao,
+        pendingStore: pendingStore,
+        httpClient: client,
+        rateLimitDelay: (d) async => delays.add(d),
+      );
+
+      await uploader.upload(
+        attachmentId: 'f1',
+        diveId: 'd1',
+        localFile: file,
+        mimeType: 'application/pdf',
+      );
+
+      expect(signs, 3);
+      // 25 s apart, so three re-signs span more than the Worker's
+      // 60 s window.
+      expect(delays,
+          [const Duration(seconds: 25), const Duration(seconds: 25)]);
+      final row = await dao.get('f1') as FileAttachment;
+      expect(row.uploadState, UploadState.uploaded);
+    });
+
+    test('four 429s → gives up after three re-signs, cause is the 429',
+        () async {
+      await seedPendingRow('f1');
+      final file = await writeTmp('scan.pdf', const [1, 2, 3]);
+      var signs = 0;
+      final client = signQueueClient([429, 429, 429, 429, 200], onSign: () => signs++);
+      final delays = <Duration>[];
+      final uploader = AttachmentUploaderImpl(
+        signer: AttachmentSigner(
+          baseUrl: 'https://signer.example.com',
+          session: session,
+          httpClient: client,
+        ),
+        dao: dao,
+        pendingStore: pendingStore,
+        httpClient: client,
+        rateLimitDelay: (d) async => delays.add(d),
+      );
+
+      await expectLater(
+        uploader.upload(
+          attachmentId: 'f1',
+          diveId: 'd1',
+          localFile: file,
+          mimeType: 'application/pdf',
+        ),
+        throwsA(isA<UploadFailedException>().having(
+            (e) => e.cause, 'cause', isA<AttachmentRateLimitedException>())),
+      );
+
+      expect(signs, 4);
+      expect(delays, hasLength(3));
+      final row = await dao.get('f1') as FileAttachment;
+      expect(row.uploadState, UploadState.failed);
+      expect(row.uploadAttempts, 1);
+    });
+  });
+
+  test('413 quota_exceeded → failed with the typed cause, pending entry kept',
+      () async {
+    await seedPendingRow('f1');
+    final file = await writeTmp('scan.pdf', const [1, 2, 3]);
+    final client = signQueueClient(
+      [413],
+      errorBody: jsonEncode({
+        'error': 'quota_exceeded',
+        'used_bytes': 980000000,
+        'limit_bytes': 1000000000,
+        'used_files': 412,
+        'limit_files': 1000,
+      }),
+    );
+    final delays = <Duration>[];
+    final uploader = AttachmentUploaderImpl(
+      signer: AttachmentSigner(
+        baseUrl: 'https://signer.example.com',
+        session: session,
+        httpClient: client,
+      ),
+      dao: dao,
+      pendingStore: pendingStore,
+      httpClient: client,
+      rateLimitDelay: (d) async => delays.add(d),
+    );
+
+    await expectLater(
+      uploader.upload(
+        attachmentId: 'f1',
+        diveId: 'd1',
+        localFile: file,
+        mimeType: 'application/pdf',
+      ),
+      throwsA(isA<UploadFailedException>().having(
+          (e) => e.cause,
+          'cause',
+          isA<AttachmentQuotaExceededException>().having(
+              (q) => q.usage.usedBytes, 'usedBytes', 980000000))),
+    );
+
+    expect(delays, isEmpty);
+    final row = await dao.get('f1') as FileAttachment;
+    expect(row.uploadState, UploadState.failed);
+    expect(await pendingStore.pathFor('f1'), file.path);
+  });
+
+  test('discard clears the pending-upload entry', () async {
+    await pendingStore.set('f1', '/tmp/scan.pdf');
+    final client = MockClient((_) async => http.Response('', 500));
+    final uploader = AttachmentUploaderImpl(
+      signer: AttachmentSigner(
+        baseUrl: 'https://signer.example.com',
+        session: session,
+        httpClient: client,
+      ),
+      dao: dao,
+      pendingStore: pendingStore,
+      httpClient: client,
+    );
+
+    await uploader.discard('f1');
+
+    expect(await pendingStore.pathFor('f1'), isNull);
+  });
 }

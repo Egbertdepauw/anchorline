@@ -25,6 +25,7 @@ import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 import 'package:subsurface_core/data/models/sample_set.dart';
 import 'package:subsurface_core/data/sample_codec/sample_codec.dart';
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
+import '../models/dive_attachment.dart' show UploadState;
 import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
 import 'database.dart';
 
@@ -226,6 +227,14 @@ class DiveDao {
   /// re-hash, "Reset Everything"), becomes an orphan whose CRUD op wedges the
   /// sync upload queue forever (the case [CcrloggerBackendConnector] now has to
   /// drop). Cascading here stops the orphan forming in the first place.
+  ///
+  /// The dive's `dive_attachments` rows are cascade-soft-deleted the same way
+  /// (#198). A live attachment under a hidden dive can't be reached in the UI
+  /// any more, yet its R2 object keeps counting against the account's upload
+  /// limit; once soft-deleted, `AttachmentPurger` frees it after 24 h like any
+  /// other deleted attachment. Attachments always hang off a real dive id
+  /// (a merged dive's media are anchored to its earliest member), so a merged
+  /// dive is covered by deleting each of its members.
   Future<void> softDeleteDive(String id) async {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     await _ps.writeTransaction((tx) async {
@@ -247,6 +256,13 @@ class DiveDao {
         'WHERE dive_id = ? AND deleted_at IS NULL',
         [_ownerId, nowMs, nowMs, id],
       );
+      await tx.execute(
+        'UPDATE dive_attachments '
+        'SET owner_id = ?, deleted_at = ?, updated_at = ?, '
+        '    version = COALESCE(version, 0) + 1 '
+        "WHERE parent_kind = 'dive' AND parent_id = ? AND deleted_at IS NULL",
+        [_ownerId, nowMs, nowMs, id],
+      );
     });
   }
 
@@ -255,6 +271,11 @@ class DiveDao {
   /// together with the dive (matched by the dive's deleted_at instant), so undo
   /// puts the dive back exactly as it was — without reviving a bailout cylinder
   /// the user had removed before deleting the dive.
+  ///
+  /// The dive's `dive_attachments` are restored by the same deleted_at match.
+  /// An attachment the user deleted on its own beforehand keeps its earlier
+  /// timestamp and stays deleted; so does one the purge sweep already purged
+  /// (`upload_state = 3`): its R2 object is gone.
   Future<void> restoreDive(String id) async {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     await _ps.writeTransaction((tx) async {
@@ -274,6 +295,14 @@ class DiveDao {
           '    version = COALESCE(version, 0) + 1 '
           'WHERE dive_id = ? AND deleted_at = ?',
           [_ownerId, nowMs, id, deletedAt],
+        );
+        await tx.execute(
+          'UPDATE dive_attachments '
+          'SET owner_id = ?, deleted_at = NULL, updated_at = ?, '
+          '    version = COALESCE(version, 0) + 1 '
+          "WHERE parent_kind = 'dive' AND parent_id = ? AND deleted_at = ? "
+          'AND upload_state != ?',
+          [_ownerId, nowMs, id, deletedAt, UploadState.purged.wire],
         );
       }
     });

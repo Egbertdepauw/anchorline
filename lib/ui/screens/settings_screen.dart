@@ -12,6 +12,7 @@ import '../../data/db/dive_dao.dart';
 import '../../data/local_data_wiper.dart';
 import '../../labels/label_print_service.dart';
 import '../../sync/attachments/attachment_object_wiper.dart';
+import '../../sync/attachments/attachment_signer.dart';
 import '../../sync/cloud/account_deleter.dart';
 import '../../sync/cloud/auth_service.dart';
 import '../../shearwater/ble/ble_debug_logger.dart';
@@ -72,6 +73,10 @@ class SettingsScreen extends StatefulWidget {
   /// Delete account row. Tests omit it and the row is hidden.
   final AccountDeleter? accountDeleter;
 
+  /// Fetches attachment storage usage for the Sync tab's Attachments row;
+  /// null hides the row.
+  final Future<AttachmentUsage> Function()? loadAttachmentUsage;
+
   /// Whether to show the theme picker. Follows [kThemingEnabled], which is
   /// on in every build; kept as a parameter so tests can hide the section.
   final bool showThemePicker;
@@ -95,6 +100,7 @@ class SettingsScreen extends StatefulWidget {
     this.subsurfaceBootstrapImporter,
     this.labelPrinting,
     this.accountDeleter,
+    this.loadAttachmentUsage,
     this.showThemePicker = kThemingEnabled,
   });
 
@@ -162,6 +168,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onReassign: _forceStampOwnerId,
                 onPushStuck: _drainQueueManually,
                 onReset: canReset ? _confirmAndResetLocalData : null,
+                loadAttachmentUsage: widget.loadAttachmentUsage,
                 onDeleteAccount: widget.accountDeleter == null
                     ? null
                     : () => runDeleteAccountFlow(

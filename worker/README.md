@@ -23,13 +23,65 @@ presign needed because the binding has direct write access).
 
 | Method | Path             | Body                                                                    | Returns                                              |
 | ------ | ---------------- | ----------------------------------------------------------------------- | ---------------------------------------------------- |
-| POST   | `/sign-upload`   | `{ dive_id, filename, mime_type, size_bytes }`                          | `{ object_key, upload_url, expires_at }`             |
+| POST   | `/sign-upload`   | `{ dive_id, filename, mime_type, size_bytes }`                          | `{ object_key, upload_url, expires_at, ...usage }`   |
 | POST   | `/sign-download` | `{ object_key }`                                                        | `{ download_url, expires_at }`                       |
 | POST   | `/delete`        | `{ object_key }`                                                        | `{ ok: true }`                                       |
+| POST   | `/usage`         | (none)                                                                  | `{ used_bytes, limit_bytes, used_files, limit_files, uploads_enabled }` |
 | OPTIONS| `*`              | —                                                                       | 204 + CORS headers                                   |
 
 All routes require `Authorization: Bearer <supabase-jwt>`. Errors are
 JSON `{ error: "..." }` with appropriate 4xx/5xx status codes.
+
+`/sign-upload` additionally refuses with:
+
+| Status | Body                                                                                     | Meaning                                  |
+| ------ | ---------------------------------------------------------------------------------------- | ---------------------------------------- |
+| 503    | `{ "error": "uploads_disabled" }`                                                        | kill switch (`UPLOADS_ENABLED`) is off   |
+| 429    | `{ "error": "rate_limited" }`                                                            | per-account rate limit hit               |
+| 413    | `{ "error": "quota_exceeded", used_bytes, limit_bytes, used_files, limit_files }`        | the file would exceed the account quota  |
+
+Checks run in that order. A misconfigured `QUOTA_BYTES`/`QUOTA_FILES`
+fails closed with a 500 `internal_error`. `/usage` is read-only, so the kill
+switch does not affect it, but it does a full R2 list and is rate-limited
+on the same binding with its own budget (key `usage:<sub>`), returning
+the same 429.
+
+## Upload limits (issue #196)
+
+Configured in `wrangler.toml`:
+
+- `QUOTA_BYTES` / `QUOTA_FILES`: default per-account limits (integers as strings).
+- `QUOTA_OVERRIDES`: JSON `{ "<user uuid>": { "bytes": n, "files": n } }`
+  for accounts with their own limits. `wrangler deploy` replaces
+  dashboard-edited vars, so edit it in `wrangler.toml`, not the dashboard.
+- `UPLOADS_ENABLED`: kill switch; only the exact string `"true"` allows uploads.
+- `SIGN_UPLOAD_LIMITER`: Workers Rate Limiting binding (20 requests per
+  60 s per account) on `/sign-upload`, declared as `[[unsafe.bindings]]`
+  because wrangler 3 has no first-class key for it.
+
+Usage is measured by listing the account's objects in R2, not from a
+counter, so it cannot drift.
+
+### Kill switch runbook
+
+To stop all uploads (abuse, a runaway client, an R2 bill spike):
+
+1. Set `UPLOADS_ENABLED = "false"` in `wrangler.toml`.
+2. Run `wrangler deploy`.
+
+From then on every `/sign-upload` returns 503 `uploads_disabled`; the
+app shows "Uploads are paused right now" and keeps the rows `failed` so
+they can be retried later. Downloads, deletes and `/usage` keep working.
+To turn uploads back on, set it to `"true"` and deploy again.
+
+Editing the variable in the Cloudflare dashboard takes effect at once,
+which is handy in an emergency, but the next `wrangler deploy` resets
+it to the value in `wrangler.toml` (the same caveat as
+`QUOTA_OVERRIDES`). After a dashboard edit, change `wrangler.toml` to
+match before anyone deploys.
+
+Second exception to the Worker freeze (2026-11-10, #196): upload limits
+only. Moves to the Dart service when it takes over signing.
 
 ## Deployment
 
@@ -117,10 +169,15 @@ curl -sS -X POST "$WORKER/sign-upload" \
   }'
 # => { "object_key": "attachments/<sub>/test-dive-001/<uuid>.txt",
 #      "upload_url": "https://<account>.r2.cloudflarestorage.com/...",
-#      "expires_at": 1700000000 }
+#      "expires_at": 1700000000,
+#      "used_bytes": 0, "limit_bytes": 1000000000,
+#      "used_files": 0, "limit_files": 1000 }
+# The four usage fields describe the account before this upload.
 
-# PUT the file to the upload_url. Content-Type MUST match what you
-# claimed above — it's part of the signature.
+# PUT the file to the upload_url. Both Content-Type and Content-Length
+# are part of the signature: Content-Type MUST equal the mime_type
+# above and Content-Length MUST equal size_bytes (11 here), or R2
+# answers 403. curl sets Content-Length from the body.
 echo -n "hello world" | curl -sS -X PUT \
   -H "Content-Type: text/plain" \
   --data-binary @- \

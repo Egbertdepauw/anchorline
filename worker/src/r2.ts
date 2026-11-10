@@ -17,7 +17,7 @@
 // from a dive boat with marginal LTE. If a client takes >5 minutes per
 // chunk it's a bigger problem.
 
-import { AwsClient } from "aws4fetch";
+import { AwsClient, AwsV4Signer } from "aws4fetch";
 
 const PRESIGN_TTL_SECONDS = 300;
 
@@ -53,6 +53,7 @@ export interface PresignParams {
 
 export interface PresignUploadParams extends PresignParams {
   mimeType: string;
+  sizeBytes: number;
 }
 
 export interface PresignedUrl {
@@ -61,34 +62,42 @@ export interface PresignedUrl {
 }
 
 /**
- * Mint a presigned PUT URL for `key`. The client must use the exact
- * Content-Type header it tells us about — that's part of the signature,
- * so a mismatch will get a 403 from R2. We sign Content-Type into the
- * URL deliberately to prevent a client claiming "image/png" and then
- * uploading something else.
+ * Mint a presigned PUT URL for `key`. Both Content-Type and
+ * Content-Length are part of the signature: R2 rejects (403) a PUT
+ * whose type or byte length differs from what we signed. That is what
+ * makes the MIME allowlist and the size cap enforceable, since the
+ * client otherwise chooses both after validation. aws4fetch leaves
+ * these headers out by default (UNSIGNABLE_HEADERS), so `allHeaders`
+ * is required.
+ *
+ * We use AwsV4Signer with a plain headers object rather than a Request
+ * so the signed headers don't depend on how a runtime treats
+ * Content-Length on a body-less Request.
  */
 export async function presignUpload(params: PresignUploadParams): Promise<PresignedUrl> {
-  const client = makeClient(params.accessKeyId, params.secretAccessKey);
-  const baseUrl = r2Endpoint(params.accountId, params.bucket, params.key);
-  const url = new URL(baseUrl);
+  const url = new URL(r2Endpoint(params.accountId, params.bucket, params.key));
   url.searchParams.set("X-Amz-Expires", String(PRESIGN_TTL_SECONDS));
 
-  const signedRequest = await client.sign(
-    new Request(url.toString(), {
-      method: "PUT",
-      headers: {
-        "Content-Type": params.mimeType,
-      },
-    }),
-    {
-      aws: { signQuery: true },
-      // signQuery moves the auth into the URL query string, which is
-      // exactly the presigned-URL shape the client needs.
+  const signer = new AwsV4Signer({
+    method: "PUT",
+    url: url.toString(),
+    headers: {
+      "Content-Type": params.mimeType,
+      "Content-Length": String(params.sizeBytes),
     },
-  );
+    accessKeyId: params.accessKeyId,
+    secretAccessKey: params.secretAccessKey,
+    service: "s3",
+    region: "auto",
+    // signQuery moves the auth into the URL query string, which is
+    // exactly the presigned-URL shape the client needs.
+    signQuery: true,
+    allHeaders: true,
+  });
+  const signed = await signer.sign();
 
   return {
-    url: signedRequest.url,
+    url: signed.url.toString(),
     expiresAt: Math.floor(Date.now() / 1000) + PRESIGN_TTL_SECONDS,
   };
 }
