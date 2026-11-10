@@ -38,12 +38,40 @@ class _FakeAuthClient implements AuthClient {
   }) async =>
       AuthResponse();
 
+  /// When set, sign-up answers as Supabase does with Confirm email on.
+  bool confirmEmail = false;
+  AuthResponse Function()? verifyResponder;
+  Object? resendError;
+  final verifyCalls = <({String email, String code})>[];
+  final resendCalls = <String>[];
+
   @override
   Future<AuthResponse> signUp({
     required String email,
     required String password,
   }) async =>
-      AuthResponse();
+      confirmEmail ? AuthResponse(user: _user('new', email)) : AuthResponse();
+
+  @override
+  Future<AuthResponse> verifyEmailCode({
+    required String email,
+    required String code,
+  }) async {
+    verifyCalls.add((email: email, code: code));
+    final r = verifyResponder!();
+    if (r.session != null) {
+      session = r.session;
+      user = r.user;
+    }
+    return r;
+  }
+
+  @override
+  Future<void> resendEmailCode({required String email}) async {
+    resendCalls.add(email);
+    final e = resendError;
+    if (e != null) throw e;
+  }
 
   @override
   Future<void> signOut() async {
@@ -463,6 +491,118 @@ void main() {
       expect(find.text('Password'), findsOneWidget);
       expect(find.text('Create account'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Sign in'), findsOneWidget);
+    });
+
+    group('email confirmation code', () {
+      Future<void> createAccount(WidgetTester tester, String email) async {
+        await tester.tap(find.text('Sign in to enable cloud sync'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.widgetWithText(TextField, 'Email'), email);
+        await tester.enterText(
+            find.widgetWithText(TextField, 'Password'), 'secret-pw');
+        await tester.tap(find.text('Create account'));
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('Create account asks for the code, and the code signs in',
+          (tester) async {
+        final h = await _build(signedIn: false);
+        addTearDown(() {
+          h.auth.dispose();
+          h.client.dispose();
+        });
+        h.client.confirmEmail = true;
+        final u = _user('new', 'new@example.test');
+        h.client.verifyResponder = () => AuthResponse(
+            session: Session(accessToken: 't', tokenType: 'bearer', user: u),
+            user: u);
+        await _pump(tester, h.settings, h.auth);
+        await _tab(tester, 'sync');
+        await createAccount(tester, 'new@example.test');
+
+        expect(find.text('Confirm your email'), findsOneWidget);
+        expect(find.textContaining('new@example.test'), findsOneWidget);
+
+        await tester.enterText(
+            find.byKey(const ValueKey('auth-code-field')), '123456');
+        await tester.tap(find.widgetWithText(FilledButton, 'Verify'));
+        await tester.pumpAndSettle();
+
+        expect(h.client.verifyCalls.single,
+            (email: 'new@example.test', code: '123456'));
+        expect(find.text('Confirm your email'), findsNothing);
+        expect(find.text('Signed in as new@example.test'), findsOneWidget);
+        expect(h.auth.isSignedIn, isTrue);
+      });
+
+      testWidgets('a wrong code keeps the code step and says why',
+          (tester) async {
+        final h = await _build(signedIn: false);
+        addTearDown(() {
+          h.auth.dispose();
+          h.client.dispose();
+        });
+        h.client.confirmEmail = true;
+        h.client.verifyResponder = () => throw const AuthException(
+            'Token has expired or is invalid',
+            code: 'otp_expired');
+        await _pump(tester, h.settings, h.auth);
+        await _tab(tester, 'sync');
+        await createAccount(tester, 'new@example.test');
+
+        await tester.enterText(
+            find.byKey(const ValueKey('auth-code-field')), '000000');
+        await tester.tap(find.widgetWithText(FilledButton, 'Verify'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Confirm your email'), findsOneWidget);
+        expect(find.textContaining('wrong or has expired'), findsOneWidget);
+        expect(h.auth.isSignedIn, isFalse);
+      });
+
+      testWidgets('Resend code sends a new code, or shows why it could not',
+          (tester) async {
+        final h = await _build(signedIn: false);
+        addTearDown(() {
+          h.auth.dispose();
+          h.client.dispose();
+        });
+        h.client.confirmEmail = true;
+        await _pump(tester, h.settings, h.auth);
+        await _tab(tester, 'sync');
+        await createAccount(tester, 'new@example.test');
+
+        await tester.tap(find.text('Resend code'));
+        await tester.pumpAndSettle();
+        expect(h.client.resendCalls, ['new@example.test']);
+        expect(find.text('New code sent to new@example.test.'), findsOneWidget);
+
+        h.client.resendError = const AuthException(
+            'For security purposes, you can only request this after 42 '
+            'seconds.',
+            code: 'over_email_send_rate_limit');
+        await tester.tap(find.text('Resend code'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('after 42'), findsOneWidget);
+        expect(find.text('New code sent to new@example.test.'), findsNothing);
+      });
+
+      testWidgets('Back returns to the sign-in form', (tester) async {
+        final h = await _build(signedIn: false);
+        addTearDown(() {
+          h.auth.dispose();
+          h.client.dispose();
+        });
+        h.client.confirmEmail = true;
+        await _pump(tester, h.settings, h.auth);
+        await _tab(tester, 'sync');
+        await createAccount(tester, 'new@example.test');
+
+        await tester.tap(find.text('Back'));
+        await tester.pumpAndSettle();
+        expect(find.text('Cloud sync sign-in'), findsOneWidget);
+        expect(find.text('Create account'), findsOneWidget);
+      });
     });
 
     testWidgets('shows email + sign out when signed in', (tester) async {

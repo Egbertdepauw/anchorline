@@ -32,8 +32,10 @@ class AuthFailure extends AuthResult {
   const AuthFailure(this.message);
 }
 
-/// Returned from [AuthService.signUp] when Supabase is configured to
-/// require email confirmation before issuing a session.
+/// Returned from [AuthService.signUp], and from [AuthService.signIn] for an
+/// account that was never confirmed, when Supabase requires email
+/// confirmation before issuing a session. The user finishes by entering
+/// the emailed code in [AuthService.verifyEmailCode].
 class AuthEmailConfirmationRequired extends AuthResult {
   final String email;
   const AuthEmailConfirmationRequired(this.email);
@@ -55,6 +57,16 @@ abstract class AuthClient {
     required String email,
     required String password,
   });
+
+  /// Confirms a new account with the code from its "Confirm signup" email.
+  /// Returns a session on success.
+  Future<AuthResponse> verifyEmailCode({
+    required String email,
+    required String code,
+  });
+
+  /// Sends a fresh "Confirm signup" email with a new code.
+  Future<void> resendEmailCode({required String email});
 
   Future<void> signOut();
 }
@@ -88,6 +100,17 @@ class SupabaseAuthClient implements AuthClient {
     required String password,
   }) =>
       _auth.signUp(email: email, password: password);
+
+  @override
+  Future<AuthResponse> verifyEmailCode({
+    required String email,
+    required String code,
+  }) =>
+      _auth.verifyOTP(email: email, token: code, type: OtpType.signup);
+
+  @override
+  Future<void> resendEmailCode({required String email}) =>
+      _auth.resend(email: email, type: OtpType.signup);
 
   @override
   Future<void> signOut() => _auth.signOut();
@@ -125,6 +148,13 @@ class AuthService extends ChangeNotifier {
       notifyListeners();
       return AuthSuccess(user);
     } on AuthException catch (e) {
+      if (_isEmailNotConfirmed(e)) {
+        // The account exists but was never confirmed. Send a fresh code so
+        // the code step has one to check. If this send is refused (the
+        // 60-second limit, say), the user can still press Resend code.
+        await resendEmailCode(email: email);
+        return AuthEmailConfirmationRequired(email);
+      }
       return AuthFailure(e.message);
     } catch (e) {
       return AuthFailure(e.toString());
@@ -139,6 +169,13 @@ class AuthService extends ChangeNotifier {
       final res = await _client.signUp(email: email, password: password);
       // Supabase returns user-without-session when email confirmation is on.
       if (res.session == null && res.user != null) {
+        // For an address that already has a confirmed account, Supabase
+        // hides that fact: it returns a user with no identities and sends
+        // no email. Say so instead of waiting for a code that never comes.
+        if (res.user!.identities?.isEmpty ?? false) {
+          return const AuthFailure(
+              'An account with this email already exists. Sign in instead.');
+        }
         return AuthEmailConfirmationRequired(email);
       }
       final user = res.user;
@@ -154,6 +191,55 @@ class AuthService extends ChangeNotifier {
       return AuthFailure(e.toString());
     }
   }
+
+  /// Finishes sign-up with the code from the "Confirm signup" email and
+  /// signs the user in.
+  Future<AuthResult> verifyEmailCode({
+    required String email,
+    required String code,
+  }) async {
+    try {
+      final res = await _client.verifyEmailCode(
+        email: email,
+        code: code.replaceAll(RegExp(r'\s'), ''),
+      );
+      final user = res.user;
+      if (res.session == null || user == null) {
+        return const AuthFailure(
+            'That code did not sign you in. Ask for a new one with Resend code.');
+      }
+      await _runBackfill(user.id);
+      notifyListeners();
+      return AuthSuccess(user);
+    } on AuthException catch (e) {
+      if (e.code == 'otp_expired') {
+        return const AuthFailure(
+            'That code is wrong or has expired. Check it, or ask for a new '
+            'one with Resend code.');
+      }
+      return AuthFailure(e.message);
+    } catch (e) {
+      return AuthFailure(e.toString());
+    }
+  }
+
+  /// Sends a new confirmation code. Returns null when sent, or a message
+  /// to show when Supabase refused (for example within 60 seconds of the
+  /// previous one).
+  Future<String?> resendEmailCode({required String email}) async {
+    try {
+      await _client.resendEmailCode(email: email);
+      return null;
+    } on AuthException catch (e) {
+      return e.message;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  static bool _isEmailNotConfirmed(AuthException e) =>
+      e.code == 'email_not_confirmed' ||
+      e.message == 'Email not confirmed';
 
   Future<void> signOut() async {
     await _client.signOut();
