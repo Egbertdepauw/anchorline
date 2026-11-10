@@ -92,3 +92,6 @@ AuthKey_*
 *.pfx
 *.pem
 *.mobileprovision
+
+# Per-account attachment usage report output (contains owner ids)
+worker/usage-report*.csv
