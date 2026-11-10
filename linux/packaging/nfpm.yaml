@@ -37,7 +37,8 @@ contents:
       mode: 0644
 
 # System libraries the bundle links (GTK, libsecret for the keyring,
-# curl and zlib for Sentry, lzma) plus BlueZ for Bluetooth. Package names
+# curl and zlib for Sentry, lzma) plus BlueZ for Bluetooth. OpenSSL 3
+# for Subsurface sync ships inside the bundle (build_appimage.sh). Package names
 # differ per distribution family.
 depends:
   - libgtk-3-0

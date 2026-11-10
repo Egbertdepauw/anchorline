@@ -125,6 +125,18 @@ git2dart_linux="$src/linux/flutter/ephemeral/.plugin_symlinks/git2dart_binaries/
 install -m 0755 "$git2dart_linux/libssh2.so" "$appdir/usr/bin/lib/libssh2.so.1"
 patchelf --set-rpath '$ORIGIN' "$appdir/usr/bin/lib/libgit2.so"
 
+# libgit2.so and libssh2 link OpenSSL 3 (libssl.so.3, libcrypto.so.3).
+# Fedora and Arch have moved on to OpenSSL 4, so ship this image's OpenSSL 3
+# next to them. Its built-in CA path only exists on Debian-family systems;
+# the app points libgit2 at its bundled CA file instead (ssl_certs.dart).
+for so in libssl.so.3 libcrypto.so.3; do
+  sys_so="/usr/lib/x86_64-linux-gnu/$so"
+  [[ -f "$sys_so" ]] || die "$sys_so not found; is this Ubuntu 22.04?"
+  install -m 0755 "$sys_so" "$appdir/usr/bin/lib/$so"
+done
+patchelf --set-rpath '$ORIGIN' "$appdir/usr/bin/lib/libssh2.so.1"
+patchelf --set-rpath '$ORIGIN' "$appdir/usr/bin/lib/libssl.so.3"
+
 # Flutter copies the plugin libraries out of the build tree with their
 # build-time RUNPATH (this machine's linux/flutter/ephemeral). Point them at
 # their own folder, where libflutter_linux_gtk.so is. crashpad_handler

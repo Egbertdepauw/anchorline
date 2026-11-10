@@ -1,14 +1,15 @@
-// Real-network test for libgit2's CA configuration on macOS (issue #91).
+// Real-network test for libgit2's CA configuration on macOS (issue #91)
+// and Linux.
 //
 // Every other subsurface_git test talks to `file://` remotes, which never
 // touch TLS — that's how the git2dart_binaries 1.12.1 bump shipped with
 // HTTPS sync broken on macOS. This one clones a small public repo over
 // HTTPS, so a binaries bump that loses its trust anchors fails here.
 //
-// macOS only: CI (Linux) uses the system OpenSSL paths and isn't affected.
+// macOS and Linux, which both use the bundled CA file.
 // Skips itself when there's no network.
 
-@TestOn('mac-os')
+@TestOn('mac-os || linux')
 library;
 
 import 'dart:io';
