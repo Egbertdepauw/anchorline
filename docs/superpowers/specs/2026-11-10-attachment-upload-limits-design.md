@@ -1,10 +1,11 @@
 # Per-account attachment upload limits: design
 
 Date: 2026-11-10
-Status: **proposal, awaiting Egbert's review.** Written without a Q&A
-round at Egbert's request. Every number and every "Decision" below is a
-proposal until he confirms it.
-Follows: issue #189 ("per-account upload limits on the Worker" was left
+Status: **approved by Egbert on 2026-11-10, as written.** It was
+written without a Q&A round at his request. The "proposed" numbers and
+decisions below, including §9, are confirmed. The per-account overrides
+are still picked after the usage report (§7, step 2).
+Issue: #196. Follows: issue #189 ("per-account upload limits on the Worker" was left
 for later when email confirmation shipped in PR #190).
 Related: `2026-10-07-subscriptions-entitlements-design.md`,
 `2026-11-08-account-deletion-design.md`, and the standing backend
