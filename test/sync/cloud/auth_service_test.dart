@@ -15,6 +15,8 @@ class _FakeAuthClient implements AuthClient {
   void Function()? resendResponder;
   final verifyCalls = <({String email, String code})>[];
   final resendCalls = <String>[];
+  final setPasswordCalls = <String>[];
+  Object? setPasswordError;
 
   @override
   User? get currentUser => user;
@@ -69,6 +71,13 @@ class _FakeAuthClient implements AuthClient {
   Future<void> resendEmailCode({required String email}) async {
     resendCalls.add(email);
     resendResponder?.call();
+  }
+
+  @override
+  Future<void> setPassword(String password) async {
+    setPasswordCalls.add(password);
+    final e = setPasswordError;
+    if (e != null) throw e;
   }
 
   @override
@@ -187,6 +196,53 @@ void main() {
       fake.dispose();
     });
 
+    test('the confirmer sets the password typed in the form', () async {
+      final fake = _FakeAuthClient();
+      final u = _user('abc', 'a@b.test');
+      fake.verifyResponder = () => AuthResponse(session: _session(u), user: u);
+
+      final svc = AuthService(client: fake);
+      final res = await svc.verifyEmailCode(
+          email: 'a@b.test', code: '123456', password: 'mine');
+      expect(res, isA<AuthSuccess>());
+      expect(fake.setPasswordCalls, ['mine']);
+
+      svc.dispose();
+      fake.dispose();
+    });
+
+    test('an unchanged password (same_password) still signs in', () async {
+      final fake = _FakeAuthClient();
+      final u = _user('abc', 'a@b.test');
+      fake.verifyResponder = () => AuthResponse(session: _session(u), user: u);
+      fake.setPasswordError = const AuthException(
+          'New password should be different from the old password.',
+          statusCode: '422',
+          code: 'same_password');
+
+      final svc = AuthService(client: fake);
+      final res = await svc.verifyEmailCode(
+          email: 'a@b.test', code: '123456', password: 'mine');
+      expect(res, isA<AuthSuccess>());
+      expect(svc.isSignedIn, isTrue);
+
+      svc.dispose();
+      fake.dispose();
+    });
+
+    test('no password given leaves the password alone', () async {
+      final fake = _FakeAuthClient();
+      final u = _user('abc', 'a@b.test');
+      fake.verifyResponder = () => AuthResponse(session: _session(u), user: u);
+
+      final svc = AuthService(client: fake);
+      await svc.verifyEmailCode(email: 'a@b.test', code: '123456');
+      expect(fake.setPasswordCalls, isEmpty);
+
+      svc.dispose();
+      fake.dispose();
+    });
+
     test('a wrong or expired code gives a plain message', () async {
       final fake = _FakeAuthClient();
       fake.verifyResponder = () => throw const AuthException(
@@ -265,6 +321,39 @@ void main() {
       final res = await svc.signUp(email: 'taken@b.test', password: 'pw');
       expect(res, isA<AuthFailure>());
       expect((res as AuthFailure).message, contains('already exists'));
+
+      svc.dispose();
+      fake.dispose();
+    });
+
+    test('a genuine new user with an email identity gets the code step',
+        () async {
+      final fake = _FakeAuthClient();
+      final u = User(
+        id: 'new',
+        appMetadata: const {},
+        userMetadata: const {},
+        aud: 'authenticated',
+        email: 'new@b.test',
+        createdAt: DateTime.now().toIso8601String(),
+        identities: [
+          UserIdentity.fromMap(const {
+            'id': 'new',
+            'identity_id': 'ident-1',
+            'user_id': 'new',
+            'identity_data': {'email': 'new@b.test'},
+            'provider': 'email',
+            'created_at': '2026-11-10T12:00:00Z',
+            'last_sign_in_at': '2026-11-10T12:00:00Z',
+            'updated_at': '2026-11-10T12:00:00Z',
+          }),
+        ],
+      );
+      fake.signUpResponder = () => AuthResponse(user: u);
+
+      final svc = AuthService(client: fake);
+      final res = await svc.signUp(email: 'new@b.test', password: 'pw');
+      expect(res, isA<AuthEmailConfirmationRequired>());
 
       svc.dispose();
       fake.dispose();

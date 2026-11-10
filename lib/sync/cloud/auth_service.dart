@@ -68,6 +68,9 @@ abstract class AuthClient {
   /// Sends a fresh "Confirm signup" email with a new code.
   Future<void> resendEmailCode({required String email});
 
+  /// Sets the signed-in user's password.
+  Future<void> setPassword(String password);
+
   Future<void> signOut();
 }
 
@@ -111,6 +114,10 @@ class SupabaseAuthClient implements AuthClient {
   @override
   Future<void> resendEmailCode({required String email}) =>
       _auth.resend(email: email, type: OtpType.signup);
+
+  @override
+  Future<void> setPassword(String password) =>
+      _auth.updateUser(UserAttributes(password: password));
 
   @override
   Future<void> signOut() => _auth.signOut();
@@ -194,9 +201,16 @@ class AuthService extends ChangeNotifier {
 
   /// Finishes sign-up with the code from the "Confirm signup" email and
   /// signs the user in.
+  ///
+  /// [password] is the one typed in the sign-in form. Supabase keeps the
+  /// password from the first sign-up for an address that was never
+  /// confirmed, so someone who signed up earlier with another person's
+  /// address would still know the password once the owner confirms it.
+  /// Setting it here means whoever proves they own the address chooses it.
   Future<AuthResult> verifyEmailCode({
     required String email,
     required String code,
+    String? password,
   }) async {
     try {
       final res = await _client.verifyEmailCode(
@@ -208,14 +222,18 @@ class AuthService extends ChangeNotifier {
         return const AuthFailure(
             'That code did not sign you in. Ask for a new one with Resend code.');
       }
+      if (password != null && password.isNotEmpty) {
+        await _applyPassword(password);
+      }
       await _runBackfill(user.id);
       notifyListeners();
       return AuthSuccess(user);
     } on AuthException catch (e) {
       if (e.code == 'otp_expired') {
         return const AuthFailure(
-            'That code is wrong or has expired. Check it, or ask for a new '
-            'one with Resend code.');
+            'That code is wrong or has expired. If you already clicked the '
+            'link in the email, press Back and sign in. Otherwise check the '
+            'code, or ask for a new one with Resend code.');
       }
       return AuthFailure(e.message);
     } catch (e) {
@@ -234,6 +252,19 @@ class AuthService extends ChangeNotifier {
       return e.message;
     } catch (e) {
       return e.toString();
+    }
+  }
+
+  Future<void> _applyPassword(String password) async {
+    try {
+      await _client.setPassword(password);
+    } on AuthException catch (e) {
+      // `same_password` is the normal case: one person, one sign-up.
+      if (e.code != 'same_password') {
+        debugPrint('Setting the password after confirmation failed: $e');
+      }
+    } catch (e) {
+      debugPrint('Setting the password after confirmation failed: $e');
     }
   }
 

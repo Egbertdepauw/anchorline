@@ -73,6 +73,12 @@ class _FakeAuthClient implements AuthClient {
     if (e != null) throw e;
   }
 
+  final setPasswordCalls = <String>[];
+
+  @override
+  Future<void> setPassword(String password) async =>
+      setPasswordCalls.add(password);
+
   @override
   Future<void> signOut() async {
     user = null;
@@ -530,6 +536,7 @@ void main() {
 
         expect(h.client.verifyCalls.single,
             (email: 'new@example.test', code: '123456'));
+        expect(h.client.setPasswordCalls, ['secret-pw']);
         expect(find.text('Confirm your email'), findsNothing);
         expect(find.text('Signed in as new@example.test'), findsOneWidget);
         expect(h.auth.isSignedIn, isTrue);

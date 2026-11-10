@@ -286,8 +286,11 @@ class _AuthSheetState extends State<_AuthSheet> {
       setState(() => _error = 'Enter the code from the email');
       return;
     }
-    await _submit(
-        () => widget.authService.verifyEmailCode(email: email, code: code));
+    await _submit(() => widget.authService.verifyEmailCode(
+          email: email,
+          code: code,
+          password: _passwordCtrl.text,
+        ));
   }
 
   Future<void> _resend() async {
@@ -341,6 +344,13 @@ class _AuthSheetState extends State<_AuthSheet> {
         });
       case AuthFailure(:final message):
         setState(() => _error = message);
+        // The disabled field lost focus while busy; put the cursor back so
+        // a mistyped code can be fixed straight away.
+        if (_pendingEmail != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _codeFocus.requestFocus();
+          });
+        }
     }
   }
 
@@ -372,8 +382,9 @@ class _AuthSheetState extends State<_AuthSheet> {
           Text('Confirm your email',
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 16),
-          Text('Enter the code we emailed to $email. No email after a few '
-              'minutes? Check your spam folder, or press Resend code.'),
+          Text('Enter the code from the newest email we sent to $email. '
+              'No email after a few minutes? Check your spam folder, or '
+              'press Resend code.'),
           const SizedBox(height: 16),
           TextField(
             key: const ValueKey('auth-code-field'),
