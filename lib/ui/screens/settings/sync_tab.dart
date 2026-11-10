@@ -29,6 +29,7 @@ class SyncTab extends StatelessWidget {
     required this.onReassign,
     required this.onPushStuck,
     this.onReset,
+    this.onDeleteAccount,
   });
 
   final AuthService? authService;
@@ -40,6 +41,9 @@ class SyncTab extends StatelessWidget {
   final VoidCallback onReassign;
   final VoidCallback onPushStuck;
   final VoidCallback? onReset;
+
+  /// Null hides the Delete account row.
+  final VoidCallback? onDeleteAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -54,9 +58,21 @@ class SyncTab extends StatelessWidget {
               ListenableBuilder(
                 listenable: auth,
                 builder: (_, _) => auth.isSignedIn
-                    ? _SignedInRow(
-                        authService: auth,
-                        syncStatusSource: syncStatusSource,
+                    ? Column(
+                        children: [
+                          _SignedInRow(
+                            authService: auth,
+                            syncStatusSource: syncStatusSource,
+                          ),
+                          if (onDeleteAccount != null)
+                            SettingRow(
+                              key: const ValueKey('settings-account-delete'),
+                              title: 'Delete account',
+                              helper: 'Deletes your account and all its data',
+                              danger: true,
+                              onTap: onDeleteAccount,
+                            ),
+                        ],
                       )
                     : _SignInRow(authService: auth),
               ),

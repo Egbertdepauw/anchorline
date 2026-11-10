@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/app_data_folder.dart';
 import '../data/db/database.dart';
+import '../data/local_data_wiper.dart';
 import '../data/db/dive_annotations_dao.dart';
 import '../data/db/dive_attachments_dao.dart';
 import '../data/db/dive_dao.dart';
@@ -29,6 +30,7 @@ import '../sync/attachments/attachment_signer.dart';
 import '../sync/attachments/attachment_uploader.dart';
 import '../sync/attachments/attachment_uploader_impl.dart';
 import '../sync/attachments/pending_upload_store.dart';
+import '../sync/cloud/account_deleter.dart';
 import '../sync/cloud/auth_service.dart';
 import '../sync/cloud/ccrlogger_backend_connector.dart'
     show SupabaseAuthSessionSource;
@@ -130,6 +132,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final AttachmentUploader _attachmentUploader;
   late final PendingUploadStore _pendingUploadStore;
   late final AttachmentObjectWiper _attachmentObjectWiper;
+  late final AccountDeleter _accountDeleter;
 
   // Subsurface git sync (Phase E). Constructed asynchronously because
   // appDataPaths() returns a Future and our [initState] is sync. Until [_initSubsurfaceSync] resolves,
@@ -266,6 +269,31 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _attachmentObjectWiper = AttachmentObjectWiper(
       dao: _diveAttachmentsDao,
       signer: _attachmentSigner,
+    );
+    _accountDeleter = AccountDeleter(
+      session: SupabaseAuthSessionSource(Supabase.instance.client),
+      backend: SupabaseAccountDeletionBackend(Supabase.instance.client),
+      sync: widget.cloudSyncCoordinator,
+      localStorageKeys: _diveAttachmentsDao.listAllStorageKeys,
+      deleteObject: (k) => _attachmentSigner.deleteObject(objectKey: k),
+      signOut: widget.authService.signOut,
+      wipeLocal: () async {
+        try {
+          await LocalDataWiper(db: widget.db, powerSyncDb: widget.powerSyncDb)
+              .wipe();
+        } finally {
+          // Runs even when the wipe throws: the account is already gone, so
+          // clear what can be cleared. The pending-upload paths are best
+          // effort (a leftover entry names a row that no longer exists), and
+          // go first so a cache failure cannot skip them.
+          try {
+            await _pendingUploadStore.clearAll();
+          } catch (e) {
+            debugPrint('Account deletion: pending-upload clear failed: $e');
+          }
+          await _attachmentCache.clear();
+        }
+      },
     );
 
     _subsurfaceCredentials = SecureStorageSubsurfaceCredentials();
@@ -583,6 +611,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           powerSyncDb: widget.powerSyncDb,
                           cloudDataWiper: widget.cloudDataWiper,
                           attachmentObjectWiper: _attachmentObjectWiper,
+                          accountDeleter: _accountDeleter,
                           subsurfaceOrchestrator: _subsurfaceOrchestrator,
                           subsurfaceCredentials: _subsurfaceCredentials,
                           diveDao: _diveDao,
