@@ -97,6 +97,7 @@ async function handleSignUpload(request: Request, env: Env): Promise<Response> {
     secretAccessKey: env.R2_SECRET_ACCESS_KEY,
     key: objectKey,
     mimeType: parsed.mimeType,
+    sizeBytes: parsed.sizeBytes,
   });
 
   const payload: SignUploadResponse = {
