@@ -20,6 +20,7 @@ import '../notifiers/dive_attachments_notifier.dart';
 import '../screens/add_link_sheet.dart';
 import '../screens/edit_attachment_sheet.dart';
 import 'attachment_tile.dart';
+import 'storage_full_dialog.dart';
 
 class DiveAttachmentsSection extends StatefulWidget {
   final DiveAttachmentsNotifier notifier;
@@ -57,10 +58,19 @@ class DiveAttachmentsSection extends StatefulWidget {
 class _DiveAttachmentsSectionState extends State<DiveAttachmentsSection> {
   DiveAttachmentsNotifier get _n => widget.notifier;
 
+  /// The refusal whose dialog this widget already showed, so a rebuild
+  /// doesn't show it again.
+  StorageFullState? _shownStorageFull;
+
   @override
   void initState() {
     super.initState();
     _n.addListener(_onNotifierChanged);
+    // A refusal that landed while this widget wasn't mounted.
+    if (_n.storageFull != null) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _maybeShowStorageFull());
+    }
   }
 
   @override
@@ -70,17 +80,32 @@ class _DiveAttachmentsSectionState extends State<DiveAttachmentsSection> {
   }
 
   void _onNotifierChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    _maybeShowStorageFull();
+  }
+
+  Future<void> _maybeShowStorageFull() async {
+    final state = _n.storageFull;
+    if (!mounted || state == null || identical(state, _shownStorageFull)) {
+      return;
+    }
+    _shownStorageFull = state;
+    final choice = await showStorageFullDialog(context, state: state);
+    if (!mounted || !identical(_n.storageFull, state)) return;
+    if (choice == StorageFullChoice.freeSpace) {
+      await _n.freeSpaceAndRetry();
+    } else {
+      _n.dismissStorageFull();
+    }
   }
 
   Future<void> _addFiles() async {
     final picked = await widget.pickFiles(context);
     if (picked == null || picked.isEmpty) return;
-    for (final p in picked) {
-      // Sequential: the uploader serialises naturally and a parallel
-      // burst would race the DAO's display_order computation.
-      await _n.addFile(p);
-    }
+    // One after another; a storage-full refusal stops the batch and
+    // keeps the rest for "Free space now".
+    await _n.addFiles(picked);
   }
 
   Future<void> _addLink() async {
@@ -156,7 +181,7 @@ class _DiveAttachmentsSectionState extends State<DiveAttachmentsSection> {
               padding: EdgeInsets.only(top: 8),
               child: LinearProgressIndicator(minHeight: 2),
             ),
-          if (_n.error != null)
+          if (_n.error != null || _n.uploadsPaused)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Container(
@@ -173,14 +198,20 @@ class _DiveAttachmentsSectionState extends State<DiveAttachmentsSection> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        _n.error!,
+                        _n.uploadsPaused ? kUploadsPausedMessage : _n.error!,
                         style: TextStyle(color: scheme.onErrorContainer),
                       ),
                     ),
-                    TextButton(
-                      onPressed: _n.reload,
-                      child: const Text('Retry'),
-                    ),
+                    if (_n.uploadsPaused)
+                      TextButton(
+                        onPressed: _n.dismissUploadsPaused,
+                        child: const Text('Dismiss'),
+                      )
+                    else
+                      TextButton(
+                        onPressed: _n.reload,
+                        child: const Text('Retry'),
+                      ),
                   ],
                 ),
               ),
@@ -216,6 +247,7 @@ class _DiveAttachmentsSectionState extends State<DiveAttachmentsSection> {
                             a.uploadState == UploadState.failed
                         ? () => _retry(a)
                         : null,
+                    storageFull: _n.isStorageFull(a.id),
                     loadFile: widget.loadFile,
                   ),
                 );

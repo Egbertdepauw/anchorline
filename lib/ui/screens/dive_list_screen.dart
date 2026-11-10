@@ -9,6 +9,7 @@ import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../analysis/merge/merged_sample_builder.dart';
 import '../../sync/attachments/attachment_downloader.dart';
+import '../../sync/attachments/attachment_purger.dart';
 import '../../sync/attachments/attachment_uploader.dart';
 import '../models/dive_list_item.dart';
 import '../notifiers/dive_list_notifier.dart';
@@ -34,6 +35,7 @@ class DiveListScreen extends StatefulWidget {
   final DiveAttachmentsDao? attachmentsDao;
   final AttachmentUploader? attachmentUploader;
   final AttachmentDownloader? attachmentDownloader;
+  final AttachmentPurger? attachmentPurger;
   final SettingsNotifier settingsNotifier;
 
   const DiveListScreen({
@@ -45,6 +47,7 @@ class DiveListScreen extends StatefulWidget {
     this.attachmentsDao,
     this.attachmentUploader,
     this.attachmentDownloader,
+    this.attachmentPurger,
     required this.settingsNotifier,
   });
 
@@ -315,6 +318,7 @@ class _DiveListScreenState extends State<DiveListScreen> {
                                         widget.attachmentUploader,
                                     attachmentDownloader:
                                         widget.attachmentDownloader,
+                                    attachmentPurger: widget.attachmentPurger,
                                     settingsNotifier: widget.settingsNotifier,
                                   ),
                                 MergedGroupItem(:final group) =>
@@ -357,6 +361,7 @@ class _DiveTileWithSparkline extends StatelessWidget {
   final DiveAttachmentsDao? attachmentsDao;
   final AttachmentUploader? attachmentUploader;
   final AttachmentDownloader? attachmentDownloader;
+  final AttachmentPurger? attachmentPurger;
   final SettingsNotifier settingsNotifier;
 
   const _DiveTileWithSparkline({
@@ -369,6 +374,7 @@ class _DiveTileWithSparkline extends StatelessWidget {
     required this.attachmentsDao,
     required this.attachmentUploader,
     required this.attachmentDownloader,
+    required this.attachmentPurger,
     required this.settingsNotifier,
   });
 
@@ -400,6 +406,7 @@ class _DiveTileWithSparkline extends StatelessWidget {
                 attachmentsDao: attachmentsDao,
                 attachmentUploader: attachmentUploader,
                 attachmentDownloader: attachmentDownloader,
+                attachmentPurger: attachmentPurger,
                 settingsNotifier: settingsNotifier,
               ),
             ));

@@ -4,6 +4,7 @@
 //   POST   /sign-upload     mint a presigned R2 PUT URL
 //   POST   /sign-download   mint a presigned R2 GET URL
 //   POST   /delete          delete an R2 object via the BUCKET binding
+//   POST   /usage           current attachment usage and limits
 //   OPTIONS *               CORS preflight
 //
 // Every non-preflight route requires `Authorization: Bearer <jwt>`.
@@ -16,6 +17,8 @@
 import { handlePreflight, withCors } from "./cors";
 import { keepAlive } from "./keepalive";
 import { extractBearerToken, JwtError, verifySupabaseJwt } from "./jwt";
+import { usageFor } from "./quota";
+import { gateSignUpload, rateLimitResponse } from "./upload_gate";
 import { buildObjectKey, presignDownload, presignUpload } from "./r2";
 import {
   objectKeyBelongsToUser,
@@ -29,6 +32,7 @@ import type {
   ErrorResponse,
   SignDownloadResponse,
   SignUploadResponse,
+  UsageResponse,
 } from "./types";
 
 export default {
@@ -70,6 +74,8 @@ async function dispatch(request: Request, env: Env, url: URL): Promise<Response>
       return handleSignDownload(request, env);
     case "/delete":
       return handleDelete(request, env);
+    case "/usage":
+      return handleUsage(request, env);
     default:
       return jsonError(404, "not_found");
   }
@@ -89,6 +95,9 @@ async function handleSignUpload(request: Request, env: Env): Promise<Response> {
     return jsonError(400, (err as ValidationError).message);
   }
 
+  const gate = await gateSignUpload(env, auth.sub, parsed.sizeBytes);
+  if (!gate.ok) return gate.response;
+
   const objectKey = buildObjectKey(auth.sub, parsed.diveId, parsed.ext);
   const presigned = await presignUpload({
     accountId: env.R2_ACCOUNT_ID,
@@ -97,9 +106,11 @@ async function handleSignUpload(request: Request, env: Env): Promise<Response> {
     secretAccessKey: env.R2_SECRET_ACCESS_KEY,
     key: objectKey,
     mimeType: parsed.mimeType,
+    sizeBytes: parsed.sizeBytes,
   });
 
   const payload: SignUploadResponse = {
+    ...gate.usage,
     object_key: objectKey,
     upload_url: presigned.url,
     expires_at: presigned.expiresAt,
@@ -163,6 +174,22 @@ async function handleDelete(request: Request, env: Env): Promise<Response> {
   await env.BUCKET.delete(key);
 
   const payload: DeleteResponse = { ok: true };
+  return Response.json(payload);
+}
+
+// Read-only, so not behind UPLOADS_ENABLED. It does a full R2 list(), so
+// it is rate-limited on its own budget ("usage:" key prefix).
+async function handleUsage(request: Request, env: Env): Promise<Response> {
+  const auth = await authenticate(request, env);
+  if (auth instanceof Response) return auth;
+
+  const limited = await rateLimitResponse(env, `usage:${auth.sub}`);
+  if (limited) return limited;
+
+  const payload: UsageResponse = {
+    ...(await usageFor(env, auth.sub)),
+    uploads_enabled: env.UPLOADS_ENABLED === "true",
+  };
   return Response.json(payload);
 }
 

@@ -27,6 +27,11 @@ class AttachmentTile extends StatelessWidget {
   /// is supplied.
   final VoidCallback? onRetry;
 
+  /// Whether a `failed` file row was refused because attachment storage
+  /// is full; its badge then reads "Storage full" instead of
+  /// "Upload failed".
+  final bool storageFull;
+
   /// Optional drag-handle that the parent ReorderableListView wires
   /// up to its own index. When null the tile renders without a
   /// dedicated leading drag affordance (used in tests / non-reorder
@@ -46,6 +51,7 @@ class AttachmentTile extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     this.onRetry,
+    this.storageFull = false,
     this.dragHandle,
     this.loadFile,
   });
@@ -60,6 +66,7 @@ class AttachmentTile extends StatelessWidget {
           onEdit: onEdit,
           onDelete: onDelete,
           onRetry: onRetry,
+          storageFull: storageFull,
           dragHandle: dragHandle,
           loadFile: loadFile,
         ),
@@ -80,6 +87,7 @@ class _FileTile extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback? onRetry;
+  final bool storageFull;
   final Widget? dragHandle;
   final Future<File> Function(String storageKey)? loadFile;
 
@@ -89,6 +97,7 @@ class _FileTile extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onRetry,
+    required this.storageFull,
     required this.dragHandle,
     required this.loadFile,
   });
@@ -169,7 +178,7 @@ class _FileTile extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
-                'Upload failed',
+                storageFull ? 'Storage full' : 'Upload failed',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,

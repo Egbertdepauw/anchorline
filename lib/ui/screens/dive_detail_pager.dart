@@ -25,6 +25,7 @@ import '../../data/db/dive_attachments_dao.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../sync/attachments/attachment_downloader.dart';
+import '../../sync/attachments/attachment_purger.dart';
 import '../../sync/attachments/attachment_uploader.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import '../notifiers/dive_attachments_notifier.dart';
@@ -45,6 +46,10 @@ class DiveDetailPager extends StatefulWidget {
   final DiveAttachmentsDao? attachmentsDao;
   final AttachmentUploader? attachmentUploader;
   final AttachmentDownloader? attachmentDownloader;
+
+  /// Offers "Free space now" in the storage-full dialog; without it the
+  /// dialog only says OK.
+  final AttachmentPurger? attachmentPurger;
   final SettingsNotifier settingsNotifier;
 
   /// CCRLog-internal sequence number per dive id (newest = N, oldest = 1).
@@ -62,6 +67,7 @@ class DiveDetailPager extends StatefulWidget {
     this.attachmentsDao,
     this.attachmentUploader,
     this.attachmentDownloader,
+    this.attachmentPurger,
     required this.settingsNotifier,
     this.sequenceByDiveId = const {},
   })  : assert(dives.length > 0, 'DiveDetailPager needs at least one dive'),
@@ -122,7 +128,11 @@ class _DiveDetailPagerState extends State<DiveDetailPager> {
     final uploader = widget.attachmentUploader;
     if (dao == null || uploader == null) return null;
     return _attachmentsByDiveId.putIfAbsent(dive.id, () {
-      final n = DiveAttachmentsNotifier(dao, uploader);
+      final n = DiveAttachmentsNotifier(
+        dao,
+        uploader,
+        purger: widget.attachmentPurger,
+      );
       n.load(dive.id);
       return n;
     });

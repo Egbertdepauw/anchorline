@@ -70,6 +70,18 @@ class DiveAttachmentsDao {
     return rows.map(_rowToModel).whereType<FileAttachment>().toList();
   }
 
+  /// File rows soft-deleted before [deletedBefore] whose R2 object has not
+  /// been purged yet. Feeds the purge sweep (`AttachmentPurger`).
+  Future<List<FileAttachment>> listPurgeable(DateTime deletedBefore) async {
+    final rows = await _db.getAll(
+      "SELECT * FROM dive_attachments "
+      "WHERE kind = 'file' AND deleted_at IS NOT NULL AND deleted_at < ? "
+      "AND upload_state != ?",
+      [deletedBefore.millisecondsSinceEpoch, UploadState.purged.wire],
+    );
+    return rows.map(_rowToModel).whereType<FileAttachment>().toList();
+  }
+
   /// Storage keys for every file row attached to a dive (live and
   /// soft-deleted both — the future hard-delete sweep needs the
   /// tombstoned ones too). Link rows have null storage_key and are
@@ -317,8 +329,62 @@ class DiveAttachmentsDao {
     });
   }
 
-  /// Soft-deletes a row. The R2 object stays put; a future hard-delete
-  /// sweep will reap orphaned objects via [listStorageKeysForDive].
+  /// Claims a soft-deleted file row for purging: sets `upload_state = 3`
+  /// (bumping version, updated_at, owner_id like [markUploadFailed]) only if
+  /// the row is still soft-deleted, still has [expectedKey], and is not
+  /// already purged. Returns whether the claim succeeded. The purger claims
+  /// BEFORE deleting the R2 object so a concurrent UNDO ([restore]) or a
+  /// finishing upload ([markUploaded]) can't race the delete.
+  Future<bool> markPurged(String id, {required String expectedKey}) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return _db.writeTransaction((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT version FROM dive_attachments '
+        'WHERE id = ? AND deleted_at IS NOT NULL AND storage_key = ? '
+        'AND upload_state != ?',
+        [id, expectedKey, UploadState.purged.wire],
+      );
+      if (existing == null) return false;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE dive_attachments SET '
+        'owner_id = ?, upload_state = ?, updated_at = ?, version = ? '
+        'WHERE id = ?',
+        [_ownerId, UploadState.purged.wire, now, newVersion, id],
+      );
+      return true;
+    });
+  }
+
+  /// Undoes a [markPurged] claim when the R2 delete failed, restoring the
+  /// row's [previous] upload state so the next sweep retries it. Only
+  /// touches a row that is still purged with [expectedKey].
+  Future<void> revertPurge(
+    String id, {
+    required String expectedKey,
+    required UploadState previous,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.writeTransaction((tx) async {
+      final existing = await tx.getOptional(
+        'SELECT version FROM dive_attachments '
+        'WHERE id = ? AND upload_state = ? AND storage_key = ?',
+        [id, UploadState.purged.wire, expectedKey],
+      );
+      if (existing == null) return;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE dive_attachments SET '
+        'owner_id = ?, upload_state = ?, updated_at = ?, version = ? '
+        'WHERE id = ?',
+        [_ownerId, previous.wire, now, newVersion, id],
+      );
+    });
+  }
+
+  /// Soft-deletes a row. The R2 object stays put until the purge sweep
+  /// (`AttachmentPurger`) deletes it, 24 h later, and marks the row
+  /// purged via [markPurged].
   /// Mirrors [DiveDao.softDeleteDive]'s version-bump pattern.
   Future<void> softDelete(String id) async {
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -339,14 +405,16 @@ class DiveAttachmentsDao {
   }
 
   /// Clears the soft-delete flag — paired with the SnackBar UNDO action.
+  /// A purged row (R2 object already gone) stays deleted: no-op.
   Future<void> restore(String id) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await _db.writeTransaction((tx) async {
       final existing = await tx.getOptional(
-        'SELECT version FROM dive_attachments WHERE id = ?',
+        'SELECT version, upload_state FROM dive_attachments WHERE id = ?',
         [id],
       );
       if (existing == null) return;
+      if (existing['upload_state'] == UploadState.purged.wire) return;
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_attachments SET '

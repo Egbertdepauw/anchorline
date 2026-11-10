@@ -44,6 +44,11 @@ abstract class AttachmentUploader {
   /// that can satisfy this; there is no sensible fallback here so
   /// the default is left abstract.
   Future<void> retry(FileAttachment row);
+
+  /// Forgets the cached local file for [attachmentId], so nothing
+  /// retries it. Used when the add is abandoned (the Worker refused it
+  /// for quota and the notifier soft-deleted the row).
+  Future<void> discard(String attachmentId);
 }
 
 /// What the file picker hands the notifier when the user attaches a

@@ -25,8 +25,27 @@ SUPABASE_URL = "https://pnbtiwgflfkpdqnfsoaj.supabase.co"
 # by the scheduled keep-alive; never put a service-role key here.
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBuYnRpd2dmbGZrcGRxbmZzb2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MjY2MjUsImV4cCI6MjA5NDAwMjYyNX0.Wag2WwI4hjRXnJDMk9ARB0zFjTcFzxapX_p6EV3PC38"
 
+# Per-account attachment limits (issue #196, see src/quota.ts).
+QUOTA_BYTES = "1000000000"
+QUOTA_FILES = "1000"
+# Kill switch for new uploads; only the exact string "true" enables them.
+UPLOADS_ENABLED = "true"
+# JSON `{ "<user uuid>": { "bytes": n, "files": n } }`, set from the usage
+# report. `wrangler deploy` replaces dashboard-edited vars, so edit it here,
+# not in the dashboard.
+QUOTA_OVERRIDES = "{}"
+
 # TEMPORARY (issue #98): Supabase pauses free-tier projects with too little
 # database activity over 7 days. One tiny read a day prevents that. Remove
 # this trigger (and src/keepalive.ts) when the project moves to a paid plan.
 [triggers]
 crons = ["23 4 * * *"]
+
+# Per-account rate limit on /sign-upload (each call does an R2 list()).
+# Wrangler 3 has no first-class key for this, hence `unsafe`. The
+# namespace_id is an arbitrary integer, unique within the Cloudflare account.
+[[unsafe.bindings]]
+name = "SIGN_UPLOAD_LIMITER"
+type = "ratelimit"
+namespace_id = "1196"
+simple = { limit = 20, period = 60 }
