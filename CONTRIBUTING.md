@@ -13,9 +13,42 @@ us traceability ("why was this changed?") and keeps `main` always shippable.
 3. **Write tests** for the change (TDD where possible — see CLAUDE.md).
 4. **Conventional Commits** for messages: `fix(sync): never hand …`,
    `feat(import): per-dive progress …`, `chore(version): 1.0.0+27 → +28`.
+   **Sign off every commit** with `git commit -s` (see the licence
+   section below).
 5. **Open a PR** linked to the issue (`Closes #123`). Wait for green CI.
 6. **Squash merge** so each issue lands as one clean commit on `main`.
 7. **Delete the branch** after merge.
+
+## Licence of your contribution
+
+By contributing to Anchorline, you agree that your contribution is
+licensed under the GNU General Public License, version 2
+([`LICENSE`](LICENSE)). You also grant the additional permission for app
+store distribution described in [`LICENSING.md`](LICENSING.md). That
+permission lets the official app ship through the Apple App Store, the
+Mac App Store and Google Play.
+
+If your contribution includes code from another project, say so in the
+pull request, keep that project's copyright and licence notices, and add
+it to [`NOTICE.md`](NOTICE.md). Code from libdivecomputer (LGPL 2.1 or
+later) and Subsurface (GPL version 2) is welcome on those terms.
+
+The name "Anchorline" and its logo stay with the project; contributing
+code doesn't change that. See [`LICENSING.md`](LICENSING.md).
+
+### Sign your commits (Developer Certificate of Origin)
+
+Every commit needs a `Signed-off-by` line. It certifies that you wrote the
+change, or otherwise have the right to submit it under the licence above,
+as set out in the Developer Certificate of Origin 1.1
+(<https://developercertificate.org>). Add it with:
+
+```
+git commit -s
+```
+
+This adds a line like `Signed-off-by: Your Name <you@example.com>`. Use
+your real name and an email address you can be reached at.
 
 ## Why this matters
 
@@ -61,6 +94,8 @@ Types match the commit prefix: `fix/`, `feat/`, `chore/`, `docs/`,
   the fix, both now and against future regressions.
 - Run `flutter analyze` and `flutter test` locally; both must pass before
   you push.
+- Parser changes must keep every fixture in `test/fixtures/` passing.
+- Write commit messages, code comments and documentation in English.
 
 ### 4. Commit
 

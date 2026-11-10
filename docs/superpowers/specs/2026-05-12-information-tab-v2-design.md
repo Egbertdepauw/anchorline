@@ -121,7 +121,7 @@ The tab controller is created/disposed only when coords are present — when the
 
 - **Annotation schema** — golden test that the migration applies cleanly to an empty DB and to a DB seeded at the prior schema version.
 - **DiveAnnotation model** — round-trip JSON / copyWith handles `divemaster`.
-- **Mapper** — `mapDive` emits `divemaster "Wendy De Joode"` when annotation carries it; emits `divemaster ""` when null/empty (current behaviour).
+- **Mapper** — `mapDive` emits `divemaster "Alex Marlin"` when annotation carries it; emits `divemaster ""` when null/empty (current behaviour).
 - **Bootstrap import** — when source Dive-NNN has `divemaster "Bob"`, the imported annotation has `divemaster == 'Bob'`.
 - **Information section widget test** — DC section renders all expected rows for a CCR Petrel 3 dive; Scrubber sub-block is hidden when configured stack is null; sensor calibration row shows three coloured dots.
 - **Site tab-group widget test** — coords absent → no tab strip, form visible. Coords present → tab strip visible, Map tab is the initial tab, Form tab still reachable.

@@ -119,7 +119,7 @@ void main() {
         needsSignoff: true,
         captureSource: CaptureSource.bridgeOk,
         bridgeRecordId: 'a1b2c3d4e5f6/1a2b3c4d-7',
-        analysedFor: 'Wendy',
+        analysedFor: 'Alex',
       );
       final a = GasAnalysis.fromNew('id-1', n);
       expect(a.id, 'id-1');
@@ -141,7 +141,7 @@ void main() {
       expect(a.needsSignoff, isTrue);
       expect(a.captureSource, CaptureSource.bridgeOk);
       expect(a.bridgeRecordId, 'a1b2c3d4e5f6/1a2b3c4d-7');
-      expect(a.analysedFor, 'Wendy');
+      expect(a.analysedFor, 'Alex');
     });
 
     test('no desired mix gives null targets and bailout by default', () {
@@ -211,7 +211,7 @@ void main() {
         needsSignoff: true,
         captureSource: CaptureSource.usbOk,
         bridgeRecordId: 'usb/1a2b3c4d-7',
-        analysedFor: 'Wendy',
+        analysedFor: 'Alex',
       );
       for (final value in [false, true]) {
         final after = before.withNeedsSignoff(value);
@@ -269,7 +269,7 @@ void main() {
         needsSignoff: true,
         captureSource: CaptureSource.bridgeOk,
         bridgeRecordId: 'a1b2c3d4e5f6/1a2b3c4d-7',
-        analysedFor: 'Wendy',
+        analysedFor: 'Alex',
       );
       final after = before.applyEdit(const GasAnalysisEdit(
         desiredMix: DesiredMix(21, 35),

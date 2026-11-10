@@ -1251,7 +1251,7 @@ void main() {
         entry('newest', DateTime(2026, 10, 30), 32.1, 0,
             analysedBy: null, needsSignoff: true),
         entry('mid', DateTime(2026, 10, 29), 32.1, 0, analysedBy: '  '),
-        entry('older', DateTime(2026, 10, 28), 32.1, 0, analysedBy: 'Wendy'),
+        entry('older', DateTime(2026, 10, 28), 32.1, 0, analysedBy: 'Alex'),
         entry('oldest', DateTime(2026, 10, 27), 32.1, 0, analysedBy: 'Jan'),
       ]);
       await pump(tester, GasAnalysisLogScreen(dao: dao));
@@ -1260,14 +1260,14 @@ void main() {
           .widget<TextField>(_key('analysis-edit-diver'))
           .controller!
           .text;
-      expect(diver, 'Wendy');
+      expect(diver, 'Alex');
     });
 
     testWidgets('the sheet of an old entry with no name does not suggest one',
         (tester) async {
       final dao = FakeGasAnalysesDao(analyses: [
         entry('newest', DateTime(2026, 10, 30), 32.1, 0, analysedBy: null),
-        entry('older', DateTime(2026, 10, 28), 32.1, 0, analysedBy: 'Wendy'),
+        entry('older', DateTime(2026, 10, 28), 32.1, 0, analysedBy: 'Alex'),
       ]);
       await pump(tester, GasAnalysisLogScreen(dao: dao));
       await tapAndSettle(tester, _key('analysis-newest'));

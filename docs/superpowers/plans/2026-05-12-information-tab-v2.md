@@ -176,7 +176,7 @@ void main() {
     final now = DateTime.utc(2026, 5, 12);
     final ann = DiveAnnotation(
       diveId: 'dive_dm_1',
-      divemaster: 'Wendy De Joode',
+      divemaster: 'Alex Marlin',
       createdAt: now,
       updatedAt: now,
     );
@@ -185,7 +185,7 @@ void main() {
     final back = await dao.get('dive_dm_1');
 
     expect(back, isNotNull);
-    expect(back!.divemaster, 'Wendy De Joode');
+    expect(back!.divemaster, 'Alex Marlin');
   });
 
   test('divemaster null round-trips as null', () async {
@@ -344,9 +344,9 @@ If the file exists, add this test inside the main `void main()`:
     await n.load('dive_dm_3');
     expect(n.divemaster, isNull);
 
-    n.setDivemaster('Wendy');
+    n.setDivemaster('Alex');
 
-    expect(n.divemaster, 'Wendy');
+    expect(n.divemaster, 'Alex');
     expect(n.dirty, isTrue);
   });
 ```
@@ -430,7 +430,7 @@ void main() {
     final mapper = CcrlogToSubsurfaceMapper();
     final ann = DiveAnnotation(
       diveId: 'd1',
-      divemaster: 'Wendy De Joode',
+      divemaster: 'Alex Marlin',
       createdAt: DateTime.utc(2026, 5, 12),
       updatedAt: DateTime.utc(2026, 5, 12),
     );
@@ -444,7 +444,7 @@ void main() {
       nextSubsurfaceDiveNumber: 1,
     );
     final text = serializeSubsurfaceFile(SubsurfaceFile(lines: mapped.diveLines));
-    expect(text, contains('divemaster "Wendy De Joode"'));
+    expect(text, contains('divemaster "Alex Marlin"'));
   });
 
   test('mapDive emits empty divemaster when annotation field is null', () {
@@ -734,11 +734,11 @@ void main() {
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Divemaster name'),
-      'Wendy De Joode',
+      'Alex Marlin',
     );
     await tester.pump();
 
-    expect(notifier.divemaster, 'Wendy De Joode');
+    expect(notifier.divemaster, 'Alex Marlin');
   });
 }
 ```

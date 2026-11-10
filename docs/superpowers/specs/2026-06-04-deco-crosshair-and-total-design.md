@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-04
 **Status:** Approved design, ready for implementation plan
-**Source:** Wendy's wishlist, item "Deco" (first of three features; statistics and renumbering get their own specs)
+**Source:** Alex's wishlist, item "Deco" (first of three features; statistics and renumbering get their own specs)
 
 ## Goal
 

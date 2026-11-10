@@ -1,5 +1,5 @@
 duration 30:00 min
 divesiteid 9792f50a
-buddy "Peter Maronier, Joey Mens"
+buddy "Jo Anchor, Chris Wrasse"
 cylinder vol=15.0l workpressure=200.0bar description="15 liter" start=200.0bar end=150.0bar
 weightsystem weight=5.0kg description="unknown"

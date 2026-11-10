@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-05
 **Status:** Approved design, ready for implementation plan
-**Source:** Wendy's wishlist, item "Dive renumbering" (third of three; deco = PR #60, statistics = PR #61)
+**Source:** Alex's wishlist, item "Dive renumbering" (third of three; deco = PR #60, statistics = PR #61)
 
 ## Goal
 

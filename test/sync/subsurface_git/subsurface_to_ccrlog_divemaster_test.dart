@@ -48,7 +48,7 @@ notes ""
       // treat this as absent rather than storing an empty string.
       const diveText = '''
 divemaster ""
-buddy "Wendy"
+buddy "Alex"
 notes ""
 ''';
       final diveFile =
@@ -66,7 +66,7 @@ notes ""
       );
 
       expect(result, isNotNull);
-      // annotation may still be non-null (buddy "Wendy" is present), but
+      // annotation may still be non-null (buddy "Alex" is present), but
       // divemaster must be null — empty string is not stored.
       expect(result!.annotation!.divemaster, isNull);
     });

@@ -52,10 +52,10 @@ void main() {
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Divemaster name'),
-      'Wendy De Joode',
+      'Alex Marlin',
     );
     await tester.pump();
 
-    expect(notifier.divemaster, 'Wendy De Joode');
+    expect(notifier.divemaster, 'Alex Marlin');
   });
 }
