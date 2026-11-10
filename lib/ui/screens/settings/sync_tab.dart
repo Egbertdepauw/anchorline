@@ -3,12 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../../data/db/dive_dao.dart';
+import '../../../sync/attachments/attachment_signer.dart';
 import '../../../sync/cloud/auth_service.dart';
 import '../../../sync/cloud/sync_status_source.dart';
 import '../../../sync/subsurface_git/bootstrap_importer.dart';
 import '../../../sync/subsurface_git/credentials.dart';
 import '../../../sync/subsurface_git/sync_orchestrator.dart';
 import '../../components/setting_row.dart';
+import '../../format/attachment_usage_format.dart';
 import '../../widgets/subsurface_sync_section.dart';
 
 /// Sync: your account, Subsurface Cloud, and the repair tools.
@@ -30,6 +32,7 @@ class SyncTab extends StatelessWidget {
     required this.onPushStuck,
     this.onReset,
     this.onDeleteAccount,
+    this.loadAttachmentUsage,
   });
 
   final AuthService? authService;
@@ -44,6 +47,10 @@ class SyncTab extends StatelessWidget {
 
   /// Null hides the Delete account row.
   final VoidCallback? onDeleteAccount;
+
+  /// Fetches the account's attachment storage usage. Null hides the
+  /// Attachments row.
+  final Future<AttachmentUsage> Function()? loadAttachmentUsage;
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +71,8 @@ class SyncTab extends StatelessWidget {
                             authService: auth,
                             syncStatusSource: syncStatusSource,
                           ),
+                          if (loadAttachmentUsage != null)
+                            _AttachmentUsageRow(load: loadAttachmentUsage!),
                           if (onDeleteAccount != null)
                             SettingRow(
                               key: const ValueKey('settings-account-delete'),
@@ -136,6 +145,43 @@ class _SignInRow extends StatelessWidget {
       title: 'Sign in to enable cloud sync',
       helper: 'Optional. The app works fully offline.',
       onTap: () => _openAuthSheet(context, authService),
+    );
+  }
+}
+
+/// The Attachments row. Holds the usage future in State so it loads once
+/// when the signed-in branch first builds (and again after a sign-out and
+/// sign-in, which disposes and recreates it), not on every rebuild.
+class _AttachmentUsageRow extends StatefulWidget {
+  final Future<AttachmentUsage> Function() load;
+  const _AttachmentUsageRow({required this.load});
+
+  @override
+  State<_AttachmentUsageRow> createState() => _AttachmentUsageRowState();
+}
+
+class _AttachmentUsageRowState extends State<_AttachmentUsageRow> {
+  late final Future<AttachmentUsage> _usage = widget.load();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<AttachmentUsage>(
+      future: _usage,
+      builder: (_, snapshot) {
+        final String text;
+        if (snapshot.hasError) {
+          text = 'Unavailable';
+        } else if (snapshot.hasData) {
+          text = formatUsageLine(snapshot.data!);
+        } else {
+          text = '…';
+        }
+        return SettingRow(
+          key: const ValueKey('settings-account-attachments'),
+          title: 'Attachments',
+          helper: text,
+        );
+      },
     );
   }
 }

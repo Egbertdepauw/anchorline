@@ -634,6 +634,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           cloudDataWiper: widget.cloudDataWiper,
                           attachmentObjectWiper: _attachmentObjectWiper,
                           accountDeleter: _accountDeleter,
+                          loadAttachmentUsage: _attachmentSigner.fetchUsage,
                           subsurfaceOrchestrator: _subsurfaceOrchestrator,
                           subsurfaceCredentials: _subsurfaceCredentials,
                           diveDao: _diveDao,
