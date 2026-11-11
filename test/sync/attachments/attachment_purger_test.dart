@@ -227,9 +227,8 @@ void main() {
 
       expect(await purger().purgeDeleted(), 0);
       expect(deleted, isEmpty);
-      // Soft-deleted with the dive's timestamp, so a dive UNDO still works.
-      expect((await dao.get('a1'))!.deletedAt!.millisecondsSinceEpoch,
-          now.subtract(const Duration(hours: 1)).millisecondsSinceEpoch);
+      // Nothing is written ahead of the purge (#201): the row stays live.
+      expect((await dao.get('a1'))!.deletedAt, isNull);
     });
 
     test('hasPurgeable counts them', () async {
@@ -238,8 +237,8 @@ void main() {
     });
 
     test('a dive deleted under 10 minutes ago is left alone', () async {
-      // An older build's UNDO doesn't restore attachments, so the backfill
-      // waits until the dive is past its UNDO window.
+      // An older build's UNDO doesn't restore attachments, so even a
+      // zero-age purge waits until the dive is past its UNDO window.
       await liveFileUnderDive('a1', 'k1', const Duration(minutes: 1));
 
       expect(await purger().hasPurgeable(), isFalse);
@@ -247,5 +246,82 @@ void main() {
       expect(deleted, isEmpty);
       expect((await dao.get('a1'))!.deletedAt, isNull);
     });
+
+    test('a dive restored before the sweep keeps its attachment (#201)',
+        () async {
+      await liveFileUnderDive('a1', 'k1', const Duration(days: 3));
+      // The restore made on another device syncs down before the sweep.
+      await db.execute(
+          'UPDATE dives SET deleted_at = NULL WHERE id = ?', ['dive-a1']);
+
+      expect(await purger().purgeDeleted(minAge: Duration.zero), 0);
+      expect(deleted, isEmpty);
+      final got = (await dao.get('a1'))! as FileAttachment;
+      expect(got.deletedAt, isNull);
+      expect(got.uploadState, UploadState.uploaded);
+    });
+
+    test('a zero-age purge spares attachments deleted with a recent dive',
+        () async {
+      // A newer build's dive delete stamps the dive's deleted_at on them.
+      await liveFileUnderDive('a1', 'k1', const Duration(minutes: 1));
+      final diveDeletedAt = (await db.get(
+              'SELECT deleted_at FROM dives WHERE id = ?', ['dive-a1']))[
+          'deleted_at'] as int;
+      await db.execute(
+        'UPDATE dive_attachments SET deleted_at = ? WHERE id = ?',
+        [diveDeletedAt, 'a1'],
+      );
+
+      expect(await purger().purgeDeleted(minAge: Duration.zero), 0);
+      expect(deleted, isEmpty);
+      expect(await purger().hasPurgeable(), isFalse);
+    });
+
+    test('a failing delete puts the attachment back live', () async {
+      await liveFileUnderDive('a1', 'k1', const Duration(days: 3));
+      deleteFn = (k) async => throw Exception('boom');
+
+      expect(await purger().purgeDeleted(), 0);
+      final got = (await dao.get('a1'))! as FileAttachment;
+      expect(got.deletedAt, isNull);
+      expect(got.uploadState, UploadState.uploaded);
+    });
+  });
+
+  test('nothing is purged while the local data is not fresh (#201)',
+      () async {
+    await addDeleted('a1', 'k1', const Duration(hours: 30));
+    var fresh = false;
+    final p = AttachmentPurger(
+      dao: dao,
+      deleteObject: deleteFn,
+      syncCaughtUp: () async => fresh,
+      now: () => now,
+    );
+
+    expect(await p.purgeDeleted(), 0);
+    expect(deleted, isEmpty);
+    expect(await stateOf('a1'), UploadState.pending);
+
+    fresh = true;
+    expect(await p.purgeDeleted(), 1);
+    expect(deleted, ['k1']);
+  });
+
+  test('a run stops when the data goes stale mid-run (#201)', () async {
+    await addDeleted('a1', 'k1', const Duration(hours: 30));
+    await addDeleted('a2', 'k2', const Duration(hours: 30));
+    // Fresh for the run's start and the first claim, stale after that.
+    var checks = 0;
+    final p = AttachmentPurger(
+      dao: dao,
+      deleteObject: deleteFn,
+      syncCaughtUp: () async => ++checks <= 2,
+      now: () => now,
+    );
+
+    expect(await p.purgeDeleted(), 1);
+    expect(deleted, hasLength(1));
   });
 }

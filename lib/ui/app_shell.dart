@@ -38,6 +38,7 @@ import '../sync/cloud/ccrlogger_backend_connector.dart'
 import '../sync/cloud/cloud_config.dart';
 import '../sync/cloud/cloud_data_wiper.dart';
 import '../sync/cloud/cloud_sync_coordinator.dart';
+import '../sync/cloud/sync_catch_up.dart';
 import '../sync/cloud/sync_health_service.dart';
 import '../sync/cloud/sync_status_source.dart';
 import '../sync/cloud/usage_tracker.dart';
@@ -121,6 +122,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final SyncStatusSource _syncStatusSource;
   late final SyncHealthService _syncHealthService;
   StreamSubscription<AuthState>? _authSignInSub;
+  /// Keeps the attachment purge off stale data (#201).
+  late final SyncCatchUp _syncCatchUp;
 
   // Attachments pipeline. The signer URL falls back to a clearly-bogus
   // host when ATTACHMENTS_SIGNER_URL isn't dart-defined so dev builds
@@ -246,6 +249,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       if (event.session != null) {
         _syncHealthService.start();
         if (event.event == AuthChangeEvent.signedIn) {
+          _syncCatchUp.markStale();
           _purgeDeletedAttachments();
         }
       } else {
@@ -275,9 +279,22 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       dao: _diveAttachmentsDao,
       signer: _attachmentSigner,
     );
+    _syncCatchUp = SyncCatchUp(
+      current: () {
+        final s = widget.powerSyncDb.currentStatus;
+        return (
+          connected: s.connected,
+          downloading: s.downloading,
+          lastSyncedAt: s.lastSyncedAt,
+        );
+      },
+      changes: widget.powerSyncDb.statusStream,
+    );
     _attachmentPurger = AttachmentPurger(
       dao: _diveAttachmentsDao,
       deleteObject: (k) => _attachmentSigner.deleteObject(objectKey: k),
+      // Only purge on data that is caught up with the server (#201).
+      syncCaughtUp: _syncCatchUp.waitCaughtUp,
     );
     _purgeDeletedAttachments();
     _accountDeleter = AccountDeleter(
@@ -350,6 +367,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _authSignInSub?.cancel();
+    _syncCatchUp.dispose();
     _syncHealthService.dispose();
     _diveListNotifier.dispose();
     _divePlanNotifier.dispose();
@@ -367,6 +385,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // WebSocket can go stale during Mac sleep / backgrounding without
     // the SyncStatus indicator reflecting it. No-op when signed out.
     if (state == AppLifecycleState.resumed) {
+      _syncCatchUp.markStale();
       widget.cloudSyncCoordinator.forceReconnect();
       _purgeDeletedAttachments();
     }
@@ -374,11 +393,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   /// Fire-and-forget sweep that deletes the R2 objects of attachments
   /// soft-deleted more than 24 h ago. Signed-in only (the Worker needs the
-  /// JWT); overlapping triggers share one run inside the purger.
+  /// JWT); overlapping triggers share one run inside the purger. A trigger
+  /// waits until a sync has completed after it (start, sign-in, resume),
+  /// because the sweep must not act on stale data (#201).
   void _purgeDeletedAttachments() {
     if (Supabase.instance.client.auth.currentSession == null) return;
-    _attachmentPurger.purgeDeleted().then<void>((_) {}).catchError((Object e) {
-      debugPrint('Attachment purge failed: $e');
+    _syncCatchUp.runWhenCaughtUp(() {
+      if (Supabase.instance.client.auth.currentSession == null) return;
+      _attachmentPurger
+          .purgeDeleted()
+          .then<void>((_) {})
+          .catchError((Object e) {
+        debugPrint('Attachment purge failed: $e');
+      });
     });
   }
 

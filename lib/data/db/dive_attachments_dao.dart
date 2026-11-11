@@ -70,16 +70,53 @@ class DiveAttachmentsDao {
     return rows.map(_rowToModel).whereType<FileAttachment>().toList();
   }
 
-  /// File rows soft-deleted before [deletedBefore] whose R2 object has not
-  /// been purged yet. Feeds the purge sweep (`AttachmentPurger`).
-  Future<List<FileAttachment>> listPurgeable(DateTime deletedBefore) async {
+  /// File rows whose R2 object has not been purged yet and that count as
+  /// deleted long enough. Feeds the purge sweep (`AttachmentPurger`):
+  /// - a row soft-deleted before [deletedBefore]; a row deleted together
+  ///   with its dive (same deleted_at as the dive) must also be older than
+  ///   [diveDeletedBefore];
+  /// - a live row whose parent dive was soft-deleted before
+  ///   [diveDeletedBefore] (#198). `DiveDao.softDeleteDive` cascades to
+  ///   attachments, but an older build's dive delete does not. Such a row
+  ///   comes back with a null `deletedAt`; [markPurged] stamps the dive's
+  ///   deleted_at when it claims it.
+  /// [diveDeletedBefore] defaults to [deletedBefore].
+  Future<List<FileAttachment>> listPurgeable(
+    DateTime deletedBefore, {
+    DateTime? diveDeletedBefore,
+  }) async {
     final rows = await _db.getAll(
-      "SELECT * FROM dive_attachments "
-      "WHERE kind = 'file' AND deleted_at IS NOT NULL AND deleted_at < ? "
-      "AND upload_state != ?",
-      [deletedBefore.millisecondsSinceEpoch, UploadState.purged.wire],
+      'SELECT * FROM dive_attachments WHERE $_purgeable',
+      _purgeableArgs(deletedBefore, diveDeletedBefore ?? deletedBefore),
     );
     return rows.map(_rowToModel).whereType<FileAttachment>().toList();
+  }
+
+  /// SQL condition for [listPurgeable] and [markPurged]; bind
+  /// [_purgeableArgs].
+  static const _purgeable = "kind = 'file' AND upload_state != ? AND ("
+      // Soft-deleted long enough, unless deleted together with its dive
+      // too recently.
+      '(deleted_at IS NOT NULL AND deleted_at < ? AND NOT ('
+      "parent_kind = 'dive' AND deleted_at >= ? AND EXISTS ("
+      'SELECT 1 FROM dives WHERE dives.id = dive_attachments.parent_id '
+      'AND dives.deleted_at = dive_attachments.deleted_at))) '
+      // Live, but its dive is deleted long enough.
+      "OR (deleted_at IS NULL AND parent_kind = 'dive' AND EXISTS ("
+      'SELECT 1 FROM dives WHERE dives.id = dive_attachments.parent_id '
+      'AND dives.deleted_at IS NOT NULL AND dives.deleted_at < ?)))';
+
+  static List<Object> _purgeableArgs(
+    DateTime deletedBefore,
+    DateTime diveDeletedBefore,
+  ) {
+    final dive = diveDeletedBefore.millisecondsSinceEpoch;
+    return [
+      UploadState.purged.wire,
+      deletedBefore.millisecondsSinceEpoch,
+      dive,
+      dive,
+    ];
   }
 
   /// Storage keys for every file row attached to a dive (live and
@@ -329,40 +366,67 @@ class DiveAttachmentsDao {
     });
   }
 
-  /// Claims a soft-deleted file row for purging: sets `upload_state = 3`
-  /// (bumping version, updated_at, owner_id like [markUploadFailed]) only if
-  /// the row is still soft-deleted, still has [expectedKey], and is not
-  /// already purged. Returns whether the claim succeeded. The purger claims
-  /// BEFORE deleting the R2 object so a concurrent UNDO ([restore]) or a
-  /// finishing upload ([markUploaded]) can't race the delete.
-  Future<bool> markPurged(String id, {required String expectedKey}) async {
+  /// Claims a file row for purging: sets `upload_state = 3` (bumping
+  /// version, updated_at, owner_id like [markUploadFailed]) only if the row
+  /// still has [expectedKey] and still meets [listPurgeable]'s condition
+  /// for the same cutoffs, checked inside the transaction. Returns whether
+  /// the claim succeeded. The purger claims BEFORE deleting the R2 object
+  /// so a concurrent UNDO ([restore]), a finishing upload ([markUploaded]),
+  /// a fresh delete or a dive restore can't race the delete.
+  ///
+  /// A live row (claimed through its deleted dive) also gets the dive's
+  /// deleted_at, in the same write. Nothing marks such a row deleted ahead
+  /// of the purge, so a dive restored on another device keeps its
+  /// attachments (#201).
+  Future<bool> markPurged(
+    String id, {
+    required String expectedKey,
+    required DateTime deletedBefore,
+    DateTime? diveDeletedBefore,
+  }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     return _db.writeTransaction((tx) async {
       final existing = await tx.getOptional(
-        'SELECT version FROM dive_attachments '
-        'WHERE id = ? AND deleted_at IS NOT NULL AND storage_key = ? '
-        'AND upload_state != ?',
-        [id, expectedKey, UploadState.purged.wire],
+        'SELECT version, COALESCE(deleted_at, ('
+        'SELECT dives.deleted_at FROM dives '
+        'WHERE dives.id = dive_attachments.parent_id)) AS del '
+        'FROM dive_attachments WHERE id = ? AND storage_key = ? '
+        'AND $_purgeable',
+        [
+          id,
+          expectedKey,
+          ..._purgeableArgs(deletedBefore, diveDeletedBefore ?? deletedBefore),
+        ],
       );
       if (existing == null) return false;
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_attachments SET '
-        'owner_id = ?, upload_state = ?, updated_at = ?, version = ? '
+        'owner_id = ?, upload_state = ?, deleted_at = ?, updated_at = ?, '
+        'version = ? '
         'WHERE id = ?',
-        [_ownerId, UploadState.purged.wire, now, newVersion, id],
+        [
+          _ownerId,
+          UploadState.purged.wire,
+          existing['del'] as int,
+          now,
+          newVersion,
+          id,
+        ],
       );
       return true;
     });
   }
 
   /// Undoes a [markPurged] claim when the R2 delete failed, restoring the
-  /// row's [previous] upload state so the next sweep retries it. Only
+  /// row's [previous] upload state and [previousDeletedAt] (null for a row
+  /// claimed through its deleted dive) so the next sweep retries it. Only
   /// touches a row that is still purged with [expectedKey].
   Future<void> revertPurge(
     String id, {
     required String expectedKey,
     required UploadState previous,
+    required DateTime? previousDeletedAt,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await _db.writeTransaction((tx) async {
@@ -375,9 +439,17 @@ class DiveAttachmentsDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_attachments SET '
-        'owner_id = ?, upload_state = ?, updated_at = ?, version = ? '
+        'owner_id = ?, upload_state = ?, deleted_at = ?, updated_at = ?, '
+        'version = ? '
         'WHERE id = ?',
-        [_ownerId, previous.wire, now, newVersion, id],
+        [
+          _ownerId,
+          previous.wire,
+          previousDeletedAt?.millisecondsSinceEpoch,
+          now,
+          newVersion,
+          id,
+        ],
       );
     });
   }
@@ -401,50 +473,6 @@ class DiveAttachmentsDao {
         'WHERE id = ?',
         [_ownerId, now, now, newVersion, id],
       );
-    });
-  }
-
-  /// Soft-deletes every live attachment whose parent dive is soft-deleted,
-  /// stamping the dive's own deleted_at. Returns the number of rows changed.
-  ///
-  /// `DiveDao.softDeleteDive` cascades to attachments since #198. This
-  /// catches the rest: dives deleted before that fix, and dives deleted by
-  /// an older build on another device that syncs down without the cascade.
-  /// Using the dive's timestamp keeps `DiveDao.restoreDive` able to revive
-  /// exactly these rows, and lets the purge sweep's 24 h grace period count
-  /// from when the dive was deleted. Idempotent; a dive row that hasn't
-  /// synced down yet is simply not matched.
-  ///
-  /// Only dives deleted at least [minDiveAge] before [now] are matched. An
-  /// older build's dive UNDO doesn't restore attachments, so backfilling a
-  /// dive that is still inside its UNDO window could leave the restored
-  /// dive with deleted attachments, which the sweep would then purge for
-  /// good. Ten minutes is far longer than that window.
-  Future<int> softDeleteUnderDeletedDives({
-    DateTime? now,
-    Duration minDiveAge = const Duration(minutes: 10),
-  }) async {
-    const where = "WHERE parent_kind = 'dive' AND deleted_at IS NULL "
-        'AND EXISTS (SELECT 1 FROM dives '
-        'WHERE dives.id = dive_attachments.parent_id '
-        'AND dives.deleted_at IS NOT NULL AND dives.deleted_at <= ?)';
-    final at = now ?? DateTime.now();
-    final cutoff = at.subtract(minDiveAge).millisecondsSinceEpoch;
-    return _db.writeTransaction((tx) async {
-      final rows =
-          await tx.getAll('SELECT id FROM dive_attachments $where', [cutoff]);
-      if (rows.isEmpty) return 0;
-      await tx.execute(
-        'UPDATE dive_attachments SET '
-        'owner_id = ?, '
-        'deleted_at = (SELECT dives.deleted_at FROM dives '
-        'WHERE dives.id = dive_attachments.parent_id), '
-        'updated_at = ?, '
-        'version = COALESCE(version, 0) + 1 '
-        '$where',
-        [_ownerId, at.millisecondsSinceEpoch, cutoff],
-      );
-      return rows.length;
     });
   }
 
