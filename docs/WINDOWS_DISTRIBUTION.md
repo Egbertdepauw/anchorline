@@ -29,8 +29,8 @@ builds are dramatically slower (and occasionally quarantined) without it.
 ## 2. Project setup
 
 ```powershell
-git clone https://github.com/Egbertdepauw/ccrlogger.git C:\src\ccrlogger
-cd C:\src\ccrlogger
+git clone https://github.com/Egbertdepauw/anchorline.git C:\src\anchorline
+cd C:\src\anchorline
 
 # dart_defines.json is gitignored (carries SENTRY_DSN). Copy it from
 # another dev machine, or recreate from the committed template:
