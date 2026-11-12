@@ -12,12 +12,19 @@
 /// appears next to the name when the editor has unsaved changes. The
 /// Save button shows "Overwrite" vs "Save" depending on whether the
 /// loaded plan's name has been changed.
+///
+/// Until the diver has accepted the planner safety warning (issue #184)
+/// the screen shows [PlannerWarningGate] instead of the tabs. The
+/// acceptance syncs per account through user_acknowledgements.
 library;
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import '../../analysis/bailout/ascent_simulator.dart' show AscentStop;
 import '../../data/models/dive_plan.dart' show kMaxPlanDepthMeters;
+import '../../data/db/user_acknowledgements_dao.dart';
 import '../notifiers/dive_plan_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/safety_colors.dart';
@@ -29,6 +36,7 @@ import '../widgets/plan_gases_editor.dart';
 import '../widgets/plan_output_section.dart';
 import '../widgets/plan_segments_editor.dart';
 import '../widgets/plan_settings_panel.dart';
+import '../widgets/planner_warning.dart';
 import '../widgets/saved_plans_sheet.dart';
 
 class DivePlanScreen extends StatefulWidget {
@@ -36,10 +44,18 @@ class DivePlanScreen extends StatefulWidget {
     super.key,
     required this.notifier,
     required this.settings,
+    required this.acknowledgements,
+    this.onHome,
   });
 
   final DivePlanNotifier notifier;
   final SettingsNotifier settings;
+
+  /// Where the planner warning acceptance is read and stored.
+  final UserAcknowledgementsDaoLike acknowledgements;
+
+  /// Leaves the planner when the diver picks "Not now" on the warning.
+  final VoidCallback? onHome;
 
   @override
   State<DivePlanScreen> createState() => _DivePlanScreenState();
@@ -48,6 +64,10 @@ class DivePlanScreen extends StatefulWidget {
 class _DivePlanScreenState extends State<DivePlanScreen> {
   late final TextEditingController _nameController;
 
+  /// Whether the planner warning is accepted; null while that's loading.
+  bool? _warningAccepted;
+  StreamSubscription<void>? _acknowledgementChanges;
+
   @override
   void initState() {
     super.initState();
@@ -55,13 +75,47 @@ class _DivePlanScreenState extends State<DivePlanScreen> {
       text: widget.notifier.planName ?? '',
     );
     widget.notifier.addListener(_syncNameFromNotifier);
+    unawaited(_checkWarningAccepted());
+    // An acceptance made on another device can arrive by sync while the
+    // gate is showing; re-check so the gate lifts by itself.
+    _acknowledgementChanges = widget.acknowledgements
+        .watchChanges()
+        .listen((_) => unawaited(_checkWarningAccepted()));
   }
 
   @override
   void dispose() {
+    unawaited(_acknowledgementChanges?.cancel());
     widget.notifier.removeListener(_syncNameFromNotifier);
     _nameController.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkWarningAccepted() async {
+    // Once accepted, stay open for this session: the planner must not
+    // close under the diver mid-plan.
+    if (_warningAccepted == true) return;
+    bool accepted;
+    try {
+      accepted = await widget.acknowledgements
+          .isAccepted(kPlannerWarningSubject, kPlannerWarningVersion);
+    } catch (e) {
+      debugPrint('DivePlanScreen: reading the warning acceptance failed: $e');
+      accepted = false;
+    }
+    if (!mounted || _warningAccepted == true) return;
+    setState(() => _warningAccepted = accepted);
+  }
+
+  Future<void> _acceptWarning() async {
+    setState(() => _warningAccepted = true);
+    try {
+      await widget.acknowledgements
+          .accept(kPlannerWarningSubject, kPlannerWarningVersion);
+    } catch (e) {
+      // The planner still opens for now; the gate shows again next launch.
+      debugPrint('DivePlanScreen: saving the warning acceptance failed: $e');
+    }
   }
 
   void _syncNameFromNotifier() {
@@ -76,6 +130,16 @@ class _DivePlanScreenState extends State<DivePlanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final accepted = _warningAccepted;
+    if (accepted == null) {
+      return const Scaffold(body: SizedBox.shrink());
+    }
+    if (!accepted) {
+      return PlannerWarningGate(
+        onAccept: _acceptWarning,
+        onNotNow: widget.onHome,
+      );
+    }
     final scheme = Theme.of(context).colorScheme;
     return DefaultTabController(
       length: 2,
@@ -440,6 +504,7 @@ class _PlanTab extends StatelessWidget {
                       ? _tooDeepMessage
                       : null,
                 ),
+                const PlannerWarningLine(),
               ],
             ),
           ),
@@ -529,6 +594,7 @@ class _BailoutTab extends StatelessWidget {
                       style: AppTypography.caption,
                     ),
                   ),
+                const PlannerWarningLine(),
               ],
             ),
           ),

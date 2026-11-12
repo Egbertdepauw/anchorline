@@ -73,6 +73,7 @@ class OwnerIdBackfiller {
     'dive_bailout_carry',
     'dive_merge_links',
     'gas_analyses',
+    'user_acknowledgements',
   ];
 
   /// Rewrites ps_crud PUT payloads to inject the current [userId] into

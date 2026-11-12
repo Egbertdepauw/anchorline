@@ -4,9 +4,12 @@ import 'package:ccrlogger/data/models/dive_plan.dart';
 import 'package:ccrlogger/ui/notifiers/dive_plan_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/dive_plan_screen.dart';
+import 'package:ccrlogger/ui/widgets/planner_warning.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../_helpers/fake_user_acknowledgements_dao.dart';
 
 class _FakeDao implements DivePlansDaoLike {
   DivePlanDraft? draft;
@@ -71,8 +74,15 @@ void main() {
     final notifier = DivePlanNotifier(dao: dao, settings: settings);
     await notifier.load();
     await tester.pumpWidget(MaterialApp(
-      home: DivePlanScreen(notifier: notifier, settings: settings),
+      home: DivePlanScreen(
+        notifier: notifier,
+        settings: settings,
+        acknowledgements:
+            FakeUserAcknowledgementsDao(plannerWarningAccepted: true),
+      ),
     ));
+    // Let the warning acceptance load.
+    await tester.pump();
     expect(find.text('SETTINGS'), findsOneWidget);
     expect(find.text('GASES'), findsOneWidget);
     expect(find.text('SEGMENTS'), findsOneWidget);
@@ -94,8 +104,15 @@ void main() {
     notifier.addSegment(const DivePlanSegment(
         depthMeters: 40, durationMinutes: 15, gasMixIndex: 0, setpoint: 1.3));
     await tester.pumpWidget(MaterialApp(
-      home: DivePlanScreen(notifier: notifier, settings: settings),
+      home: DivePlanScreen(
+        notifier: notifier,
+        settings: settings,
+        acknowledgements:
+            FakeUserAcknowledgementsDao(plannerWarningAccepted: true),
+      ),
     ));
+    // Let the warning acceptance load.
+    await tester.pump();
     // Type into the app-bar name field. It's the first TextField in the tree.
     await tester.enterText(
       find.descendant(
@@ -133,9 +150,14 @@ void main() {
     final notifier = await seededNotifier();
     Widget screen() => MaterialApp(
           home: DivePlanScreen(
-              notifier: notifier, settings: notifier.settings),
+              notifier: notifier,
+              settings: notifier.settings,
+              acknowledgements:
+                  FakeUserAcknowledgementsDao(plannerWarningAccepted: true)),
         );
     await tester.pumpWidget(screen());
+    // The acceptance check is async; let it land before tapping.
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('plan-settings-toggle')));
     await tester.pumpAndSettle();
     expect(find.text('GF Low'), findsOneWidget);
@@ -158,8 +180,13 @@ void main() {
       (tester) async {
     final notifier = await seededNotifier();
     await tester.pumpWidget(MaterialApp(
-      home: DivePlanScreen(notifier: notifier, settings: notifier.settings),
+      home: DivePlanScreen(
+          notifier: notifier,
+          settings: notifier.settings,
+          acknowledgements:
+              FakeUserAcknowledgementsDao(plannerWarningAccepted: true)),
     ));
+    await tester.pump();
     final depthField = find
         .descendant(
             of: find.byKey(const ValueKey('seg-0')),
@@ -179,5 +206,136 @@ void main() {
     expect(find.byKey(const ValueKey('segment-depth-limit')), findsNothing);
     // Let the debounced draft write fire.
     await tester.pump(const Duration(milliseconds: 300));
+  });
+
+  group('planner safety warning (#184)', () {
+    Future<DivePlanNotifier> loadedNotifier(SettingsNotifier settings) async {
+      final notifier = DivePlanNotifier(dao: _FakeDao(), settings: settings);
+      await notifier.load();
+      return notifier;
+    }
+
+    testWidgets('shows the full warning instead of the planner until accepted',
+        (tester) async {
+      final settings = SettingsNotifier();
+      await settings.load();
+      final notifier = await loadedNotifier(settings);
+      final acks = FakeUserAcknowledgementsDao();
+      await tester.pumpWidget(MaterialApp(
+        home: DivePlanScreen(
+          notifier: notifier,
+          settings: settings,
+          acknowledgements: acks,
+          onHome: () {},
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.text(kPlannerWarningText), findsOneWidget);
+      expect(find.text('SETTINGS'), findsNothing);
+      expect(find.text('Plan'), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('planner-warning-accept')));
+      await tester.pumpAndSettle();
+
+      expect(acks.accepted,
+          [(kPlannerWarningSubject, kPlannerWarningVersion)]);
+      expect(find.text(kPlannerWarningText), findsNothing);
+      expect(find.text('SETTINGS'), findsOneWidget);
+    });
+
+    testWidgets('"Not now" leaves the planner without accepting',
+        (tester) async {
+      final settings = SettingsNotifier();
+      await settings.load();
+      final notifier = await loadedNotifier(settings);
+      final acks = FakeUserAcknowledgementsDao();
+      var wentHome = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: DivePlanScreen(
+          notifier: notifier,
+          settings: settings,
+          acknowledgements: acks,
+          onHome: () => wentHome++,
+        ),
+      ));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('planner-warning-not-now')));
+      await tester.pump();
+
+      expect(wentHome, 1);
+      expect(acks.accepted, isEmpty);
+      expect(find.text(kPlannerWarningText), findsOneWidget);
+    });
+
+    testWidgets('an acceptance of an older text version asks again',
+        (tester) async {
+      final settings = SettingsNotifier();
+      await settings.load();
+      final notifier = await loadedNotifier(settings);
+      final acks = FakeUserAcknowledgementsDao()
+        ..accepted.add((kPlannerWarningSubject, kPlannerWarningVersion - 1));
+      await tester.pumpWidget(MaterialApp(
+        home: DivePlanScreen(
+          notifier: notifier,
+          settings: settings,
+          acknowledgements: acks,
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.text(kPlannerWarningText), findsOneWidget);
+    });
+
+    testWidgets('an acceptance synced from another device lifts the gate',
+        (tester) async {
+      final settings = SettingsNotifier();
+      await settings.load();
+      final notifier = await loadedNotifier(settings);
+      final acks = FakeUserAcknowledgementsDao();
+      await tester.pumpWidget(MaterialApp(
+        home: DivePlanScreen(
+          notifier: notifier,
+          settings: settings,
+          acknowledgements: acks,
+        ),
+      ));
+      await tester.pump();
+      expect(find.text(kPlannerWarningText), findsOneWidget);
+
+      acks.acceptFromElsewhere(kPlannerWarningSubject, kPlannerWarningVersion);
+      await tester.pumpAndSettle();
+
+      expect(find.text(kPlannerWarningText), findsNothing);
+      expect(find.text('SETTINGS'), findsOneWidget);
+    });
+
+    testWidgets('the short warning sits under OUTPUT on both tabs',
+        (tester) async {
+      final settings = SettingsNotifier();
+      await settings.load();
+      final notifier = await loadedNotifier(settings);
+      await tester.pumpWidget(MaterialApp(
+        home: DivePlanScreen(
+          notifier: notifier,
+          settings: settings,
+          acknowledgements:
+              FakeUserAcknowledgementsDao(plannerWarningAccepted: true),
+        ),
+      ));
+      await tester.pump();
+
+      final line = find.byKey(const ValueKey('planner-warning-line'));
+      await tester.scrollUntilVisible(line, 200,
+          scrollable: find.byType(Scrollable).first);
+      expect(line, findsOneWidget);
+
+      await tester.tap(find.text('Bailout'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(line, 200,
+          scrollable: find.byType(Scrollable).last);
+      expect(line, findsOneWidget);
+    });
   });
 }
