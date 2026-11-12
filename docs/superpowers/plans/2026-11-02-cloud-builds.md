@@ -384,8 +384,9 @@ git commit -m "feat(publish): releases and nightly manifest logic (format 1)"
     - `Future<void> putText(String key, String text, {required String contentType, String? cacheControl})`
     - `Future<String?> sha256Of(String key)`, which downloads the object and hashes it; `null` if absent.
   - `class AwsCliBucket implements Bucket`. It shells out to `aws s3 cp` and `aws s3api` with `--endpoint-url https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com`, bucket `$R2_BUCKET`, and credentials from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, which CI maps from the R2 secrets.
-  - `class Publisher { Publisher(Bucket b, {required String baseUrl, required DateTime Function() now, bool dryRun = false}); Future<Manifest> publish({required Lane lane, required String version, required int build, required String notes, required Map<String, String> files /* platformKey → local path */, bool force = false}); Future<Manifest> rollback(String toVersion); }`
-  - The CLI: `dart run tool/publish/publish.dart <release|nightly|rollback> --version V [--build N] [--notes-file F] [--file windows-x64=PATH ...] [--dry-run] [--force]`. The base URL comes from `DOWNLOADS_BASE_URL`. Content types:
+  - `class Publisher { Publisher(Bucket b, {required String baseUrl, required DateTime Function() now, bool dryRun = false}); Future<PublishResult> publish({required Lane lane, required String version, required int build, required String notes, required Map<String, String> files /* platformKey → local path */, bool force = false}); Future<Manifest> rollback(String toVersion); }`
+    - `PublishResult` has `Manifest manifest` (the list as written, or as it would be for a dry run) and `bool alreadyPublished` (the lane already lists these exact files for this version and build: nothing uploaded or written).
+  - The CLI: `dart tool/publish/publish.dart <release|nightly|rollback> --version V [--build N] [--notes-file F] [--file windows-x64=PATH ...] [--dry-run] [--force]`. The base URL comes from `DOWNLOADS_BASE_URL`. Content types:
     - `.exe` → `application/vnd.microsoft.portable-executable`
     - `.AppImage` → `application/vnd.appimage`
     - `.dmg` → `application/x-apple-diskimage`
@@ -441,9 +442,46 @@ Egbert does this; an agent can't. Nothing is printed, and each secret goes in wi
   - Check whether the account has production access. If not, note the closed-testing track name to use instead.
   - Note the upload certificate's SHA-256: `keytool -list -v -keystore android/upload-keystore.jks -alias upload`.
 - [ ] **Step 5: Cloudflare R2.**
-  - Use or create the bucket `anchorline-downloads`, with public access.
+  - Use or create the bucket `anchorline-downloads`, with public access, in the default (automatic) location and jurisdiction, not the EU jurisdiction: the publish command's endpoint is `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`, and a bucket in the EU jurisdiction is not served there (it has its own `.eu.` endpoint).
   - Add a lifecycle rule that deletes objects under `nightly/` after 15 days.
   - Create an R2 API token with Object Read & Write on that bucket only, and note its S3 access key pair.
+- [ ] **Step 5b: Try the publish command on a scratch bucket.** The website spec requires this before the command touches the real bucket. Run it by hand on Egbert's Mac, with a throwaway bucket and a key that can reach only that bucket. Never point it at `anchorline-downloads`.
+  - Create the bucket `anchorline-scratch-<date>` (default location, not the EU jurisdiction) and switch on its public `r2.dev` URL. Create an R2 API token with Object Read & Write on that bucket only.
+  - Set the environment of the Task 6 CLI. Read the secret without echoing it, and print none of these values:
+
+    ```bash
+    REPO=$PWD    # this checkout, after `flutter pub get`
+    publish() { dart "$REPO/tool/publish/publish.dart" "$@"; }
+    cd "$(mktemp -d)"
+    export R2_ACCOUNT_ID=<account id> R2_BUCKET=anchorline-scratch-<date>
+    export DOWNLOADS_BASE_URL=https://pub-<hash>.r2.dev AWS_ACCESS_KEY_ID=<scratch key id>
+    read -rs AWS_SECRET_ACCESS_KEY && export AWS_SECRET_ACCESS_KEY
+    dd if=/dev/urandom of=win.exe bs=1m count=100
+    dd if=/dev/urandom of=linux.AppImage bs=1m count=100
+    dd if=/dev/urandom of=app.dmg bs=1m count=100
+    echo "Scratch release notes." > notes.md
+    ```
+  1. Empty bucket, credentials, endpoint and `NoSuchKey` handling: `publish rollback --version 0.0.0 --dry-run`. Expected: exit 1 and one `::error::` line saying version 0.0.0 is not in the list of releases. Any other error (an `aws` exit code, `Access Denied`, `NoSuchBucket`) means the credentials, the endpoint or the bucket name is wrong; fix that first.
+  2. A release with files of 100 MB, for both platforms. First `publish release --version 0.1.0 --build 1 --notes-file notes.md --file windows-x64=win.exe --file linux-x64=linux.AppImage --dry-run`. Expected: it prints the list that would be written and `Nothing uploaded.`. Then the same without `--dry-run`. Expected: `Published release 0.1.0 (build 1)`, exit 0, `releases/manifest.json was updated.`. The 100 MB files make `aws` use multipart uploads, and the command's checksum environment variables (`AWS_REQUEST_CHECKSUM_CALCULATION`, `AWS_RESPONSE_CHECKSUM_VALIDATION`) keep R2 from rejecting them. A checksum or `NotImplemented` error here is a bug in `tool/publish/lib/bucket.dart`; fix it before Task 16.
+  3. Refusals and replacements, each with the same flags as above:
+     - The same release again. Expected: `already published, nothing to do`, exit 0, nothing uploaded.
+     - Replace the bytes of one file (`dd if=/dev/urandom of=win.exe bs=1m count=100`) and run it again. Expected: `::error::` saying version 0.1.0 is already published, exit 1.
+     - The same again with `--force`. Expected: `Published release 0.1.0 (build 1)`.
+     - A release 0.2.0 (`--version 0.2.0 --build 2`, same files), then `publish rollback --version 0.1.0`. Expected: `Rolled back: 0.1.0 is the latest release again`, and `curl -s $DOWNLOADS_BASE_URL/releases/manifest.json` shows 0.1.0 as `latest`.
+     - `publish nightly --version 0.3.0 --build 3 --file macos=app.dmg`. Expected: `Published nightly 0.3.0 (build 3)` and `nightly/manifest.json was updated.`.
+  4. Check what the public URL serves:
+
+     ```bash
+     for m in releases nightly; do
+       curl -s "$DOWNLOADS_BASE_URL/$m/manifest.json" | grep -o '"url": "[^"]*"' | cut -d'"' -f4
+     done | while read -r u; do echo "$u"; curl -sI "$u" | grep -iE '^(HTTP|content-type)'; done
+     for m in releases nightly; do
+       curl -sI "$DOWNLOADS_BASE_URL/$m/manifest.json" | grep -iE '^(HTTP|content-type|cache-control)'
+     done
+     ```
+
+     Expected: `200` for every listed URL, with the content types `application/vnd.microsoft.portable-executable` (`.exe`), `application/vnd.appimage` (`.AppImage`) and `application/x-apple-diskimage` (`.dmg`). Both manifests answer `200`, `application/json` and `cache-control: no-cache`.
+  5. Clean up. Empty and delete the scratch bucket, delete the scratch API token, then `unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY R2_BUCKET DOWNLOADS_BASE_URL` and remove the scratch directory. The real bucket and its key (Step 5) were never used.
 - [ ] **Step 6: GitHub secrets**
 
 | Secret | Content |
