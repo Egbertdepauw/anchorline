@@ -510,7 +510,7 @@ void main() {
         await attDao.markPurged('f1',
             expectedKey: 'attachments/test-user/$diveId/f1.jpg',
             deletedBefore: DateTime(2100)),
-        isTrue,
+        isNotNull,
       );
       await diveDao.restoreDive(diveId);
       expect(await liveIds(diveId), ['f2', 'l1']);

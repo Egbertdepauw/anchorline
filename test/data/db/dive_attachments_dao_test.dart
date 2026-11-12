@@ -457,7 +457,7 @@ void main() {
       await dao.softDelete('a1');
       final before = (await dao.get('a1'))!.version;
       expect(
-          await dao.markPurged('a1', expectedKey: 'attachments/u/d/x.pdf', deletedBefore: _far), isTrue);
+          await dao.markPurged('a1', expectedKey: 'attachments/u/d/x.pdf', deletedBefore: _far), isNotNull);
 
       final got = (await dao.get('a1'))! as FileAttachment;
       expect(got.uploadState, UploadState.purged);
@@ -471,11 +471,11 @@ void main() {
         () async {
       await dao.insertFile(_file(id: 'a1', diveId: 'd1'));
       const key = 'attachments/u/d/x.pdf';
-      expect(await dao.markPurged('a1', expectedKey: key, deletedBefore: _far), isFalse); // live
+      expect(await dao.markPurged('a1', expectedKey: key, deletedBefore: _far), isNull); // live
       await dao.softDelete('a1');
-      expect(await dao.markPurged('a1', expectedKey: 'other', deletedBefore: _far), isFalse);
-      expect(await dao.markPurged('a1', expectedKey: key, deletedBefore: _far), isTrue);
-      expect(await dao.markPurged('a1', expectedKey: key, deletedBefore: _far), isFalse);
+      expect(await dao.markPurged('a1', expectedKey: 'other', deletedBefore: _far), isNull);
+      expect(await dao.markPurged('a1', expectedKey: key, deletedBefore: _far), isNotNull);
+      expect(await dao.markPurged('a1', expectedKey: key, deletedBefore: _far), isNull);
     });
 
     test('revertPurge restores the previous state and relists the row',
@@ -499,7 +499,7 @@ void main() {
       await dao.insertFile(_file(id: 'a1', diveId: 'd1'));
       await dao.softDelete('a1');
       expect(
-          await dao.markPurged('a1', expectedKey: 'attachments/u/d/x.pdf', deletedBefore: _far), isTrue);
+          await dao.markPurged('a1', expectedKey: 'attachments/u/d/x.pdf', deletedBefore: _far), isNotNull);
       await dao.restore('a1');
 
       expect((await dao.get('a1'))!.deletedAt, isNotNull);
@@ -554,7 +554,7 @@ void main() {
 
       expect(
         await dao.markPurged('f1', expectedKey: key, deletedBefore: cutoff),
-        isTrue,
+        isNotNull,
       );
 
       final r = await row('f1');
@@ -562,6 +562,28 @@ void main() {
       expect(r['upload_state'], UploadState.purged.wire);
       expect(r['version'], before + 1);
       expect(r['owner_id'], 'owner-1');
+    });
+
+    test('markPurged returns the state from before the claim', () async {
+      await dive('gone', deletedAt: 1000);
+      await dao.insertFile(_file(id: 'f1', diveId: 'gone'));
+      await dao.insertFile(_file(id: 'f2', diveId: 'gone'));
+      await db.execute(
+        'UPDATE dive_attachments SET deleted_at = ?, upload_state = ? '
+        'WHERE id = ?',
+        [500, UploadState.failed.wire, 'f2'],
+      );
+
+      // Live under its deleted dive: claimed with no deleted_at of its own.
+      final live =
+          await dao.markPurged('f1', expectedKey: key, deletedBefore: cutoff);
+      expect(live!.previousDeletedAt, isNull);
+      expect(live.previousState, _file(id: 'x', diveId: 'gone').uploadState);
+      // Soft-deleted on its own: its own deleted_at and state.
+      final own =
+          await dao.markPurged('f2', expectedKey: key, deletedBefore: cutoff);
+      expect(own!.previousDeletedAt?.millisecondsSinceEpoch, 500);
+      expect(own.previousState, UploadState.failed);
     });
 
     test('markPurged leaves it live once the dive is restored (#201)',
@@ -575,7 +597,7 @@ void main() {
 
       expect(
         await dao.markPurged('f1', expectedKey: key, deletedBefore: cutoff),
-        isFalse,
+        isNull,
       );
       final r = await row('f1');
       expect(r['deleted_at'], isNull);
@@ -588,7 +610,7 @@ void main() {
       await dao.insertFile(_file(id: 'f1', diveId: 'd'));
       expect(
         await dao.markPurged('f1', expectedKey: key, deletedBefore: cutoff),
-        isFalse,
+        isNull,
       );
       expect((await row('f1'))['deleted_at'], isNull);
     });
@@ -622,7 +644,7 @@ void main() {
       expect((await dao.listPurgeable(cutoff)).map((a) => a.id), ['f1']);
       expect(
         await dao.markPurged('f1', expectedKey: key, deletedBefore: cutoff),
-        isTrue,
+        isNotNull,
       );
       expect((await row('f1'))['deleted_at'], 10);
     });
@@ -638,7 +660,7 @@ void main() {
       );
       expect(
         await dao.markPurged('f1', expectedKey: key, deletedBefore: cutoff),
-        isFalse,
+        isNull,
       );
       expect((await row('f1'))['upload_state'], isNot(UploadState.purged.wire));
     });
@@ -662,7 +684,7 @@ void main() {
             expectedKey: key,
             deletedBefore: cutoff,
             diveDeletedBefore: diveCutoff),
-        isFalse,
+        isNull,
       );
       // Past the dive cutoff it is purgeable as usual.
       expect((await dao.listPurgeable(cutoff)).map((a) => a.id), ['f1']);

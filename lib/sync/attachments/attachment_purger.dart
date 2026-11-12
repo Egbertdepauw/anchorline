@@ -19,6 +19,17 @@ import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../../data/db/dive_attachments_dao.dart';
 
+/// Thrown by [AttachmentPurger.purgeDeleted] when the run didn't start
+/// because the local data hasn't caught up with the server. Nothing was
+/// purged; a later run, once sync has caught up, can free the space.
+class SyncNotCaughtUpException implements Exception {
+  const SyncNotCaughtUpException();
+
+  @override
+  String toString() =>
+      'SyncNotCaughtUpException: local data not caught up with the server';
+}
+
 class AttachmentPurger {
   AttachmentPurger({
     required DiveAttachmentsDao dao,
@@ -58,11 +69,13 @@ class AttachmentPurger {
   Duration _inFlightMinAge = Duration.zero;
 
   /// Purges every file row soft-deleted at least [minAge] ago. Returns the
-  /// number of rows marked purged; 0 without touching anything when the
-  /// local data hasn't caught up with the server. Each row is claimed (`markPurged`) before
-  /// its object is deleted, so a concurrent UNDO or upload can't lose data;
-  /// a failed delete reverts the claim (the next run retries it) and does
-  /// not stop the others. A call whose [minAge] is not shorter than the
+  /// number of rows marked purged. Throws [SyncNotCaughtUpException],
+  /// without touching anything, when the local data hasn't caught up with
+  /// the server; a run that goes stale midway stops and returns the count
+  /// so far. Each row is claimed (`markPurged`) before its object is
+  /// deleted, so a concurrent UNDO or upload can't lose data; a failed
+  /// delete reverts the claim (the next run retries it) and does not stop
+  /// the others. A call whose [minAge] is not shorter than the
   /// in-flight run's shares that run; a shorter one runs after it.
   Future<int> purgeDeleted({Duration minAge = const Duration(hours: 24)}) {
     final running = _inFlight;
@@ -87,7 +100,7 @@ class AttachmentPurger {
   }
 
   Future<int> _run(Duration minAge) async {
-    if (!await _syncCaughtUp()) return 0;
+    if (!await _syncCaughtUp()) throw const SyncNotCaughtUpException();
     // Includes live attachments of a deleted dive (#198): an older build's
     // dive delete doesn't cascade. The claim re-checks the dive (#201).
     final cutoff = _now().subtract(minAge);
@@ -100,14 +113,13 @@ class AttachmentPurger {
       // with (the app sleeps mid-run, then resumes on stale data).
       if (!await _syncCaughtUp()) break;
       final key = row.storageKey;
-      if (!await _dao.markPurged(
+      final claim = await _dao.markPurged(
         row.id,
         expectedKey: key,
         deletedBefore: cutoff,
         diveDeletedBefore: diveCutoff,
-      )) {
-        continue;
-      }
+      );
+      if (claim == null) continue;
       // `pending:<id>` rows never reached R2; nothing to delete.
       if (!key.startsWith('pending:')) {
         try {
@@ -118,8 +130,10 @@ class AttachmentPurger {
           await _dao.revertPurge(
             row.id,
             expectedKey: key,
-            previous: row.uploadState,
-            previousDeletedAt: row.deletedAt,
+            // From the claim, not the listing: the row may have changed
+            // in between.
+            previous: claim.previousState,
+            previousDeletedAt: claim.previousDeletedAt,
           );
           continue;
         }

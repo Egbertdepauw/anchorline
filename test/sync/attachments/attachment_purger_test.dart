@@ -278,6 +278,42 @@ void main() {
       expect(await purger().hasPurgeable(), isFalse);
     });
 
+    test('a failing delete reverts to the state seen by the claim',
+        () async {
+      // Live at listing; before the claim, an old soft-delete made on
+      // another device syncs down. If the R2 delete then fails, the revert
+      // must keep that delete, not restore the listing's live row.
+      await liveFileUnderDive('a1', 'k1', const Duration(days: 3));
+      final otherDeviceDeletedAt = now.subtract(const Duration(days: 2));
+      var checks = 0;
+      final p = AttachmentPurger(
+        dao: dao,
+        deleteObject: (k) async => throw Exception('boom'),
+        // The second check runs after the listing, just before the claim.
+        syncCaughtUp: () async {
+          if (++checks == 2) {
+            await db.execute(
+              'UPDATE dive_attachments SET deleted_at = ?, upload_state = ? '
+              'WHERE id = ?',
+              [
+                otherDeviceDeletedAt.millisecondsSinceEpoch,
+                UploadState.failed.wire,
+                'a1',
+              ],
+            );
+          }
+          return true;
+        },
+        now: () => now,
+      );
+
+      expect(await p.purgeDeleted(), 0);
+      final got = (await dao.get('a1'))! as FileAttachment;
+      expect(got.deletedAt?.millisecondsSinceEpoch,
+          otherDeviceDeletedAt.millisecondsSinceEpoch);
+      expect(got.uploadState, UploadState.failed);
+    });
+
     test('a failing delete puts the attachment back live', () async {
       await liveFileUnderDive('a1', 'k1', const Duration(days: 3));
       deleteFn = (k) async => throw Exception('boom');
@@ -300,7 +336,8 @@ void main() {
       now: () => now,
     );
 
-    expect(await p.purgeDeleted(), 0);
+    await expectLater(
+        p.purgeDeleted(), throwsA(isA<SyncNotCaughtUpException>()));
     expect(deleted, isEmpty);
     expect(await stateOf('a1'), UploadState.pending);
 

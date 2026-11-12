@@ -22,6 +22,12 @@ import 'package:powersync/powersync.dart' hide SyncStatus;
 import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
 import '../models/dive_attachment.dart';
 
+/// The row's state just before a successful [DiveAttachmentsDao.markPurged]
+/// claim, read inside the claim's transaction. Pass it to
+/// [DiveAttachmentsDao.revertPurge] if the R2 delete fails: a sweep's
+/// listing can be older than the claim (#203 review).
+typedef PurgeClaim = ({UploadState previousState, DateTime? previousDeletedAt});
+
 class DiveAttachmentsDao {
   final PowerSyncDatabase _db;
   final SessionSource _session;
@@ -369,8 +375,9 @@ class DiveAttachmentsDao {
   /// Claims a file row for purging: sets `upload_state = 3` (bumping
   /// version, updated_at, owner_id like [markUploadFailed]) only if the row
   /// still has [expectedKey] and still meets [listPurgeable]'s condition
-  /// for the same cutoffs, checked inside the transaction. Returns whether
-  /// the claim succeeded. The purger claims BEFORE deleting the R2 object
+  /// for the same cutoffs, checked inside the transaction. Returns the
+  /// row's state from before the claim, or null when it wasn't claimed.
+  /// The purger claims BEFORE deleting the R2 object
   /// so a concurrent UNDO ([restore]), a finishing upload ([markUploaded]),
   /// a fresh delete or a dive restore can't race the delete.
   ///
@@ -378,7 +385,7 @@ class DiveAttachmentsDao {
   /// deleted_at, in the same write. Nothing marks such a row deleted ahead
   /// of the purge, so a dive restored on another device keeps its
   /// attachments (#201).
-  Future<bool> markPurged(
+  Future<PurgeClaim?> markPurged(
     String id, {
     required String expectedKey,
     required DateTime deletedBefore,
@@ -387,7 +394,7 @@ class DiveAttachmentsDao {
     final now = DateTime.now().millisecondsSinceEpoch;
     return _db.writeTransaction((tx) async {
       final existing = await tx.getOptional(
-        'SELECT version, COALESCE(deleted_at, ('
+        'SELECT version, upload_state, deleted_at, COALESCE(deleted_at, ('
         'SELECT dives.deleted_at FROM dives '
         'WHERE dives.id = dive_attachments.parent_id)) AS del '
         'FROM dive_attachments WHERE id = ? AND storage_key = ? '
@@ -398,7 +405,7 @@ class DiveAttachmentsDao {
           ..._purgeableArgs(deletedBefore, diveDeletedBefore ?? deletedBefore),
         ],
       );
-      if (existing == null) return false;
+      if (existing == null) return null;
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_attachments SET '
@@ -414,13 +421,21 @@ class DiveAttachmentsDao {
           id,
         ],
       );
-      return true;
+      final deletedAt = existing['deleted_at'] as int?;
+      return (
+        previousState:
+            UploadState.fromWire(existing['upload_state'] as int? ?? 0),
+        previousDeletedAt: deletedAt == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(deletedAt),
+      );
     });
   }
 
   /// Undoes a [markPurged] claim when the R2 delete failed, restoring the
   /// row's [previous] upload state and [previousDeletedAt] (null for a row
-  /// claimed through its deleted dive) so the next sweep retries it. Only
+  /// claimed through its deleted dive) so the next sweep retries it. Take
+  /// both from the [PurgeClaim] that [markPurged] returned. Only
   /// touches a row that is still purged with [expectedKey].
   Future<void> revertPurge(
     String id, {
