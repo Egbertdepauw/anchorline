@@ -137,9 +137,9 @@ For people who no longer have the app and email `support@anchorline.eu`
    as in the post-check above.
 7. Reply to confirm the deletion.
 
-## Purging unconfirmed sign-ups (0023)
+## Purging unconfirmed sign-ups (0024)
 
-`0023_purge_unconfirmed_users.sql` schedules `purge-unconfirmed-users`, a
+`0024_purge_unconfirmed_users.sql` schedules `purge-unconfirmed-users`, a
 nightly pg_cron job (03:43 UTC) that deletes email sign-ups still
 unconfirmed 7 days after they were created, together with their audit-log
 entries. The confirmation code expires after 1 hour, so these accounts can
