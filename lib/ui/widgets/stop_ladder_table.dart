@@ -272,29 +272,30 @@ class StopLadderTable extends StatelessWidget {
         // Header — DEPTH | T | RT | GAS | PPO2 | END | ρ | VOL.
         // END sits between PPO2 and density so the narcosis / density
         // sanity check reads left-to-right (oxy → narcotic → physical).
-        // Flex weights tuned so "Tx12/65" (worst-case 7-char gas label)
-        // fits without wrapping on iPhone 16 Pro and similar widths.
-        // T and RT only ever show 1-3 chars so they take the minimum
-        // share; GAS gets double because that's the longest cell.
         // Every cell — header and body — is centered. Right-aligning
         // numeric columns visually smashed adjacent narrow columns
         // together (T's "45" touching RT's "49" with only a 6 pt gap);
         // centering puts each value in the middle of its own cell, so
         // there's natural breathing room on both sides.
-        // Flex: T and RT are bumped back to 2 so the column has room
-        // for 2-digit values + centering padding without crowding.
+        // Flex weights are roughly each column's widest value in points
+        // (13 pt mono, 7.8 pt per character) plus a ~6 pt gap: DEPTH
+        // "→ 120 m", GAS "Tx18/45", PPO2 "1.30", END "45 m", VOL "1234".
+        // They sum to 323, so on a 375 pt phone (~324 pt of card) one
+        // flex unit is about one point and every value fits; the old
+        // 18-unit split cut VOL to "VOl" and "→ surface" to "→ surfa"
+        // (#183).
         Padding(
           padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
           child: Row(
             children: [
-              Expanded(flex: 3, child: _cellText('DEPTH', headerStyle, textAlign: TextAlign.center)),
-              Expanded(flex: 2, child: _cellText('T', headerStyle, textAlign: TextAlign.center)),
-              Expanded(flex: 2, child: _cellText('RT', headerStyle, textAlign: TextAlign.center)),
-              Expanded(flex: 4, child: _cellText('GAS', headerStyle, textAlign: TextAlign.center)),
-              Expanded(flex: 2, child: _cellText('PPO2', headerStyle, textAlign: TextAlign.center)),
-              Expanded(flex: 2, child: _cellText('END', headerStyle, textAlign: TextAlign.center)),
-              Expanded(flex: 2, child: _cellText('ρ g/L', headerStyle, textAlign: TextAlign.center)),
-              Expanded(flex: 1, child: _cellText('VOL', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 60, child: _cellText('DEPTH', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 29, child: _cellText('T', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 29, child: _cellText('RT', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 60, child: _cellText('GAS', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 37, child: _cellText('PPO2', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 37, child: _cellText('END', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 34, child: _cellText('ρ g/L', headerStyle, textAlign: TextAlign.center)),
+              Expanded(flex: 37, child: _cellText('VOL', headerStyle, textAlign: TextAlign.center)),
             ],
           ),
         ),
@@ -303,11 +304,11 @@ class StopLadderTable extends StatelessWidget {
           Builder(builder: (context) {
             final row = rows[i];
             runtime += row.stopDuration;
+            // The final ascent reads "→ 0 m" like every other ascent
+            // row; "→ surface" did not fit the column on a phone.
             final depthLabel = row.isStop
                 ? '${row.depthMeters.toStringAsFixed(0)} m'
-                : (row.depthMeters == 0
-                    ? '→ surface'
-                    : '→ ${row.depthMeters.toStringAsFixed(0)} m');
+                : '→ ${row.depthMeters.toStringAsFixed(0)} m';
             // "—" in the STOP column for ascent rows tells the diver this
             // line is a transition, not a hold.
             final stopLabel =
@@ -359,14 +360,14 @@ class StopLadderTable extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
               child: Row(
                 children: [
-                  Expanded(flex: 3, child: _cellText(depthLabel, cellStyle, textAlign: TextAlign.center)),
-                  Expanded(flex: 2, child: _cellText(stopLabel, cellStyle, textAlign: TextAlign.center)),
-                  Expanded(flex: 2, child: _cellText(runtimeLabel, cellStyle, textAlign: TextAlign.center)),
-                  Expanded(flex: 4, child: _cellText(gasLabel, cellStyle, textAlign: TextAlign.center)),
-                  Expanded(flex: 2, child: _cellText(ppo2Label, cellStyle, textAlign: TextAlign.center)),
-                  Expanded(flex: 2, child: _cellText(endLabel, cellStyle, textAlign: TextAlign.center)),
-                  Expanded(flex: 2, child: _cellText(rhoLabel, cellStyle, textAlign: TextAlign.center)),
-                  Expanded(flex: 1, child: _cellText(volLabel, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 60, child: _cellText(depthLabel, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 29, child: _cellText(stopLabel, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 29, child: _cellText(runtimeLabel, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 60, child: _cellText(gasLabel, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 37, child: _cellText(ppo2Label, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 37, child: _cellText(endLabel, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 34, child: _cellText(rhoLabel, cellStyle, textAlign: TextAlign.center)),
+                  Expanded(flex: 37, child: _cellText(volLabel, cellStyle, textAlign: TextAlign.center)),
                 ],
               ),
             );

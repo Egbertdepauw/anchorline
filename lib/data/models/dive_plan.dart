@@ -7,6 +7,12 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+/// Deepest segment the planner accepts. Deeper than any real CCR or
+/// trimix dive; it exists to catch typos like 4030 instead of 40, which
+/// produce well over a thousand deco stops and make the UI lag for
+/// seconds on every rebuild.
+const double kMaxPlanDepthMeters = 300;
+
 @immutable
 class DivePlanGas {
   final int oxygenPercent;

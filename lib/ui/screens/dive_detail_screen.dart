@@ -1085,7 +1085,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   Widget _buildBailoutSection() {
     // Subscribe to dive_bailout_carry changes so adding/editing a carry row
     // re-plans automatically. Combined with settingsNotifier for SAC /
-    // ascent-rate / GUE-config changes.
+    // ascent-rate / bailout-capable diluent changes.
     return StreamBuilder<void>(
       stream: widget.equipmentDao.watchDiveBailoutCarry(),
       builder: (context, _) => FutureBuilder<
@@ -1200,7 +1200,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         ];
 
         // Build Scenario A inputs from dive_bailout_carry rows. Empty carry
-        // list → planBailout treats it as Scenario B (GUE standards).
+        // list → planBailout treats it as Scenario B (standard gases).
         final userBailoutTanks = <DiveGasMix>[];
         final userTankVolumesL = <DiveGasMix, double>{};
         for (final entry in carry) {
@@ -1226,7 +1226,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
           tissueHeBar: tissueHeBar,
           userBailoutTanks: userBailoutTanks,
           userTankVolumesL: userTankVolumesL,
-          isGueConfig: widget.settingsNotifier.gueDiluentConfig,
+          bailoutCapableDiluent: widget.settingsNotifier.bailoutCapableDiluent,
           gfLow: widget.dive.gfLow ?? 30,
           gfHigh: widget.dive.gfHigh ?? 85,
           sacBottom: widget.settingsNotifier.bailoutSacBottom,
@@ -1252,7 +1252,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
             triggerDepthMeters: triggerDepth,
             sacBottom: widget.settingsNotifier.bailoutSacBottom,
             sacDeco: widget.settingsNotifier.bailoutSacDeco,
-            isGueConfig: widget.settingsNotifier.gueDiluentConfig,
+            bailoutCapableDiluent: widget.settingsNotifier.bailoutCapableDiluent,
             bottomTimeBeforeTrigger: bottomTimeBeforeTrigger,
             teamCarry: teamCarry,
           ),

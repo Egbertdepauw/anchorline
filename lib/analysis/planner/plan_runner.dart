@@ -215,7 +215,7 @@ PlanResult runPlan({
     tissueHeBar: sim.triggerHeBar,
     userBailoutTanks: userBailoutTanks,
     userTankVolumesL: userTankVolumesL,
-    isGueConfig: false,
+    bailoutCapableDiluent: false,
     gfLow: gfLow,
     gfHigh: gfHigh,
     sacBottom: 30,

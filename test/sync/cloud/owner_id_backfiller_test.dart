@@ -210,6 +210,11 @@ void main() {
     'dive_merge_links': 'INSERT INTO dive_merge_links '
         '(id, owner_id, group_id, created_at, updated_at, version, '
         'sync_status) VALUES (?, NULL, ?, ?, ?, 1, 0)',
+    // Planner warning accepted while signed out (#184).
+    'user_acknowledgements': 'INSERT INTO user_acknowledgements '
+        '(id, owner_id, subject, text_version, accepted_at, created_at, '
+        'updated_at, version, sync_status) '
+        'VALUES (?, NULL, ?, 1, ?, ?, ?, 1, 0)',
   };
   for (final entry in signedOutRows.entries) {
     test('stamps owner_id on ${entry.key} rows written while signed out (#149)',
@@ -222,6 +227,7 @@ void main() {
       final args = switch (entry.key) {
         'dive_plans' => ['row1', 'ccr', now, now],
         'dive_bailout_carry' => ['d1:cyl1', 'd1', 'cyl1', now, now],
+        'user_acknowledgements' => ['ack1', 'planner_warning', now, now, now],
         _ => ['d1', 'group1', now, now],
       };
       await ps.execute(entry.value, args);

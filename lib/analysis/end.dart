@@ -1,9 +1,9 @@
 /// Per-sample equivalent narcotic depth (END) for the active gas mix
 /// at each sample. Two formulas:
 ///
-/// **Formula A** (`countsOxygen == true`, default, **GUE / DIR**):
+/// **Formula A** (`countsOxygen == true`, default):
 ///   N₂ + O₂ both narcotic — the standard tech-diving convention,
-///   used by GUE and most modern training agencies. O₂ is treated
+///   used by most modern training agencies. O₂ is treated
 ///   as having narcotic potency equivalent to N₂.
 ///   END(m) = max(0, (depth + 10) × (1 − He fraction) − 10)
 ///
@@ -45,7 +45,7 @@ EndBand endBand(double endMeters) {
 /// helium-rich dive.
 ///
 /// [countsOxygen] selects the formula:
-/// - `true`  — N₂ + O₂ both narcotic (GUE / DIR / standard tech)
+/// - `true`  — N₂ + O₂ both narcotic (standard tech)
 /// - `false` — N₂ only narcotic (older US-Navy / some PADI tables)
 ///
 /// [ppo2Bar] should be the per-sample VOTED / measured PPO₂ (not the

@@ -8,7 +8,7 @@ void main() {
       final mix = resolveBottomMix(
         recordedDiluent: const DiveGasMix(oxygenPercent: 18, heliumPercent: 45, isDiluent: true),
         maxDepthMeters: 60,
-        isGueConfig: false,
+        bailoutCapableDiluent: false,
       );
       expect(mix.oxygenPercent, 18);
       expect(mix.heliumPercent, 45);
@@ -21,7 +21,7 @@ void main() {
         recordedDiluent:
             const DiveGasMix(oxygenPercent: 50, heliumPercent: 0, isDiluent: true),
         maxDepthMeters: 40,
-        isGueConfig: false,
+        bailoutCapableDiluent: false,
       );
       // 50% at 40 m gives PPO2 2.5 → must NOT be returned. Snap should
       // pick a safe standard mix.
@@ -30,12 +30,12 @@ void main() {
     });
   });
 
-  group('resolveBottomMix — non-GUE compute-and-snap', () {
+  group('resolveBottomMix — full mix table, compute-and-snap', () {
     test('60 m max depth → snaps to 21/35', () {
       final mix = resolveBottomMix(
         recordedDiluent: null,
         maxDepthMeters: 60,
-        isGueConfig: false,
+        bailoutCapableDiluent: false,
       );
       expect(mix.oxygenPercent, 21);
       expect(mix.heliumPercent, 35);
@@ -45,7 +45,7 @@ void main() {
       final mix = resolveBottomMix(
         recordedDiluent: null,
         maxDepthMeters: 40,
-        isGueConfig: false,
+        bailoutCapableDiluent: false,
       );
       expect(mix.oxygenPercent, 21);
       expect(mix.heliumPercent, 35);
@@ -59,19 +59,19 @@ void main() {
       final mix = resolveBottomMix(
         recordedDiluent: null,
         maxDepthMeters: 80,
-        isGueConfig: false,
+        bailoutCapableDiluent: false,
       );
       expect(mix.oxygenPercent, 15);
       expect(mix.heliumPercent, 55);
     });
   });
 
-  group('resolveBottomMix — GUE compute-and-snap', () {
+  group('resolveBottomMix — bailout-capable diluent, compute-and-snap', () {
     test('60 m max depth → snaps to 15/55', () {
       final mix = resolveBottomMix(
         recordedDiluent: null,
         maxDepthMeters: 60,
-        isGueConfig: true,
+        bailoutCapableDiluent: true,
       );
       expect(mix.oxygenPercent, 15);
       expect(mix.heliumPercent, 55);
@@ -81,7 +81,7 @@ void main() {
       final mix = resolveBottomMix(
         recordedDiluent: null,
         maxDepthMeters: 40,
-        isGueConfig: true,
+        bailoutCapableDiluent: true,
       );
       expect(mix.oxygenPercent, 21);
       expect(mix.heliumPercent, 35);

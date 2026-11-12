@@ -20,7 +20,7 @@ import 'ascent_simulator.dart' show AscentPlan, simulateAscent;
 import 'bailout_result.dart';
 import 'mix_resolver.dart' show resolveBottomMix;
 import 'standard_mixes.dart'
-    show kDecoMixes, kO2, kTx2135, kTx3525, gueDecoGasesForDepth;
+    show kDecoMixes, kO2, kTx2135, kTx3525, minimalDecoGasesForDepth;
 import 'tank_recommender.dart' show TankSpec, recommend;
 import '../gas_naming.dart';
 
@@ -41,8 +41,8 @@ import '../gas_naming.dart';
 /// [userBailoutTanks]    User-defined bailout gas mixes (Scenario A).
 ///                       Pass an empty list to trigger Scenario B.
 /// [userTankVolumesL]    Available volume in litres per user tank (Scenario A).
-/// [isGueConfig]         Whether to apply GUE standards for mix resolution and
-///                       gas list construction.
+/// [bailoutCapableDiluent] Whether the diluent is bailout-capable; picks the
+///                       bottom-mix table and PPO2 limit for mix resolution.
 /// [gfLow]               Low gradient factor (1–100).
 /// [gfHigh]              High gradient factor (1–100).
 /// [sacBottom]           Surface-equivalent air consumption at depth (L/min).
@@ -61,7 +61,7 @@ BailoutResult planBailout({
   required List<double> tissueHeBar,
   required List<DiveGasMix> userBailoutTanks,
   required Map<DiveGasMix, double> userTankVolumesL,
-  required bool isGueConfig,
+  required bool bailoutCapableDiluent,
   required int gfLow,
   required int gfHigh,
   required int sacBottom,
@@ -81,7 +81,7 @@ BailoutResult planBailout({
   // -------------------------------------------------------------------------
   final scenario = userBailoutTanks.isNotEmpty
       ? BailoutScenario.tanksDefined
-      : BailoutScenario.gueStandards;
+      : BailoutScenario.standardGases;
 
   // -------------------------------------------------------------------------
   // 2. Build available-gas list
@@ -95,12 +95,12 @@ BailoutResult planBailout({
     // resolved standard bottom mix — the diver still needs something to
     // breathe at depth, and the planner shouldn't silently pick a deco gas.
     gases = _sortGasesForAscent(List<DiveGasMix>.from(userBailoutTanks));
-    final ppo2Limit = isGueConfig ? 1.4 : 1.6;
+    final ppo2Limit = bailoutCapableDiluent ? 1.4 : 1.6;
     if (gases.isEmpty || !_isSafeAtDepth(gases.first, maxDepthMeters, ppo2Limit)) {
       final fallbackBottom = resolveBottomMix(
         recordedDiluent: recordedDiluent,
         maxDepthMeters: maxDepthMeters,
-        isGueConfig: isGueConfig,
+        bailoutCapableDiluent: bailoutCapableDiluent,
       );
       gases = [fallbackBottom, ...gases];
     }
@@ -113,22 +113,22 @@ BailoutResult planBailout({
     final bottomMix = resolveBottomMix(
       recordedDiluent: recordedDiluent,
       maxDepthMeters: maxDepthMeters,
-      isGueConfig: isGueConfig,
+      bailoutCapableDiluent: bailoutCapableDiluent,
     );
 
     // Depth-based staging applies to Scenario B regardless of the user's
-    // Settings → GUE-diluent toggle. The toggle controls bottom-mix
+    // Settings → bailout-capable diluent toggle. The toggle controls bottom-mix
     // selection + PPO2 limits during [resolveBottomMix]; the deco-gas
     // ladder is a planning convention (1/2/3 stages by depth) that holds
     // for any technical OC bailout.
-    final decoGases = gueDecoGasesForDepth(maxDepthMeters);
+    final decoGases = minimalDecoGasesForDepth(maxDepthMeters);
     gases = [bottomMix, ...decoGases];
   }
 
   // -------------------------------------------------------------------------
   // 3. Run ascent simulator (with volume-driven escalation in Scenario B)
   // -------------------------------------------------------------------------
-  // Scenario B starts from the minimum ladder (see [gueDecoGasesForDepth])
+  // Scenario B starts from the minimum ladder (see [minimalDecoGasesForDepth])
   // and escalates only when an actual gas volume overflows the largest
   // tank in the catalogue:
   //
@@ -155,7 +155,7 @@ BailoutResult planBailout({
       sacBottom: sacBottom,
       sacDeco: sacDeco,
     );
-    if (scenario != BailoutScenario.gueStandards) break;
+    if (scenario != BailoutScenario.standardGases) break;
     final largestTankCapacityL = availableTanks.isEmpty
         ? 0.0
         : availableTanks
@@ -207,7 +207,7 @@ BailoutResult planBailout({
   // deco gases whose consumption is below the meaningful-stage
   // threshold and re-simulate so the table + perGas reflect the
   // actually-needed ladder.
-  if (scenario == BailoutScenario.gueStandards) {
+  if (scenario == BailoutScenario.standardGases) {
     const minUsefulStageL = 200.0;
     final bottomMix = gases
         .reduce((a, b) => a.oxygenPercent <= b.oxygenPercent ? a : b);
@@ -359,7 +359,7 @@ BailoutVerdict _verdictScenarioA(Map<DiveGasMix, GasUsage> perGas) {
   return BailoutVerdict.sufficient;
 }
 
-/// Verdict for Scenario B (GUE standards / catalogue recommendation).
+/// Verdict for Scenario B (standard gases / catalogue recommendation).
 BailoutVerdict _verdictScenarioB(Map<DiveGasMix, GasUsage> perGas) {
   for (final usage in perGas.values) {
     if (usage.requiredL <= 0.0) continue;

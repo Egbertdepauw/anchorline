@@ -2,7 +2,7 @@
 ///
 /// Takes a [BailoutResult] and renders:
 ///   1. Section header
-///   2. Scenario banner (blue for A / user tanks, amber for B / GUE standards)
+///   2. Scenario banner (blue for A / user tanks, amber for B / standard gases)
 ///   3. 3-tile summary row (total time · total volume · available or stages)
 ///   4. Per-stop ascent table
 ///   5. Verdict banner (green / amber / red by sufficiency)
@@ -26,7 +26,7 @@ class BailoutSection extends StatelessWidget {
   final double triggerDepthMeters;
   final int sacBottom;
   final int sacDeco;
-  final bool isGueConfig;
+  final bool bailoutCapableDiluent;
 
   /// Dive runtime accumulated before the bailout trigger (i.e. depth/time
   /// from descent + bottom phase up to the deepest sample). The stop table
@@ -44,7 +44,7 @@ class BailoutSection extends StatelessWidget {
     required this.triggerDepthMeters,
     required this.sacBottom,
     required this.sacDeco,
-    required this.isGueConfig,
+    required this.bailoutCapableDiluent,
     this.bottomTimeBeforeTrigger = Duration.zero,
     this.teamCarry = const [],
   });
@@ -68,8 +68,8 @@ class BailoutSection extends StatelessWidget {
 
   String _scenarioBanner() {
     final depth = triggerDepthMeters.toStringAsFixed(0);
-    if (result?.scenario == BailoutScenario.gueStandards) {
-      return 'GUE standards — no user bailout tanks defined. '
+    if (result?.scenario == BailoutScenario.standardGases) {
+      return 'Standard gases — no user bailout tanks defined. '
           'Worst-case bailout from $depth m · bottom SAC $sacBottom L/min · '
           'deco SAC $sacDeco L/min.';
     }
@@ -98,7 +98,7 @@ class BailoutSection extends StatelessWidget {
 
   int? _stagesNeeded() {
     if (result == null) return null;
-    if (result!.scenario != BailoutScenario.gueStandards) return null;
+    if (result!.scenario != BailoutScenario.standardGases) return null;
     // Sum tanks across all gases (a single gas that overflows one tank
     // contributes multiple stages — the user carries N cylinders of
     // the same gas to cover the required volume).
@@ -110,7 +110,7 @@ class BailoutSection extends StatelessWidget {
   // ── Summary tile label/value for the third column ──────────────────
 
   (String, String) _thirdTile() {
-    if (result?.scenario == BailoutScenario.gueStandards) {
+    if (result?.scenario == BailoutScenario.standardGases) {
       final n = _stagesNeeded();
       return ('Stages needed', n == null ? '—' : '$n');
     }

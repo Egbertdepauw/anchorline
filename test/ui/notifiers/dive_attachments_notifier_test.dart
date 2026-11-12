@@ -106,6 +106,9 @@ class _FakePurger implements AttachmentPurger {
   bool purgeable;
   final List<Duration> purgeCalls = [];
 
+  /// When set, [purgeDeleted] throws it (e.g. sync not caught up).
+  Object? purgeError;
+
   _FakePurger({this.purgeable = true});
 
   @override
@@ -114,6 +117,8 @@ class _FakePurger implements AttachmentPurger {
   @override
   Future<int> purgeDeleted({Duration minAge = const Duration(hours: 24)}) async {
     purgeCalls.add(minAge);
+    final e = purgeError;
+    if (e != null) throw e;
     return 1;
   }
 }
@@ -584,6 +589,31 @@ void main() {
       await pumpEventQueue();
       expect(uploader.uploads, hasLength(2));
       expect(purger.purgeCalls, hasLength(1));
+    });
+
+    test('freeSpaceAndRetry while sync is stale says so and does not retry',
+        () async {
+      uploader.uploadStub = _refuseWith(
+          dao, const AttachmentQuotaExceededException(_fullUsage));
+      final purger = _FakePurger()
+        ..purgeError = const SyncNotCaughtUpException();
+      final n = DiveAttachmentsNotifier(
+        dao,
+        uploader,
+        idGenerator: _FixedIdGenerator(['file-1', 'file-2']),
+        purger: purger,
+      );
+      await n.load('d1');
+      await n.addFile(_picked());
+      expect(n.storageFull, isNotNull);
+
+      await n.freeSpaceAndRetry();
+
+      expect(purger.purgeCalls, [Duration.zero]);
+      // No second upload: it would only be refused again (dialog loop).
+      expect(uploader.uploads, hasLength(1));
+      expect(n.storageFull, isNull);
+      expect(n.error, kFreeSpaceNeedsSyncMessage);
     });
 
     test('freeSpaceAndRetry that makes room uploads the file', () async {

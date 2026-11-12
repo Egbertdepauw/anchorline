@@ -247,4 +247,41 @@ void main() {
           reason: 'bailout index above the removed gas shifts down');
     });
   });
+
+  group('depth limit and view state (#183)', () {
+    Future<DivePlanNotifier> loaded() async {
+      final settings = SettingsNotifier();
+      await settings.load();
+      final n = DivePlanNotifier(dao: _FakeDao(), settings: settings);
+      await n.load();
+      n.addGas(const DivePlanGas(
+          oxygenPercent: 18, heliumPercent: 45, isDiluent: true));
+      return n;
+    }
+
+    test('a segment deeper than the max is not computed', () async {
+      final n = await loaded();
+      n.addSegment(const DivePlanSegment(
+          depthMeters: 4030, durationMinutes: 30, gasMixIndex: 0));
+      expect(n.exceedsMaxDepth, isTrue);
+      expect(n.result, isNull);
+
+      n.replaceSegment(0, const DivePlanSegment(
+          depthMeters: kMaxPlanDepthMeters, durationMinutes: 30,
+          gasMixIndex: 0));
+      expect(n.exceedsMaxDepth, isFalse);
+      expect(n.result, isNotNull, reason: 'the limit itself is allowed');
+    });
+
+    test('settingsExpanded notifies on change only', () async {
+      final n = await loaded();
+      var notified = 0;
+      n.addListener(() => notified++);
+      expect(n.settingsExpanded, isFalse);
+      n.setSettingsExpanded(true);
+      n.setSettingsExpanded(true);
+      expect(n.settingsExpanded, isTrue);
+      expect(notified, 1);
+    });
+  });
 }

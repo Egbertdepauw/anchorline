@@ -71,6 +71,15 @@ void main() {
       expect(r.isUnsafe, isTrue);
     });
 
+    test('the over-limit warning rounds PPO₂ to 2 decimals (#183)', () {
+      // Tx18/45 at 4030 m: PPO₂ = 0.18 × 404.013 = 72.72234 (a raw double
+      // used to land in the text as 72.72233999999999).
+      const gas = DivePlanGas(
+          oxygenPercent: 18, heliumPercent: 45, isDiluent: true);
+      final r = computeGasSafetyReadout(gas, 4030, idleColor: _idle);
+      expect(r!.text, contains('⚠ PPO₂ 72.72 exceeds 1.51 at 4030 m'));
+    });
+
     test('END > 30 m forces amber even when PPO2 is under 1.1', () {
       // Tx 21/35 at 60 m: PPO₂ = 0.21 × 7.013 ≈ 1.47 → already amber
       // on PPO2, but the END check applies too — END = 70 × 0.65 - 10

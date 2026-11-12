@@ -304,13 +304,24 @@ void main() {
       expect(n.bailoutAscentRateSlow, 30);
     });
 
-    test('gueDiluentConfig defaults to false, flips', () async {
+    test('bailoutCapableDiluent defaults to false, flips', () async {
       SharedPreferences.setMockInitialValues({});
       final n = SettingsNotifier();
       await n.load();
-      expect(n.gueDiluentConfig, isFalse);
-      await n.setGueDiluentConfig(true);
-      expect(n.gueDiluentConfig, isTrue);
+      expect(n.bailoutCapableDiluent, isFalse);
+      await n.setBailoutCapableDiluent(true);
+      expect(n.bailoutCapableDiluent, isTrue);
+    });
+
+    test('bailoutCapableDiluent is carried over from its old key (#183)',
+        () async {
+      SharedPreferences.setMockInitialValues({'gue_diluent_config': true});
+      final n = SettingsNotifier();
+      await n.load();
+      expect(n.bailoutCapableDiluent, isTrue);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('bailout_capable_diluent'), isTrue);
+      expect(prefs.containsKey('gue_diluent_config'), isFalse);
     });
 
     test('tank68L300Available defaults to false', () async {
@@ -335,7 +346,7 @@ void main() {
       await n1.setBailoutSacDeco(25);
       await n1.setBailoutAscentRateFast(20);
       await n1.setBailoutAscentRateSlow(6);
-      await n1.setGueDiluentConfig(true);
+      await n1.setBailoutCapableDiluent(true);
       await n1.setTank68L300Available(true);
       await n1.setTank12L300Available(true);
       final n2 = SettingsNotifier();
@@ -344,7 +355,7 @@ void main() {
       expect(n2.bailoutSacDeco, 25);
       expect(n2.bailoutAscentRateFast, 20);
       expect(n2.bailoutAscentRateSlow, 6);
-      expect(n2.gueDiluentConfig, isTrue);
+      expect(n2.bailoutCapableDiluent, isTrue);
       expect(n2.tank68L300Available, isTrue);
       expect(n2.tank12L300Available, isTrue);
     });
@@ -368,7 +379,7 @@ void main() {
       await n.load();
       var notifyCount = 0;
       n.addListener(() => notifyCount++);
-      await n.setGueDiluentConfig(false);
+      await n.setBailoutCapableDiluent(false);
       await n.setTank68L300Available(false);
       await n.setTank12L300Available(false);
       expect(notifyCount, 0);

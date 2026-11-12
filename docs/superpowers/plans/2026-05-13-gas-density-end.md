@@ -276,7 +276,7 @@ void main() {
     });
   });
 
-  group('computeEndSeries — formula B (N2 only, GUE)', () {
+  group('computeEndSeries — formula B (N2 only)', () {
     test('18/45 trimix at 60 m → END ≈ 22.8 m', () {
       // (60 + 10) × (0.37 / 0.79) - 10 = 70 × 0.468 - 10 = 22.78
       final series = computeEndSeries(
@@ -330,7 +330,7 @@ Create `lib/analysis/end.dart`:
 /// **Formula A** (`countsOxygen == true`, default): N₂ + O₂ both narcotic.
 ///   END(m) = max(0, (depth + 10) × (1 − He fraction) − 10)
 ///
-/// **Formula B** (`countsOxygen == false`, GUE/DIR): only N₂ narcotic.
+/// **Formula B** (`countsOxygen == false`): only N₂ narcotic.
 ///   END(m) = max(0, (depth + 10) × (N₂ / 0.79) − 10)
 library;
 
@@ -393,7 +393,7 @@ git commit -m "$(cat <<'EOF'
 feat(analysis): per-sample END computation, two formulas
 
 computeEndSeries with countsOxygen flag — true (default, US-Navy/TDI)
-uses (depth+10)(1-He)-10; false (GUE/DIR) uses (depth+10)(N2/0.79)-10.
+uses (depth+10)(1-He)-10; false uses (depth+10)(N2/0.79)-10.
 Pre-computes the narcotic factor once per mix. Clamps to 0 to avoid
 negative values for heliox at shallow depths. Three-band threshold
 classifier at 30/40 m.
@@ -504,7 +504,7 @@ feat(settings): persist endCountsOxygen (default true)
 
 Bool on SettingsNotifier, SharedPreferences key end_counts_oxygen.
 Drives the END formula choice: true (default) treats N2+O2 narcotic
-(US-Navy/TDI), false treats only N2 narcotic (GUE/DIR).
+(US-Navy/TDI), false treats only N2 narcotic.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
@@ -872,7 +872,7 @@ ListenableBuilder(
     return SwitchListTile(
       title: const Text('Count O₂ as narcotic in END'),
       subtitle: const Text(
-          'On: N₂ + O₂ both count (TDI/IANTD/US-Navy). Off: only N₂ counts (GUE/DIR).'),
+          'On: N₂ + O₂ both count (TDI/IANTD/US-Navy). Off: only N₂ counts.'),
       value: widget.notifier.endCountsOxygen,
       onChanged: (v) => widget.notifier.setEndCountsOxygen(v),
     );

@@ -309,7 +309,7 @@ double _ceilingMetersFor({
   return worst;
 }
 
-/// Standard "switch to this gas at this depth" table — GUE / tech-diving
+/// Standard "switch to this gas at this depth" table — tech-diving
 /// convention, rounded conservatively to 3 m stop boundaries.
 ///
 /// These are NOT raw MOD@1.6 values. They are ascent-side switch points
@@ -324,7 +324,7 @@ double _ceilingMetersFor({
 /// Unknown / custom mixes fall back to MOD-based depth (PPO2 limit
 /// 1.6 for O₂-rich gases, 1.4 for He-bearing gases), rounded DOWN to
 /// the nearest 3 m stop. Acceptable for unusual mixes but not the
-/// canonical GUE-table value.
+/// canonical table value.
 double standardSwitchDepth(DiveGasMix gas) {
   const table = <(int, int), double>{
     (100, 0): 6,

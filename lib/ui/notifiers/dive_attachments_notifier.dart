@@ -34,6 +34,12 @@ import '../../sync/attachments/attachment_uploader.dart';
 import '../../sync/attachments/attachment_uploader_impl.dart'
     show UploadFailedException;
 
+/// Shown as [DiveAttachmentsNotifier.error] when "Free space now" can't
+/// purge because the local data hasn't caught up with the server (#201).
+const kFreeSpaceNeedsSyncMessage =
+    "Couldn't free space yet: this device hasn't finished syncing. "
+    'Try again once it is online and synced.';
+
 /// Tiny seam over UUID generation so tests can pin row ids. Production
 /// uses [UuidV4IdGenerator]; tests inject a deterministic counter.
 abstract class IdGenerator {
@@ -409,7 +415,9 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
   /// retries the refused add or row once. For a refused multi-file add
   /// the files after it are added too, in order, until one is refused
   /// again. Another refusal sets [storageFull] again; it never retries
-  /// further by itself.
+  /// further by itself. When the purge can't run because sync hasn't
+  /// caught up, nothing is retried (it would only be refused again) and
+  /// [error] says why; the refused files are dropped.
   Future<void> freeSpaceAndRetry() async {
     final pick = _refusedPick;
     final remaining = _refusedRemaining;
@@ -420,6 +428,10 @@ class DiveAttachmentsNotifier extends ChangeNotifier {
     if (purger != null) {
       try {
         await purger.purgeDeleted(minAge: Duration.zero);
+      } on SyncNotCaughtUpException {
+        _error = kFreeSpaceNeedsSyncMessage;
+        notifyListeners();
+        return;
       } catch (e) {
         // Retry anyway: whatever the purge did free still counts.
         debugPrint('Attachment purge for free space failed: $e');

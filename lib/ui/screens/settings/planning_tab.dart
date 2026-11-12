@@ -79,13 +79,13 @@ class PlanningTab extends StatelessWidget {
               SettingRow(
                 title: 'Diluent is bailout-capable',
                 helper:
-                    'GUE / D7 style. Off: 2–3 L diluent, plan a bottom-mix stage',
+                    'On: bail out on the diluent. Off: 2–3 L diluent, plan a bottom-mix stage',
                 onTap: () =>
-                    notifier.setGueDiluentConfig(!notifier.gueDiluentConfig),
+                    notifier.setBailoutCapableDiluent(!notifier.bailoutCapableDiluent),
                 control: Switch(
-                  key: const ValueKey('settings-gue-diluent'),
-                  value: notifier.gueDiluentConfig,
-                  onChanged: notifier.setGueDiluentConfig,
+                  key: const ValueKey('settings-bailout-diluent'),
+                  value: notifier.bailoutCapableDiluent,
+                  onChanged: notifier.setBailoutCapableDiluent,
                 ),
               ),
               SettingRow(

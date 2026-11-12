@@ -17,7 +17,7 @@ const _o2 =
 const _tanks = [kAl40, kAl80, kTank12L300];
 
 BailoutResult _result(Map<DiveGasMix, double> volumes) => BailoutResult(
-      scenario: BailoutScenario.gueStandards,
+      scenario: BailoutScenario.standardGases,
       totalTime: Duration.zero,
       stops: const [],
       perGas: {

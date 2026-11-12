@@ -45,7 +45,7 @@ BailoutResult _plan({
   List<double>? he,
   List<DiveGasMix> userTanks = const [],
   Map<DiveGasMix, double> userVolumes = const {},
-  bool isGue = false,
+  bool bailoutCapableDiluent = false,
   List<TankSpec> availableTanks = _defaultTanks,
   int sacBottom = 20,
 }) =>
@@ -57,7 +57,7 @@ BailoutResult _plan({
       tissueHeBar: he ?? _surfaceHe,
       userBailoutTanks: userTanks,
       userTankVolumesL: userVolumes,
-      isGueConfig: isGue,
+      bailoutCapableDiluent: bailoutCapableDiluent,
       gfLow: 30,
       gfHigh: 80,
       sacBottom: sacBottom,
@@ -140,7 +140,7 @@ void main() {
     });
 
     test(
-        'GUE config drops EAN 32: a 67 m dive bails out on TMX + EAN50 + O2 '
+        'bailout-capable diluent drops EAN 32: a 67 m dive bails out on TMX + EAN50 + O2 '
         'only, not EAN 32', () {
       const dil18_45 = DiveGasMix(
         oxygenPercent: 18,
@@ -150,18 +150,18 @@ void main() {
       final result = _plan(
         maxDepth: 67.0,
         recordedDiluent: dil18_45,
-        isGue: true,
+        bailoutCapableDiluent: true,
       );
       final gasesUsed = result.perGas.keys.toSet();
       expect(
         gasesUsed.any((g) => g.oxygenPercent == 32 && g.heliumPercent == 0),
         isFalse,
-        reason: 'GUE bailout never carries EAN 32',
+        reason: 'standard-gas bailout never carries EAN 32',
       );
     });
 
     test(
-        'GUE config: shallow dive (≤ 21 m) → only the bottom mix is in the '
+        'bailout-capable diluent: shallow dive (≤ 21 m) → only the bottom mix is in the '
         'gas list (no deco gases)', () {
       const dil21 = DiveGasMix(
         oxygenPercent: 21,
@@ -171,18 +171,18 @@ void main() {
       final result = _plan(
         maxDepth: 20.0,
         recordedDiluent: dil21,
-        isGue: true,
+        bailoutCapableDiluent: true,
       );
       // No EAN 50 or O2 in any used gas.
       for (final gas in result.perGas.keys) {
         expect(gas.oxygenPercent, lessThanOrEqualTo(21),
             reason:
-                'shallow GUE bailout (≤21 m) should not pick up EAN50 / O2');
+                'shallow bailout (≤21 m) should not pick up EAN50 / O2');
       }
     });
 
     test(
-        'GUE config: 50 m dive → 2 stages (bottom + EAN50, no O2)', () {
+        'bailout-capable diluent: 50 m dive → 2 stages (bottom + EAN50, no O2)', () {
       const dil21_35 = DiveGasMix(
         oxygenPercent: 21,
         heliumPercent: 35,
@@ -191,13 +191,13 @@ void main() {
       final result = _plan(
         maxDepth: 50.0,
         recordedDiluent: dil21_35,
-        isGue: true,
+        bailoutCapableDiluent: true,
       );
       final hasO2 = result.perGas.keys
           .any((g) => g.oxygenPercent == 100 && g.heliumPercent == 0);
       expect(hasO2, isFalse,
           reason:
-              'GUE bailout under 65 m should not need an O₂ deco stage');
+              'bailout under 65 m should not need an O₂ deco stage');
     });
 
     test(
@@ -216,7 +216,7 @@ void main() {
         recordedDiluent: dil18_45,
         userTanks: const [_ean50, _o2],
         userVolumes: const {_ean50: 1800.0, _o2: 1800.0},
-        isGue: true,
+        bailoutCapableDiluent: true,
       );
       expect(result.stops, isNotEmpty);
       final firstGas = result.stops.first.gas;
@@ -228,7 +228,7 @@ void main() {
     });
   });
 
-  group('planBailout — Scenario B (GUE standards / catalogue)', () {
+  group('planBailout — Scenario B (standard gases / catalogue)', () {
     test('returns tank recommendations for all used gases', () {
       final result = _plan(
         maxDepth: 30.0,
@@ -236,7 +236,7 @@ void main() {
         // No user tanks → Scenario B
       );
 
-      expect(result.scenario, BailoutScenario.gueStandards);
+      expect(result.scenario, BailoutScenario.standardGases);
       expect(result.perGas, isNotEmpty);
       // In Scenario B availableL must be null; recommendedTank may be non-null.
       for (final usage in result.perGas.values) {
@@ -255,7 +255,7 @@ void main() {
         n2: _surfaceN2,
       );
 
-      expect(result.scenario, BailoutScenario.gueStandards);
+      expect(result.scenario, BailoutScenario.standardGases);
       expect(result.verdict, BailoutVerdict.sufficient);
       // Every used gas must have a recommendation.
       for (final entry in result.perGas.entries) {
@@ -283,7 +283,7 @@ void main() {
         tissueHeBar: List.filled(16, 1.0),
         userBailoutTanks: const [],
         userTankVolumesL: const {},
-        isGueConfig: false,
+        bailoutCapableDiluent: false,
         gfLow: 20,
         gfHigh: 70,
         sacBottom: 20,
@@ -293,12 +293,12 @@ void main() {
         availableTanks: const [], // empty catalogue → no recommendations possible
       );
 
-      expect(result.scenario, BailoutScenario.gueStandards);
+      expect(result.scenario, BailoutScenario.standardGases);
       expect(result.verdict, BailoutVerdict.insufficient);
     });
 
     test(
-        'GUE config at 51 m on 18/45 diluent uses a trimix bottom mix, never '
+        'bailout-capable diluent at 51 m on 18/45 diluent uses a trimix bottom mix, never '
         'starts the ascent on a deco gas (CNS-hit regression)', () {
       // Reproducer for the EAN 50 @ 51 m bug: a CCR diver on 18/45 diluent
       // bails out at 51 m. The OC plan must NOT start on EAN 50 — PPO2
@@ -311,7 +311,7 @@ void main() {
       final result = _plan(
         maxDepth: 51.0,
         recordedDiluent: dil18_45,
-        isGue: true,
+        bailoutCapableDiluent: true,
       );
       expect(result.stops, isNotEmpty);
       final firstGas = result.stops.first.gas;
@@ -325,7 +325,7 @@ void main() {
     });
 
     test(
-        'GUE config at 80 m with normal catalogue: NO intermediate trimix — '
+        'bailout-capable diluent at 80 m with normal catalogue: NO intermediate trimix — '
         '3 stages (bottom + EAN50 + O2) is enough', () {
       // Volume-driven escalation: at 80 m on 18/45 with the default
       // catalogue (largest tank = 12L/300 = 3600 L), bottom-mix on the OC
@@ -338,7 +338,7 @@ void main() {
       final result = _plan(
         maxDepth: 80.0,
         recordedDiluent: dil18_45,
-        isGue: true,
+        bailoutCapableDiluent: true,
         // Moderate tissue load — enough deco for EAN 50 / O₂ to see real
         // use (≥ 200 L, above the trivial-stage threshold) without
         // pushing bottom-mix volume past AL80. Heavier load would force
@@ -358,7 +358,7 @@ void main() {
     });
 
     test(
-        'GUE config at 145 m with constrained catalogue (AL80 only) adds '
+        'bailout-capable diluent at 145 m with constrained catalogue (AL80 only) adds '
         'intermediate trimixes when bottom-mix would overflow one tank', () {
       // Reproducer for the deep-cave-dive feedback (2026-05-19): once
       // bottom-mix volume overflows the largest tank in the catalogue,
@@ -372,7 +372,7 @@ void main() {
       final result = _plan(
         maxDepth: 145.0,
         recordedDiluent: dil10_70,
-        isGue: true,
+        bailoutCapableDiluent: true,
         // Force overflow: AL80 (2575 L) caps the largest stage; a heavily
         // breathing diver tips bottom-mix over the edge at this depth.
         availableTanks: const [kAl40, kAl80],

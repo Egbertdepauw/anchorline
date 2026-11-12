@@ -83,8 +83,10 @@ temporary address first.
 
 ### 2. Published content
 
-**The bucket.** One public R2 bucket, written only from the owner's
-machine, read by the site and later by the app.
+**The bucket.** One public R2 bucket, written only by the build
+pipeline with an R2 key that is scoped to this bucket (the owner can run
+the publish command by hand in an emergency), read by the site and later
+by the app.
 
 ```
 releases/
@@ -92,6 +94,12 @@ releases/
   1.2.0/
     Anchorline-1.2.0-windows-x64.exe
     Anchorline-1.2.0-linux-x64.AppImage
+nightly/
+  manifest.json
+  1.3.0-157/
+    Anchorline-Nightly-1.3.0-157-windows-x64.exe
+    Anchorline-Nightly-1.3.0-157-linux-x64.AppImage
+    Anchorline-Nightly-1.3.0-157-macos.dmg
 content/
   legal/privacy.md
   legal/terms.md
@@ -128,9 +136,27 @@ version:
 }
 ```
 
+`latest` is the highest version published, unless a roll back has made
+an earlier release `latest`. `previous` lists the others, newest first.
+A hotfix for an older line (1.1.1 while 1.2.0 is the latest) is listed
+in `previous` and does not become `latest`.
+
 A reader that meets a `format` it does not know treats the list as
 unavailable. New platforms are added as new keys under `files`; readers
 ignore keys they do not know.
+
+**The nightly list** (`nightly/manifest.json`) has the same format-1
+shape. Its entries carry a `macos` key (the `.dmg`) next to
+`windows-x64` and `linux-x64`. A nightly is offered for 14 days. The
+publish command drops older entries from the list, but only when it
+publishes, and nightlies are only built when main has changed. So the
+list alone does not keep an old entry out, and the rule is part of the
+contract: **a reader (the site and the app) treats a nightly entry dated
+more than 14 days ago by UTC calendar date as unavailable.** When main
+has been quiet that long there is simply no nightly to download. The R2
+lifecycle rule on the `nightly/` prefix deletes files after 15 days, one
+day longer, so a nightly that is listed and offered never points to a
+deleted file. Release files are kept.
 
 **Sources in the Anchorline repository**
 
@@ -140,20 +166,33 @@ ignore keys they do not know.
 | Terms | `docs/TERMS.md` (to be written) |
 | Documentation, later | `docs/user/` |
 
-**The publish command.** A script in the Anchorline repository, using
-the Cloudflare `wrangler` tool already used to deploy the Worker. Two
-actions:
+**The publish command.** A script in the Anchorline repository, at
+`tool/publish/`. It uses the AWS CLI against R2's S3 interface. That
+replaces the earlier idea of the Cloudflare `wrangler` tool, because
+the AWS CLI is preinstalled on GitHub's runners. Its actions:
 
 - **Publish a release**: takes a version, a build number, the installer
-  files and a release-notes file. It computes sizes and checksums,
-  uploads the files, verifies each upload, and only then replaces
-  `manifest.json`, moving the previous `latest` into `previous`. It
-  refuses to overwrite an existing version unless told to. Older
-  versions stay in the bucket.
+  files (a release needs both `windows-x64` and `linux-x64`) and a
+  release-notes file. It computes sizes and checksums, uploads the
+  files, verifies each upload, and only then replaces `manifest.json`.
+  The highest version becomes `latest` and the old `latest` moves into
+  `previous`. It refuses to overwrite an existing version unless told
+  to, with one exception: publishing the identical files again for the
+  same version and build is a no-op that succeeds ("already published,
+  nothing to do"), so a re-run of the build pipeline finishes. Different
+  files are refused unless told to. Older versions stay in the bucket.
+- **Publish a nightly**: the same steps for a nightly, with a version
+  and a build number, into `nightly/manifest.json` and
+  `nightly/<version>-<build>/`. It refuses a build number that is
+  already listed, except for the identical files again, which is the
+  same no-op that succeeds; a nightly cannot be forced. It drops entries
+  older than 14 days.
+- **Roll back**: makes a previous release `latest` again by replacing
+  `releases/manifest.json`. Nothing is deleted.
 - **Publish content**: uploads the legal and documentation texts and
   regenerates `content/index.json`.
 
-Both have a dry-run mode that prints what would change.
+Each has a dry-run mode that prints what would change.
 
 **How the site uses it**
 
@@ -161,6 +200,8 @@ Both have a dry-run mode that prints what would change.
   and re-checks every five minutes.
 - The download page shows version, date, release notes and each file's
   checksum.
+- A nightly entry dated more than 14 days ago by UTC calendar date is not
+  offered.
 - Markdown is rendered to plain formatting only. Raw HTML and scripts in
   a text are not rendered.
 - Store links for iOS, macOS and Android are site settings; they do not
@@ -175,10 +216,11 @@ Both have a dry-run mode that prints what would change.
 | Malformed or unknown-format releases list | The same as unreachable |
 | Legal pages, in every case | Always shown. Each site image is built with a copy of the legal texts as a fallback |
 
-**Security.** Only the owner's machine can write to the bucket. The
-site holds no secret; it reads public files. Each legal text carries a
-last-updated date, and its history is in the Anchorline repository's git
-log.
+**Security.** Only the build pipeline can write to the bucket, with an
+R2 key that is scoped to this bucket; the owner can run the publish
+command by hand in an emergency. The site holds no secret; it reads
+public files. Each legal text carries a last-updated date, and its
+history is in the Anchorline repository's git log.
 
 ### 3. Look, content and rollout
 

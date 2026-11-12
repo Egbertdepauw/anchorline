@@ -105,9 +105,28 @@ class DivePlanNotifier extends ChangeNotifier {
   bool get nameMatchesSavedPlan =>
       _currentSavedPlanId != null && _planName == _savedPlanName;
 
+  // ── View state ─────────────────────────────────────────────────────
+  // Whether the SETTINGS panel on the Plan tab is open. Kept here rather
+  // than in the panel's State so it survives the panel being rebuilt
+  // from scratch (tab switches, app-shell layout changes). Not persisted.
+  bool _settingsExpanded = false;
+  bool get settingsExpanded => _settingsExpanded;
+
+  void setSettingsExpanded(bool expanded) {
+    if (_settingsExpanded == expanded) return;
+    _settingsExpanded = expanded;
+    notifyListeners();
+  }
+
   // ── Compute output ─────────────────────────────────────────────────
   PlanResult? _result;
   PlanResult? get result => _result;
+
+  /// True when a segment is deeper than [kMaxPlanDepthMeters]. The plan
+  /// is not computed then ([result] is null); the editor rejects such
+  /// depths, so this only happens with a draft written elsewhere.
+  bool get exceedsMaxDepth =>
+      _segments.any((s) => s.depthMeters > kMaxPlanDepthMeters);
 
   // ── Debounce ───────────────────────────────────────────────────────
   Timer? _saveTimer;
@@ -382,7 +401,7 @@ class DivePlanNotifier extends ChangeNotifier {
       });
 
   void _recompute() {
-    if (_segments.isEmpty || _gases.isEmpty) {
+    if (_segments.isEmpty || _gases.isEmpty || exceedsMaxDepth) {
       _result = null;
       return;
     }

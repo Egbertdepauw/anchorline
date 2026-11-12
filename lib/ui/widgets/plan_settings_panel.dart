@@ -27,6 +27,8 @@ class PlanSettingsPanel extends StatefulWidget {
     required this.onChange,
     this.mode = DivePlanMode.cc,
     this.onModeChange,
+    this.expanded,
+    this.onExpandedChanged,
   });
 
   final SettingsNotifier settings;
@@ -41,12 +43,30 @@ class PlanSettingsPanel extends StatefulWidget {
   /// the segmented control is rendered disabled (read-only view).
   final ValueChanged<DivePlanMode>? onModeChange;
 
+  /// Whether the override controls are shown. When set, the caller owns
+  /// the open state and [onExpandedChanged] reports header taps; the
+  /// plan screen keeps it in the notifier so it survives this widget
+  /// being rebuilt from scratch. When null the panel keeps it locally.
+  final bool? expanded;
+  final ValueChanged<bool>? onExpandedChanged;
+
   @override
   State<PlanSettingsPanel> createState() => _PlanSettingsPanelState();
 }
 
 class _PlanSettingsPanelState extends State<PlanSettingsPanel> {
-  bool _expanded = false;
+  bool _localExpanded = false;
+
+  bool get _expanded => widget.expanded ?? _localExpanded;
+
+  void _toggleExpanded() {
+    final next = !_expanded;
+    if (widget.onExpandedChanged != null) {
+      widget.onExpandedChanged!(next);
+    } else {
+      setState(() => _localExpanded = next);
+    }
+  }
 
   int get _gfLow =>
       widget.overrides.gfLow ?? widget.settings.plannerGfLow;
@@ -90,7 +110,7 @@ class _PlanSettingsPanelState extends State<PlanSettingsPanel> {
       children: [
         InkWell(
           key: const ValueKey('plan-settings-toggle'),
-          onTap: () => setState(() => _expanded = !_expanded),
+          onTap: _toggleExpanded,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: Spacing.sm),
             child: Row(
@@ -203,6 +223,8 @@ class _PlanSettingsPanelState extends State<PlanSettingsPanel> {
                     child: _intField(
                       key: const ValueKey('gf-low'),
                       value: _gfLow,
+                      min: 1,
+                      max: 100,
                       onChanged: (v) => widget
                           .onChange(widget.overrides.copyWith(gfLow: v)),
                     ),
@@ -212,6 +234,8 @@ class _PlanSettingsPanelState extends State<PlanSettingsPanel> {
                     child: _intField(
                       key: const ValueKey('gf-high'),
                       value: _gfHigh,
+                      min: 1,
+                      max: 100,
                       onChanged: (v) => widget
                           .onChange(widget.overrides.copyWith(gfHigh: v)),
                     ),
@@ -283,23 +307,38 @@ class _PlanSettingsPanelState extends State<PlanSettingsPanel> {
     );
   }
 
+  /// Integer override field. With [min]/[max], out-of-range input is
+  /// flagged under the field and not passed on, so the planner never
+  /// sees e.g. GF Low 350.
   Widget _intField({
     Key? key,
     required int value,
     required ValueChanged<int> onChanged,
     String? suffix,
-  }) =>
-      TextFormField(
-        key: key,
-        initialValue: '$value',
-        keyboardType: TextInputType.number,
-        decoration:
-            suffix == null ? null : InputDecoration(suffixText: suffix),
-        onChanged: (s) {
-          final v = int.tryParse(s);
-          if (v != null) onChanged(v);
-        },
-      );
+    int? min,
+    int? max,
+  }) {
+    bool inRange(int v) =>
+        (min == null || v >= min) && (max == null || v <= max);
+    return TextFormField(
+      key: key,
+      initialValue: '$value',
+      keyboardType: TextInputType.number,
+      decoration:
+          suffix == null ? null : InputDecoration(suffixText: suffix),
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      validator: min == null && max == null
+          ? null
+          : (s) {
+              final v = int.tryParse(s ?? '');
+              return v != null && inRange(v) ? null : '$min–$max';
+            },
+      onChanged: (s) {
+        final v = int.tryParse(s);
+        if (v != null && inRange(v)) onChanged(v);
+      },
+    );
+  }
 
   Widget _doubleField({
     Key? key,

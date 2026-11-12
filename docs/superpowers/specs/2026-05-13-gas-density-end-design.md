@@ -30,7 +30,7 @@ nothing else and unblocks the rest of the tech-analysis Track.
   orange, >5.7 red`). Matches Shearwater's own warning at 5.7.
 - **END formula default:** N₂ + O₂ both count as narcotic (modern
   US-Navy / IANTD / TDI teaching). Settings toggle
-  `endCountsOxygen` (default ON) — when off, switches to the GUE/DIR
+  `endCountsOxygen` (default ON) — when off, switches to the
   formula counting only N₂.
 - **END thresholds:** `<30 m green, 30–40 m orange, >40 m red`. No
   Settings option; these are near-universal in tech education.
@@ -147,7 +147,7 @@ densityAtSample = mixDensityAt1Atm * ambientPressureBar               // g/L
 END(m) = max(0, (depth + 10) * (1 - heFraction) - 10)
 ```
 
-**END (formula B, GUE, when `endCountsOxygen == false`):**
+**END (formula B, when `endCountsOxygen == false`):**
 ```
 END(m) = max(0, (depth + 10) * (n2Fraction / 0.79) - 10)
 ```

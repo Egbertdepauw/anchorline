@@ -57,7 +57,8 @@ Configured in `wrangler.toml`:
 - `UPLOADS_ENABLED`: kill switch; only the exact string `"true"` allows uploads.
 - `SIGN_UPLOAD_LIMITER`: Workers Rate Limiting binding (20 requests per
   60 s per account) on `/sign-upload`, declared as `[[unsafe.bindings]]`
-  because wrangler 3 has no first-class key for it.
+  because wrangler 3 had no first-class key for it (wrangler 4 has
+  `[[ratelimits]]`; not migrated while the Worker is frozen).
 
 Usage is measured by listing the account's objects in R2, not from a
 counter, so it cannot drift.
