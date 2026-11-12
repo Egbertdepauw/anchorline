@@ -1,19 +1,33 @@
-bucket_definitions:
+# PowerSync Sync Streams for Anchorline (issue #126).
+#
+# Every signed-in user syncs every row they own, on connect, with no
+# client-side subscribe call: one stream, auto-subscribed. This is the
+# same data as the old Sync Rules `user_data` bucket (one query per table,
+# filtered on owner_id).
+#
+# A new PowerSync-backed table needs a query line here, and the file has to
+# be deployed to the PowerSync dashboard before that table syncs (CLAUDE.md
+# principle 7). test/sync/cloud/sync_streams_config_test.dart checks that
+# every table in lib/sync/cloud/powersync_schema.dart has a line here.
+config:
+  edition: 3
+
+streams:
   user_data:
-    parameters: SELECT request.user_id() as user_id
-    data:
-      - SELECT * FROM dive_annotations WHERE owner_id = bucket.user_id
-      - SELECT * FROM cylinders WHERE owner_id = bucket.user_id
-      - SELECT * FROM oxygen_cells WHERE owner_id = bucket.user_id
-      - SELECT * FROM scrubber_sessions WHERE owner_id = bucket.user_id
-      - SELECT * FROM pressure_mappings WHERE owner_id = bucket.user_id
-      - SELECT * FROM dive_cylinders WHERE owner_id = bucket.user_id
-      - SELECT * FROM dive_plans WHERE owner_id = bucket.user_id
-      - SELECT * FROM dive_bailout_carry WHERE owner_id = bucket.user_id
-      - SELECT * FROM dive_computers WHERE owner_id = bucket.user_id
-      - SELECT * FROM dives WHERE owner_id = bucket.user_id
-      - SELECT * FROM dive_samples WHERE owner_id = bucket.user_id
-      - SELECT * FROM dive_attachments WHERE owner_id = bucket.user_id
-      - SELECT * FROM dive_merge_links WHERE owner_id = bucket.user_id
-      - SELECT * FROM gas_analyses WHERE owner_id = bucket.user_id
-      - SELECT * FROM user_acknowledgements WHERE owner_id = bucket.user_id
+    auto_subscribe: true
+    queries:
+      - SELECT * FROM dive_annotations WHERE owner_id = auth.user_id()
+      - SELECT * FROM cylinders WHERE owner_id = auth.user_id()
+      - SELECT * FROM oxygen_cells WHERE owner_id = auth.user_id()
+      - SELECT * FROM scrubber_sessions WHERE owner_id = auth.user_id()
+      - SELECT * FROM pressure_mappings WHERE owner_id = auth.user_id()
+      - SELECT * FROM dive_cylinders WHERE owner_id = auth.user_id()
+      - SELECT * FROM dive_plans WHERE owner_id = auth.user_id()
+      - SELECT * FROM dive_bailout_carry WHERE owner_id = auth.user_id()
+      - SELECT * FROM dive_computers WHERE owner_id = auth.user_id()
+      - SELECT * FROM dives WHERE owner_id = auth.user_id()
+      - SELECT * FROM dive_samples WHERE owner_id = auth.user_id()
+      - SELECT * FROM dive_attachments WHERE owner_id = auth.user_id()
+      - SELECT * FROM dive_merge_links WHERE owner_id = auth.user_id()
+      - SELECT * FROM gas_analyses WHERE owner_id = auth.user_id()
+      - SELECT * FROM user_acknowledgements WHERE owner_id = auth.user_id()
