@@ -17,6 +17,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../analysis/bailout/ascent_simulator.dart' show AscentStop;
+import '../../data/models/dive_plan.dart' show kMaxPlanDepthMeters;
 import '../notifiers/dive_plan_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/safety_colors.dart';
@@ -334,6 +335,12 @@ class _SaveButton extends StatelessWidget {
   }
 }
 
+/// Shown instead of the output when a segment is deeper than the
+/// planner accepts (only possible with a draft written elsewhere; the
+/// segment editor rejects such depths).
+const _tooDeepMessage = 'A segment is deeper than '
+    '${kMaxPlanDepthMeters ~/ 1} m. Fix its depth to see the plan.';
+
 // ── Tab 1: Plan ───────────────────────────────────────────────────────
 
 class _PlanTab extends StatelessWidget {
@@ -374,6 +381,8 @@ class _PlanTab extends StatelessWidget {
               onChange: notifier.setOverrides,
               mode: notifier.mode,
               onModeChange: notifier.setMode,
+              expanded: notifier.settingsExpanded,
+              onExpandedChanged: notifier.setSettingsExpanded,
             ),
           ),
           const SizedBox(height: Spacing.sm),
@@ -427,6 +436,9 @@ class _PlanTab extends StatelessWidget {
                   result: result,
                   scheme: scheme,
                   mode: notifier.mode,
+                  emptyMessage: notifier.exceedsMaxDepth
+                      ? _tooDeepMessage
+                      : null,
                 ),
               ],
             ),
@@ -501,17 +513,19 @@ class _BailoutTab extends StatelessWidget {
                     triggerDepthMeters: triggerDepth,
                     sacBottom: settings.bailoutSacBottom,
                     sacDeco: settings.bailoutSacDeco,
-                    isGueConfig: settings.gueDiluentConfig,
+                    bailoutCapableDiluent: settings.bailoutCapableDiluent,
                     bottomTimeBeforeTrigger: result.profile.fold(
                       Duration.zero,
                       (sum, leg) => sum + leg.duration,
                     ),
                   )
                 else
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: Spacing.lg),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
                     child: Text(
-                      'Add gases and segments to see the bailout plan.',
+                      notifier.exceedsMaxDepth
+                          ? _tooDeepMessage
+                          : 'Add gases and segments to see the bailout plan.',
                       style: AppTypography.caption,
                     ),
                   ),

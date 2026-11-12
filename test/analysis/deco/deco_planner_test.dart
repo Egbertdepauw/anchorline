@@ -227,7 +227,7 @@ void main() {
   });
 
   group('standardSwitchDepth', () {
-    test('GUE-standard gases map to their canonical switch depths', () {
+    test('standard gases map to their canonical switch depths', () {
       expect(standardSwitchDepth(_o2), 6);
       expect(standardSwitchDepth(_ean50), 21);
       expect(

@@ -24,27 +24,32 @@ class BackgroundWatermark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (opacity <= 0) return child;
+    // Always a Stack, with the overlay left out at zero opacity. Returning
+    // the bare child instead changed the tree shape above it, so every
+    // switch (e.g. to the Settings tab, which hides the watermark) threw
+    // away the state of everything below: open panels, text fields, the
+    // Dives tab's navigation stack (#183).
     return Stack(
       children: [
         child,
-        Positioned.fill(
-          child: IgnorePointer(
-            child: Center(
-              child: FractionallySizedBox(
-                widthFactor: 0.9,
-                heightFactor: 0.9,
-                child: Opacity(
-                  opacity: opacity,
-                  child: Image.asset(
-                    'assets/images/watermark.png',
-                    fit: BoxFit.contain,
+        if (opacity > 0)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Center(
+                child: FractionallySizedBox(
+                  widthFactor: 0.9,
+                  heightFactor: 0.9,
+                  child: Opacity(
+                    opacity: opacity,
+                    child: Image.asset(
+                      'assets/images/watermark.png',
+                      fit: BoxFit.contain,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
       ],
     );
   }

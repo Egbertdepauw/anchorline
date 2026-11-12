@@ -4,7 +4,7 @@
 
 **Goal:** Replace the fixed-time-step bailout simulator with a proper Bühlmann ZH-L16C + Erik-Baker-GF deco planner that produces 3m stop increments starting from a GF-Low-derived first stop. The bailout planner's public type `AscentPlan` stays unchanged so the UI doesn't churn.
 
-**Architecture:** Add a new pure-Dart `deco_planner.dart` that walks tissue state up from a trigger depth, finds the first stop (round up to next 3m), then hops 3m increments holding at each until the linearly-interpolated GF allows the next step. Rewrite `ascent_simulator.simulateAscent` as a thin shim that calls into it and decorates each leg with gas volume via the existing SAC × ambient × duration math. PPO2 limits and ascent rates flow in as parameters so GUE / non-GUE / user-tweaked Settings all work without code changes.
+**Architecture:** Add a new pure-Dart `deco_planner.dart` that walks tissue state up from a trigger depth, finds the first stop (round up to next 3m), then hops 3m increments holding at each until the linearly-interpolated GF allows the next step. Rewrite `ascent_simulator.simulateAscent` as a thin shim that calls into it and decorates each leg with gas volume via the existing SAC × ambient × duration math. PPO2 limits and ascent rates flow in as parameters so any user-tweaked Settings all work without code changes.
 
 **Tech Stack:** Dart, Drift (unchanged), Flutter (no UI changes). Existing test patterns from `test/analysis/deco/` and `test/analysis/bailout/`.
 
@@ -655,7 +655,7 @@ AscentPlan simulateAscent({
     ascentRateFastMPerMin: ascentRateFast,
     ascentRateSlowMPerMin: ascentRateSlow,
     // Bottom mix selection uses 1.6 max; deco-gas switches use 1.6 too
-    // (1.4 is GUE-only and lives at the bailout planner layer).
+    // (1.4 is the bailout-capable-diluent limit and lives at the bailout planner layer).
     ppo2LimitBottom: 1.6,
     ppo2LimitDeco: 1.6,
   );
@@ -805,7 +805,7 @@ Expected: all green.
 - [ ] **Step 3: Manual verification (operator runs on device after rebuild)**
 
 For a known dive (e.g. Dive #709, 40m on air, GF 50/95):
-- Bailout panel header shows "GUE standards" or "User-defined bailout tanks" as before.
+- Bailout panel header shows "Standard gases" or "User-defined bailout tanks" as before.
 - Stops table shows 12m or 15m as the **first stop** (GF-Low determined), then 9, 6, 3, 0.
 - Gas column shows the bottom mix (Air or 21/35) at the deeper stops, EAN 50 from ~22m up (if present), O2 from ~6m up.
 - Times are integer minutes.

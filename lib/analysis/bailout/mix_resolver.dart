@@ -19,7 +19,7 @@ import '../../data/models/dive.dart' show DiveGasMix;
 import 'standard_mixes.dart';
 
 /// Hard PPO2 cap for selecting / accepting a bottom mix at [maxDepthMeters].
-/// Per the user's GUE convention: ≤ 65 m → 1.6 bar, > 65 m → 1.5 bar (the
+/// Per the user's convention: ≤ 65 m → 1.6 bar, > 65 m → 1.5 bar (the
 /// deeper window narrows the working PPO2 so the bottom mix stays
 /// breathable on the very deepest moment of the dive).
 double bottomPpo2Limit(double maxDepthMeters) =>
@@ -28,7 +28,7 @@ double bottomPpo2Limit(double maxDepthMeters) =>
 DiveGasMix resolveBottomMix({
   required DiveGasMix? recordedDiluent,
   required double maxDepthMeters,
-  required bool isGueConfig,
+  required bool bailoutCapableDiluent,
 }) {
   final ambientBar = (maxDepthMeters + 10.0) / 10.0;
   final ppo2Limit = bottomPpo2Limit(maxDepthMeters);
@@ -43,10 +43,10 @@ DiveGasMix resolveBottomMix({
     // Otherwise fall through to the snap.
   }
 
-  final ppo2Target = isGueConfig ? kPpo2MaxGue : kPpo2MaxNonGue;
+  final ppo2Target = bailoutCapableDiluent ? kPpo2MaxBailoutDiluent : kPpo2MaxBottomMix;
   final optO2 = ppo2Target / ambientBar;
 
-  final candidates = isGueConfig ? kGueBottomMixes : kNonGueBottomMixes;
+  final candidates = bailoutCapableDiluent ? kBailoutDiluentBottomMixes : kBottomMixes;
   DiveGasMix? best;
   double bestDelta = double.infinity;
   for (final mix in candidates) {

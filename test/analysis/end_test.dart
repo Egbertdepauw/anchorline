@@ -48,7 +48,7 @@ void main() {
     });
   });
 
-  group('computeEndSeries — formula B (N2 only, GUE)', () {
+  group('computeEndSeries — formula B (N2 only)', () {
     test('18/45 trimix at 60 m → END ≈ 22.8 m', () {
       // (60 + 10) × (0.37 / 0.79) - 10 = 70 × 0.468 - 10 = 22.78
       final series = computeEndSeries(

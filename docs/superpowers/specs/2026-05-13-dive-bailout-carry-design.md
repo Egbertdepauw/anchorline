@@ -6,7 +6,7 @@ Model the per-dive list of OC bailout cylinders so the bailout planner runs agai
 
 ## Motivation
 
-The current Bailout panel either runs Scenario B (GUE standards) or reads `cylinders.gasMix` globally and treats every `role='bailout'` cylinder as carried on every dive. Both are wrong:
+The current Bailout panel either runs Scenario B (standard gases) or reads `cylinders.gasMix` globally and treats every `role='bailout'` cylinder as carried on every dive. Both are wrong:
 
 - A cylinder is a physical vessel — volume, working pressure, hydro, serial. What's *in* it varies per fill.
 - Bailout carry varies per dive: a 50m trimix dive might carry trimix + 50% + O2; a 20m rec dive might carry a single AL40 of EAN 50.

@@ -37,7 +37,7 @@ void main() {
           triggerDepthMeters: 60,
           sacBottom: 30,
           sacDeco: 20,
-          isGueConfig: false,
+          bailoutCapableDiluent: false,
         ),
       ),
     ));
@@ -54,7 +54,7 @@ void main() {
           triggerDepthMeters: 60,
           sacBottom: 30,
           sacDeco: 20,
-          isGueConfig: false,
+          bailoutCapableDiluent: false,
         ),
       ),
     ));
@@ -63,7 +63,7 @@ void main() {
 
   testWidgets('Scenario B banner reads differently from A', (tester) async {
     final bResult = BailoutResult(
-      scenario: BailoutScenario.gueStandards,
+      scenario: BailoutScenario.standardGases,
       totalTime: const Duration(minutes: 47),
       stops: const [],
       perGas: const {},
@@ -77,12 +77,11 @@ void main() {
           triggerDepthMeters: 60,
           sacBottom: 30,
           sacDeco: 20,
-          isGueConfig: false,
+          bailoutCapableDiluent: false,
         ),
       ),
     ));
-    // The banner copy should mention GUE-style or "no BO tanks defined"
-    expect(find.textContaining('GUE'), findsWidgets);
+    expect(find.textContaining('Standard gases'), findsWidgets);
   });
 
   testWidgets('partialShortfall verdict renders amber-ish banner', (tester) async {
@@ -94,7 +93,7 @@ void main() {
             triggerDepthMeters: 60,
             sacBottom: 30,
             sacDeco: 20,
-            isGueConfig: false,
+            bailoutCapableDiluent: false,
           ),
         ),
       ),
@@ -132,7 +131,7 @@ void main() {
             triggerDepthMeters: 60,
             sacBottom: 30,
             sacDeco: 20,
-            isGueConfig: false,
+            bailoutCapableDiluent: false,
           ),
         ),
       ),

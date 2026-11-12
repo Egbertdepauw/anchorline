@@ -16,6 +16,7 @@ class PlanOutputSection extends StatelessWidget {
     required this.result,
     required this.scheme,
     this.mode = DivePlanMode.cc,
+    this.emptyMessage,
   });
 
   final PlanResult? result;
@@ -26,13 +27,18 @@ class PlanOutputSection extends StatelessWidget {
   /// gas litres (cylinder-capacity sanity).
   final DivePlanMode mode;
 
+  /// Replaces the default empty-state hint when [result] is null for a
+  /// reason other than missing input (e.g. a segment that is too deep).
+  final String? emptyMessage;
+
   @override
   Widget build(BuildContext context) {
     final r = result;
     if (r == null) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: Spacing.lg),
-        child: Text('Add gases and segments to see the dive plan.',
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
+        child: Text(
+            emptyMessage ?? 'Add gases and segments to see the dive plan.',
             style: AppTypography.caption),
       );
     }

@@ -20,7 +20,9 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kBailoutSacDeco = 'bailout_sac_deco';
   static const _kBailoutAscentRateFast = 'bailout_ascent_fast';
   static const _kBailoutAscentRateSlow = 'bailout_ascent_slow';
-  static const _kGueDiluentConfig = 'gue_diluent_config';
+  static const _kBailoutCapableDiluent = 'bailout_capable_diluent';
+  // Key the setting was stored under before it was renamed (#183).
+  static const _kBailoutCapableDiluentOld = 'gue_diluent_config';
   static const _kTank68L300Available = 'tank_6_8l_300_available';
   static const _kTank12L300Available = 'tank_12l_300_available';
   static const _kPlannerGfLow = 'planner_gf_low';
@@ -88,7 +90,7 @@ class SettingsNotifier extends ChangeNotifier {
   int _bailoutSacDeco = 20;
   int _bailoutAscentRateFast = 18;
   int _bailoutAscentRateSlow = 9;
-  bool _gueDiluentConfig = false;
+  bool _bailoutCapableDiluent = false;
   bool _tank68L300Available = false;
   bool _tank12L300Available = false;
   int _plannerGfLow = 30;
@@ -157,7 +159,7 @@ class SettingsNotifier extends ChangeNotifier {
   int get bailoutSacDeco => _bailoutSacDeco;
   int get bailoutAscentRateFast => _bailoutAscentRateFast;
   int get bailoutAscentRateSlow => _bailoutAscentRateSlow;
-  bool get gueDiluentConfig => _gueDiluentConfig;
+  bool get bailoutCapableDiluent => _bailoutCapableDiluent;
   bool get tank68L300Available => _tank68L300Available;
   bool get tank12L300Available => _tank12L300Available;
   int get plannerGfLow => _plannerGfLow;
@@ -273,7 +275,13 @@ class SettingsNotifier extends ChangeNotifier {
       _bailoutAscentRateSlow = ascentSlow.clamp(3, 30);
     }
 
-    _gueDiluentConfig = prefs.getBool(_kGueDiluentConfig) ?? false;
+    _bailoutCapableDiluent = prefs.getBool(_kBailoutCapableDiluent) ??
+        prefs.getBool(_kBailoutCapableDiluentOld) ??
+        false;
+    if (prefs.containsKey(_kBailoutCapableDiluentOld)) {
+      await prefs.setBool(_kBailoutCapableDiluent, _bailoutCapableDiluent);
+      await prefs.remove(_kBailoutCapableDiluentOld);
+    }
     _tank68L300Available = prefs.getBool(_kTank68L300Available) ?? false;
     _tank12L300Available = prefs.getBool(_kTank12L300Available) ?? false;
 
@@ -478,12 +486,12 @@ class SettingsNotifier extends ChangeNotifier {
     await prefs.setInt(_kBailoutAscentRateSlow, clamped);
   }
 
-  Future<void> setGueDiluentConfig(bool v) async {
-    if (_gueDiluentConfig == v) return;
-    _gueDiluentConfig = v;
+  Future<void> setBailoutCapableDiluent(bool v) async {
+    if (_bailoutCapableDiluent == v) return;
+    _bailoutCapableDiluent = v;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kGueDiluentConfig, v);
+    await prefs.setBool(_kBailoutCapableDiluent, v);
   }
 
   Future<void> setTank68L300Available(bool v) async {

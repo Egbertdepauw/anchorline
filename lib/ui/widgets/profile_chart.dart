@@ -181,8 +181,8 @@ class ProfileChart extends StatelessWidget {
 
   /// Whether oxygen counts as narcotic when computing END.
   /// Passed through to [computeEndSeries] when the END trace is visible.
-  /// Defaults to `true` — the GUE / DIR convention (O₂ has narcotic
-  /// potency equivalent to N₂), which is also standard tech-diving.
+  /// Defaults to `true` — the standard tech-diving convention (O₂ has
+  /// narcotic potency equivalent to N₂).
   /// `false` falls back to the older N₂-only formula.
   final bool endCountsOxygen;
 

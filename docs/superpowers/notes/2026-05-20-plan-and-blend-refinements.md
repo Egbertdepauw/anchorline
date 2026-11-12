@@ -134,7 +134,7 @@ real-gas math, and hot-fill compensation.
   4. Walk the chosen fill sequence converting cumulative mole inventory
      to gauge pressure via vdW at each step. The bar deltas are emitted
      as the fill plan — by construction they sum to the target gauge.
-- Three fill sequences: He → O₂ → top-off (default, GUE/tech convention),
+- Three fill sequences: He → O₂ → top-off (default, tech convention),
   O₂ → He → top-off, O₂ → top-off → He (the high-pressure-He against
   banked-nitrox case from ScubaBoard).
 - Cost: per-source moles × R × T(K) gives "barliter" matching the

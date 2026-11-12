@@ -64,7 +64,9 @@ class PlanSegmentsEditor extends StatelessWidget {
                 final deepest = segments
                     .map((s) => s.depthMeters)
                     .reduce((a, b) => a > b ? a : b);
-                depth = deepest + 10;
+                depth = (deepest + 10)
+                    .clamp(0, kMaxPlanDepthMeters)
+                    .toDouble();
               }
               onAdd(DivePlanSegment(
                 depthMeters: depth,
@@ -111,6 +113,11 @@ class _SegmentRowState extends State<_SegmentRow> {
   final FocusNode _depthFocus = FocusNode();
   final FocusNode _timeFocus = FocusNode();
 
+  // True while the depth field holds a number deeper than
+  // [kMaxPlanDepthMeters]. Such input is not passed on: the plan keeps
+  // the last accepted depth and the row says why.
+  bool _depthTooDeep = false;
+
   @override
   void initState() {
     super.initState();
@@ -130,6 +137,7 @@ class _SegmentRowState extends State<_SegmentRow> {
     final newDepthText = widget.segment.depthMeters.toStringAsFixed(0);
     if (!_depthFocus.hasFocus && _depthCtrl.text != newDepthText) {
       _depthCtrl.text = newDepthText;
+      _depthTooDeep = false;
     }
     final newTimeText = '${widget.segment.durationMinutes}';
     if (!_timeFocus.hasFocus && _timeCtrl.text != newTimeText) {
@@ -202,6 +210,18 @@ class _SegmentRowState extends State<_SegmentRow> {
         : computeGasSafetyReadout(selectedGas, segDepth,
             idleColor: context.palette.textSecondary);
 
+    // Over-limit depth: a typed one is rejected (the plan keeps the last
+    // accepted depth), a stored one blocks the whole computation.
+    final maxDepthText =
+        'Max depth ${kMaxPlanDepthMeters.toStringAsFixed(0)} m.';
+    String? depthLimitNote;
+    if (segDepth > kMaxPlanDepthMeters) {
+      depthLimitNote = '$maxDepthText The plan is not computed.';
+    } else if (_depthTooDeep) {
+      depthLimitNote = '$maxDepthText The plan still uses '
+          '${segDepth.toStringAsFixed(0)} m.';
+    }
+
     // Items: only safe-at-this-depth gases, except always include the
     // currently-selected one so DropdownButton doesn't assert.
     final items = <DropdownMenuItem<int>>[];
@@ -214,6 +234,8 @@ class _SegmentRowState extends State<_SegmentRow> {
           value: gi,
           child: Text(
             PlanSegmentsEditor.gasLabel(widget.gases[gi]),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: AppTypography.readoutSm.copyWith(
               color: isSafe ? null : SafetyColors.danger,
             ),
@@ -229,8 +251,10 @@ class _SegmentRowState extends State<_SegmentRow> {
         children: [
           Row(
             children: [
+              // Widths sized so the gas dropdown keeps room for a full
+              // "Tx18/45" label on a 375 pt phone (#183).
               SizedBox(
-                width: 72,
+                width: 68,
                 child: TextField(
                   controller: _depthCtrl,
                   focusNode: _depthFocus,
@@ -244,13 +268,17 @@ class _SegmentRowState extends State<_SegmentRow> {
                   ),
                   onChanged: (s) {
                     final v = double.tryParse(s);
-                    if (v != null) _emit(depthMeters: v);
+                    final tooDeep = v != null && v > kMaxPlanDepthMeters;
+                    if (tooDeep != _depthTooDeep) {
+                      setState(() => _depthTooDeep = tooDeep);
+                    }
+                    if (v != null && !tooDeep) _emit(depthMeters: v);
                   },
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               SizedBox(
-                width: 88,
+                width: 70,
                 child: TextField(
                   controller: _timeCtrl,
                   focusNode: _timeFocus,
@@ -267,7 +295,7 @@ class _SegmentRowState extends State<_SegmentRow> {
                   },
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: DropdownButton<int>(
                   value: widget.segment.gasMixIndex < widget.gases.length
@@ -275,6 +303,7 @@ class _SegmentRowState extends State<_SegmentRow> {
                       : null,
                   isDense: true,
                   isExpanded: true,
+                  iconSize: 20,
                   underline: const SizedBox.shrink(),
                   hint: const Text('Gas'),
                   items: items,
@@ -283,13 +312,15 @@ class _SegmentRowState extends State<_SegmentRow> {
                   },
                 ),
               ),
-              if (widget.mode == DivePlanMode.cc)
+              if (widget.mode == DivePlanMode.cc) ...[
+                const SizedBox(width: 4),
                 SizedBox(
-                  width: 64,
+                  width: 52,
                   child: DropdownButton<double?>(
                     value: _normalisedSp(widget.segment.setpoint),
                     isDense: true,
                     isExpanded: true,
+                    iconSize: 20,
                     underline: const SizedBox.shrink(),
                     items: const [
                       DropdownMenuItem(value: null, child: Text('—')),
@@ -309,12 +340,27 @@ class _SegmentRowState extends State<_SegmentRow> {
                     },
                   ),
                 ),
+              ],
               IconButton(
                 icon: const Icon(Icons.delete_outline),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints:
+                    const BoxConstraints(minWidth: 36, minHeight: 40),
                 onPressed: () => widget.onRemove(widget.index),
               ),
             ],
           ),
+          if (depthLimitNote != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, left: 4),
+              child: Text(
+                depthLimitNote,
+                key: const ValueKey('segment-depth-limit'),
+                style: AppTypography.caption
+                    .copyWith(color: SafetyColors.danger),
+              ),
+            ),
           // Per-segment safety line — only when the chosen gas reports
           // a warning or hard-unsafe state at THIS segment's depth.
           // Green / neutral states are silent here to keep the editor

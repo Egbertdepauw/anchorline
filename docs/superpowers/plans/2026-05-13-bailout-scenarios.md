@@ -4,9 +4,9 @@
 
 **Depends on:** Track C must be merged first — this plan uses `DecoReplayEngine.tissueStateAt()` for the ascent simulation. Do not start Task 4 of this plan until Track C is shipped.
 
-**Goal:** Add a "Bailout" section below Notes on the dive detail screen that computes the OC gas requirement for a worst-case loop failure at end-of-bottom-time. Scenario A when the user has BO tanks; Scenario B (GUE standards) otherwise.
+**Goal:** Add a "Bailout" section below Notes on the dive detail screen that computes the OC gas requirement for a worst-case loop failure at end-of-bottom-time. Scenario A when the user has BO tanks; Scenario B (standard gases) otherwise.
 
-**Architecture:** Five pure-Dart analysis modules build the planner (`standard_mixes.dart` constants, `mix_resolver.dart` picks bottom mix, `ascent_simulator.dart` walks the planned ascent, `tank_recommender.dart` matches volumes to tank catalogue, `bailout_planner.dart` orchestrates). A new `BailoutSection` widget renders the result. Settings extension adds 5 new fields (two SAC rates, two ascent rates, GUE-config toggle) plus tank-catalogue toggles.
+**Architecture:** Five pure-Dart analysis modules build the planner (`standard_mixes.dart` constants, `mix_resolver.dart` picks bottom mix, `ascent_simulator.dart` walks the planned ascent, `tank_recommender.dart` matches volumes to tank catalogue, `bailout_planner.dart` orchestrates). A new `BailoutSection` widget renders the result. Settings extension adds 5 new fields (two SAC rates, two ascent rates, bailout-capable diluent toggle) plus tank-catalogue toggles.
 
 **Tech Stack:** Flutter, flutter_test, dart:typed_data
 
@@ -36,19 +36,19 @@ void main() {
       final mix = resolveBottomMix(
         recordedDiluent: DiveGasMix(o2: 18, he: 45, diluent: true),
         maxDepthMeters: 60,
-        isGueConfig: false,
+        bailoutCapableDiluent: false,
       );
       expect(mix.o2, 18);
       expect(mix.he, 45);
     });
   });
 
-  group('resolveBottomMix — non-GUE compute-and-snap', () {
+  group('resolveBottomMix — full mix table, compute-and-snap', () {
     test('60 m max depth → snaps to 21/35', () {
       final mix = resolveBottomMix(
         recordedDiluent: null,
         maxDepthMeters: 60,
-        isGueConfig: false,
+        bailoutCapableDiluent: false,
       );
       expect(mix.o2, 21);
       expect(mix.he, 35);
@@ -58,7 +58,7 @@ void main() {
       final mix = resolveBottomMix(
         recordedDiluent: null,
         maxDepthMeters: 40,
-        isGueConfig: false,
+        bailoutCapableDiluent: false,
       );
       // (40+10)(1-He) ≤ 49 → He ≥ 0.02. Snap to 21/35 closest standard
       // since 21/35 satisfies both PPO2 1.6 and END 39 constraints.
@@ -70,19 +70,19 @@ void main() {
       final mix = resolveBottomMix(
         recordedDiluent: null,
         maxDepthMeters: 80,
-        isGueConfig: false,
+        bailoutCapableDiluent: false,
       );
       expect(mix.o2, 12);
       expect(mix.he, 65);
     });
   });
 
-  group('resolveBottomMix — GUE compute-and-snap', () {
+  group('resolveBottomMix — bailout-capable diluent, compute-and-snap', () {
     test('60 m max depth → snaps to 15/55', () {
       final mix = resolveBottomMix(
         recordedDiluent: null,
         maxDepthMeters: 60,
-        isGueConfig: true,
+        bailoutCapableDiluent: true,
       );
       expect(mix.o2, 15);
       expect(mix.he, 55);
@@ -92,7 +92,7 @@ void main() {
       final mix = resolveBottomMix(
         recordedDiluent: null,
         maxDepthMeters: 40,
-        isGueConfig: true,
+        bailoutCapableDiluent: true,
       );
       expect(mix.o2, 21);
       expect(mix.he, 35);
@@ -109,7 +109,7 @@ library;
 
 import '../../data/models/dive.dart' show DiveGasMix;
 
-const List<DiveGasMix> kNonGueBottomMixes = [
+const List<DiveGasMix> kBottomMixes = [
   DiveGasMix(o2: 21, he: 35, diluent: true),
   DiveGasMix(o2: 18, he: 45, diluent: true),
   DiveGasMix(o2: 15, he: 55, diluent: true),
@@ -117,7 +117,7 @@ const List<DiveGasMix> kNonGueBottomMixes = [
   DiveGasMix(o2: 10, he: 70, diluent: true),
 ];
 
-const List<DiveGasMix> kGueBottomMixes = [
+const List<DiveGasMix> kBailoutDiluentBottomMixes = [
   DiveGasMix(o2: 21, he: 35, diluent: true),
   DiveGasMix(o2: 18, he: 45, diluent: true),
   DiveGasMix(o2: 15, he: 55, diluent: true),
@@ -129,8 +129,8 @@ const List<DiveGasMix> kDecoMixes = [
   DiveGasMix(o2: 100, he: 0, diluent: false),
 ];
 
-const double kPpo2MaxNonGue = 1.6;
-const double kPpo2MaxGue = 1.0;
+const double kPpo2MaxBottomMix = 1.6;
+const double kPpo2MaxBailoutDiluent = 1.0;
 const double kEndMaxMetres = 39.0;
 ```
 
@@ -143,12 +143,12 @@ import 'standard_mixes.dart';
 DiveGasMix resolveBottomMix({
   required DiveGasMix? recordedDiluent,
   required double maxDepthMeters,
-  required bool isGueConfig,
+  required bool bailoutCapableDiluent,
 }) {
   if (recordedDiluent != null) return recordedDiluent;
 
   // Compute the optimal mix for the config's PPO2 target.
-  final ppo2Target = isGueConfig ? kPpo2MaxGue : kPpo2MaxNonGue;
+  final ppo2Target = bailoutCapableDiluent ? kPpo2MaxBailoutDiluent : kPpo2MaxBottomMix;
   final ambientBar = (maxDepthMeters + 10.0) / 10.0;
   final optO2 = ppo2Target / ambientBar;
   // END constraint: (D+10)(1-He) ≤ 39 → He ≥ 1 - 49/(D+10)
@@ -157,7 +157,7 @@ DiveGasMix resolveBottomMix({
   // Pick from the config-specific standard table — closest O2 to
   // optimal, both safety constraints honoured (PPO2 ≤ 1.6 absolute,
   // END ≤ 39 absolute).
-  final candidates = isGueConfig ? kGueBottomMixes : kNonGueBottomMixes;
+  final candidates = bailoutCapableDiluent ? kBailoutDiluentBottomMixes : kBottomMixes;
   DiveGasMix? best;
   double bestDelta = double.infinity;
   for (final mix in candidates) {
@@ -187,8 +187,8 @@ git add lib/analysis/bailout/standard_mixes.dart lib/analysis/bailout/mix_resolv
 git commit -m "$(cat <<'EOF'
 feat(analysis): bailout standard mix tables + resolver
 
-Tables per Track D spec: non-GUE {21/35, 18/45, 15/55, 12/65, 10/70},
-GUE {21/35, 18/45, 15/55}, deco {EAN 32, EAN 50, O2 100}. resolveBottomMix
+Tables per Track D spec: full {21/35, 18/45, 15/55, 12/65, 10/70},
+bailout-capable diluent {21/35, 18/45, 15/55}, deco {EAN 32, EAN 50, O2 100}. resolveBottomMix
 uses DC-recorded diluent verbatim when present; otherwise computes optimal
 (O2, He) for the config's PPO2 target + END ≤ 39m and snaps to the
 nearest standard mix that satisfies both constraints.
@@ -216,7 +216,7 @@ Add five new fields with the same pattern used for `vpmbConservatism`:
 | `bailoutSacDeco` | int | 20 | clamp(10, 60) | `bailout_sac_deco` |
 | `bailoutAscentRateFast` | int (m/min) | 18 | clamp(3, 30) | `bailout_ascent_fast` |
 | `bailoutAscentRateSlow` | int | 9 | clamp(3, 30) | `bailout_ascent_slow` |
-| `gueDiluentConfig` | bool | false | n/a | `gue_diluent_config` |
+| `bailoutCapableDiluent` | bool | false | n/a | `bailout_capable_diluent` |
 | `tank68L300Available` | bool | false | n/a | `tank_6_8l_300_available` |
 | `tank12L300Available` | bool | false | n/a | `tank_12l_300_available` |
 
@@ -232,10 +232,10 @@ git add lib/ui/notifiers/settings_notifier.dart test/ui/notifiers/settings_notif
 git commit -m "$(cat <<'EOF'
 feat(settings): bailout-config fields on SettingsNotifier
 
-Five new persisted fields (two SAC rates, two ascent rates, GUE config
+Five new persisted fields (two SAC rates, two ascent rates, bailout-capable diluent
 toggle) plus two tank-availability flags (6.8L/300, 12L/300). SAC + rate
 fields clamp to sensible ranges. Defaults per Track D spec: SAC 30/20,
-rates 18/9, GUE off, extra tanks off.
+rates 18/9, bailout-capable diluent off, extra tanks off.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
@@ -251,7 +251,7 @@ EOF
 
 Add a new "Bailout planning" subsection with:
 - 4 `ListTile` rows for the rates, each with a TextField for the value (or stepper)
-- 1 `SwitchListTile` for GUE config (with subtitle describing the effect)
+- 1 `SwitchListTile` for the bailout-capable diluent (with subtitle describing the effect)
 - 2 `SwitchListTile`s for the 6.8L/300 + 12L/300 tank availability
 
 Each binds to its `SettingsNotifier` getter/setter via `ListenableBuilder`.
@@ -420,7 +420,7 @@ Add the section below the Notes section in `_buildDetailsTab`. Wrap in `Listenab
 Manual smoke:
 - Open a CCR trimix dive with BO tanks → Scenario A renders
 - Open a similar dive without BO tanks → Scenario B renders with 3 recommended stages
-- Toggle "GUE diluent config" in Settings → Scenario B drops to 2 stages
+- Toggle "Diluent is bailout-capable" in Settings → Scenario B drops to 2 stages
 - Bump `bailoutSacBottom` from 30 to 40 → volumes recompute upward
 
 Commit:

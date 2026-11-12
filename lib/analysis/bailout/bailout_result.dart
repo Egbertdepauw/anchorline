@@ -14,8 +14,8 @@ enum BailoutScenario {
   tanksDefined,
 
   /// No user tanks supplied; planner selects tanks from the catalogue
-  /// using GUE / non-GUE standard mixes (Scenario B).
-  gueStandards,
+  /// using standard mixes (Scenario B).
+  standardGases,
 }
 
 /// Overall verdict for the bailout plan.
