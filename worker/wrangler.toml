@@ -42,7 +42,9 @@ QUOTA_OVERRIDES = "{}"
 crons = ["23 4 * * *"]
 
 # Per-account rate limit on /sign-upload (each call does an R2 list()).
-# Wrangler 3 has no first-class key for this, hence `unsafe`. The
+# Declared under `unsafe` because wrangler 3 had no first-class key for it;
+# wrangler 4 has `[[ratelimits]]`, but moving would change a live binding
+# for no gain while the Worker is frozen. The
 # namespace_id is an arbitrary integer, unique within the Cloudflare account.
 [[unsafe.bindings]]
 name = "SIGN_UPLOAD_LIMITER"
