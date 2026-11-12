@@ -133,12 +133,39 @@ BlueZ only connects to a device it has seen recently, so a connect starts
 with a short scan; and `autoConnect` is not honoured there, so the bridge
 link reconnects in Dart after a drop, as on Windows.
 
+## 3b. Installable packages: .deb, .rpm and Arch
+
+The AppImage runs from wherever the user puts it, but doesn't install: no
+menu entry, and the user has to `chmod +x` it first. So the same build
+also makes three installable packages from the AppDir, with nfpm
+(`build_packages.sh`, recipe in `nfpm.yaml`; `build_appimage.sh` calls it
+at the end):
+
+| File | For | Install with |
+|---|---|---|
+| `Anchorline-<x.y.z>-linux-x64.deb` | Debian, Ubuntu, Mint, Pop!_OS | double-click, or `sudo apt install ./Anchorline-….deb` |
+| `Anchorline-<x.y.z>-linux-x64.rpm` | Fedora, RHEL, openSUSE | double-click, or `sudo dnf install ./Anchorline-….rpm` |
+| `Anchorline-<x.y.z>-linux-x64.pkg.tar.zst` | Arch, Manjaro, EndeavourOS | `sudo pacman -U ./Anchorline-….pkg.tar.zst` |
+
+All three put the Flutter bundle in `/opt/anchorline`, the command in
+`/usr/bin/anchorline`, and the desktop entry and 512 px icon in
+`/usr/share`, so Anchorline appears in the app menu and uninstalls with
+the package manager. They depend on the distribution's GTK 3, libsecret,
+curl, zlib, xz and BlueZ packages; the package manager pulls those in.
+The package version is `<x.y.z>-<build>`, so an upgrade replaces the
+older install.
+
+Tested 2026-11-10 with a dummy bundle: each package installs, runs its
+command and places the desktop entry and icon on Ubuntu 24.04, Fedora
+(latest) and Arch (latest). Not yet tried with a real release bundle.
+
 ## 4. Known quirks (handled in the recipe)
 
 | Symptom | Cause | Status |
 |---|---|---|
 | `libdartjni.so` → `libjvm.so => not found` on a user's machine | `package:jni` links the build machine's `libjvm.so`. It is only used by `sentry_flutter` on Android; on Linux Sentry runs through sentry-native and nothing opens `libdartjni.so` | `build_appimage.sh` leaves `libdartjni.so` out of the AppDir. |
 | `Could NOT find JNI (missing: JAVA_AWT_LIBRARY JAVA_JVM_LIBRARY …)` | `package:jni` needs a JDK at build time; CMake 3.22's FindJNI doesn't find Ubuntu's OpenJDK 21 without `JAVA_HOME`, and also wants `libjawt.so`, which the `-headless` JDK lacks | `install_build_deps.sh` installs the full `openjdk-21-jdk`; `build_appimage.sh` sets `JAVA_HOME` to it unless one is set already (setup-java on a runner). |
+| `libssl.so.3` / `libcrypto.so.3 => not found` for `libgit2.so` on Fedora and Arch | Those distributions moved to OpenSSL 4 (`.so.4`); `git2dart_binaries`' libgit2 and libssh2 link OpenSSL 3 | `build_appimage.sh` ships the build image's (Ubuntu 22.04) OpenSSL 3 in `lib/` with RUNPATH `$ORIGIN`. Its compiled-in CA path only exists on Debian-family systems, so `ssl_certs.dart` points libgit2 at the bundled `cacert.pem` on Linux, as on macOS. |
 | `libssh2.so.1 => not found` for `libgit2.so` | `git2dart_binaries` links libssh2 but only bundles `libgit2.so` | Shipped as `lib/libssh2.so.1`, with `libgit2.so`'s RUNPATH set to `$ORIGIN` (§3). |
 | `ldd lib/lib*_plugin.so` says `libflutter_linux_gtk.so => not found` | Flutter installs plugin libraries with their build-tree RUNPATH (`…/linux/flutter/ephemeral` on the build machine). Harmless at runtime (the executable has loaded `libflutter_linux_gtk.so` by then), but it leaks a build path | The script sets their RUNPATH to `$ORIGIN`. It also drops `crashpad_handler`'s RUNPATH, which is all empty entries (= the current directory). |
 | `fuse: device not found` / `dlopen(): error loading libfuse.so.2` | No FUSE in containers and CI runners | appimagetool is unpacked once at install time; to start an AppImage there, use `--appimage-extract-and-run` or `APPIMAGE_EXTRACT_AND_RUN=1`. |
