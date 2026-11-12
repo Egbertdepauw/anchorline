@@ -136,3 +136,32 @@ For people who no longer have the app and email `support@anchorline.eu`
    If either audit-log delete fails with `permission denied`, tell Egbert,
    as in the post-check above.
 7. Reply to confirm the deletion.
+
+## Purging unconfirmed sign-ups (0024)
+
+`0024_purge_unconfirmed_users.sql` schedules `purge-unconfirmed-users`, a
+nightly pg_cron job (03:43 UTC) that deletes email sign-ups still
+unconfirmed 7 days after they were created, together with their audit-log
+entries. The confirmation code expires after 1 hour, so these accounts can
+never be confirmed. The function `public.purge_unconfirmed_users()` is not
+callable through the Data API.
+
+Before applying it, preview what the first run will delete:
+
+```sql
+select id, email, created_at from auth.users
+where email_confirmed_at is null and email is not null
+  and created_at < now() - interval '7 days';
+```
+
+Accounts created before 2026-11-10 (when Confirm email was switched on)
+should not appear: sign-ups were auto-confirmed then. If any do, stop and
+tell Egbert before applying.
+
+To check that the job runs:
+
+```sql
+select start_time, status, return_message from cron.job_run_details
+where jobid = (select jobid from cron.job where jobname = 'purge-unconfirmed-users')
+order by start_time desc limit 5;
+```
