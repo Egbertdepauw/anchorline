@@ -735,6 +735,89 @@ void main() {
       );
     });
   });
+
+  group('content', () {
+    late Directory repo;
+
+    setUp(() {
+      repo = Directory.systemTemp.createTempSync('cli_content_');
+      Directory('${repo.path}/docs').createSync();
+      for (final name in ['PRIVACY', 'TERMS', 'ACCOUNT_DELETION']) {
+        File(
+          '${repo.path}/docs/$name.md',
+        ).writeAsStringSync('# $name\n\n_Last updated: 8 November 2026_\n');
+      }
+    });
+
+    tearDown(() => repo.deleteSync(recursive: true));
+
+    Future<_Result> runContent(
+      List<String> args, {
+      FakeBucket? bucket,
+      Map<String, String> env = _env,
+    }) async {
+      final out = StringBuffer();
+      final err = StringBuffer();
+      final code = await runPublishCli(
+        args,
+        environment: env,
+        bucketFactory: (_) => bucket ?? FakeBucket(),
+        now: () => DateTime.utc(2026, 11, 3, 8),
+        out: out,
+        err: err,
+        repoRoot: repo.path,
+      );
+      return _Result(code, out.toString(), err.toString());
+    }
+
+    test('--dry-run reports what it would write and writes nothing', () async {
+      final bucket = FakeBucket();
+      final r = await runContent(['content', '--dry-run'], bucket: bucket);
+
+      expect(r.code, 0, reason: r.out);
+      expect(r.out, contains('would write content/index.json'));
+      expect(r.out, contains('"format": 1'));
+      expect(bucket.putCalls, isEmpty);
+    });
+
+    test('uploads the texts and the index', () async {
+      final bucket = FakeBucket();
+      final r = await runContent(['content'], bucket: bucket);
+
+      expect(r.code, 0, reason: r.out);
+      expect(bucket.putCalls.last, 'putText content/index.json');
+      expect(r.out, contains('content/legal/privacy.md'));
+    });
+
+    test('--version is refused', () async {
+      final bucket = FakeBucket();
+      final r = await runContent([
+        'content',
+        '--version',
+        '1',
+      ], bucket: bucket);
+
+      expectFailure(r, '--version is not used by content', bucket: bucket);
+    });
+
+    test('does not need DOWNLOADS_BASE_URL', () async {
+      final r = await runContent(
+        ['content', '--dry-run'],
+        env: {..._env}..remove('DOWNLOADS_BASE_URL'),
+      );
+
+      expect(r.code, 0, reason: r.out);
+    });
+
+    test('still needs the bucket variables', () async {
+      final r = await runContent(
+        ['content', '--dry-run'],
+        env: {..._env}..remove('R2_BUCKET'),
+      );
+
+      expectFailure(r, 'R2_BUCKET');
+    });
+  });
 }
 
 /// A bucket whose every read fails the way aws would.

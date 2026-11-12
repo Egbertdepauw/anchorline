@@ -7,6 +7,7 @@ library;
 import 'dart:io';
 
 import 'bucket.dart';
+import 'content.dart';
 import 'manifest.dart';
 import 'publisher.dart';
 
@@ -20,6 +21,7 @@ Actions:
   nightly   --version V --build N --file KEY=PATH ... [--notes-file F]
             [--dry-run]
   rollback  --version V [--dry-run]
+  content   [--dry-run]
 
 A release has exactly windows-x64 (.exe) and linux-x64 (.AppImage). A nightly
 has at least one of windows-x64, linux-x64 and macos (.dmg).
@@ -30,18 +32,21 @@ keep serving the old file: purge the Cloudflare cache for the replaced URLs
 afterwards.
 --dry-run reads the bucket and prints the list that would be written; it
 uploads and writes nothing.
+content uploads docs/PRIVACY.md, docs/TERMS.md and docs/ACCOUNT_DELETION.md to
+content/legal/ and rewrites content/index.json.
 
 The list is updated by reading, changing and writing it back, without
 locking. Do not run this by hand while a publish job is running (CI runs one
 publish job per lane at a time).
 
-Environment: DOWNLOADS_BASE_URL (an https URL; not for rollback),
+Environment: DOWNLOADS_BASE_URL (an https URL; not for rollback or content),
 R2_ACCOUNT_ID, R2_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY.''';
 
 /// Runs the publish command and returns its exit code. [environment] is the
 /// process environment, [bucketFactory] makes the bucket from it (the AWS CLI
-/// by default), [now] is the clock. Output goes to [out] (stdout) and, for
-/// usage mistakes, [err] (stderr).
+/// by default), [now] is the clock. [repoRoot] is the checkout the `content`
+/// action reads its texts from (the current directory by default). Output goes
+/// to [out] (stdout) and, for usage mistakes, [err] (stderr).
 Future<int> runPublishCli(
   List<String> args, {
   required Map<String, String> environment,
@@ -49,6 +54,7 @@ Future<int> runPublishCli(
   required DateTime Function() now,
   StringSink? out,
   StringSink? err,
+  String? repoRoot,
 }) async {
   final stdoutSink = out ?? stdout;
   final stderrSink = err ?? stderr;
@@ -63,8 +69,20 @@ Future<int> runPublishCli(
     final env = _readEnvironment(environment, options.action);
 
     // Everything that can be checked without the bucket is checked first.
-    final notes = options.action == _Action.rollback ? '' : _readNotes(options);
+    final notes = options.action == _Action.rollback ||
+            options.action == _Action.content
+        ? ''
+        : _readNotes(options);
     final bucket = (bucketFactory ?? AwsCliBucket.fromEnvironment)(environment);
+    if (options.action == _Action.content) {
+      final result = await ContentPublisher(
+        bucket,
+        repoRoot: repoRoot ?? Directory.current.path,
+        dryRun: options.dryRun,
+      ).publish();
+      stdoutSink.write(_contentSummary(result, options));
+      return 0;
+    }
     final publisher = Publisher(
       bucket,
       baseUrl: env.baseUrl ?? '',
@@ -77,6 +95,8 @@ Future<int> runPublishCli(
       case _Action.rollback:
         final result = await publisher.rollback(options.version);
         summary = _rollbackSummary(result, options);
+      case _Action.content:
+        throw StateError('content is handled before the switch');
       case _Action.release:
       case _Action.nightly:
         final lane = options.action == _Action.release
@@ -118,7 +138,7 @@ class _CliError implements Exception {
   final bool showUsage;
 }
 
-enum _Action { release, nightly, rollback }
+enum _Action { release, nightly, rollback, content }
 
 class _Options {
   _Options({
@@ -134,7 +154,7 @@ class _Options {
   factory _Options.parse(List<String> args) {
     if (args.isEmpty) {
       throw const _CliError(
-        'Missing action: release, nightly or rollback.',
+        'Missing action: release, nightly, rollback or content.',
         showUsage: true,
       );
     }
@@ -143,8 +163,8 @@ class _Options {
         .firstOrNull;
     if (action == null) {
       throw _CliError(
-        "Unknown action '${args.first}'; expected release, nightly or "
-        'rollback.',
+        "Unknown action '${args.first}'; expected release, nightly, "
+        'rollback or content.',
         showUsage: true,
       );
     }
@@ -200,6 +220,28 @@ class _Options {
       throw _CliError(
         '--force is only for release, not ${action.name}.',
         showUsage: true,
+      );
+    }
+    if (action == _Action.content) {
+      for (final flag in ['version', 'build', 'notes-file']) {
+        if (values.containsKey(flag)) {
+          throw _CliError('--$flag is not used by content.', showUsage: true);
+        }
+      }
+      if (files.isNotEmpty) {
+        throw const _CliError(
+          '--file is not used by content.',
+          showUsage: true,
+        );
+      }
+      return _Options(
+        action: action,
+        version: '',
+        build: null,
+        notesFile: null,
+        files: files,
+        dryRun: dryRun,
+        force: false,
       );
     }
     if (action == _Action.rollback) {
@@ -292,7 +334,7 @@ const _bucketVariables = [
 /// Checks the environment of [action]. A missing or blank variable is listed
 /// by name, all of them in one error; no value is ever put into a message.
 _Environment _readEnvironment(Map<String, String> env, _Action action) {
-  final needsBaseUrl = action != _Action.rollback;
+  final needsBaseUrl = action != _Action.rollback && action != _Action.content;
   final required = [
     if (needsBaseUrl) 'DOWNLOADS_BASE_URL',
     ..._bucketVariables,
@@ -367,6 +409,20 @@ String _publishSummary(Lane lane, PublishResult result, _Options options) {
   } else {
     _writeManifestPart(b, manifestKey(lane), manifest, options.dryRun);
   }
+  return b.toString();
+}
+
+String _contentSummary(ContentResult result, _Options options) {
+  final b = StringBuffer(
+    options.dryRun ? 'Dry run: content\n' : 'Published content\n',
+  );
+  for (final key in result.uploadedKeys) {
+    b.writeln('${options.dryRun ? 'would write' : 'wrote'} $key');
+  }
+  b
+    ..writeln('$contentIndexKey ${options.dryRun ? 'would become' : 'is'}:')
+    ..write(result.indexJson);
+  if (options.dryRun) b.writeln('Nothing uploaded.');
   return b.toString();
 }
 

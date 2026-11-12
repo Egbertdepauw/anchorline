@@ -1,5 +1,7 @@
 # Delete your Anchorline account
 
+_Last updated: 10 November 2026_
+
 Anchorline is a dive log app by Egbert De Pauw. This page explains how to
 delete your Anchorline account and what happens to your data.
 

@@ -1,0 +1,55 @@
+name: Publish content
+
+# Uploads the legal texts to the downloads bucket and rewrites
+# content/index.json. Skipped until the repository variable PUBLISH_CONTENT
+# is set to "on" (and the four secrets below exist).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/PRIVACY.md
+      - docs/TERMS.md
+      - docs/ACCOUNT_DELETION.md
+      - docs/user/**
+      - tool/publish/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-content
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish content
+    if: vars.PUBLISH_CONTENT == 'on'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The manual's commit dates are read from git history later.
+          fetch-depth: 0
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.0
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: Publish content
+        run: dart tool/publish/publish.dart content
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
