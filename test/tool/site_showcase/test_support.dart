@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:ccrlogger/data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
 
 /// Builds a [SampleSet] from plain lists; unspecified channels are zero.
 SampleSet makeSampleSet({

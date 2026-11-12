@@ -2,7 +2,7 @@
 
 import 'dart:convert';
 
-import 'package:ccrlogger/data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../tool/site_showcase/lib/showcase.dart';

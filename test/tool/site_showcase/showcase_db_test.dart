@@ -3,7 +3,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:ccrlogger/data/sample_codec/sample_codec.dart';
+import 'package:subsurface_core/data/sample_codec/sample_codec.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 

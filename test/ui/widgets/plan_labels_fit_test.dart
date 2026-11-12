@@ -2,7 +2,7 @@
 // own fonts (#183): the segment row's gas dropdown showed "Tx1" for
 // Tx18/45, and the plan table cut "→ surface" and the VOL header.
 import 'package:ccrlogger/analysis/bailout/ascent_simulator.dart';
-import 'package:ccrlogger/data/models/dive.dart';
+import 'package:subsurface_core/data/models/dive.dart';
 import 'package:ccrlogger/data/models/dive_plan.dart';
 import 'package:ccrlogger/ui/widgets/plan_segments_editor.dart';
 import 'package:ccrlogger/ui/widgets/stop_ladder_table.dart';
