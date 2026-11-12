@@ -20,6 +20,8 @@ android/upload-keystore.jks
 .history
 .svn/
 .swiftpm/
+# Xcode resolves Swift packages here on every build; Flutter regenerates it.
+**/xcshareddata/swiftpm/
 migrate_working_dir/
 
 # IntelliJ related
