@@ -508,8 +508,9 @@ void main() {
       await diveDao.softDeleteDive(diveId);
       expect(
         await attDao.markPurged('f1',
-            expectedKey: 'attachments/test-user/$diveId/f1.jpg'),
-        isTrue,
+            expectedKey: 'attachments/test-user/$diveId/f1.jpg',
+            deletedBefore: DateTime(2100)),
+        isNotNull,
       );
       await diveDao.restoreDive(diveId);
       expect(await liveIds(diveId), ['f2', 'l1']);
