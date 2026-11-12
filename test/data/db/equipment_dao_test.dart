@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/data/models/equipment.dart';
-import 'package:ccrlogger/data/sample_codec/column_packer.dart';
+import 'package:subsurface_core/data/sample_codec/column_packer.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:powersync/powersync.dart' show PowerSyncDatabase;

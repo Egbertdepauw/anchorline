@@ -1,7 +1,7 @@
 import 'package:ccrlogger/analysis/bailout/ascent_simulator.dart';
 import 'package:ccrlogger/analysis/bailout/bailout_result.dart';
 import 'package:ccrlogger/analysis/planner/plan_result.dart';
-import 'package:ccrlogger/data/models/dive.dart';
+import 'package:subsurface_core/data/models/dive.dart';
 import 'package:ccrlogger/data/models/dive_plan.dart' show DivePlanMode;
 import 'package:ccrlogger/ui/widgets/plan_output_section.dart';
 import 'package:flutter/material.dart';

@@ -42,6 +42,21 @@ jobs:
           flutter-version: 3.44.0
           cache: true
 
+      # The pure-Dart package is analyzed and tested on its own: it has
+      # dev dependencies the app does not resolve, and the root analyzer
+      # excludes packages/** for that reason.
+      - name: subsurface_core pub get
+        run: dart pub get
+        working-directory: packages/subsurface_core
+
+      - name: subsurface_core analyze
+        run: dart analyze --fatal-infos
+        working-directory: packages/subsurface_core
+
+      - name: subsurface_core test
+        run: dart test --reporter expanded
+        working-directory: packages/subsurface_core
+
       - name: flutter pub get
         run: flutter pub get
 

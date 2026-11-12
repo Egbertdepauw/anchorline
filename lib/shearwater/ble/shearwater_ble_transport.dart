@@ -13,8 +13,8 @@ import 'ble_debug_logger.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../parser/byte_reader.dart';
-import '../parser/constants.dart';
-import '../parser/hardware.dart';
+import 'package:subsurface_core/shearwater/parser/constants.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import '../parser/manifest_parser.dart';
 import 'ble_io_impl.dart';
 import 'protocol.dart';

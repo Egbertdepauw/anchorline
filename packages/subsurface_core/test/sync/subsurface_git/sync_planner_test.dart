@@ -13,14 +13,14 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
-import 'package:ccrlogger/data/models/annotation.dart';
-import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix;
-import 'package:ccrlogger/data/models/sample_set.dart';
-import 'package:ccrlogger/sync/subsurface_git/format/subsurface_parser.dart';
-import 'package:ccrlogger/sync/subsurface_git/mapper.dart';
-import 'package:ccrlogger/sync/subsurface_git/sync_planner.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/sync/subsurface_git/format/subsurface_parser.dart';
+import 'package:subsurface_core/sync/subsurface_git/mapper.dart';
+import 'package:subsurface_core/sync/subsurface_git/sync_inputs.dart';
+import 'package:subsurface_core/sync/subsurface_git/sync_planner.dart';
+import 'package:test/test.dart';
 
 void main() {
   group('SyncPlanner.plan', () {
@@ -538,17 +538,14 @@ void main() {
       // anything in Subsurface — perhaps the unit was reset, used by a
       // previous owner, or counts power-on sessions).
       final bundle = _bundle(diveId: _diveIdA);
-      final bumped = Dive(
+      final bumped = SubsurfaceDiveInput(
         id: bundle.dive.id,
         dcSerial: bundle.dive.dcSerial,
         dcDiveNumber: 1146,
         startTime: bundle.dive.startTime,
-        endTime: bundle.dive.endTime,
-        utcOffsetMinutes: bundle.dive.utcOffsetMinutes,
         durationSeconds: bundle.dive.durationSeconds,
         maxDepthMm: bundle.dive.maxDepthMm,
         diveMode: bundle.dive.diveMode,
-        decoModel: bundle.dive.decoModel,
         gfLow: bundle.dive.gfLow,
         gfHigh: bundle.dive.gfHigh,
         atmosphericPressureMbar: bundle.dive.atmosphericPressureMbar,
@@ -556,15 +553,9 @@ void main() {
         logVersion: bundle.dive.logVersion,
         dcModel: bundle.dive.dcModel,
         dcFirmware: bundle.dive.dcFirmware,
-        sampleIntervalMs: bundle.dive.sampleIntervalMs,
-        gasMixesJson: bundle.dive.gasMixesJson,
-        tanksJson: bundle.dive.tanksJson,
         configuredStackSeconds: bundle.dive.configuredStackSeconds,
         stackRemainingAtStartSeconds: bundle.dive.stackRemainingAtStartSeconds,
         stackRemainingAtEndSeconds: bundle.dive.stackRemainingAtEndSeconds,
-        rawBlob: bundle.dive.rawBlob,
-        parserVersion: bundle.dive.parserVersion,
-        importedAt: bundle.dive.importedAt,
       );
       final patched = CcrlogDiveBundle(
         dive: bumped,
@@ -887,7 +878,7 @@ CcrlogDiveBundle _bundle({
   required String diveId,
   int startTime = 1776611925,
   DiveAnnotation? annotation,
-  List<DiveComputer>? userDiveComputers,
+  List<SubsurfaceDiveComputerInput>? userDiveComputers,
   List<DiveGasMix>? gasMixes,
 }) {
   final dive = _ccrPetrelDive(diveId: diveId, startTime: startTime);
@@ -902,21 +893,18 @@ CcrlogDiveBundle _bundle({
   );
 }
 
-Dive _ccrPetrelDive({
+SubsurfaceDiveInput _ccrPetrelDive({
   required String diveId,
   int startTime = 1776611925,
 }) {
-  return Dive(
+  return SubsurfaceDiveInput(
     id: diveId,
     dcSerial: 0xb89641e4,
     dcDiveNumber: 705,
     startTime: startTime,
-    endTime: startTime + 3450,
-    utcOffsetMinutes: null,
     durationSeconds: 3450,
     maxDepthMm: 18000,
     diveMode: 0,
-    decoModel: 0,
     gfLow: 50,
     gfHigh: 95,
     atmosphericPressureMbar: 1013,
@@ -924,31 +912,17 @@ Dive _ccrPetrelDive({
     logVersion: 17,
     dcModel: 3,
     dcFirmware: 0xa3,
-    sampleIntervalMs: 10000,
-    gasMixesJson: '',
-    tanksJson: null,
     configuredStackSeconds: 25200,
     stackRemainingAtStartSeconds: 10847,
     stackRemainingAtEndSeconds: 7347,
-    rawBlob: Uint8List(0),
-    parserVersion: 1,
-    importedAt: 1776591525,
   );
 }
 
-DiveComputer _diveComputer({required int serial}) {
-  return DiveComputer(
-    id: 'dc-${serial.toRadixString(16)}',
+SubsurfaceDiveComputerInput _diveComputer({required int serial}) {
+  return SubsurfaceDiveComputerInput(
     serial: serial,
     model: 3,
-    firmwareVersion: 0xa3,
     nickname: 'Petrel 3',
-    createdAt: 0,
-    updatedAt: 0,
-    deletedAt: null,
-    version: 1,
-    syncStatus: 0,
-    ownerId: null,
   );
 }
 

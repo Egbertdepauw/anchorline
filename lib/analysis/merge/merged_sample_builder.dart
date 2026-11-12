@@ -9,7 +9,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../../data/db/database.dart';
-import '../../data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
 import 'merge_constants.dart';
 
 /// One member of a merge: its (Drift) dive row + decoded samples.

@@ -9,8 +9,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:ccrlogger/data/models/sample_set.dart';
-import 'package:ccrlogger/data/sample_codec/sample_codec.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/data/sample_codec/sample_codec.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// One non-deleted dive; times are epoch seconds, depth is millimetres.

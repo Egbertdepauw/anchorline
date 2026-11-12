@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart';
-import 'package:ccrlogger/data/models/annotation.dart' as dom;
+import 'package:subsurface_core/data/models/annotation.dart' as dom;
 import 'package:ccrlogger/ui/util/dive_search.dart';
 import 'package:flutter_test/flutter_test.dart';
 

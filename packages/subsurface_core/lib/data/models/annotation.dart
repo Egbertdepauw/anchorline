@@ -3,7 +3,14 @@
 /// Has sync metadata for future cloud sync (Phase 2).
 library;
 
-import 'package:drift/drift.dart' show Value;
+/// Marks a nullable field as "set to [value]" in [DiveAnnotation.copyWith].
+/// Passing `null` for the parameter itself leaves the field unchanged.
+/// Stands in for Drift's `Value<T>` so this file has no Drift import
+/// (it is shared with the server through `subsurface_core`).
+final class Patch<T> {
+  const Patch(this.value);
+  final T value;
+}
 
 enum SyncStatus { synced, pending, conflict }
 
@@ -129,33 +136,33 @@ class DiveAnnotation {
 
   DiveAnnotation copyWith({
     String? diveId,
-    Value<String?>? siteName,
-    Value<double?>? siteLatitude,
-    Value<double?>? siteLongitude,
-    Value<String?>? notes,
+    Patch<String?>? siteName,
+    Patch<double?>? siteLatitude,
+    Patch<double?>? siteLongitude,
+    Patch<String?>? notes,
     List<String>? buddies,
     List<String>? tags,
-    Value<int?>? rating,
-    Value<String?>? conditions,
-    Value<String?>? divemaster,
-    Value<String?>? displayDecoAlgorithm,
-    Value<int?>? userDiveNumber,
-    Value<String?>? suit,
-    Value<String?>? undersuit,
-    Value<String?>? weightSystem,
-    Value<String?>? dpv,
-    Value<String?>? camera,
-    Value<int?>? visibility,
-    Value<int?>? wavesize,
-    Value<int?>? current,
-    Value<int?>? surge,
-    Value<int?>? chill,
-    Value<double?>? airTempC,
-    Value<double?>? waterTempC,
+    Patch<int?>? rating,
+    Patch<String?>? conditions,
+    Patch<String?>? divemaster,
+    Patch<String?>? displayDecoAlgorithm,
+    Patch<int?>? userDiveNumber,
+    Patch<String?>? suit,
+    Patch<String?>? undersuit,
+    Patch<String?>? weightSystem,
+    Patch<String?>? dpv,
+    Patch<String?>? camera,
+    Patch<int?>? visibility,
+    Patch<int?>? wavesize,
+    Patch<int?>? current,
+    Patch<int?>? surge,
+    Patch<int?>? chill,
+    Patch<double?>? airTempC,
+    Patch<double?>? waterTempC,
     List<Weight>? weights,
     DateTime? createdAt,
     DateTime? updatedAt,
-    Value<DateTime?>? deletedAt,
+    Patch<DateTime?>? deletedAt,
     int? version,
     SyncStatus? syncStatus,
   }) =>

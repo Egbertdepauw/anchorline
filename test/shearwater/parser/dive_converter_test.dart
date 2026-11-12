@@ -1,9 +1,9 @@
 import 'dart:io';
 
-import 'package:ccrlogger/shearwater/parser/dive_converter.dart';
+import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
-import 'package:ccrlogger/shearwater/parser/hardware.dart';
-import 'package:ccrlogger/data/models/dive.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
+import 'package:subsurface_core/data/models/dive.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

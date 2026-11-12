@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'package:ccrlogger/data/db/database.dart';
-import 'package:ccrlogger/data/models/annotation.dart' as dom;
-import 'package:ccrlogger/shearwater/parser/constants.dart';
+import 'package:subsurface_core/data/models/annotation.dart' as dom;
+import 'package:subsurface_core/shearwater/parser/constants.dart';
 import 'package:ccrlogger/ui/widgets/dive_tile.dart';
 import 'package:ccrlogger/ui/widgets/site_mini_map.dart';
 import 'package:flutter/material.dart';

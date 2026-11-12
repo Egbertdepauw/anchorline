@@ -1,6 +1,6 @@
 import '../../data/db/database.dart';
-import '../../data/models/dive.dart' show DiveTank;
-import '../../shearwater/parser/parsed_dive.dart' show TankUsage;
+import 'package:subsurface_core/data/models/dive.dart' show DiveTank;
+import 'package:subsurface_core/shearwater/parser/parsed_dive.dart' show TankUsage;
 
 String tankTraceLabelFor(DiveTank tank) {
   switch (tank.usage) {

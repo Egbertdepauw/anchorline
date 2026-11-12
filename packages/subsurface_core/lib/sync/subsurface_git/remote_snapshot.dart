@@ -1,4 +1,4 @@
-/// Phase D — read the cloned Subsurface repo from disk into the
+/// Phase D — turn the files of a cloned Subsurface repo into the
 /// data structures the [SyncPlanner] consumes.
 ///
 /// The snapshot is *only* the bits the planner needs:
@@ -11,18 +11,18 @@
 /// - `existingMaxDiveNumber` — highest Dive-NNN seen, so newly emitted
 ///   dives can allocate `existingMaxDiveNumber + 1`, +2, ...
 ///
-/// Tolerance: any single file that fails to parse is skipped (logged in
-/// debug builds via `assert`, otherwise silent). Missing fields on a
+/// Tolerance: any single file that fails to parse, or whose text is `null`
+/// (present but unreadable), is treated as a read failure: the top level
+/// comes back empty, a site is skipped, a `Dive-NNN` still counts by name
+/// with empty lines (so the planner aborts that dive rather than
+/// overwriting it), and a `Divecomputer` is still selected by name with no
+/// serial and empty lines. Missing fields on a
 /// Divecomputer (no Serial keyvalue, malformed folder name) just mean
 /// that dive can't ever match a CCRLog dive — that's fine, the planner
 /// will allocate a fresh Dive-NNN for it. We do not abort the snapshot
 /// on individual-file failures; the cost of refusing to sync because of
 /// one corrupt fixture from 2008 is much worse than skipping it.
 library;
-
-import 'dart:io';
-
-import 'package:path/path.dart' as p;
 
 import 'format/subsurface_format.dart';
 import 'format/subsurface_parser.dart';
@@ -44,28 +44,61 @@ class RemoteSnapshotData {
 }
 
 class RemoteSnapshot {
-  /// Walk [repoRoot] and produce a [RemoteSnapshotData].
+  /// Build a [RemoteSnapshotData] from the files of a checked-out
+  /// Subsurface repo.
   ///
-  /// Tolerates parse failures on individual files — those files are
-  /// silently skipped so a single bad fixture from a manually-imported
+  /// [filesByPath]: every regular file of the repo, keyed by POSIX path
+  /// relative to the repo root, value = file text, or `null` for a file
+  /// that is present but could not be read. Paths outside the Subsurface
+  /// layout (`.git/…`, anything else) are ignored.
+  ///
+  /// Tolerates parse failures and `null` texts on individual files — see
+  /// the class doc — so a single bad fixture from a manually-imported
   /// 2008 dive can't block today's sync.
-  static Future<RemoteSnapshotData> read(Directory repoRoot) async {
-    if (!repoRoot.existsSync()) {
-      return RemoteSnapshotData(
-        existingTopLevel: const [],
-        existingSites: const {},
-        existingDivesBySerialAndStart: const {},
-        existingMaxDiveNumber: 0,
-      );
-    }
+  static RemoteSnapshotData fromFiles(Map<String, String?> filesByPath) {
+    // Sorted so that the `Divecomputer-NNN` fallback below is
+    // deterministic whatever order the caller built the map in.
+    final paths = filesByPath.keys.toList()..sort();
 
-    final topLevel = _readTopLevel(repoRoot);
-    final sites = _readSites(repoRoot);
-    final dives = _readDives(repoRoot);
+    var topLevel = const <SsLine>[];
+    final sites = <String, List<SsLine>>{};
+    // Dive-folder files, grouped per folder: `YYYY/MM/DD-Day-HH=MM=SS` ->
+    // { file name -> text }.
+    final folders =
+        <String, ({List<String> segments, Map<String, String?> files})>{};
+
+    for (final path in paths) {
+      final text = filesByPath[path];
+      final segments = path.split('/');
+      if (segments.length == 1 && segments[0] == '00-Subsurface') {
+        topLevel = _readTopLevel(text);
+      } else if (segments.length == 2 &&
+          segments[0] == '01-Divesites' &&
+          segments[1].startsWith('Site-')) {
+        final lines = _readSite(text);
+        final hexId = segments[1].substring('Site-'.length);
+        if (lines != null) sites[hexId] = lines;
+      } else if (segments.length == 4 &&
+          _isFourDigit(segments[0]) &&
+          _isTwoDigit(segments[1]) &&
+          _isDayFolderName(segments[2])) {
+        folders
+            .putIfAbsent(
+              segments.sublist(0, 3).join('/'),
+              () => (segments: segments.sublist(0, 3), files: {}),
+            )
+            .files[segments[3]] = text;
+      }
+    }
 
     var maxDiveNumber = 0;
     final byKey = <({int serial, int startTime}), ExistingRemoteDive>{};
-    for (final d in dives) {
+    for (final folder in folders.values) {
+      final d = _readOneDiveFolder(
+        folderSegments: folder.segments,
+        files: folder.files,
+      );
+      if (d == null) continue;
       if (d.diveNumber > maxDiveNumber) maxDiveNumber = d.diveNumber;
       if (d.serial != null && d.startTime != null) {
         byKey[(serial: d.serial!, startTime: d.startTime!)] = d;
@@ -82,11 +115,9 @@ class RemoteSnapshot {
 
   // ── 00-Subsurface ──────────────────────────────────────────────────
 
-  static List<SsLine> _readTopLevel(Directory repoRoot) {
-    final f = File('${repoRoot.path}/00-Subsurface');
-    if (!f.existsSync()) return const [];
+  static List<SsLine> _readTopLevel(String? text) {
+    if (text == null) return const [];
     try {
-      final text = f.readAsStringSync();
       return parseSubsurfaceFile(text, kind: SubsurfaceFileKind.top).lines;
     } catch (_) {
       return const [];
@@ -95,34 +126,22 @@ class RemoteSnapshot {
 
   // ── Sites ──────────────────────────────────────────────────────────
 
-  static Map<String, List<SsLine>> _readSites(Directory repoRoot) {
-    final dir = Directory('${repoRoot.path}/01-Divesites');
-    if (!dir.existsSync()) return const {};
-    final out = <String, List<SsLine>>{};
-    for (final entity in dir.listSync()) {
-      if (entity is! File) continue;
-      final name = p.basename(entity.path);
-      const prefix = 'Site-';
-      if (!name.startsWith(prefix)) continue;
-      final hexId = name.substring(prefix.length);
-      try {
-        final text = entity.readAsStringSync();
-        final parsed =
-            parseSubsurfaceFile(text, kind: SubsurfaceFileKind.site);
-        out[hexId] = parsed.lines;
-      } catch (_) {
-        // Skip this site file; the planner will write a fresh one if
-        // CCRLog has dives at the same coordinates.
-      }
+  /// Null when the file fails to parse: skip this site file; the planner
+  /// will write a fresh one if CCRLog has dives at the same coordinates.
+  static List<SsLine>? _readSite(String? text) {
+    if (text == null) return null;
+    try {
+      return parseSubsurfaceFile(text, kind: SubsurfaceFileKind.site).lines;
+    } catch (_) {
+      return null;
     }
-    return out;
   }
 
   // ── Dive folders ───────────────────────────────────────────────────
 
-  /// Walk `<repo>/<YYYY>/<MM>/<DD>-<Day>-<HH>=<MM>=<SS>/{Dive-NNN, Divecomputer}`.
+  /// Classify `<YYYY>/<MM>/<DD>-<Day>-<HH>=<MM>=<SS>/{Dive-NNN, Divecomputer}`.
   ///
-  /// Two layout-checks before opening any file:
+  /// Two layout-checks before reading any file's text:
   ///   1. The first three path components match the year/month/day
   ///      pattern Subsurface uses. Anything else (`.git`, `01-Divesites`,
   ///      `00-Subsurface`) is ignored.
@@ -131,66 +150,42 @@ class RemoteSnapshot {
   ///      non-Subsurface tool or hand-edited; we can still read its
   ///      Dive-NNN to bump the max counter, but we won't add it to the
   ///      `(serial, startTime)` lookup table.
-  static List<ExistingRemoteDive> _readDives(Directory repoRoot) {
-    final out = <ExistingRemoteDive>[];
-    if (!repoRoot.existsSync()) return out;
-
-    for (final yEntity in repoRoot.listSync()) {
-      if (yEntity is! Directory) continue;
-      final yName = p.basename(yEntity.path);
-      if (!_isFourDigit(yName)) continue;
-      for (final mEntity in yEntity.listSync()) {
-        if (mEntity is! Directory) continue;
-        final mName = p.basename(mEntity.path);
-        if (!_isTwoDigit(mName)) continue;
-        for (final dEntity in mEntity.listSync()) {
-          if (dEntity is! Directory) continue;
-          final dName = p.basename(dEntity.path);
-          // `DD-Day-HH=MM=SS`.
-          if (!_isDayFolderName(dName)) continue;
-          final dive = _readOneDiveFolder(
-            folderSegments: [yName, mName, dName],
-            folder: dEntity,
-          );
-          if (dive != null) out.add(dive);
-        }
-      }
-    }
-    return out;
-  }
-
   static ExistingRemoteDive? _readOneDiveFolder({
     required List<String> folderSegments,
-    required Directory folder,
+    required Map<String, String?> files,
   }) {
     int? diveNumber;
-    File? diveFile;
-    File? divecomputerFile;
-    for (final entity in folder.listSync()) {
-      if (entity is! File) continue;
-      final name = p.basename(entity.path);
+    String? diveText;
+    String? divecomputerText;
+    // Tracked apart from the text: a selected file can have a null text.
+    var hasDivecomputer = false;
+    // [files] was filled in sorted key order, so "first" below is
+    // deterministic.
+    for (final entry in files.entries) {
+      final name = entry.key;
       if (name.startsWith('Dive-')) {
         final n = int.tryParse(name.substring('Dive-'.length));
         if (n != null && (diveNumber == null || n > diveNumber)) {
           diveNumber = n;
-          diveFile = entity;
+          diveText = entry.value;
         }
       } else if (name == 'Divecomputer' || name.startsWith('Divecomputer-')) {
         // Prefer the bare `Divecomputer` if present; otherwise the
-        // first `Divecomputer-NNN` we encounter.
-        divecomputerFile ??= entity;
-        if (name == 'Divecomputer') divecomputerFile = entity;
+        // first `Divecomputer-NNN` in sorted order.
+        if (!hasDivecomputer || name == 'Divecomputer') {
+          hasDivecomputer = true;
+          divecomputerText = entry.value;
+        }
       }
     }
     if (diveNumber == null) return null;
 
     int? serial;
     var divecomputerLines = const <SsLine>[];
-    if (divecomputerFile != null) {
+    if (divecomputerText != null) {
       try {
-        final text = divecomputerFile.readAsStringSync();
         final parsed = parseSubsurfaceFile(
-          text,
+          divecomputerText,
           kind: SubsurfaceFileKind.divecomputer,
         );
         serial = _serialFromDivecomputer(parsed.lines);
@@ -203,11 +198,10 @@ class RemoteSnapshot {
     }
 
     var diveLines = const <SsLine>[];
-    if (diveFile != null) {
+    if (diveText != null) {
       try {
-        final text = diveFile.readAsStringSync();
         diveLines =
-            parseSubsurfaceFile(text, kind: SubsurfaceFileKind.dive).lines;
+            parseSubsurfaceFile(diveText, kind: SubsurfaceFileKind.dive).lines;
       } catch (_) {
         // Leave diveLines empty; the planner will treat this as a new
         // dive rather than merging against an existing baseline.

@@ -25,7 +25,7 @@
 /// helper, use the returned loop fractions instead.
 library;
 
-import '../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 
 /// One sample of CCR loop-gas composition. All fractions are 0.0–1.0.
 class LoopGasFractions {

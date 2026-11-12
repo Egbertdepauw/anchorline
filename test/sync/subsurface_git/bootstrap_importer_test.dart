@@ -11,8 +11,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:ccrlogger/data/models/annotation.dart';
-import 'package:ccrlogger/shearwater/parser/dive_converter.dart'
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/shearwater/parser/dive_converter.dart'
     show ConvertedDive;
 import 'package:ccrlogger/sync/subsurface_git/bootstrap_importer.dart';
 import 'package:ccrlogger/sync/subsurface_git/credentials.dart';
@@ -116,7 +116,9 @@ class _FakeRepo extends SubsurfaceRepo {
 
 // ── Fixture-folder helpers ───────────────────────────────────────────
 
-const _fixturesRoot = 'test/fixtures/subsurface';
+// The fixtures moved into the package with the format tests; this importer
+// and its test are deleted in rollout step 5.
+const _fixturesRoot = 'packages/subsurface_core/test/fixtures/subsurface';
 
 Directory _tempDir(String prefix) {
   final dir = Directory.systemTemp.createTempSync('ccrlog_$prefix');

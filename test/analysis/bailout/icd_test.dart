@@ -1,6 +1,6 @@
 import 'package:ccrlogger/analysis/bailout/ascent_simulator.dart';
 import 'package:ccrlogger/analysis/bailout/icd.dart';
-import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'package:flutter_test/flutter_test.dart';
 
 const _tx1070 = DiveGasMix(oxygenPercent: 10, heliumPercent: 70, isDiluent: true);

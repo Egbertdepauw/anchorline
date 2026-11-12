@@ -6,7 +6,7 @@ import '../../data/db/database.dart';
 import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/dive_merge_dao.dart';
-import '../../data/models/annotation.dart' as dom;
+import 'package:subsurface_core/data/models/annotation.dart' as dom;
 import '../models/dive_list_item.dart';
 import '../util/format.dart';
 import 'dive_renumber.dart';

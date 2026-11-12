@@ -1,7 +1,7 @@
 import 'package:ccrlogger/analysis/stats/stats_result.dart';
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_derived_stats_dao.dart';
-import 'package:ccrlogger/data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
 import 'package:ccrlogger/ui/notifiers/statistics_notifier.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';

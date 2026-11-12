@@ -17,11 +17,11 @@ library;
 import 'dart:typed_data';
 
 import 'byte_reader.dart';
-import 'constants.dart';
-import 'hardware.dart';
-import 'parsed_dive.dart';
+import 'package:subsurface_core/shearwater/parser/constants.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
+import 'package:subsurface_core/shearwater/parser/parsed_dive.dart';
 
-export 'parsed_dive.dart';
+export 'package:subsurface_core/shearwater/parser/parsed_dive.dart';
 
 /// Result of parsing one dive from a buffer that may contain more.
 ///

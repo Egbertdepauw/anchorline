@@ -1,12 +1,12 @@
 import 'dart:typed_data';
 
-import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
-import 'package:ccrlogger/data/models/annotation.dart';
-import 'package:ccrlogger/data/models/sample_set.dart';
-import 'package:ccrlogger/sync/subsurface_git/format/subsurface_format.dart';
-import 'package:ccrlogger/sync/subsurface_git/format/subsurface_serializer.dart';
-import 'package:ccrlogger/sync/subsurface_git/mapper.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/sync/subsurface_git/format/subsurface_format.dart';
+import 'package:subsurface_core/sync/subsurface_git/format/subsurface_serializer.dart';
+import 'package:subsurface_core/sync/subsurface_git/mapper.dart';
+import 'package:subsurface_core/sync/subsurface_git/sync_inputs.dart';
+import 'package:test/test.dart';
 
 void main() {
   test('mapDive emits divemaster from annotation when set', () {
@@ -51,17 +51,14 @@ void main() {
   });
 }
 
-Dive _testDive() => Dive(
+SubsurfaceDiveInput _testDive() => SubsurfaceDiveInput(
       id: 'dive-id-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       dcSerial: 0xb89641e4,
       dcDiveNumber: 1,
       startTime: 1776611925,
-      endTime: 1776611925 + 3450,
-      utcOffsetMinutes: null,
       durationSeconds: 3450,
       maxDepthMm: 18000,
       diveMode: 0, // cc
-      decoModel: 0,
       gfLow: 50,
       gfHigh: 95,
       atmosphericPressureMbar: 1013,
@@ -69,15 +66,9 @@ Dive _testDive() => Dive(
       logVersion: 17,
       dcModel: 3,
       dcFirmware: 0xa3,
-      sampleIntervalMs: 10000,
-      gasMixesJson: '',
-      tanksJson: null,
       configuredStackSeconds: 25200,
       stackRemainingAtStartSeconds: 10847,
       stackRemainingAtEndSeconds: 7347,
-      rawBlob: Uint8List(0),
-      parserVersion: 1,
-      importedAt: 1776591525,
     );
 
 SampleSet _testSamples() => SampleSet(

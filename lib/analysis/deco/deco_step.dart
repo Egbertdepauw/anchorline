@@ -2,7 +2,7 @@
 /// ascent segment. Gas is what the diver breathes during this leg.
 library;
 
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 
 class DecoStep {
   final double depthStartMeters;

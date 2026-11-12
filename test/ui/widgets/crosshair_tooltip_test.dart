@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:ccrlogger/analysis/deco/replay_result.dart';
-import 'package:ccrlogger/data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
 import 'package:ccrlogger/ui/widgets/crosshair_tooltip.dart';
 import 'package:ccrlogger/ui/widgets/trace_segmented_bar.dart' show TraceType;
 import 'package:flutter/material.dart';

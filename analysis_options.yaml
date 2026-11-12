@@ -21,6 +21,9 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    # The pure-Dart package has its own pubspec, dev deps and analysis
+    # options; CI analyzes and tests it with `dart` from its own directory.
+    - packages/**
 
 linter:
   # The lint rules applied to this project can be customized in the

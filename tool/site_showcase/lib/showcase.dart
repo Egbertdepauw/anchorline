@@ -3,7 +3,7 @@ library;
 
 import 'dart:math' as math;
 
-import 'package:ccrlogger/data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
 
 import 'cell_series.dart';
 import 'showcase_db.dart';

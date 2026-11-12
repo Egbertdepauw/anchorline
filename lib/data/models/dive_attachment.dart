@@ -13,9 +13,9 @@ library;
 
 import 'package:drift/drift.dart' show Value;
 
-import 'annotation.dart' show SyncStatus;
+import 'package:subsurface_core/data/models/annotation.dart' show SyncStatus;
 
-export 'annotation.dart' show SyncStatus;
+export 'package:subsurface_core/data/models/annotation.dart' show SyncStatus;
 
 /// What kind of entity this attachment hangs off of. The cloud schema's
 /// `parent_kind` CHECK constraint enforces these values; the Dart enum

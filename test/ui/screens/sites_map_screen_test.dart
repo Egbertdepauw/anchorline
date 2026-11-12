@@ -4,7 +4,7 @@ import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart' hide DiveAnnotation;
 import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
-import 'package:ccrlogger/data/models/annotation.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/sites_map_screen.dart';
 import 'package:ccrlogger/ui/theme/tokens.dart';

@@ -6,7 +6,7 @@ library;
 
 import 'package:flutter/services.dart';
 
-import '../parser/hardware.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import '../parser/manifest_parser.dart';
 import 'shearwater_ble_transport.dart';
 

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../shearwater/parser/constants.dart';
+import 'package:subsurface_core/shearwater/parser/constants.dart';
 import '../util/dive_mode_color.dart';
 
 class DiveFilterSelection {

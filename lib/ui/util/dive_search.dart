@@ -1,5 +1,5 @@
 import '../../data/db/database.dart';
-import '../../data/models/annotation.dart' as dom;
+import 'package:subsurface_core/data/models/annotation.dart' as dom;
 import 'format.dart';
 
 /// Substring match (case-insensitive) across dive number, site name,

@@ -7,7 +7,7 @@
 /// change in the app, change them here too.
 library;
 
-import 'package:ccrlogger/data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
 
 /// Same shape as `MvPoint` in `equipment_dao.dart`.
 typedef MvPoint = ({DateTime date, double mv, String diveId});

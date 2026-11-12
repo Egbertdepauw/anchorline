@@ -1,5 +1,5 @@
 import 'package:ccrlogger/analysis/bailout/mix_resolver.dart';
-import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

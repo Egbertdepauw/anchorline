@@ -15,7 +15,7 @@ import '../../analysis/bailout/icd.dart'
     show IcdRisk, IcdSeverity, detectIcdRisks;
 import '../../analysis/bailout/team_bailout.dart'
     show TeamCarry, TeamGasStage;
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import '../components/section_header.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';

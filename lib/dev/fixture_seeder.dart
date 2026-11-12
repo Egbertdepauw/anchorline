@@ -5,9 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/db/database.dart';
 import '../data/db/dive_dao.dart';
-import '../shearwater/parser/dive_converter.dart';
+import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
 import '../shearwater/parser/dive_parser.dart';
-import '../shearwater/parser/hardware.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import '../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
 
 /// SharedPreferences key flipped to `true` after the user runs the

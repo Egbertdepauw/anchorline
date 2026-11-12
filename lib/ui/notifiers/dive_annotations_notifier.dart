@@ -1,9 +1,8 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart';
 
 import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/equipment_dao.dart';
-import '../../data/models/annotation.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
 
 class DiveAnnotationsNotifier extends ChangeNotifier {
   final DiveAnnotationsDao _annotationsDao;
@@ -70,20 +69,20 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   // ── Setters ───────────────────────────────────────────────────────────
 
   void setSiteName(String? v) {
-    _annotation = _annotation?.copyWith(siteName: Value(v));
+    _annotation = _annotation?.copyWith(siteName: Patch(v));
     _markDirty();
   }
 
   void setLatLon(double? lat, double? lon) {
     _annotation = _annotation?.copyWith(
-      siteLatitude: Value(lat),
-      siteLongitude: Value(lon),
+      siteLatitude: Patch(lat),
+      siteLongitude: Patch(lon),
     );
     _markDirty();
   }
 
   void setNotes(String? v) {
-    _annotation = _annotation?.copyWith(notes: Value(v));
+    _annotation = _annotation?.copyWith(notes: Patch(v));
     _markDirty();
   }
 
@@ -98,85 +97,85 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   }
 
   void setRating(int? v) {
-    _annotation = _annotation?.copyWith(rating: Value(v));
+    _annotation = _annotation?.copyWith(rating: Patch(v));
     _markDirty();
   }
 
   void setConditions(String? v) {
-    _annotation = _annotation?.copyWith(conditions: Value(v));
+    _annotation = _annotation?.copyWith(conditions: Patch(v));
     _markDirty();
   }
 
   void setDivemaster(String? v) {
-    _annotation = _annotation?.copyWith(divemaster: Value(v));
+    _annotation = _annotation?.copyWith(divemaster: Patch(v));
     _markDirty();
   }
 
   void setSuit(String? v) {
-    _annotation = _annotation?.copyWith(suit: Value(v));
+    _annotation = _annotation?.copyWith(suit: Patch(v));
     _markDirty();
   }
 
   void setUndersuit(String? v) {
-    _annotation = _annotation?.copyWith(undersuit: Value(v));
+    _annotation = _annotation?.copyWith(undersuit: Patch(v));
     _markDirty();
   }
 
   void setWeightSystem(String? v) {
-    _annotation = _annotation?.copyWith(weightSystem: Value(v));
+    _annotation = _annotation?.copyWith(weightSystem: Patch(v));
     _markDirty();
   }
 
   void setDpv(String? v) {
-    _annotation = _annotation?.copyWith(dpv: Value(v));
+    _annotation = _annotation?.copyWith(dpv: Patch(v));
     _markDirty();
   }
 
   void setCamera(String? v) {
-    _annotation = _annotation?.copyWith(camera: Value(v));
+    _annotation = _annotation?.copyWith(camera: Patch(v));
     _markDirty();
   }
 
   void setDisplayDecoAlgorithm(String value) {
     if (displayDecoAlgorithm == value) return;
     _annotation = _annotation?.copyWith(
-      displayDecoAlgorithm: Value(value),
+      displayDecoAlgorithm: Patch(value),
     );
     _markDirty();
   }
 
   void setVisibility(int? v) {
-    _annotation = _annotation?.copyWith(visibility: Value(v));
+    _annotation = _annotation?.copyWith(visibility: Patch(v));
     _markDirty();
   }
 
   void setWavesize(int? v) {
-    _annotation = _annotation?.copyWith(wavesize: Value(v));
+    _annotation = _annotation?.copyWith(wavesize: Patch(v));
     _markDirty();
   }
 
   void setCurrent(int? v) {
-    _annotation = _annotation?.copyWith(current: Value(v));
+    _annotation = _annotation?.copyWith(current: Patch(v));
     _markDirty();
   }
 
   void setSurge(int? v) {
-    _annotation = _annotation?.copyWith(surge: Value(v));
+    _annotation = _annotation?.copyWith(surge: Patch(v));
     _markDirty();
   }
 
   void setChill(int? v) {
-    _annotation = _annotation?.copyWith(chill: Value(v));
+    _annotation = _annotation?.copyWith(chill: Patch(v));
     _markDirty();
   }
 
   void setAirTempC(double? v) {
-    _annotation = _annotation?.copyWith(airTempC: Value(v));
+    _annotation = _annotation?.copyWith(airTempC: Patch(v));
     _markDirty();
   }
 
   void setWaterTempC(double? v) {
-    _annotation = _annotation?.copyWith(waterTempC: Value(v));
+    _annotation = _annotation?.copyWith(waterTempC: Patch(v));
     _markDirty();
   }
 

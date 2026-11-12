@@ -8,7 +8,7 @@ import '../bailout/ascent_simulator.dart' show AscentStop;
 import '../bailout/bailout_planner.dart' show planBailout;
 import '../bailout/tank_recommender.dart' show TankSpec;
 import '../deco/deco_planner.dart' show planDeco;
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import '../../data/models/dive_plan.dart';
 import 'plan_result.dart';
 import 'plan_simulator.dart';

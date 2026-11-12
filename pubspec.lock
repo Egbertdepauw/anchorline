@@ -1421,6 +1421,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
+  subsurface_core:
+    dependency: "direct main"
+    description:
+      path: "packages/subsurface_core"
+      relative: true
+    source: path
+    version: "0.0.0"
   supabase:
     dependency: transitive
     description:

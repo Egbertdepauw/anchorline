@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:ccrlogger/data/sample_codec/column_packer.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:subsurface_core/data/sample_codec/column_packer.dart';
+import 'package:test/test.dart';
 
 void main() {
   group('Float32 round-trip', () {

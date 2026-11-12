@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:ccrlogger/data/sample_codec/active_per_mix.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:subsurface_core/data/sample_codec/active_per_mix.dart';
+import 'package:test/test.dart';
 
 void main() {
   test('counts samples per mix index and converts to seconds', () {

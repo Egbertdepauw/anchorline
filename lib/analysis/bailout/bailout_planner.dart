@@ -15,7 +15,7 @@
 library;
 
 import '../../analysis/gas_density.dart' show mixDensityAt1Atm;
-import '../../data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'ascent_simulator.dart' show AscentPlan, simulateAscent;
 import 'bailout_result.dart';
 import 'mix_resolver.dart' show resolveBottomMix;

@@ -24,13 +24,15 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../data/db/database.dart' show Cylinder, Dive, DiveComputer;
-import '../../data/models/annotation.dart';
-import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
-import '../../data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix, DiveTank;
+import 'package:subsurface_core/data/models/sample_set.dart';
 import 'credentials.dart';
-import 'remote_snapshot.dart';
+import 'drift_sync_inputs.dart';
+import 'remote_repo_reader.dart';
+import 'package:subsurface_core/sync/subsurface_git/remote_snapshot.dart';
 import 'repo.dart';
-import 'sync_planner.dart' show AbortedDive, CcrlogDiveBundle, SyncPlanner;
+import 'package:subsurface_core/sync/subsurface_git/sync_planner.dart' show AbortedDive, CcrlogDiveBundle, SyncPlanner;
 
 /// Result of one [SubsurfaceSyncOrchestrator.syncNow] invocation.
 class SubsurfaceSyncResult {
@@ -287,7 +289,8 @@ class SubsurfaceSyncOrchestrator {
     required SubsurfaceRepo repo,
   }) async {
     // Snapshot the on-disk state.
-    final snapshot = await RemoteSnapshot.read(repoDir);
+    final snapshot =
+        RemoteSnapshot.fromFiles(await readRemoteRepoFiles(repoDir));
 
     // Build CCRLog bundles. We load all dives + their satellites; in
     // practice 99% of dives are unchanged between sync runs, so this
@@ -297,6 +300,7 @@ class SubsurfaceSyncOrchestrator {
     // single source of truth for what counts as new vs. updated.
     final dives = await _data.getAllDives();
     final allComputers = await _data.listAllDiveComputers();
+    final computerInputs = allComputers.map(diveComputerInputFromRow).toList();
 
     final bundles = <CcrlogDiveBundle>[];
     for (final dive in dives) {
@@ -307,13 +311,16 @@ class SubsurfaceSyncOrchestrator {
       final gasMixes = _decodeGasMixes(dive.gasMixesJson);
       final tanks = _decodeTanks(dive.tanksJson);
       bundles.add(CcrlogDiveBundle(
-        dive: dive,
+        dive: diveInputFromRow(dive),
         samples: samples,
         annotation: annotation,
         gasMixes: gasMixes,
         tanks: tanks,
-        cylindersByMixIndex: cylinders,
-        userDiveComputers: allComputers,
+        cylindersByMixIndex: {
+          for (final e in cylinders.entries)
+            e.key: cylinderInputFromRow(e.value),
+        },
+        userDiveComputers: computerInputs,
       ));
     }
 

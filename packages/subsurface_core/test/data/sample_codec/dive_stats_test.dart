@@ -1,6 +1,6 @@
 import 'dart:typed_data';
-import 'package:ccrlogger/data/sample_codec/dive_stats.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:subsurface_core/data/sample_codec/dive_stats.dart';
+import 'package:test/test.dart';
 
 void main() {
   test('computeOtu returns 0 when ppo2 is below threshold', () {

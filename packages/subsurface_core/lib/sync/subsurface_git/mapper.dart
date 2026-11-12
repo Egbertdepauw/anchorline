@@ -1,7 +1,7 @@
 /// Pure-Dart mapper from CCRLog's domain model into Subsurface's git-repo
 /// plain-text format.
 ///
-/// This is the bridge between the CCRLog database (Drift `Dive` row +
+/// This is the bridge between the CCRLog database (`SubsurfaceDiveInput` +
 /// columnar `SampleSet` + `DiveAnnotation` + cylinders/equipment) and the
 /// Phase-A `SsLine` model in `format/`. The serializer in `format/` turns
 /// the `SsLine` lists this mapper produces into the byte-for-byte text that
@@ -20,13 +20,13 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
-import '../../data/db/database.dart' show Cylinder, Dive, DiveComputer;
-import '../../data/models/annotation.dart';
-import '../../data/models/dive.dart' show DiveGasMix, DiveTank;
-import '../../data/models/sample_set.dart';
-import '../../shearwater/parser/constants.dart' show DiveMode;
-import '../../shearwater/parser/hardware.dart';
-import '../../shearwater/parser/parsed_dive.dart' show TankUsage;
+import 'sync_inputs.dart';
+import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix, DiveTank;
+import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/shearwater/parser/constants.dart' show DiveMode;
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
+import 'package:subsurface_core/shearwater/parser/parsed_dive.dart' show TankUsage;
 import 'format/subsurface_format.dart';
 import 'format/subsurface_unit_parsing.dart' show quoteString;
 
@@ -95,12 +95,12 @@ class CcrlogToSubsurfaceMapper {
   /// The orchestrator passes the next free integer (tracked in
   /// `00-Subsurface` state).
   MappedDive mapDive({
-    required Dive dive,
+    required SubsurfaceDiveInput dive,
     required SampleSet samples,
     required DiveAnnotation? annotation,
     required List<DiveGasMix> gasMixes,
     required List<DiveTank> tanks,
-    required Map<int, Cylinder> cylindersByMixIndex,
+    required Map<int, SubsurfaceCylinderInput> cylindersByMixIndex,
     required int nextSubsurfaceDiveNumber,
   }) {
     final folder = _folderSegments(dive.startTime);
@@ -161,8 +161,8 @@ class CcrlogToSubsurfaceMapper {
   /// add to `00-Subsurface`. Caller merges with the existing file
   /// (preserving Subsurface-side state).
   TopLevelDelta topLevelDelta({
-    required Iterable<Dive> dives,
-    required Iterable<DiveComputer> diveComputers,
+    required Iterable<SubsurfaceDiveInput> dives,
+    required Iterable<SubsurfaceDiveComputerInput> diveComputers,
   }) {
     final dcIds = <DivecomputerIdLine>[];
     final seenSerials = <int>{};
@@ -200,12 +200,12 @@ class CcrlogToSubsurfaceMapper {
   // ── Dive file builder ─────────────────────────────────────────────────
 
   List<SsLine> _buildDiveLines({
-    required Dive dive,
+    required SubsurfaceDiveInput dive,
     required SampleSet samples,
     required DiveAnnotation? annotation,
     required List<DiveGasMix> gasMixes,
     required List<DiveTank> tanks,
-    required Map<int, Cylinder> cylindersByMixIndex,
+    required Map<int, SubsurfaceCylinderInput> cylindersByMixIndex,
     required String? siteId,
   }) {
     final lines = <SsLine>[];
@@ -279,7 +279,7 @@ class CcrlogToSubsurfaceMapper {
   CylinderLine _cylinderLineFor({
     required int index,
     required DiveGasMix mix,
-    required Cylinder? cylinder,
+    required SubsurfaceCylinderInput? cylinder,
     required DiveTank? tank,
     required SampleSet samples,
   }) {
@@ -369,7 +369,7 @@ class CcrlogToSubsurfaceMapper {
   // ── Divecomputer file builder ─────────────────────────────────────────
 
   List<SsLine> _buildDivecomputerLines({
-    required Dive dive,
+    required SubsurfaceDiveInput dive,
     required SampleSet samples,
     required List<DiveGasMix> gasMixes,
     required List<DiveTank> tanks,
@@ -482,11 +482,11 @@ class CcrlogToSubsurfaceMapper {
   }
 
   /// Per-cell mV→bar calibration as a 3-element list. Reads
-  /// [Dive.sensorCalibrationJson] and pads with the Petrel factory
-  /// default 0.021 for any missing/invalid entries (older imports,
+  /// [SubsurfaceDiveInput.sensorCalibrationJson] and pads with the Petrel
+  /// factory default 0.021 for any missing/invalid entries (older imports,
   /// OC dives, or rows from a device that hadn't migrated yet).
   static const double _defaultCellCal = 0.021;
-  List<double> _decodeSensorCalibration(Dive dive) {
+  List<double> _decodeSensorCalibration(SubsurfaceDiveInput dive) {
     final raw = dive.sensorCalibrationJson;
     final out = List<double>.filled(3, _defaultCellCal);
     if (raw == null || raw.isEmpty) return out;

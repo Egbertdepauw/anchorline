@@ -16,7 +16,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import '../../data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
 import '../theme/tokens.dart';
 
 /// Petrel default mV→PPO2(bar) factor when no calibration is available.

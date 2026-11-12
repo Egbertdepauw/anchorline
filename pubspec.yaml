@@ -79,6 +79,10 @@ dependencies:
   # port (lib/analyzer/transport/native_serial_port.dart). Pure Dart, no
   # native build; already in the lock as a transitive dependency.
   ffi: 2.2.0
+  # Subsurface format, mappers, planner and the domain types they need.
+  # Pure Dart, shared with the server (spec 2026-11-02, section 6).
+  subsurface_core:
+    path: packages/subsurface_core
 
   # Crash + unhandled-exception reporting for release / beta builds.
   # Gated by kReleaseMode AND --dart-define=SENTRY_DSN=... at build time

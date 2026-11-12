@@ -5,8 +5,8 @@ import '../../analysis/stats/stats_result.dart';
 import '../../data/db/dive_annotations_dao.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/dive_derived_stats_dao.dart';
-import '../../data/models/sample_set.dart';
-import '../../data/sample_codec/dive_stats.dart';
+import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/data/sample_codec/dive_stats.dart';
 
 enum StatsScopeKind { total, year, month }
 

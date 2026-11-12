@@ -1,6 +1,6 @@
 import 'package:ccrlogger/analysis/bailout/ascent_simulator.dart';
 import 'package:ccrlogger/analysis/bailout/bailout_result.dart';
-import 'package:ccrlogger/data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'package:ccrlogger/ui/widgets/bailout_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
