@@ -1216,9 +1216,7 @@ void main() {
       expect(printer.printed, isEmpty);
       expect(_openDao!.closeBlendCalls, isEmpty);
       expect(told, [(18.5, 44.0, 230.0)]);
-      // It stays on until turned off.
-      expect(_controller!.residual, isTrue);
-      await _tapAndSettle(tester, _key('analysis-residual-toggle'));
+      // A saved residual turns the switch off: the next save is a fill.
       expect(_controller!.residual, isFalse);
       expect(
           tester

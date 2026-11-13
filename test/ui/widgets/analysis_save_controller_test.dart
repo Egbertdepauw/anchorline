@@ -387,6 +387,9 @@ void main() {
         logger.send(residualResult(setup, 'a1'));
         await _settle();
         expect(calls, [(21.3, 34.8, 45.0)]);
+        // The next press is a fill again.
+        expect(c.residual, isFalse);
+        expect(c.okSetup().setup.residual, isFalse);
       });
 
       test('with no fill pressure the pressure is passed as null', () async {
@@ -441,6 +444,8 @@ void main() {
         logger.send(residualResult(setup, 'a1'));
         await _settle();
         expect(calls, isEmpty);
+        // Stored as a plain analysis: the switch is the diver's to turn off.
+        expect(c.residual, isTrue);
       });
     });
   });

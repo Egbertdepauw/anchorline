@@ -182,7 +182,7 @@ class AnalysisSaveController extends ChangeNotifier {
   /// The diver's choice of the blend a save closes; a manual save resets it.
   BlendChoice _choice = const AutoBlend();
 
-  /// "Residual analysis" is on: the next saves are residuals.
+  /// "Residual analysis" is on: the next save is a residual.
   bool _residual = false;
 
   /// "+ Add a note" was tapped; see [notesShown].
@@ -361,7 +361,7 @@ class AnalysisSaveController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// "Residual analysis" on or off. It stays as set until turned off.
+  /// "Residual analysis" on or off. A saved residual turns it off again.
   void setResidual(bool on) {
     if (_residual == on) return;
     _residual = on;
@@ -700,6 +700,8 @@ class AnalysisSaveController extends ChangeNotifier {
     final saved = GasAnalysis.fromNew(id, a,
         cylinderLabel: _cylinder(a.cylinderId)?.label);
     if (a.isResidual) {
+      // Back to a fill: the next cylinder is not a residual by default.
+      _residual = false;
       onResidualSaved?.call(a.o2Percent, a.hePercent, residualBar);
     }
     var closed = false;
@@ -892,6 +894,8 @@ class AnalysisSaveController extends ChangeNotifier {
     }
     // A late press is saved as a plain analysis whatever the setup said.
     if (_disposed || stored == null || !stored.isResidual) return;
+    // Back to a fill, as after a manual residual save.
+    setResidual(false);
     onResidualSaved?.call(
       stored.o2Percent,
       stored.hePercent,
