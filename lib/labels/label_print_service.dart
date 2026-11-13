@@ -95,7 +95,7 @@ class LabelPrintService {
   /// before it.
   ///
   /// Throws a [LabelPrinterException] when [a] still needs sign-off
-  /// ([kSignOffBeforePrintMessage]), when no printer is saved, when the
+  /// ([kSignOffBeforePrintMessage]) or is a residual, when no printer is saved, when the
   /// printer can't be reached ("Printer not found" after [connectTimeout]),
   /// or when it reports a fault that stops the job.
   ///
@@ -106,6 +106,12 @@ class LabelPrintService {
     if (a.needsSignoff) {
       return Future<List<PrinterFault>>.error(
         const LabelPrinterException(kSignOffBeforePrintMessage),
+      );
+    }
+    if (a.isResidual) {
+      // A residual reading is what was left in the cylinder, not a fill.
+      return Future<List<PrinterFault>>.error(
+        const LabelPrinterException('A residual analysis has no label'),
       );
     }
     return _enqueue(labelFor(a), copies);
