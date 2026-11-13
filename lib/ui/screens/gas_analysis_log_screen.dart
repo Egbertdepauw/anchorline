@@ -521,7 +521,9 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     // elsewhere is not worth a crash.
     final desired = a.desiredMix;
     final match = a.o2Percent.isFinite && a.hePercent.isFinite ? a.match : null;
-    final use14 = widget.settings?.labelUse14ForDeeperMixes ?? false;
+    final use14 = widget.settings?.labelUse14ForDeeperMixes ??
+        widget.labelPrinting?.use14ForDeeperMixes ??
+        false;
     final warning = desired == null || match == null
         ? null
         : mixWarning(

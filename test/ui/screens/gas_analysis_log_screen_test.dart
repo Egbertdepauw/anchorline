@@ -36,6 +36,7 @@ Finder _key(String k) => find.byKey(ValueKey(k));
 LabelPrintService _service(
   FakeLabelPrinter printer, {
   bool configured = true,
+  bool use14 = false,
   List<CylinderLabel>? rendered,
 }) =>
     LabelPrintService(
@@ -46,7 +47,7 @@ LabelPrintService _service(
       printerFor: (_) => printer,
       scanner: FakeLabelPrinterScanner(),
       printerId: () => configured ? 'dev-1' : null,
-      use14ForDeeperMixes: () => false,
+      use14ForDeeperMixes: () => use14,
     );
 
 /// A [LabelPrintService] whose jobs take the next printer in [printers]
@@ -1794,6 +1795,30 @@ void main() {
       await pump(
           tester, GasAnalysisLogScreen(dao: FakeGasAnalysesDao(analyses: [e])));
       expect(_key('analysis-warning-ok'), findsNothing);
+    });
+
+    testWidgets('the warning follows the label printing use-1.4 setting',
+        (tester) async {
+      final e = entry('d', DateTime(2026, 11, 13, 9), 40.0, 35,
+          targetO2: 21, targetHe: 35, gasRole: GasRole.deco);
+      await pump(
+          tester,
+          GasAnalysisLogScreen(
+            dao: FakeGasAnalysesDao(analyses: [e]),
+            labelPrinting: _service(FakeLabelPrinter(), use14: true),
+          ));
+      final text = tester.widget<Text>(_key('analysis-warning-d'));
+      expect(text.data, contains('MOD at 1.4'));
+    });
+
+    testWidgets('a mild warning is muted, not red', (tester) async {
+      final e = entry('m', DateTime(2026, 11, 13, 9), 48.0, 0,
+          targetO2: 50, targetHe: 0, gasRole: GasRole.deco);
+      await pump(
+          tester, GasAnalysisLogScreen(dao: FakeGasAnalysesDao(analyses: [e])));
+      final text = tester.widget<Text>(_key('analysis-warning-m'));
+      expect(text.data, startsWith('Analysed'));
+      expect(text.style?.color, isNot(SafetyColors.danger));
     });
   });
 }

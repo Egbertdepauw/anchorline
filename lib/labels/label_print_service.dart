@@ -77,6 +77,10 @@ class LabelPrintService {
   /// Whether a printer is saved. Says nothing about it being in range.
   bool get isConfigured => _printerId() != null;
 
+  /// The live "Use 1.4 for deeper mixes" setting, so a screen that shows
+  /// a MOD warning follows the same rule as the label.
+  bool get use14ForDeeperMixes => _use14ForDeeperMixes();
+
   /// The label for [a] under the current "Use 1.4 for deeper mixes"
   /// setting, so a reprint follows a setting changed since the first print.
   CylinderLabel labelFor(GasAnalysis a) => CylinderLabel.fromAnalysis(
