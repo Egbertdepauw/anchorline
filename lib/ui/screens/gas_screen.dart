@@ -120,6 +120,7 @@ class GasScreen extends StatelessWidget {
                     labelPrinting: labelPrinting,
                     embedded: true,
                     blend: blend,
+                    settings: settings,
                   )),
           ],
         ),

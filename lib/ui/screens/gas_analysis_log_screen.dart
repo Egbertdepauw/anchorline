@@ -32,10 +32,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../analysis/mix_match.dart';
+import '../../analysis/open_blend_match.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../../data/models/gas_analysis_csv.dart';
 import '../../labels/label_print_service.dart';
 import '../notifiers/blend_notifier.dart';
+import '../notifiers/settings_notifier.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../widgets/analysis_edit_sheet.dart';
@@ -71,6 +73,7 @@ class GasAnalysisLogScreen extends StatefulWidget {
     this.labelPrinting,
     this.embedded = false,
     this.blend,
+    this.settings,
   });
 
   final GasAnalysesDaoLike dao;
@@ -95,6 +98,10 @@ class GasAnalysisLogScreen extends StatefulWidget {
   /// up (one blend is one cylinder). The screen pushed from Equipment has
   /// none.
   final BlendNotifier? blend;
+
+  /// Read for the warning line's ppO2 rule (`labelUse14ForDeeperMixes`).
+  /// Null, as on the Equipment screens, reads as off.
+  final SettingsNotifier? settings;
 
   @override
   State<GasAnalysisLogScreen> createState() => _GasAnalysisLogScreenState();
@@ -195,7 +202,7 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
       analysis: a,
       mixOptions: recentDesiredMixes(_items ?? const []),
       suggestedAnalysedBy: _suggestedAnalysedBy(),
-      canPrint: widget.labelPrinting?.isConfigured == true,
+      canPrint: widget.labelPrinting?.isConfigured == true && !a.isResidual,
     );
     if (outcome != AnalysisEditOutcome.cancelled) {
       messenger.hideCurrentSnackBar();
@@ -252,6 +259,11 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     // The guard goes up before the first await, so a double tap can't
     // start a second reprint of the same entry.
     if (service == null || _reprinting.contains(a.id)) return;
+    if (a.isResidual) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('A residual analysis has no label')));
+      return;
+    }
     setState(() => _reprinting.add(a.id));
     try {
       final copies = await showCopiesDialog(context);
@@ -490,7 +502,8 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     final palette = context.palette;
     final diluent = a.gasRole == GasRole.diluent;
     final printing = widget.labelPrinting;
-    final canPrint = printing != null && printing.isConfigured;
+    final canPrint =
+        printing != null && printing.isConfigured && !a.isResidual;
     // Bailout and deco read quieter than diluent; both are palette tokens
     // so the edge shows in every theme.
     final edge = diluent ? palette.accentPrimary : palette.textMuted;
@@ -508,6 +521,16 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     // elsewhere is not worth a crash.
     final desired = a.desiredMix;
     final match = a.o2Percent.isFinite && a.hePercent.isFinite ? a.match : null;
+    final use14 = widget.settings?.labelUse14ForDeeperMixes ?? false;
+    final warning = desired == null || match == null
+        ? null
+        : mixWarning(
+            role: a.gasRole,
+            o2Percent: a.o2Percent,
+            hePercent: a.hePercent,
+            target: desired,
+            use14ForDeeperMixes: use14,
+          );
     final caption = <Widget>[
       if (match != null && desired != null)
         Text(
@@ -575,6 +598,12 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
                                   style: monoStyle.copyWith(
                                       color: palette.textPrimary),
                                 ),
+                                if (a.isResidual)
+                                  _Marker(
+                                    key: ValueKey('analysis-residual-${a.id}'),
+                                    label: 'Residual',
+                                    color: palette.textMuted,
+                                  ),
                                 if (a.needsSignoff)
                                   _Marker(
                                     key: ValueKey(
@@ -608,6 +637,18 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
                             color:
                                 palette.textPrimary.withValues(alpha: 0.85)),
                       ),
+                      if (warning != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            warning.text,
+                            key: ValueKey('analysis-warning-${a.id}'),
+                            style: AppTypography.caption.copyWith(
+                                color: warning.level == WarningLevel.loud
+                                    ? SafetyColors.danger
+                                    : palette.textMuted),
+                          ),
+                        ),
                       if (caption.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 2),

@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:ccrlogger/analyzer/transport/demo_transport.dart';
+import 'package:ccrlogger/analysis/mix_match.dart';
+import 'package:ccrlogger/analysis/open_blend_match.dart';
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
@@ -1734,6 +1736,65 @@ void main() {
       await tapAndSettle(tester, _key('cylinder-analyses'));
       expect(find.text('Analyses · S80 left'), findsOneWidget);
       expect(_key('analysis-print-a1'), findsOneWidget);
+    });
+  });
+
+  group('open blends (#112)', () {
+    GasAnalysis residual() => GasAnalysis(
+          id: 'res',
+          analysedBy: 'Egbert',
+          analysedAt: DateTime(2026, 11, 13, 9),
+          o2Percent: 32.0,
+          hePercent: 0,
+          fillPressureBar: 50,
+          stable: true,
+          isResidual: true,
+        );
+
+    testWidgets('residual entries are tagged and cannot print',
+        (tester) async {
+      final printer = FakeLabelPrinter();
+      await pump(
+          tester,
+          GasAnalysisLogScreen(
+            dao: FakeGasAnalysesDao(analyses: [
+              residual(),
+              entry('plain', DateTime(2026, 11, 12, 9), 32.0, 0),
+            ]),
+            labelPrinting: _service(printer),
+          ));
+      expect(_key('analysis-residual-res'), findsOneWidget);
+      expect(_key('analysis-residual-plain'), findsNothing);
+      expect(_key('analysis-warning-res'), findsNothing);
+      expect(_key('analysis-print-res'), findsNothing);
+      expect(_key('analysis-print-plain'), findsOneWidget);
+    });
+
+    testWidgets('a rich deco entry shows the loud warning', (tester) async {
+      final e = entry('rich', DateTime(2026, 11, 13, 9), 52.0, 0,
+          targetO2: 50, targetHe: 0, gasRole: GasRole.deco);
+      await pump(
+          tester, GasAnalysisLogScreen(dao: FakeGasAnalysesDao(analyses: [e])));
+      final expected = mixWarning(
+        role: GasRole.deco,
+        o2Percent: 52.0,
+        hePercent: 0,
+        target: const DesiredMix(50, 0),
+        use14ForDeeperMixes: false,
+      )!;
+      expect(expected.level, WarningLevel.loud);
+      expect(_key('analysis-warning-rich'), findsOneWidget);
+      final text = tester.widget<Text>(_key('analysis-warning-rich'));
+      expect(text.data, expected.text);
+      expect(text.style?.color, SafetyColors.danger);
+    });
+
+    testWidgets('a matching entry shows no warning', (tester) async {
+      final e = entry('ok', DateTime(2026, 11, 13, 9), 50.0, 0,
+          targetO2: 50, targetHe: 0, gasRole: GasRole.deco);
+      await pump(
+          tester, GasAnalysisLogScreen(dao: FakeGasAnalysesDao(analyses: [e])));
+      expect(_key('analysis-warning-ok'), findsNothing);
     });
   });
 }
