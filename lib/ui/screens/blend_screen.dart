@@ -39,7 +39,7 @@ class BlendScreen extends StatefulWidget {
   final BlendNotifier notifier;
   final SettingsNotifier settings;
 
-  /// Where "Blended" saves to and the open list reads from. Null hides both.
+  /// Where "Blend mix" saves to and the open list reads from. Null hides both.
   final OpenBlendsDaoLike? openBlends;
   final DateTime Function() now;
 
@@ -293,7 +293,7 @@ class _BlendScreenState extends State<BlendScreen> {
   }
 }
 
-/// The role chip (tap to change it) and the "Blended" button, under the plan
+/// The role control (tap to change it) and the "Blend mix" button, under the plan
 /// band.
 class _RoleRow extends StatelessWidget {
   const _RoleRow({
@@ -319,38 +319,58 @@ class _RoleRow extends StatelessWidget {
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: palette.surfaceRaised)),
       ),
-      child: Wrap(
-        spacing: Spacing.sm,
-        runSpacing: Spacing.sm,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Row(
         children: [
-          Builder(
-            builder: (chipContext) => InkWell(
-              key: const ValueKey('blend-role-chip'),
-              onTap: () => onTap(chipContext),
-              borderRadius: Radii.chipBr,
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 32),
-                alignment: Alignment.center,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
+          // The role is a guess the diver can change: a dropdown-style
+          // control (label, value, chevron), not a plain chip.
+          Flexible(
+            child: Builder(
+              builder: (chipContext) => Tooltip(
+                message: 'Tap to change the cylinder role',
+                child: InkWell(
+                  key: const ValueKey('blend-role-chip'),
+                  onTap: () => onTap(chipContext),
                   borderRadius: Radii.chipBr,
-                  color: palette.surfaceRaised,
-                  border: Border.all(color: palette.surfaceBezel),
+                  child: Container(
+                    constraints: const BoxConstraints(minHeight: 40),
+                    padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
+                    decoration: BoxDecoration(
+                      borderRadius: Radii.chipBr,
+                      color: palette.surfaceRaised,
+                      border: Border.all(color: palette.textMuted),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Role ',
+                            style: AppTypography.body.copyWith(
+                                fontSize: 13, color: palette.textMuted)),
+                        Flexible(
+                          child: Text(text,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.body.copyWith(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: palette.textPrimary)),
+                        ),
+                        Icon(Icons.arrow_drop_down,
+                            size: 22, color: palette.textPrimary),
+                      ],
+                    ),
+                  ),
                 ),
-                child: Text(text,
-                    style: AppTypography.body.copyWith(
-                        fontSize: 13, color: palette.textPrimary)),
               ),
             ),
           ),
-          if (canSave)
-            FilledButton.tonal(
+          if (canSave) ...[
+            const SizedBox(width: Spacing.sm),
+            FilledButton.icon(
               key: const ValueKey('blend-save-open'),
               onPressed: onSave,
-              child: const Text('Blended'),
+              icon: const Icon(Icons.playlist_add_check),
+              label: const Text('Blend mix'),
             ),
+          ],
         ],
       ),
     );

@@ -359,6 +359,23 @@ void main() {
     Future<void> leave(WidgetTester tester) =>
         tester.pumpWidget(const SizedBox());
 
+    testWidgets('"Blend mix" sits right of the role control, on its row',
+        (tester) async {
+      await pumpOpen(tester);
+      expect(find.text('Blend mix'), findsOneWidget);
+      expect(find.text('Role '), findsOneWidget);
+      expect(
+          find.descendant(
+              of: k('blend-role-chip'),
+              matching: find.byIcon(Icons.arrow_drop_down)),
+          findsOneWidget);
+      final chip = tester.getRect(k('blend-role-chip'));
+      final button = tester.getRect(k('blend-save-open'));
+      expect(button.left, greaterThan(chip.right));
+      expect((button.center.dy - chip.center.dy).abs(), lessThan(2));
+      await leave(tester);
+    });
+
     testWidgets('Blended saves the draft and shows it in the list',
         (tester) async {
       final (n, dao, settings) = await pumpOpen(tester);
