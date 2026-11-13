@@ -1,6 +1,6 @@
 # Blend to analysis: open blends that an analysis closes
 
-Status: design, 2026-11-12, waiting for Egbert's review. Issue #112 (rescoped; see "Non-goals"). One point is marked **provisional, for Egbert to confirm** (a far-off reading).
+Status: design, 2026-11-12, waiting for Egbert's review. Issue #112 (rescoped; see "Non-goals"). The far-off reading rule was confirmed by Egbert on 2026-11-13.
 
 ## Why
 
@@ -125,7 +125,7 @@ His real flow, in his words:
 - The diver can see which open blend the save will close, and can choose a
   different one or none before saving. *Builder's choice:* how, within the
   Analyse tab's height budget.
-- **A far-off reading: provisional, for Egbert to confirm.** The automatic
+- **A far-off reading (confirmed by Egbert, 2026-11-13).** The automatic
   close only happens within orange. A seriously rich deco gas, say 55%
   against a 50% target, would otherwise match nothing, close nothing and
   get no loud warning: the most dangerous case would get the weakest
