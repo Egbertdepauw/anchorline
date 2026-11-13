@@ -11,7 +11,6 @@ import '../analysis/mix_match.dart';
 import '../analysis/open_blend_match.dart';
 import '../data/db/gas_analyses_dao.dart';
 import '../data/db/open_blends_dao.dart';
-import '../data/models/gas_analysis.dart';
 
 /// Closes the open blend that [signedOff], the entry as stored after its
 /// sign-off, belongs to. Nothing for an entry that still needs sign-off or

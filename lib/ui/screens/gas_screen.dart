@@ -122,7 +122,7 @@ class GasScreen extends StatelessWidget {
                     dao: analysesDao!,
                     labelPrinting: labelPrinting,
                     embedded: true,
-                    blend: blend,
+                    openBlends: openBlendsDao,
                     settings: settings,
                   )),
           ],

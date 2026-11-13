@@ -33,10 +33,11 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../analysis/mix_match.dart';
 import '../../analysis/open_blend_match.dart';
+import '../../analyzer/blend_closer.dart';
 import '../../data/db/gas_analyses_dao.dart';
+import '../../data/db/open_blends_dao.dart';
 import '../../data/models/gas_analysis_csv.dart';
 import '../../labels/label_print_service.dart';
-import '../notifiers/blend_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
@@ -72,7 +73,7 @@ class GasAnalysisLogScreen extends StatefulWidget {
     this.shareCsv = shareCsvFile,
     this.labelPrinting,
     this.embedded = false,
-    this.blend,
+    this.openBlends,
     this.settings,
   });
 
@@ -94,10 +95,9 @@ class GasAnalysisLogScreen extends StatefulWidget {
   /// Export button sits in a row at the top of the list.
   final bool embedded;
 
-  /// The Gas destination's Blend tab, whose target a sign-off here can use
-  /// up (one blend is one cylinder). The screen pushed from Equipment has
-  /// none.
-  final BlendNotifier? blend;
+  /// The open blends, which a sign-off here can close (one blend is one
+  /// cylinder). The screen pushed from Equipment has none.
+  final OpenBlendsDaoLike? openBlends;
 
   /// Read for the warning line's ppO2 rule (`labelUse14ForDeeperMixes`).
   /// Null, as on the Equipment screens, reads as off.
@@ -216,10 +216,15 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
   Future<void> _edit(GasAnalysis a) async {
     final outcome = await _openEditSheet(a);
     if (outcome == AnalysisEditOutcome.cancelled) return;
-    final stored = await _stored(a.id);
+    var stored = await _stored(a.id);
     if (outcome == AnalysisEditOutcome.signedOff ||
         outcome == AnalysisEditOutcome.signOffAndPrint) {
-      _useBlendTarget(stored);
+      await _closeBlendOnSignOff(stored);
+      // The close can give the entry its blend's mix and role; a label
+      // prints the entry as stored.
+      if (stored != null && widget.openBlends != null) {
+        stored = await _stored(a.id);
+      }
     }
     if (outcome != AnalysisEditOutcome.signOffAndPrint) return;
     // Deleted meanwhile, or flagged again (through sync): nothing to print.
@@ -228,18 +233,14 @@ class _GasAnalysisLogScreenState extends State<GasAnalysisLogScreen> {
     await _reprint(stored);
   }
 
-  /// A sign-off completes the save of an OK press: when the entry, as
-  /// stored after it, has the Blend target that is still unused as its
-  /// desired mix, it uses the target up (one blend is one cylinder, spec
-  /// §4.3), as a sign-off on the Analyse tab's result row does. Nothing
-  /// when it was deleted or flagged again meanwhile.
-  void _useBlendTarget(GasAnalysis? signedOff) {
-    final blend = widget.blend;
-    final target = blend?.unusedRecentTarget();
-    if (blend == null || target == null) return;
-    if (signedOff == null || signedOff.needsSignoff) return;
-    if (signedOff.desiredMix != target) return;
-    unawaited(blend.markRecentTargetUsed());
+  /// A sign-off completes the save of an OK press: the entry, as stored
+  /// after it, closes the open blend it belongs to ([closeBlendOnSignOff]).
+  /// Nothing when it was deleted meanwhile or has no open blends to close.
+  Future<void> _closeBlendOnSignOff(GasAnalysis? signedOff) async {
+    final openBlends = widget.openBlends;
+    if (openBlends == null || signedOff == null) return;
+    await closeBlendOnSignOff(
+        signedOff: signedOff, openBlends: openBlends, analyses: widget.dao);
   }
 
   /// Prints the label of [a]: asks for copies, then, on a hard mismatch

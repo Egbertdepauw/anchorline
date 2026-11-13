@@ -49,6 +49,7 @@ import '../../analysis/open_blend_match.dart';
 // The getter [AnalysisSaveController.nearestUnmatched] shadows the function.
 import '../../analysis/open_blend_match.dart' as match;
 import '../../analysis/standard_mix_pick.dart';
+import '../../analyzer/blend_closer.dart';
 import '../../analyzer/bridge/bridge_protocol.dart';
 import '../../analyzer/bridge/record_to_analysis.dart';
 import '../../analyzer/protocol/analyzer_reading.dart';
@@ -1003,8 +1004,14 @@ class AnalysisSaveController extends ChangeNotifier {
         notifyListeners();
       } else if (!r.complete && !after.needsSignoff) {
         // Signed off: nothing is left to do for this entry, so its press
-        // counts as complete and uses up what it took.
+        // counts as complete, uses up what it took and closes its blend.
         _useUpTaken();
+        final blends = _openBlends;
+        if (blends != null) {
+          await closeBlendOnSignOff(
+              signedOff: after, openBlends: blends, analyses: _dao);
+          if (_disposed || !identical(_okResult, r)) return;
+        }
         _okResult = OkLogResult(
           code: r.code == FeedbackCode.printed
               ? FeedbackCode.printed

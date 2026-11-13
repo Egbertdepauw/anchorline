@@ -1215,6 +1215,28 @@ void main() {
       expect(_resultText(tester), 'Saved EAN28');
     });
 
+    _test('Edit and Sign off closes the open blend of the desired mix',
+        (tester, h) async {
+      await h.pump(tester);
+      await h.blended(const DesiredMix(32, 0));
+      await h.connect(tester);
+      await _start(tester);
+      await _setUp(tester);
+
+      await h.feed(tester, 28.0, 0, seconds: 6);
+      await h.pressOk(tester);
+      expect(_resultText(tester), 'Needs sign-off: MISMATCH');
+      expect(h.openBlends.closedBy, isEmpty, reason: 'not signed off yet');
+
+      await tester.tap(_key('analysis-ok-edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(_key('analysis-edit-signoff'));
+      await tester.pumpAndSettle();
+
+      expect(h.openBlends.closedBy.values, [h.dao.analyses.single.id]);
+      expect(_resultText(tester), 'Saved EAN28');
+    });
+
     _test('Edit and Sign off uses up the per-cylinder fields',
         (tester, h) async {
       await h.pump(tester);
