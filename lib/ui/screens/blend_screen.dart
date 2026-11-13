@@ -88,18 +88,29 @@ class _BlendScreenState extends State<BlendScreen> {
     if (picked != null) widget.notifier.overrideRole(picked);
   }
 
+  // True while the open blend is being written, so a second tap adds nothing.
+  bool _saving = false;
+
   Future<void> _saveOpenBlend() async {
     final dao = widget.openBlends;
-    if (dao == null) return;
+    if (dao == null || _saving) return;
+    setState(() => _saving = true);
     final n = widget.notifier;
-    final draft = n.draftOpenBlend(
-        blendedBy: widget.settings.yourInitials, now: widget.now());
     final messenger = ScaffoldMessenger.of(context);
-    await dao.add(draft);
-    n.openBlendSaved();
-    messenger.showSnackBar(SnackBar(
-      content: Text('${draft.target.name} added to open blends'),
-    ));
+    try {
+      final draft = n.draftOpenBlend(
+          blendedBy: widget.settings.yourInitials, now: widget.now());
+      await dao.add(draft);
+      n.openBlendSaved();
+      messenger.showSnackBar(SnackBar(
+        content: Text('${draft.target.name} added to open blends'),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text('Could not save the open blend: $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _pickTopoffOther() async {
@@ -143,14 +154,9 @@ class _BlendScreenState extends State<BlendScreen> {
                   roleLabel: n.role.label,
                   reason: n.roleOverridden ? null : n.roleGuess.reason,
                   onTap: _pickRole,
-                  onSave: widget.openBlends == null ? null : _saveOpenBlend,
+                  canSave: widget.openBlends != null,
+                  onSave: _saving ? null : _saveOpenBlend,
                 ),
-                if (widget.openBlends != null)
-                  OpenBlendsSection(
-                    dao: widget.openBlends!,
-                    settings: widget.settings,
-                    now: widget.now,
-                  ),
                 _Section(
                   label: 'Target',
                   child: Column(
@@ -272,6 +278,12 @@ class _BlendScreenState extends State<BlendScreen> {
                   onFillTempChange: n.setFillTempC,
                   onSettledTempChange: n.setSettledTempC,
                 ),
+                if (widget.openBlends != null)
+                  OpenBlendsSection(
+                    dao: widget.openBlends!,
+                    settings: widget.settings,
+                    now: widget.now,
+                  ),
               ],
             ),
           );
@@ -288,11 +300,13 @@ class _RoleRow extends StatelessWidget {
     required this.roleLabel,
     required this.reason,
     required this.onTap,
+    required this.canSave,
     required this.onSave,
   });
   final String roleLabel;
   final String? reason;
   final void Function(BuildContext chipContext) onTap;
+  final bool canSave;
   final VoidCallback? onSave;
 
   @override
@@ -331,7 +345,7 @@ class _RoleRow extends StatelessWidget {
               ),
             ),
           ),
-          if (onSave != null)
+          if (canSave)
             FilledButton.tonal(
               key: const ValueKey('blend-save-open'),
               onPressed: onSave,

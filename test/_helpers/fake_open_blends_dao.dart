@@ -28,6 +28,13 @@ class FakeOpenBlendsDao implements OpenBlendsDaoLike {
   final _changes = StreamController<void>.broadcast();
   int _nextId = 0;
 
+  /// How many times [watchOpen] was called.
+  int watchOpenCalls = 0;
+
+  /// When set, [add] awaits it before storing and throws on error.
+  Future<void>? addGate;
+  Object? addError;
+
   static String? _blankToNull(String? s) {
     final t = s?.trim();
     return t == null || t.isEmpty ? null : t;
@@ -58,6 +65,8 @@ class FakeOpenBlendsDao implements OpenBlendsDaoLike {
 
   @override
   Future<String> add(NewOpenBlend b) async {
+    if (addGate != null) await addGate;
+    if (addError != null) throw addError!;
     added.add(b);
     var id = 'b${++_nextId}';
     while (blends.any((x) => x.id == id)) {
@@ -83,7 +92,12 @@ class FakeOpenBlendsDao implements OpenBlendsDaoLike {
   Future<List<OpenBlend>> listOpen() async => _open;
 
   @override
-  Stream<List<OpenBlend>> watchOpen() async* {
+  Stream<List<OpenBlend>> watchOpen() {
+    watchOpenCalls++;
+    return _watch();
+  }
+
+  Stream<List<OpenBlend>> _watch() async* {
     yield _open;
     await for (final _ in _changes.stream) {
       yield _open;

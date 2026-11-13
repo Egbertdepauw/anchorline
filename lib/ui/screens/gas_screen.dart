@@ -174,15 +174,28 @@ class _GasTab extends StatelessWidget {
 }
 
 /// The number of open blends, as a small badge; nothing at 0.
-class _OpenCount extends StatelessWidget {
+class _OpenCount extends StatefulWidget {
   const _OpenCount({required this.dao});
 
   final OpenBlendsDaoLike dao;
 
   @override
+  State<_OpenCount> createState() => _OpenCountState();
+}
+
+class _OpenCountState extends State<_OpenCount> {
+  late Stream<List<OpenBlend>> _stream = widget.dao.watchOpen();
+
+  @override
+  void didUpdateWidget(_OpenCount old) {
+    super.didUpdateWidget(old);
+    if (old.dao != widget.dao) _stream = widget.dao.watchOpen();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<OpenBlend>>(
-      stream: dao.watchOpen(),
+      stream: _stream,
       builder: (context, snap) {
         final n = snap.data?.length ?? 0;
         if (n == 0) return const SizedBox.shrink();

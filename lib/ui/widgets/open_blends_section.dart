@@ -47,14 +47,22 @@ class OpenBlendsSection extends StatefulWidget {
 
 class _OpenBlendsSectionState extends State<OpenBlendsSection> {
   Timer? _tick;
+  late Stream<List<OpenBlend>> _stream;
 
   @override
   void initState() {
     super.initState();
+    _stream = widget.dao.watchOpen();
     // The dots change colour with time, so the rows refresh every minute.
     _tick = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() {});
     });
+  }
+
+  @override
+  void didUpdateWidget(OpenBlendsSection old) {
+    super.didUpdateWidget(old);
+    if (old.dao != widget.dao) _stream = widget.dao.watchOpen();
   }
 
   @override
@@ -64,13 +72,29 @@ class _OpenBlendsSectionState extends State<OpenBlendsSection> {
   }
 
   Future<void> _dismiss(OpenBlend b) async {
-    await widget.dao.dismiss(b.id);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.dao.dismiss(b.id);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Could not dismiss: $e')));
+    }
   }
+
+  Widget _row(OpenBlend b, Duration since) => _Row(
+        key: ValueKey('open-blend-row-${b.id}'),
+        blend: b,
+        since: since,
+        state: settleState(
+          sinceBlended: since,
+          settleMinutes: widget.settings.blendSettleMinutes,
+        ),
+        onDismiss: () => _dismiss(b),
+      );
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<OpenBlend>>(
-      stream: widget.dao.watchOpen(),
+      stream: _stream,
       builder: (context, snap) {
         final blends = snap.data ?? const <OpenBlend>[];
         if (blends.isEmpty) return const SizedBox.shrink();
@@ -92,16 +116,7 @@ class _OpenBlendsSectionState extends State<OpenBlendsSection> {
                           .copyWith(color: palette.accentPrimary)),
                 ),
                 for (final b in blends)
-                  _Row(
-                    key: ValueKey('open-blend-row-${b.id}'),
-                    blend: b,
-                    since: now.difference(b.blendedAt),
-                    state: settleState(
-                      sinceBlended: now.difference(b.blendedAt),
-                      settleMinutes: widget.settings.blendSettleMinutes,
-                    ),
-                    onDismiss: () => _dismiss(b),
-                  ),
+                  _row(b, now.difference(b.blendedAt)),
               ],
             ),
           ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ccrlogger/data/models/gas_analysis.dart';
 import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
@@ -399,6 +401,59 @@ void main() {
       expect(dao.added.single.role, GasRole.deco);
       expect(n.roleOverridden, isFalse);
       expect(chip, findsOneWidget);
+      await leave(tester);
+    });
+
+    testWidgets('two quick taps add one blend', (tester) async {
+      final (_, dao, _) = await pumpOpen(tester);
+      final gate = Completer<void>();
+      dao.addGate = gate.future;
+      await tester.tap(k('blend-save-open'));
+      await tester.pump();
+      await tester.tap(k('blend-save-open'), warnIfMissed: false);
+      await tester.pump();
+      gate.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(dao.blends, hasLength(1));
+      expect(dao.added, hasLength(1));
+      await leave(tester);
+    });
+
+    testWidgets('a failing add shows the error and keeps the role override',
+        (tester) async {
+      final (n, dao, _) = await pumpOpen(tester);
+      n.overrideRole(GasRole.deco);
+      dao.addError = StateError('boom');
+      await tester.tap(k('blend-save-open'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('Could not save the open blend:'),
+          findsOneWidget);
+      expect(n.roleOverridden, isTrue);
+      await leave(tester);
+    });
+
+    testWidgets('rebuilding does not open a new watch query', (tester) async {
+      final (n, dao, _) = await pumpOpen(tester);
+      final before = dao.watchOpenCalls;
+      n.setTargetPressure(200);
+      await tester.pump();
+      n.setTargetMix(21, 35);
+      await tester.pump();
+      expect(dao.watchOpenCalls, before);
+      await leave(tester);
+    });
+
+    testWidgets('the list sits after the inputs', (tester) async {
+      final (_, dao, _) = await pumpOpen(tester);
+      await tester.tap(k('blend-save-open'));
+      await tester.pump();
+      await tester.pump();
+      expect(
+          tester.getTopLeft(find.textContaining('Not yet analysed')).dy,
+          greaterThan(tester.getTopLeft(k('blend-fill-options')).dy));
+      expect(dao.added, hasLength(1));
       await leave(tester);
     });
 
