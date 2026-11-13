@@ -356,6 +356,7 @@ class AnalysisSaveController extends ChangeNotifier {
   /// The diver picks the blend a save closes, or none, or automatic again.
   void chooseBlend(BlendChoice c) {
     _choice = c;
+    _autoPick = _pickFor(usableGas);
     notifyListeners();
   }
 
@@ -466,7 +467,10 @@ class AnalysisSaveController extends ChangeNotifier {
       : pickDesiredMix(
           o2Percent: gas.o2,
           hePercent: gas.he,
-          blendTarget: _autoBlendFor(gas)?.target,
+          // With "None" chosen the pick is a standard mix, so the verdict
+          // and the row agree that no open blend is involved.
+          blendTarget:
+              _choice is NoBlend ? null : _autoBlendFor(gas)?.target,
         );
 
   /// The blend the app matches to [gas] by itself.

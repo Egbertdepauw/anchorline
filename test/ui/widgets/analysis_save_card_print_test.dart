@@ -1233,6 +1233,31 @@ void main() {
       expect(_key('analysis-residual-toggle'), findsOneWidget);
     });
 
+    testWidgets('a rich bailout gas warns loudly without any open blend',
+        (tester) async {
+      await _pump(tester,
+          dao: FakeGasAnalysesDao(), reading: _reading(52.0, 0));
+      expect(_key('blend-close-row'), findsNothing);
+      await _tapAndSettle(tester, find.text('Bailout'));
+      await _pickOther(tester, const DesiredMix(50, 0));
+      final warning = tester.widget<Text>(_key('blend-close-warning'));
+      expect(warning.data, contains('MOD at'));
+      expect(warning.style!.color, SafetyColors.danger);
+      expect(_controller!.warning?.level, WarningLevel.loud);
+    });
+
+    testWidgets('the warning shows once when the row is there too',
+        (tester) async {
+      await _pump(tester,
+          dao: FakeGasAnalysesDao(),
+          reading: _reading(55.0, 0),
+          openBlends: [_openBlend('deco', const DesiredMix(50, 0))]);
+      await _tapAndSettle(tester, _key('blend-close-change'));
+      await tester.tap(_key('blend-choice-deco'));
+      await tester.pumpAndSettle();
+      expect(_key('blend-close-warning'), findsOneWidget);
+    });
+
     testWidgets('the row is at most two lines and 32 pt high, switch aside',
         (tester) async {
       await _pump(tester,

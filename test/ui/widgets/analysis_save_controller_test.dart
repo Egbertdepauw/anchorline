@@ -495,12 +495,52 @@ void main() {
 
     test('subscribes to the open blends once and lets go on dispose',
         () async {
-      final c = await make();
+      // Made here, not by [make]: that one disposes it at the end as well.
+      final c = AnalysisSaveController(
+        dao: dao,
+        settings: settings,
+        openBlends: openDao,
+        now: () => _now,
+      );
+      await _settle();
       expect(openDao.watchOpenCalls, 1);
       c.update(
           reading: _ean32, stability: ReadingStability.stable, connected: true);
       c.pickMix(null);
       expect(openDao.watchOpenCalls, 1);
+
+      var told = 0;
+      c.addListener(() => told++);
+      c.dispose();
+      await openDao.add(NewOpenBlend(
+        target: const DesiredMix(21, 35),
+        targetPressureBar: 200,
+        residual: const DesiredMix(21, 0),
+        residualPressureBar: 0,
+        topoff: const DesiredMix(21, 0),
+        waterCapacityL: 3,
+        role: GasRole.diluent,
+        blendedBy: null,
+        blendedAt: _now,
+      ));
+      await _settle();
+      expect(told, 0, reason: 'a disposed controller is not told');
+    });
+
+    test('with None chosen the automatic pick is a standard mix, not the '
+        'open blend', () async {
+      final c = await make(
+        reading: const AnalyzerReading(
+            o2: 19.6, he: 40.2, tempC: 21, baroHpa: 1013, raw: 'test'),
+        blends: [_blend('b1', const DesiredMix(19, 40))],
+      );
+      expect(c.desiredMix, const DesiredMix(19, 40));
+      expect(c.mixSource, MixPickSource.blendTarget);
+
+      c.chooseBlend(const NoBlend());
+      expect(c.blendToClose, isNull);
+      expect(c.mixSource, isNot(MixPickSource.blendTarget));
+      expect(c.desiredMix, isNot(const DesiredMix(19, 40)));
     });
   });
 

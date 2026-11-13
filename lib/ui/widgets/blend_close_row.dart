@@ -1,10 +1,11 @@
 /// The row of the Analyse card that says which open blend a save closes,
-/// with "Change" and the mismatch warning (issue #112), and the
+/// with "Change" (issue #112), the mismatch warning line, and the
 /// "Residual analysis" switch.
 ///
 /// The row is one 32 pt line, with two lines of text at most, and only
 /// there while there are open blends. The warning is below it, and only
-/// there when the reading is off the blend. The switch is a widget of its
+/// there when the reading is off its target ([BlendWarning]: it shows with
+/// or without open blends). The switch is a widget of its
 /// own ([ResidualSwitch]) that the card puts on the "+ Add a note" line, so
 /// it costs the card no height of its own.
 library;
@@ -50,8 +51,6 @@ class BlendCloseRow extends StatelessWidget {
     if (c.openBlends.isEmpty || c.residual) return const SizedBox.shrink();
     final palette = context.palette;
     final text = _text();
-    final warning = c.warning;
-    final loud = warning?.level == WarningLevel.loud;
     final style = AppTypography.caption.copyWith(color: palette.textMuted);
     return Column(
       key: const ValueKey('blend-close-row'),
@@ -85,20 +84,6 @@ class BlendCloseRow extends StatelessWidget {
             ],
           ),
         ),
-        if (warning != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: Spacing.xs),
-            child: Text(
-              warning.text,
-              key: const ValueKey('blend-close-warning'),
-              style: loud
-                  ? AppTypography.body.copyWith(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: SafetyColors.danger)
-                  : style,
-            ),
-          ),
       ],
     );
   }
@@ -186,6 +171,37 @@ class ResidualSwitch extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The mismatch warning of the analysis a save would make: loud (error
+/// colour) or mild (muted). Nothing, and no height, for a match. It shows
+/// whether or not there are open blends, as the warning is about a desired
+/// mix in general.
+class BlendWarning extends StatelessWidget {
+  const BlendWarning({super.key, required this.controller});
+
+  final AnalysisSaveController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final warning = controller.warning;
+    if (warning == null) return const SizedBox.shrink();
+    final palette = context.palette;
+    final loud = warning.level == WarningLevel.loud;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Spacing.xs),
+      child: Text(
+        warning.text,
+        key: const ValueKey('blend-close-warning'),
+        style: loud
+            ? AppTypography.body.copyWith(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: SafetyColors.danger)
+            : AppTypography.caption.copyWith(color: palette.textMuted),
+      ),
     );
   }
 }

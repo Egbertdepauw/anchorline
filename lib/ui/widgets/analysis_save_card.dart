@@ -173,6 +173,11 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
           ),
           // No height of its own without open blends.
           BlendCloseRow(controller: c),
+          // Own line, only on a mismatch, with or without open blends.
+          if (c.warning != null) ...[
+            const SizedBox(height: 4),
+            BlendWarning(controller: c),
+          ],
           SizedBox(
               height: c.openBlends.isEmpty || c.residual ? 10 : 4),
           SegmentedButton<GasRole>(
