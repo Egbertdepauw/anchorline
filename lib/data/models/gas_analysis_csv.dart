@@ -4,7 +4,7 @@
 /// (`docs/prototypes/solo-live.html`):
 /// time, cylinder, diver, mix, o2, he, mod_1_1, mod_1_4, mod_1_6,
 /// pressure_bar, temp_c, stable, then desired_mix (the desired mix name,
-/// empty when none was set), gas_role (`bailout` or `diluent`),
+/// empty when none was set), gas_role (`bailout`, `diluent`, `backgas` or `deco`),
 /// analysed_for (who the gas is for, empty when not set) and needs_signoff
 /// (`true` while the entry waits for sign-off in the log).
 ///

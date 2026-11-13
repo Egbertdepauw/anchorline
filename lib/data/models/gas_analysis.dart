@@ -151,6 +151,10 @@ class NewGasAnalysis {
 
   /// The entry waits in the log for the diver to sign it off.
   final bool needsSignoff;
+
+  /// An analysis of what was left in the cylinder before a fill (issue
+  /// #112): it closes no blend.
+  final bool isResidual;
   final CaptureSource captureSource;
 
   /// The bridge's id for the capture (`<bridge>/<rid>`); null for a screen
@@ -175,6 +179,7 @@ class NewGasAnalysis {
     this.desiredMix,
     this.gasRole = GasRole.bailout,
     this.needsSignoff = false,
+    this.isResidual = false,
     this.captureSource = CaptureSource.screen,
     this.bridgeRecordId,
     this.analysedFor,
@@ -209,6 +214,9 @@ class GasAnalysis {
 
   /// The entry waits in the log for the diver to sign it off (issue #113).
   final bool needsSignoff;
+
+  /// Measured what was left in the cylinder before a fill (issue #112).
+  final bool isResidual;
   final CaptureSource captureSource;
   final String? bridgeRecordId;
   final String? analysedFor;
@@ -232,6 +240,7 @@ class GasAnalysis {
     this.targetHePercent,
     this.gasRole = GasRole.bailout,
     this.needsSignoff = false,
+    this.isResidual = false,
     this.captureSource = CaptureSource.screen,
     this.bridgeRecordId,
     this.analysedFor,
@@ -259,6 +268,7 @@ class GasAnalysis {
         targetHePercent: n.desiredMix?.hePercent,
         gasRole: n.gasRole,
         needsSignoff: n.needsSignoff,
+        isResidual: n.isResidual,
         captureSource: n.captureSource,
         bridgeRecordId: n.bridgeRecordId,
         analysedFor: n.analysedFor,
@@ -290,6 +300,7 @@ class GasAnalysis {
       targetHePercent: e.desiredMix?.hePercent,
       gasRole: e.gasRole,
       needsSignoff: e.signOff ? false : needsSignoff,
+      isResidual: isResidual,
       captureSource: captureSource,
       bridgeRecordId: bridgeRecordId,
       analysedFor: e.analysedFor,
@@ -317,6 +328,7 @@ class GasAnalysis {
         targetHePercent: targetHePercent,
         gasRole: gasRole,
         needsSignoff: value,
+        isResidual: isResidual,
         captureSource: captureSource,
         bridgeRecordId: bridgeRecordId,
         analysedFor: analysedFor,
