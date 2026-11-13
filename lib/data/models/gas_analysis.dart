@@ -23,22 +23,50 @@ import '../../analysis/mod.dart';
 import 'equipment.dart';
 
 /// What a gas is for, which decides the label layout and the ppO2s its
-/// depths are worked out at. `bailout` also covers deco, stage and OC.
+/// depths are worked out at. `bailout`, `backgas` and `deco` all print as a
+/// bailout label; only `diluent` differs (issue #112).
 enum GasRole {
   bailout,
-  diluent;
+  diluent,
+  backgas,
+  deco;
 
   /// The `gas_role` column value.
   String get dbValue => switch (this) {
         GasRole.bailout => 'bailout',
         GasRole.diluent => 'diluent',
+        GasRole.backgas => 'backgas',
+        GasRole.deco => 'deco',
       };
 
+  /// Diver-facing name, for the role buttons.
+  String get label => switch (this) {
+        GasRole.bailout => 'Bailout',
+        GasRole.diluent => 'Diluent',
+        GasRole.backgas => 'Backgas',
+        GasRole.deco => 'Deco',
+      };
+
+  /// Whether this is the CCR diluent role.
+  bool get isDiluent => this == GasRole.diluent;
+
   /// Lenient on read: null, empty and unknown strings (a row from an older
-  /// build or another device) all mean bailout/deco.
-  static GasRole fromDb(String? v) =>
-      v == 'diluent' ? GasRole.diluent : GasRole.bailout;
+  /// build or another device) all mean bailout.
+  static GasRole fromDb(String? v) {
+    for (final r in GasRole.values) {
+      if (r.dbValue == v) return r;
+    }
+    return GasRole.bailout;
+  }
 }
+
+/// The order the role buttons show the roles in.
+const kGasRoleButtonOrder = [
+  GasRole.diluent,
+  GasRole.bailout,
+  GasRole.backgas,
+  GasRole.deco,
+];
 
 /// How an analysis got into the log (issue #113).
 enum CaptureSource {

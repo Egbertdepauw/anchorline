@@ -188,17 +188,13 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
                 RoundedRectangleBorder(borderRadius: Radii.buttonBr),
               ),
             ),
-            segments: const [
-              ButtonSegment(
-                value: GasRole.diluent,
-                label: Text('Diluent',
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-              ButtonSegment(
-                value: GasRole.bailout,
-                label: Text('Bailout / deco',
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
+            segments: [
+              for (final r in kGasRoleButtonOrder)
+                ButtonSegment(
+                  value: r,
+                  label:
+                      Text(r.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
             ],
             selected: {c.role},
             // Lets a tap on the role already shown through (as an empty

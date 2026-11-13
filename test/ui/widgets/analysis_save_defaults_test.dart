@@ -422,7 +422,7 @@ void main() {
   });
 
   group('the role', () {
-    _test('the role is Diluent for Tx21/35 and Bailout/deco for EAN50',
+    _test('the role is Diluent for Tx21/35 and Bailout for EAN50',
         (tester, rig) async {
       await rig.pump(tester);
       await rig.stable(tester, 20.4, 33.5);
@@ -454,7 +454,7 @@ void main() {
       await _pickCylinder(tester, 'Dil 3L');
       expect(_role(tester), {GasRole.diluent});
 
-      await _tap(tester, find.text('Bailout / deco'));
+      await _tap(tester, find.text('Bailout'));
       expect(_role(tester), {GasRole.bailout});
     });
 
@@ -462,7 +462,7 @@ void main() {
         (tester, rig) async {
       await rig.pump(tester);
       await rig.stable(tester, 20.4, 33.5);
-      await _tap(tester, find.text('Bailout / deco'));
+      await _tap(tester, find.text('Bailout'));
       expect(_role(tester), {GasRole.bailout});
 
       await rig.feed(tester, 18.2, 45.1);

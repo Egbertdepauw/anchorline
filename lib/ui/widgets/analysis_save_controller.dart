@@ -19,7 +19,7 @@
 /// orange against the reading, because up to a red match the label prints
 /// its name. A chip the diver taps is their pick until the next manual save.
 /// The role follows the rule of [resolveGasRole]: a tapped role, else the
-/// picked cylinder's, else Bailout / deco above 30 % O2. "Save & print"
+/// picked cylinder's, else Bailout above 30 % O2. "Save & print"
 /// saves the analysis and then prints its label. A hard mismatch with the
 /// desired mix is confirmed before anything is saved; a print that fails
 /// leaves the analysis saved.

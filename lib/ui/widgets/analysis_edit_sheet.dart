@@ -426,10 +426,9 @@ class _AnalysisEditSheetState extends State<_AnalysisEditSheet> {
             SegmentedButton<GasRole>(
               key: const ValueKey('analysis-edit-role'),
               showSelectedIcon: false,
-              segments: const [
-                ButtonSegment(value: GasRole.diluent, label: Text('Diluent')),
-                ButtonSegment(
-                    value: GasRole.bailout, label: Text('Bailout/deco')),
+              segments: [
+                for (final r in kGasRoleButtonOrder)
+                  ButtonSegment(value: r, label: Text(r.label)),
               ],
               selected: {_role},
               onSelectionChanged: (s) => setState(() => _role = s.first),

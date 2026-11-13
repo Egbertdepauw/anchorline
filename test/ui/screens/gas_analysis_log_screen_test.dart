@@ -1223,7 +1223,7 @@ void main() {
 
       await tapAndSettle(tester, find.text('Tx23/34'));
       await tapAndSettle(tester, _key('desired-mix-50-0'));
-      await tapAndSettle(tester, find.text('Bailout/deco'));
+      await tapAndSettle(tester, find.text('Bailout'));
       await tester.enterText(_key('analysis-edit-diver'), 'EdP');
       await tester.enterText(_key('analysis-edit-notes'), 'Topped up');
       await tapAndSettle(tester, _key('analysis-edit-save'));

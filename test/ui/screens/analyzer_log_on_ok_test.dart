@@ -842,7 +842,7 @@ void main() {
       await _start(tester);
       await tester.enterText(_key('analysis-diver'), 'EdP');
       await tester.pump();
-      await tester.tap(find.text('Bailout / deco'));
+      await tester.tap(find.text('Bailout'));
       await tester.pump();
 
       await h.feed(tester, 20.6, 33.8);

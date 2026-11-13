@@ -32,12 +32,31 @@ void main() {
       expect(GasRole.diluent.dbValue, 'diluent');
     });
 
-    test('fromDb: only diluent is diluent', () {
-      expect(GasRole.fromDb('diluent'), GasRole.diluent);
-      expect(GasRole.fromDb(null), GasRole.bailout);
-      expect(GasRole.fromDb('bailout'), GasRole.bailout);
+    test('dbValue of the new roles', () {
+      expect(GasRole.backgas.dbValue, 'backgas');
+      expect(GasRole.deco.dbValue, 'deco');
+    });
+
+    test('fromDb round-trips all four roles', () {
+      for (final r in GasRole.values) {
+        expect(GasRole.fromDb(r.dbValue), r);
+      }
+      expect(GasRole.values.length, 4);
+    });
+
+    test('fromDb maps unknown, null and empty to bailout', () {
       expect(GasRole.fromDb('stage'), GasRole.bailout);
+      expect(GasRole.fromDb(null), GasRole.bailout);
       expect(GasRole.fromDb(''), GasRole.bailout);
+    });
+
+    test('label and isDiluent', () {
+      expect(GasRole.values.map((r) => r.label),
+          ['Bailout', 'Diluent', 'Backgas', 'Deco']);
+      expect(GasRole.diluent.isDiluent, isTrue);
+      expect(GasRole.bailout.isDiluent, isFalse);
+      expect(GasRole.backgas.isDiluent, isFalse);
+      expect(GasRole.deco.isDiluent, isFalse);
     });
 
     test('gasRoleForCylinderRole: diluent cylinders are diluent', () {

@@ -255,7 +255,7 @@ void main() {
     testWidgets('follows the cylinder, and the saved role follows the control',
         (tester) async {
       final dao = FakeGasAnalysesDao(cylinders: const [_dil, _o2]);
-      // EAN50 by itself would be Bailout / deco.
+      // EAN50 by itself would be Bailout.
       await _pump(tester, dao: dao, reading: _reading(49.2, 0));
       expect(_role(tester), {GasRole.bailout});
 
@@ -713,7 +713,7 @@ void main() {
       final dao = FakeGasAnalysesDao(cylinders: const [_dil]);
       await _pump(tester, dao: dao, blendTarget: const DesiredMix(21, 35));
       await _pickCylinder(tester, 'Dil 3L');
-      await _tapAndSettle(tester, find.text('Bailout / deco'));
+      await _tapAndSettle(tester, find.text('Bailout'));
       await _pickOther(tester, const DesiredMix(21, 33));
       expect(_picked(tester), 'desired-mix-21-33');
 
@@ -740,7 +740,7 @@ void main() {
         labelPrinting: _service([FakeLabelPrinter()], rendered: rendered),
       );
       await _pickCylinder(tester, 'Dil 3L');
-      await _tapAndSettle(tester, find.text('Bailout / deco'));
+      await _tapAndSettle(tester, find.text('Bailout'));
       await _pickOther(tester, const DesiredMix(21, 33));
 
       await _tapAndSettle(tester, _key('analysis-save-print'));
@@ -785,7 +785,7 @@ void main() {
       // The next cylinder, whose save fails.
       dao.fail = true;
       await _pickCylinder(tester, 'Dil 3L');
-      await _tapAndSettle(tester, find.text('Bailout / deco'));
+      await _tapAndSettle(tester, find.text('Bailout'));
       await _pickOther(tester, const DesiredMix(21, 33));
       await _tapAndSettle(tester, _key('analysis-save-print'));
 
