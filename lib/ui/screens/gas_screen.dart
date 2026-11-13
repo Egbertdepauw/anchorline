@@ -112,7 +112,10 @@ class GasScreen extends StatelessWidget {
             _KeepAlive(BlendScreen(
                 notifier: blend, settings: settings, openBlends: openBlendsDao)),
             _KeepAlive(AnalyzerScreen(
-                settings: settings, session: session, blend: blend)),
+                settings: settings,
+                session: session,
+                blend: blend,
+                openBlends: openBlendsDao)),
             _KeepAlive(analysesDao == null
                 ? const Center(child: Text('No analysis log on this device.'))
                 : GasAnalysisLogScreen(

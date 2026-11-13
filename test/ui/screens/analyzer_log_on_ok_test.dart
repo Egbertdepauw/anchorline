@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:ccrlogger/analysis/standard_mix_pick.dart' show gasRoleForMix;
 import 'package:ccrlogger/analyzer/analyzer_controller.dart';
 import 'package:ccrlogger/analyzer/bridge/record_to_analysis.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
 import 'package:ccrlogger/analyzer/transport/demo_transport.dart';
 import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
 import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
+import 'package:ccrlogger/data/db/open_blends_dao.dart';
 import 'package:ccrlogger/data/models/equipment.dart';
 import 'package:ccrlogger/label_printer/label_bitmap.dart';
 import 'package:ccrlogger/label_printer/label_printer.dart';
@@ -23,6 +25,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../_helpers/fake_elapsed.dart';
 import '../../_helpers/fake_gas_analyses_dao.dart';
 import '../../_helpers/fake_label_printer.dart';
+import '../../_helpers/fake_open_blends_dao.dart';
 
 Finder _key(String k) => find.byKey(ValueKey(k));
 
@@ -120,6 +123,26 @@ class _Harness {
   /// The Blend tab's notifier; its target starts as EAN32.
   late BlendNotifier blend;
 
+  /// The open blends the card offers; one of EAN32 to start with.
+  late FakeOpenBlendsDao openBlends;
+
+  /// A gas blended to [target] and not analysed yet; it is also the Blend
+  /// tab's target, which the session still marks as used.
+  Future<void> blended(DesiredMix target) async {
+    blend.setTargetMix(target.o2Percent, target.hePercent);
+    await openBlends.add(NewOpenBlend(
+      target: target,
+      targetPressureBar: 200,
+      residual: const DesiredMix(21, 0),
+      residualPressureBar: 0,
+      topoff: const DesiredMix(21, 0),
+      waterCapacityL: 3,
+      role: gasRoleForMix(target.o2Percent.toDouble()),
+      blendedBy: null,
+      blendedAt: DateTime.now().subtract(const Duration(hours: 1)),
+    ));
+  }
+
   /// The transport of the latest session.
   _FakeSolo? solo;
 
@@ -152,6 +175,8 @@ class _Harness {
     blend = BlendNotifier(settings: settings)
       ..setTargetMix(32, 0)
       ..setTargetPressure(200);
+    openBlends = FakeOpenBlendsDao();
+    await blended(const DesiredMix(32, 0));
     session = AnalyzerSession(
       settings: settings,
       analysesDao: withDao ? dao : null,
@@ -187,7 +212,10 @@ class _Harness {
       theme: theme,
       home: Scaffold(
         body: AnalyzerScreen(
-            settings: settings, session: session, blend: blend),
+            settings: settings,
+            session: session,
+            blend: blend,
+            openBlends: openBlends),
       ),
     ));
     await tester.pumpAndSettle();
@@ -898,19 +926,19 @@ void main() {
       );
     });
 
-    _test('a complete OK save of the Blend target marks it used',
+    _test('a complete OK save of an open blend\'s mix marks the target used',
         (tester, h) async {
       await h.pump(tester);
       // Tx19/40 is no standard mix, so the target is told apart from the
       // nearest standard mix (none is within orange of 19.6/40.2).
-      h.blend.setTargetMix(19, 40);
+      await h.blended(const DesiredMix(19, 40));
       await h.connect(tester);
       await _start(tester);
       await tester.enterText(_key('analysis-diver'), 'EdP');
       await tester.pump();
 
       await h.feed(tester, 19.6, 40.2);
-      expect(find.textContaining('the Blend target'), findsOneWidget);
+      expect(find.textContaining('an open blend'), findsOneWidget);
       await h.pressOk(tester);
       await tester.pumpAndSettle();
       expect(_resultText(tester), 'Saved Tx20/40');
@@ -920,9 +948,13 @@ void main() {
       expect(h.blend.recentTarget(), const DesiredMix(19, 40));
 
       // The next cylinder of the batch, the same gas: one blend is one
-      // cylinder, so this press does not get the target.
+      // cylinder, so once it is closed this press does not get the target.
+      // (An OK press does not close it yet: that is the processor's, and
+      // here the close is made as it will be.)
+      await h.openBlends.closeBlend(h.openBlends.blends.last, 'a1');
+      await tester.pumpAndSettle();
       await h.feed(tester, 19.6, 40.2);
-      expect(find.textContaining('the Blend target'), findsNothing);
+      expect(find.textContaining('an open blend'), findsNothing);
       await h.pressOk(tester);
       await tester.pumpAndSettle();
       expect(h.dao.addedFromBridge, hasLength(2));
@@ -935,7 +967,7 @@ void main() {
       final gate = Completer<void>();
       h.fakePrinter = FakeLabelPrinter(printGate: gate);
       await h.pump(tester);
-      h.blend.setTargetMix(19, 40);
+      await h.blended(const DesiredMix(19, 40));
       await h.connect(tester);
       await _start(tester);
       await tester.enterText(_key('analysis-diver'), 'EdP');
@@ -954,16 +986,19 @@ void main() {
       expect(h.dao.analyses.single.needsSignoff, isFalse);
       expect(h.dao.analyses.single.desiredMix, const DesiredMix(19, 40));
       expect(h.blend.unusedRecentTarget(), isNull);
-      // A manual save of the same gas no longer gets the target's name.
-      expect(find.textContaining('the Blend target'), findsNothing);
+      // Once the blend is closed, a manual save of the same gas no longer
+      // gets its name.
+      await h.openBlends.closeBlend(h.openBlends.blends.last, 'a1');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('an open blend'), findsNothing);
       expect(find.textContaining('the nearest standard mix'), findsNothing);
     }, printer: true);
 
-    _test('a press queued behind the Blend target\'s save does not get it',
+    _test('presses in a row are offered the open blend until it is closed',
         (tester, h) async {
       final slow = h.dao as _SlowDao;
       await h.pump(tester);
-      h.blend.setTargetMix(19, 40);
+      await h.blended(const DesiredMix(19, 40));
       await h.connect(tester);
       await _start(tester);
       await tester.enterText(_key('analysis-diver'), 'EdP');
@@ -978,18 +1013,17 @@ void main() {
       slow.gate!.complete();
       await tester.pumpAndSettle();
 
+      // No lease any more: the blend closes by the analysis that saves,
+      // which the OK path does not do yet, so both presses get it.
       final saved = h.dao.addedFromBridge.map((e) => e.$2.desiredMix).toList();
-      expect(saved, [
-        const DesiredMix(19, 40),
-        isNot(const DesiredMix(19, 40)),
-      ]);
+      expect(saved, [const DesiredMix(19, 40), const DesiredMix(19, 40)]);
       expect(h.blend.unusedRecentTarget(), isNull);
     }, dao: _SlowDao(cylinders: const [_dil, _s80]));
 
     _test('a press that needs sign-off leaves the Blend target unused',
         (tester, h) async {
       await h.pump(tester);
-      h.blend.setTargetMix(19, 40);
+      await h.blended(const DesiredMix(19, 40));
       await h.connect(tester);
       await _start(tester);
       // No name: saved for sign-off.

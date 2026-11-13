@@ -37,6 +37,7 @@ import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import 'analysis_fields.dart';
 import 'analysis_save_controller.dart';
+import 'blend_close_row.dart';
 import 'desired_mix_picker.dart';
 import 'label_print_controls.dart';
 
@@ -170,7 +171,10 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
               ],
             ],
           ),
-          const SizedBox(height: 10),
+          // No height of its own without open blends.
+          BlendCloseRow(controller: c),
+          SizedBox(
+              height: c.openBlends.isEmpty || c.residual ? 10 : 4),
           SegmentedButton<GasRole>(
             key: const ValueKey('analysis-gas-role'),
             // A check on a role the diver set, which stays for every OK
@@ -284,19 +288,33 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
                 decoration: _bare(context),
               ),
             ),
-            ?setUpPrinter,
+            Row(
+              children: [
+                Expanded(
+                    child: setUpPrinter ?? const SizedBox(height: 0)),
+                ResidualSwitch(controller: c),
+              ],
+            ),
           ] else
             // On one line when they fit, so a phone without a printer still
-            // has the tab on one screen.
-            Wrap(
-              spacing: Spacing.lg,
+            // has the tab on one screen. The "Residual analysis" switch
+            // takes the right-hand end of it.
+            Row(
               children: [
-                _link(
-                  key: const ValueKey('analysis-add-note'),
-                  label: '+ Add a note',
-                  onPressed: c.openNotes,
+                Expanded(
+                  child: Wrap(
+                    spacing: Spacing.lg,
+                    children: [
+                      _link(
+                        key: const ValueKey('analysis-add-note'),
+                        label: '+ Add a note',
+                        onPressed: c.openNotes,
+                      ),
+                      ?setUpPrinter,
+                    ],
+                  ),
                 ),
-                ?setUpPrinter,
+                ResidualSwitch(controller: c),
               ],
             ),
           if (usable && !stable) ...[

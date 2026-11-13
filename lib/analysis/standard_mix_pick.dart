@@ -91,13 +91,16 @@ const double kBailoutRoleAboveO2Percent = 30;
 GasRole gasRoleForMix(double o2Percent) =>
     o2Percent > kBailoutRoleAboveO2Percent ? GasRole.bailout : GasRole.diluent;
 
-/// A tapped role wins, then the cylinder's role, then the mix.
+/// A tapped role wins, then the role of the open blend being closed, then
+/// the cylinder's role, then the mix.
 GasRole resolveGasRole({
   GasRole? tapped,
+  GasRole? blendRole,
   String? cylinderRole,
   required double o2PercentForRule,
 }) {
   if (tapped != null) return tapped;
+  if (blendRole != null) return blendRole;
   if (cylinderRole != null) return gasRoleForCylinderRole(cylinderRole);
   return gasRoleForMix(o2PercentForRule);
 }

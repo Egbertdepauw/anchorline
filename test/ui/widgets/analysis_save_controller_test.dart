@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:ccrlogger/analysis/mix_match.dart';
+import 'package:ccrlogger/analysis/open_blend_match.dart';
 import 'package:ccrlogger/analysis/standard_mix_pick.dart';
 import 'package:ccrlogger/analyzer/bridge/bridge_protocol.dart';
 import 'package:ccrlogger/analyzer/protocol/analyzer_reading.dart';
 import 'package:ccrlogger/analyzer/stability.dart';
 import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
 import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
+import 'package:ccrlogger/data/db/open_blends_dao.dart';
 import 'package:ccrlogger/data/models/equipment.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/widgets/analysis_save_controller.dart';
@@ -13,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../_helpers/fake_gas_analyses_dao.dart';
+import '../../_helpers/fake_open_blends_dao.dart';
 
 const _dil =
     CylinderChoice(id: 'c-dil', label: 'Dil 3L', role: CylinderRole.diluent);
@@ -47,6 +51,29 @@ OkLogResult _result(OkSetup setup, {required bool complete}) => OkLogResult(
       setupUsed: setup,
     );
 
+/// An open blend of [target], blended [ago] before the test clock.
+OpenBlend _blend(
+  String id,
+  DesiredMix target, {
+  GasRole? role,
+  Duration ago = const Duration(hours: 1),
+}) =>
+    OpenBlend(
+      id: id,
+      target: target,
+      targetPressureBar: 200,
+      residual: const DesiredMix(21, 0),
+      residualPressureBar: 0,
+      topoff: const DesiredMix(21, 0),
+      waterCapacityL: 3,
+      // As the Blend tab guesses: lean is diluent, rich bailout.
+      role: role ?? gasRoleForMix(target.o2Percent.toDouble()),
+      blendedBy: null,
+      blendedAt: _now.subtract(ago),
+    );
+
+final _now = DateTime(2026, 11, 13, 12);
+
 /// Lets the DAO's reads finish.
 Future<void> _settle() => Future<void>.delayed(Duration.zero);
 
@@ -55,10 +82,12 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   late FakeGasAnalysesDao dao;
+  late FakeOpenBlendsDao openDao;
   late SettingsNotifier settings;
 
   setUp(() async {
     dao = FakeGasAnalysesDao(cylinders: const [_dil, _s80]);
+    openDao = FakeOpenBlendsDao();
     settings = SettingsNotifier();
     await settings.load();
   });
@@ -66,17 +95,20 @@ void main() {
   /// A controller on [dao] with a stable [reading] (EAN32), its cylinders
   /// and mixes loaded.
   Future<AnalysisSaveController> make({
-    DesiredMix? blendTarget,
-    DesiredMix? unusedBlendTarget,
+    List<OpenBlend> blends = const [],
     AnalyzerReading reading = _ean32,
   }) async {
-    final c = AnalysisSaveController(dao: dao, settings: settings);
+    openDao.blends.addAll(blends);
+    final c = AnalysisSaveController(
+      dao: dao,
+      settings: settings,
+      openBlends: openDao,
+      now: () => _now,
+    );
     addTearDown(c.dispose);
     c.update(
       reading: reading,
       stability: ReadingStability.stable,
-      blendTarget: blendTarget,
-      unusedBlendTarget: unusedBlendTarget,
       connected: true,
     );
     await _settle();
@@ -119,12 +151,9 @@ void main() {
     expect(settings.yourInitials, isNull);
   });
 
-  test('an automatic pick is left to each press, with the unused target',
+  test('an automatic pick is left to each press, with no open blend match',
       () async {
-    final c = await make(
-      blendTarget: const DesiredMix(21, 35),
-      unusedBlendTarget: const DesiredMix(21, 35),
-    );
+    final c = await make(blends: [_blend('b1', const DesiredMix(21, 35))]);
     expect(c.mixIsAutomatic, isTrue);
     expect(c.desiredMix, const DesiredMix(32, 0));
     expect(c.mixSource, MixPickSource.standard);
@@ -132,7 +161,8 @@ void main() {
     var s = c.okSetup().setup;
     expect(s.autoPickMix, isTrue);
     expect(s.desiredMix, isNull, reason: 'the press picks for its own line');
-    expect(s.blendTarget, const DesiredMix(21, 35));
+    // 21/35 is far from the EAN32 reading: no blend matches it.
+    expect(s.blendTarget, isNull);
     expect(s.gasRole, isNull, reason: 'the press works it out from its mix');
 
     // A cylinder with a known role decides it; one without leaves it open.
@@ -149,13 +179,11 @@ void main() {
     expect(c.mixSource, isNull);
   });
 
-  test('the automatic pick follows the reading; the Blend target first',
-      () async {
+  test('auto pick prefers an open blend over a standard mix', () async {
     final c = await make(
       reading: const AnalyzerReading(
           o2: 20.6, he: 33.8, tempC: 21, baroHpa: 1013, raw: 'test'),
-      blendTarget: const DesiredMix(21, 35),
-      unusedBlendTarget: const DesiredMix(21, 35),
+      blends: [_blend('b1', const DesiredMix(21, 35))],
     );
     expect(c.desiredMix, const DesiredMix(21, 35));
     expect(c.mixSource, MixPickSource.blendTarget);
@@ -165,8 +193,6 @@ void main() {
       reading: const AnalyzerReading(
           o2: 49.2, he: 0, tempC: 21, baroHpa: 1013, raw: 'test'),
       stability: ReadingStability.stable,
-      blendTarget: const DesiredMix(21, 35),
-      unusedBlendTarget: const DesiredMix(21, 35),
       connected: true,
     );
     expect(c.desiredMix, const DesiredMix(50, 0));
@@ -245,7 +271,7 @@ void main() {
     expect(c.notesShown, isTrue);
   });
 
-  group('the Blend target on OK', () {
+  group('the open blend on OK', () {
     const target = DesiredMix(19, 40);
 
     /// The log has entry [id] saved with [desired].
@@ -268,11 +294,20 @@ void main() {
           setupUsed: setup,
         );
 
-    test('a complete result whose entry has the target stops offering it; '
-        'the session marks it used', () async {
-      final c = await make(blendTarget: target, unusedBlendTarget: target);
-      var used = 0;
-      c.onBlendTargetUsed = () => used++;
+    const reading = AnalyzerReading(
+        o2: 19.6, he: 40.2, tempC: 21, baroHpa: 1013, raw: 'test');
+
+    test('the press is offered the target of the open blend its reading '
+        'matches', () async {
+      final c = await make(
+          reading: reading, blends: [_blend('b1', target)]);
+      expect(c.okSetup().setup.blendTarget, target);
+    });
+
+    test('a complete result changes nothing here; the target is offered '
+        'while the blend is open', () async {
+      final c = await make(
+          reading: reading, blends: [_blend('b1', target)]);
       final logger = _Logger(dao);
       c.bindLogger(logger);
 
@@ -280,19 +315,18 @@ void main() {
       expect(first.setup.blendTarget, target);
       await stored('a1', target);
       logger.send(complete(first, 'a1'));
-      // Held until the entry is read back.
-      expect(c.okSetup().setup.blendTarget, isNull);
       await _settle();
-
-      expect(used, 0, reason: 'the OK path is marked by AnalyzerSession');
-      expect(c.unusedBlendTarget, isNull);
+      // No lease: the processor closes the blend (a later change), and until
+      // it is closed the next press is offered it too.
+      expect(c.okSetup().setup.blendTarget, target);
+      await openDao.closeBlend(openDao.blends.single, 'a1');
+      await _settle();
       expect(c.okSetup().setup.blendTarget, isNull);
     });
 
-    test('a complete result with another mix leaves the target', () async {
-      final c = await make(blendTarget: target, unusedBlendTarget: target);
-      var used = 0;
-      c.onBlendTargetUsed = () => used++;
+    test('a complete result with another mix leaves the offer', () async {
+      final c = await make(
+          reading: reading, blends: [_blend('b1', target)]);
       final logger = _Logger(dao);
       c.bindLogger(logger);
 
@@ -301,53 +335,172 @@ void main() {
       logger.send(complete(first, 'a1'));
       await _settle();
 
-      expect(used, 0);
       expect(c.okSetup().setup.blendTarget, target);
     });
 
-    test('is offered to one press at a time, until that press is known',
+    test('a press queued behind another is offered it as well (no lease)',
         () async {
-      final c = await make(blendTarget: target, unusedBlendTarget: target);
-      var used = 0;
-      c.onBlendTargetUsed = () => used++;
-      final logger = _Logger(dao);
-      c.bindLogger(logger);
+      final c = await make(
+          reading: reading, blends: [_blend('b1', target)]);
+      c.bindLogger(_Logger(dao));
 
       final first = c.okSetup();
       expect(first.setup.blendTarget, target);
-      // A press queued behind it asks before the first one's result is in.
       final queued = c.okSetup();
-      expect(queued.setup.blendTarget, isNull);
+      expect(queued.setup.blendTarget, target);
 
-      // The first one needs sign-off: the target is free again.
-      logger.send(_result(first, complete: false));
-      expect(used, 0);
+      // The first one needs sign-off: the offer is the same.
       expect(c.okSetup().setup.blendTarget, target);
     });
 
-    test('a new Blend target is offered although an old one is out',
+    test('a newly blended gas is offered as it appears', () async {
+      final c = await make(reading: reading);
+      c.bindLogger(_Logger(dao));
+      expect(c.okSetup().setup.blendTarget, isNull);
+
+      await openDao.add(NewOpenBlend(
+        target: target,
+        targetPressureBar: 200,
+        residual: const DesiredMix(21, 0),
+        residualPressureBar: 0,
+        topoff: const DesiredMix(21, 0),
+        waterCapacityL: 3,
+        role: GasRole.diluent,
+        blendedBy: null,
+        blendedAt: _now,
+      ));
+      await _settle();
+      expect(c.okSetup().setup.blendTarget, target);
+    });
+
+    test('a new logger changes nothing', () async {
+      final c = await make(
+          reading: reading, blends: [_blend('b1', target)]);
+      c.bindLogger(_Logger(dao));
+      expect(c.okSetup().setup.blendTarget, target);
+      c.bindLogger(_Logger(dao));
+      expect(c.okSetup().setup.blendTarget, target);
+    });
+  });
+
+  group('the open blend a save closes', () {
+    const tx1845 = DesiredMix(18, 45);
+    const reading = AnalyzerReading(
+        o2: 18.5, he: 44.0, tempC: 21, baroHpa: 1013, raw: 'test');
+
+    test('the oldest matching blend is the one to close, with its role',
         () async {
-      final c = await make(blendTarget: target, unusedBlendTarget: target);
-      c.bindLogger(_Logger(dao));
-      expect(c.okSetup().setup.blendTarget, target);
-
-      const next = DesiredMix(21, 35);
-      c.update(
-        reading: _ean32,
-        stability: ReadingStability.stable,
-        blendTarget: next,
-        unusedBlendTarget: next,
-        connected: true,
-      );
-      expect(c.okSetup().setup.blendTarget, next);
+      final c = await make(reading: reading, blends: [
+        _blend('new', tx1845,
+            role: GasRole.diluent, ago: const Duration(minutes: 5)),
+        _blend('old', tx1845,
+            role: GasRole.diluent, ago: const Duration(hours: 2)),
+      ]);
+      expect(c.blendToClose?.id, 'old');
+      expect(c.desiredMix, tx1845);
+      expect(c.role, GasRole.diluent);
+      expect(c.mixSource, MixPickSource.blendTarget);
+      expect(c.warning, isNull);
     });
 
-    test('a new logger frees the target', () async {
-      final c = await make(blendTarget: target, unusedBlendTarget: target);
-      c.bindLogger(_Logger(dao));
-      expect(c.okSetup().setup.blendTarget, target);
-      c.bindLogger(_Logger(dao));
-      expect(c.okSetup().setup.blendTarget, target);
+    test('a manual mix chip closes the oldest blend of that mix', () async {
+      final c = await make(reading: reading, blends: [
+        _blend('a', tx1845, ago: const Duration(minutes: 5)),
+        _blend('b', tx1845, ago: const Duration(hours: 2)),
+        _blend('c', const DesiredMix(21, 35)),
+      ]);
+      c.pickMix(const DesiredMix(21, 35));
+      expect(c.blendToClose?.id, 'c');
+      c.pickMix(tx1845);
+      expect(c.blendToClose?.id, 'b');
+      // A mix with no open blend closes none.
+      c.pickMix(const DesiredMix(32, 0));
+      expect(c.blendToClose, isNull);
+      expect(c.nearestUnmatched, isNull,
+          reason: 'the diver chose the mix themselves');
+    });
+
+    test('choosing None closes nothing, a picked blend whatever it grades',
+        () async {
+      final c = await make(reading: _ean32, blends: [
+        _blend('far', const DesiredMix(50, 0)),
+      ]);
+      expect(c.blendToClose, isNull);
+      expect(c.nearestUnmatched?.blend.id, 'far');
+      expect(c.nearestUnmatched?.grade.level, MixMatchLevel.hard);
+      expect(c.blendChoices.map((r) => r.blend.id), ['far']);
+
+      c.chooseBlend(PickedBlend(c.openBlends.single));
+      expect(c.blendToClose?.id, 'far');
+      expect(c.desiredMix, const DesiredMix(50, 0));
+      expect(c.nearestUnmatched, isNull);
+
+      c.chooseBlend(const NoBlend());
+      expect(c.blendToClose, isNull);
+      expect(c.nearestUnmatched, isNull);
+
+      c.chooseBlend(const AutoBlend());
+      expect(c.nearestUnmatched, isNotNull);
+    });
+
+    test('a picked blend that is closed elsewhere counts as automatic',
+        () async {
+      final c = await make(reading: reading, blends: [
+        _blend('a', tx1845),
+        _blend('b', tx1845, ago: const Duration(minutes: 5)),
+      ]);
+      c.chooseBlend(PickedBlend(c.openBlends.last));
+      expect(c.blendToClose?.id, 'b');
+      await openDao.closeBlend(openDao.blends.last, 'x');
+      await _settle();
+      expect(c.blendToClose?.id, 'a');
+    });
+
+    test('residual: nothing to close, no desired mix, no warning', () async {
+      final c = await make(reading: reading, blends: [_blend('a', tx1845)]);
+      expect(c.blendToClose, isNotNull);
+      c.setResidual(true);
+      expect(c.residual, isTrue);
+      expect(c.blendToClose, isNull);
+      expect(c.desiredMix, isNull);
+      expect(c.warning, isNull);
+      expect(c.canSaveAndPrint, isFalse);
+      c.setResidual(false);
+      expect(c.canSaveAndPrint, isTrue);
+    });
+
+    test('a rich bailout blend warns loudly, a lean diluent mildly',
+        () async {
+      final c = await make(
+        reading: const AnalyzerReading(
+            o2: 55.0, he: 0, tempC: 21, baroHpa: 1013, raw: 'test'),
+        blends: [_blend('deco', const DesiredMix(50, 0))],
+      );
+      c.chooseBlend(PickedBlend(c.openBlends.single));
+      expect(c.warning?.level, WarningLevel.loud);
+    });
+
+    test('the chips offer the open blends\' targets', () async {
+      final c = await make(blends: [
+        _blend('a', const DesiredMix(21, 35)),
+        _blend('b', const DesiredMix(21, 35)),
+        _blend('c', const DesiredMix(50, 0)),
+      ]);
+      expect(c.mixOptions, [
+        const DesiredMix(32, 0),
+        const DesiredMix(21, 35),
+        const DesiredMix(50, 0),
+      ]);
+    });
+
+    test('subscribes to the open blends once and lets go on dispose',
+        () async {
+      final c = await make();
+      expect(openDao.watchOpenCalls, 1);
+      c.update(
+          reading: _ean32, stability: ReadingStability.stable, connected: true);
+      c.pickMix(null);
+      expect(openDao.watchOpenCalls, 1);
     });
   });
 
@@ -418,7 +571,7 @@ void main() {
     await _settle();
   });
 
-  test('the chips: the selected mix, the Blend target, then the log',
+  test('the chips: the selected mix, the open blends, then the log',
       () async {
     GasAnalysis logged(String id, int day, int o2, int he) => GasAnalysis(
           id: id,
@@ -441,13 +594,19 @@ void main() {
       const DesiredMix(15, 55),
     ]);
 
-    // A new Blend target comes second, and the list stays at three.
-    c.update(
-      reading: _ean32,
-      stability: ReadingStability.stable,
-      blendTarget: const DesiredMix(21, 35),
-      connected: true,
-    );
+    // A new open blend comes second, and the list stays at three.
+    await openDao.add(NewOpenBlend(
+      target: const DesiredMix(21, 35),
+      targetPressureBar: 200,
+      residual: const DesiredMix(21, 0),
+      residualPressureBar: 0,
+      topoff: const DesiredMix(21, 0),
+      waterCapacityL: 3,
+      role: GasRole.diluent,
+      blendedBy: null,
+      blendedAt: _now,
+    ));
+    await _settle();
     expect(c.mixOptions, [
       const DesiredMix(32, 0),
       const DesiredMix(21, 35),

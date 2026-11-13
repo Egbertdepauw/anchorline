@@ -192,6 +192,20 @@ void _test(String description,
 
 Widget _navItemIcon(BottomNavigationBarItem item) => item.icon;
 
+/// A gas blended to [target] and not analysed yet.
+Future<void> _addOpenBlend(FakeOpenBlendsDao dao, DesiredMix target) =>
+    dao.add(NewOpenBlend(
+      target: target,
+      targetPressureBar: 200,
+      residual: const DesiredMix(21, 0),
+      residualPressureBar: 0,
+      topoff: const DesiredMix(21, 0),
+      waterCapacityL: 3,
+      role: GasRole.bailout,
+      blendedBy: null,
+      blendedAt: DateTime(2026, 11, 13),
+    ));
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -347,14 +361,15 @@ void main() {
     expect(paragraph.size.width, greaterThanOrEqualTo(58));
   });
 
-  _test('the Analyse tab follows the Blend target set after it was built',
+  _test('the Analyse tab follows the open blends added after it was built',
       (tester, rig) async {
-    await rig.pump(tester);
+    final blends = FakeOpenBlendsDao();
+    await rig.pump(tester, openBlendsDao: blends);
     await _tab(tester, 'gas-tab-analyse');
     expect(_key('desired-mix-32-0'), findsNothing);
 
     await _tab(tester, 'gas-tab-blend');
-    rig.blend.setTargetMix(32, 0);
+    await _addOpenBlend(blends, const DesiredMix(32, 0));
     await tester.pump();
     await _tab(tester, 'gas-tab-analyse');
 
@@ -393,9 +408,11 @@ void main() {
     // A Mac at the bench, or an iPhone in landscape: the save card is the
     // right-hand column.
     const size = Size(1200, 800);
+    final blends = FakeOpenBlendsDao();
     await rig.pump(
       tester,
       size: size,
+      openBlendsDao: blends,
       labelPrinting: LabelPrintService(
         render: (label) async => LabelBitmap.blank(384, 240),
         printerFor: (_) => FakeLabelPrinter(),
@@ -404,7 +421,7 @@ void main() {
         use14ForDeeperMixes: () => false,
       ),
     );
-    rig.blend.setTargetMix(50, 0);
+    await _addOpenBlend(blends, const DesiredMix(50, 0));
     await tester.pump();
     await _tab(tester, 'gas-tab-analyse');
     await rig.connect(tester);

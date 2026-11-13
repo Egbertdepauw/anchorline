@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:ccrlogger/analysis/open_blend_match.dart';
+import 'package:ccrlogger/analysis/standard_mix_pick.dart' show gasRoleForMix;
 import 'package:ccrlogger/analyzer/protocol/analyzer_reading.dart';
 import 'package:ccrlogger/analyzer/stability.dart';
 import 'package:ccrlogger/analyzer/transport/demo_transport.dart';
 import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
+import 'package:ccrlogger/data/db/open_blends_dao.dart';
 import 'package:ccrlogger/data/models/equipment.dart';
 import 'package:ccrlogger/label_printer/label_bitmap.dart';
 import 'package:ccrlogger/labels/cylinder_label.dart';
@@ -24,6 +27,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../_helpers/fake_gas_analyses_dao.dart';
 import '../../_helpers/fake_label_printer.dart';
+import '../../_helpers/fake_open_blends_dao.dart';
 
 Finder _key(String k) => find.byKey(ValueKey(k));
 
@@ -79,6 +83,15 @@ class _FlakyDao extends FakeGasAnalysesDao {
   }
 }
 
+/// An open-blends log whose closes fail.
+class _ThrowingOpenBlends extends FakeOpenBlendsDao {
+  _ThrowingOpenBlends({super.blends});
+
+  @override
+  Future<bool> closeBlend(OpenBlend b, String analysisId) =>
+      throw Exception('offline');
+}
+
 /// An analysis already in the log, with the desired mix [o2]/[he].
 GasAnalysis _logged(String id, DateTime at, int o2, int he) => GasAnalysis(
       id: id,
@@ -94,6 +107,33 @@ GasAnalysis _logged(String id, DateTime at, int o2, int he) => GasAnalysis(
 /// and given the reading of each.
 AnalysisSaveController? _controller;
 
+/// The open blends of the test's controller; see [_pump].
+FakeOpenBlendsDao? _openDao;
+
+/// The test clock of the card's controller.
+final _clock = DateTime(2026, 10, 31, 9);
+
+/// An open blend of [target], blended [ago] before [_clock].
+OpenBlend _openBlend(
+  String id,
+  DesiredMix target, {
+  GasRole? role,
+  Duration ago = const Duration(hours: 1),
+}) =>
+    OpenBlend(
+      id: id,
+      target: target,
+      targetPressureBar: 200,
+      residual: const DesiredMix(21, 0),
+      residualPressureBar: 0,
+      topoff: const DesiredMix(21, 0),
+      waterCapacityL: 3,
+      // As the Blend tab guesses: lean is diluent, rich bailout.
+      role: role ?? gasRoleForMix(target.o2Percent.toDouble()),
+      blendedBy: null,
+      blendedAt: _clock.subtract(ago),
+    );
+
 /// The save section at phone width, in a scroll view like the analyzer
 /// screen's, with the action bar pinned under it. [above] is empty space
 /// above the section, to push it below the fold.
@@ -102,7 +142,10 @@ Future<void> _pump(
   required FakeGasAnalysesDao dao,
   AnalyzerReading? reading,
   ReadingStability stability = ReadingStability.stable,
-  DesiredMix? blendTarget,
+  DesiredMix? openBlend,
+  List<OpenBlend> openBlends = const [],
+  FakeOpenBlendsDao? openDao,
+  void Function(double, double, double?)? onResidualSaved,
   LabelPrintService? labelPrinting,
   VoidCallback? onSetUpPrinter,
   double above = 0,
@@ -116,21 +159,29 @@ Future<void> _pump(
   if (controller == null) {
     final settings = SettingsNotifier();
     await settings.setAnalyzerModPpo2s(const [1.4, 1.6]);
+    // [openBlend] is a single open blend of that mix (blended an hour ago).
+    final open = _openDao = openDao ??
+        FakeOpenBlendsDao(blends: [
+          if (openBlend != null) _openBlend('open-1', openBlend),
+          ...openBlends,
+        ]);
     controller = _controller = AnalysisSaveController(
       dao: dao,
       settings: settings,
       labelPrinting: labelPrinting,
-      now: () => DateTime(2026, 10, 31, 9),
+      openBlends: open,
+      onResidualSaved: onResidualSaved,
+      now: () => _clock,
     );
     addTearDown(() {
       controller!.dispose();
       _controller = null;
+      _openDao = null;
     });
   }
   controller.update(
     reading: reading ?? _tx2135,
     stability: stability,
-    blendTarget: blendTarget,
     connected: true,
   );
   await tester.pumpWidget(MaterialApp(
@@ -220,7 +271,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('mix chips', () {
-    testWidgets('with no pick: Blend target first, then the log, no duplicate',
+    testWidgets('with no pick: the open blend first, then the log, no duplicate',
         (tester) async {
       final dao = FakeGasAnalysesDao(analyses: [
         _logged('l1', DateTime(2026, 10, 30), 32, 0),
@@ -230,7 +281,7 @@ void main() {
       await _pump(tester,
           dao: dao,
           reading: _reading(23.0, 30.0),
-          blendTarget: const DesiredMix(21, 35));
+          openBlend: const DesiredMix(21, 35));
 
       expect(_chipLabels(tester), ['Tx21/35', 'EAN32', 'Other…']);
       expect(_pickedChips(tester), isEmpty);
@@ -244,7 +295,7 @@ void main() {
       await _pump(tester,
           dao: dao,
           reading: _reading(49.2, 0),
-          blendTarget: const DesiredMix(21, 35));
+          openBlend: const DesiredMix(21, 35));
 
       expect(_chipLabels(tester), ['EAN50', 'Tx21/35', 'EAN32', 'Other…']);
       expect(_picked(tester), 'desired-mix-50-0');
@@ -306,7 +357,7 @@ void main() {
     testWidgets('is not built for a reading that is not a number',
         (tester) async {
       final dao = FakeGasAnalysesDao();
-      await _pump(tester, dao: dao, blendTarget: const DesiredMix(21, 35));
+      await _pump(tester, dao: dao, openBlend: const DesiredMix(21, 35));
       await _tapAndSettle(tester, _key('desired-mix-21-35'));
       await _tapAndSettle(tester, _key('desired-mix-21-35'));
       expect(_verdict(), findsOneWidget);
@@ -314,7 +365,7 @@ void main() {
       await _pump(
         tester,
         dao: dao,
-        blendTarget: const DesiredMix(21, 35),
+        openBlend: const DesiredMix(21, 35),
         reading: _reading(double.nan, 33.8),
       );
       expect(tester.takeException(), isNull);
@@ -332,7 +383,7 @@ void main() {
       await _pump(
         tester,
         dao: dao,
-        blendTarget: const DesiredMix(21, 35),
+        openBlend: const DesiredMix(21, 35),
         labelPrinting: LabelPrintService(
           render: (label) async {
             savedBeforePrint = dao.added.length == 1;
@@ -396,7 +447,7 @@ void main() {
         dao: dao,
         reading: _reading(32.1, 0),
         stability: ReadingStability.settling,
-        blendTarget: const DesiredMix(50, 0),
+        openBlend: const DesiredMix(50, 0),
         labelPrinting: _service([printer, FakeLabelPrinter()]),
       );
       await _tapAndSettle(tester, _key('desired-mix-50-0'));
@@ -463,7 +514,7 @@ void main() {
           tester,
           dao: dao,
           reading: reading,
-          blendTarget: mix,
+          openBlend: mix,
           labelPrinting: _service([off, on], rendered: rendered),
         );
         // The diver's pick, unless it is the automatic one already.
@@ -543,7 +594,7 @@ void main() {
           tester,
           dao: dao,
           reading: _reading(32.1, 0),
-          blendTarget: const DesiredMix(50, 0),
+          openBlend: const DesiredMix(50, 0),
           labelPrinting: _service([printer], rendered: rendered),
           // A phone screen with the section below the fold, as on a small
           // phone.
@@ -611,7 +662,7 @@ void main() {
         dao: dao,
         reading: _reading(32.1, 0),
         stability: ReadingStability.settling,
-        blendTarget: const DesiredMix(50, 0),
+        openBlend: const DesiredMix(50, 0),
         labelPrinting: _service([printer]),
       );
       await _tapAndSettle(tester, _key('desired-mix-50-0'));
@@ -672,7 +723,7 @@ void main() {
       await _pump(
         tester,
         dao: dao,
-        blendTarget: const DesiredMix(21, 35),
+        openBlend: const DesiredMix(21, 35),
         labelPrinting: _service([printer]),
       );
       expect(_picked(tester), 'desired-mix-21-35');
@@ -684,7 +735,8 @@ void main() {
       expect(printer.connects, 0);
       expect(printer.printed, isEmpty);
       // The SnackBar names the analysed mix, not the desired one.
-      expect(find.text('Saved Tx21/34 to the analysis log.'), findsOneWidget);
+      expect(find.text('Saved Tx21/34 to the analysis log · closes Tx21/35.'),
+          findsOneWidget);
     });
 
     testWidgets('does not ask about a hard mismatch, since nothing prints',
@@ -695,7 +747,7 @@ void main() {
         tester,
         dao: dao,
         reading: _reading(32.1, 0),
-        blendTarget: const DesiredMix(50, 0),
+        openBlend: const DesiredMix(50, 0),
         labelPrinting: _service([printer]),
       );
       await _tapAndSettle(tester, _key('desired-mix-50-0'));
@@ -711,7 +763,7 @@ void main() {
     testWidgets('a successful save starts the next analysis fresh',
         (tester) async {
       final dao = FakeGasAnalysesDao(cylinders: const [_dil]);
-      await _pump(tester, dao: dao, blendTarget: const DesiredMix(21, 35));
+      await _pump(tester, dao: dao, openBlend: const DesiredMix(21, 35));
       await _pickCylinder(tester, 'Dil 3L');
       await _tapAndSettle(tester, find.text('Bailout'));
       await _pickOther(tester, const DesiredMix(21, 33));
@@ -723,8 +775,9 @@ void main() {
       // A mix left picked would print its name on the next cylinder: the
       // pick is automatic again.
       expect(_picked(tester), 'desired-mix-21-35');
+      // The Tx21/35 blend is still open (the save was of another mix).
       expect(tester.widget<Text>(_verdict()).data,
-          'Matches Tx21/35, the nearest standard mix');
+          'Matches Tx21/35, an open blend');
       expect(_role(tester), {GasRole.diluent},
           reason: 'back to the Dil cylinder\'s role');
     });
@@ -736,7 +789,7 @@ void main() {
       await _pump(
         tester,
         dao: dao,
-        blendTarget: const DesiredMix(21, 35),
+        openBlend: const DesiredMix(21, 35),
         labelPrinting: _service([FakeLabelPrinter()], rendered: rendered),
       );
       await _pickCylinder(tester, 'Dil 3L');
@@ -776,7 +829,7 @@ void main() {
       await _pump(
         tester,
         dao: dao,
-        blendTarget: const DesiredMix(21, 35),
+        openBlend: const DesiredMix(21, 35),
         labelPrinting: _service([off, on]),
       );
       await _tapAndSettle(tester, _key('analysis-save-print'));
@@ -802,7 +855,7 @@ void main() {
     testWidgets('the mix just saved stays a chip for the next cylinder',
         (tester) async {
       final dao = FakeGasAnalysesDao();
-      await _pump(tester, dao: dao, blendTarget: const DesiredMix(21, 35));
+      await _pump(tester, dao: dao, openBlend: const DesiredMix(21, 35));
       expect(_key('desired-mix-25-25'), findsNothing);
 
       await _tapAndSettle(tester, _key('desired-mix-other'));
@@ -837,7 +890,7 @@ void main() {
         tester,
         dao: dao,
         reading: _reading(32.1, 0),
-        blendTarget: const DesiredMix(21, 35),
+        openBlend: const DesiredMix(21, 35),
         labelPrinting: _service([printer]),
       );
       dao.failList = true;
@@ -887,7 +940,7 @@ void main() {
           dao: FakeGasAnalysesDao(cylinders: const [_dil, _o2]),
           reading: _reading(19.1, 43.0),
           stability: ReadingStability.settling,
-          blendTarget: const DesiredMix(21, 35),
+          openBlend: const DesiredMix(21, 35),
           labelPrinting: _service([], configured: printer),
           onSetUpPrinter: () {},
           size: const Size(320, 568),
@@ -918,7 +971,7 @@ void main() {
     });
   });
 
-  group('screens hand the card its Blend target and printer', () {
+  group('screens hand the card its open blends and printer', () {
     Future<SettingsNotifier> loadSettings() async {
       final s = SettingsNotifier();
       await s.load();
@@ -928,7 +981,7 @@ void main() {
     Future<void> pumpAnalyzer(
       WidgetTester tester, {
       required LabelPrintService labelPrinting,
-      DesiredMix? blendTarget,
+      DesiredMix? openBlend,
     }) async {
       tester.view.physicalSize = const Size(400, 3200);
       tester.view.devicePixelRatio = 1;
@@ -948,26 +1001,27 @@ void main() {
       );
       addTearDown(session.dispose);
       final blend = BlendNotifier(settings: settings);
-      if (blendTarget != null) {
-        blend
-          ..setTargetMix(blendTarget.o2Percent, blendTarget.hePercent)
-          ..setTargetPressure(200);
-      }
+      final open = FakeOpenBlendsDao(blends: [
+        if (openBlend != null) _openBlend('open-1', openBlend),
+      ]);
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: AnalyzerScreen(
-              settings: settings, session: session, blend: blend),
+              settings: settings,
+              session: session,
+              blend: blend,
+              openBlends: open),
         ),
       ));
       await tester.pumpAndSettle();
     }
 
-    testWidgets('the analyzer passes its target and printer to the card',
+    testWidgets('the analyzer passes its open blends and printer to the card',
         (tester) async {
       await pumpAnalyzer(
         tester,
         labelPrinting: _service([FakeLabelPrinter()]),
-        blendTarget: const DesiredMix(21, 35),
+        openBlend: const DesiredMix(21, 35),
       );
       expect(_key('desired-mix-21-35'), findsOneWidget);
       expect(_key('analysis-save-print'), findsOneWidget);
@@ -981,6 +1035,251 @@ void main() {
       );
       await _tapAndSettle(tester, _key('analysis-setup-printer'));
       expect(find.byType(LabelPrinterSettingsScreen), findsOneWidget);
+    });
+  });
+
+  group('open blends', () {
+    const tx1845 = DesiredMix(18, 45);
+
+    /// The text of the SnackBar that is up.
+    String snack(WidgetTester tester) => tester
+        .widget<Text>(find.descendant(
+            of: find.byType(SnackBar), matching: find.byType(Text)).first)
+        .data!;
+
+    testWidgets('save closes the oldest matching open blend and takes its '
+        'target and role', (tester) async {
+      final dao = FakeGasAnalysesDao();
+      await _pump(tester,
+          dao: dao,
+          reading: _reading(18.5, 44.0),
+          openBlends: [
+            _openBlend('new', tx1845,
+                role: GasRole.diluent, ago: const Duration(minutes: 5)),
+            _openBlend('old', tx1845,
+                role: GasRole.diluent, ago: const Duration(hours: 2)),
+          ]);
+      expect(
+          tester.widget<Text>(_key('blend-close-text')).data,
+          'Closes Tx18/45 · blended 2 h 00 min ago');
+
+      await _tapAndSettle(tester, _key('analysis-save'));
+      final a = dao.added.single;
+      expect(a.desiredMix, tx1845);
+      expect(a.gasRole, GasRole.diluent);
+      expect(a.isResidual, isFalse);
+      expect(_openDao!.closedBy.keys, ['old']);
+      expect(snack(tester), contains('closes Tx18/45'));
+    });
+
+    testWidgets('a tapped role still wins over the blend\'s role',
+        (tester) async {
+      final dao = FakeGasAnalysesDao();
+      await _pump(tester,
+          dao: dao,
+          reading: _reading(18.5, 44.0),
+          openBlends: [_openBlend('a', tx1845, role: GasRole.diluent)]);
+      await _tapAndSettle(tester, find.text('Bailout'));
+      await _tapAndSettle(tester, _key('analysis-save'));
+      expect(dao.added.single.gasRole, GasRole.bailout);
+      expect(dao.added.single.desiredMix, tx1845);
+      expect(_openDao!.closedBy.keys, ['a']);
+    });
+
+    testWidgets('a manual mix chip closes the oldest blend of that mix',
+        (tester) async {
+      final dao = FakeGasAnalysesDao();
+      await _pump(tester,
+          dao: dao,
+          reading: _reading(18.5, 44.0),
+          openBlends: [
+            _openBlend('a', tx1845, ago: const Duration(minutes: 5)),
+            _openBlend('b', const DesiredMix(21, 35),
+                ago: const Duration(minutes: 30)),
+            _openBlend('c', const DesiredMix(21, 35),
+                ago: const Duration(hours: 3)),
+          ]);
+      await _tapAndSettle(tester, _key('desired-mix-21-35'));
+      expect(
+          tester.widget<Text>(_key('blend-close-text')).data,
+          startsWith('Closes Tx21/35'));
+      await _tapAndSettle(tester, _key('analysis-save'));
+      expect(dao.added.single.desiredMix, const DesiredMix(21, 35));
+      expect(_openDao!.closedBy.keys, ['c']);
+    });
+
+    testWidgets('choosing None closes nothing', (tester) async {
+      final dao = FakeGasAnalysesDao();
+      await _pump(tester,
+          dao: dao,
+          reading: _reading(18.5, 44.0),
+          openBlends: [_openBlend('a', tx1845)]);
+      await _tapAndSettle(tester, _key('blend-close-change'));
+      await tester.tap(_key('blend-choice-none'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(_key('blend-close-text')).data,
+          'No open blend');
+
+      await _tapAndSettle(tester, _key('analysis-save'));
+      expect(dao.added, hasLength(1));
+      expect(_openDao!.closeBlendCalls, isEmpty);
+      expect(snack(tester), isNot(contains('closes')));
+    });
+
+    testWidgets('the Change sheet lists every blend, best match first, '
+        'and a blend picked there is what the row says', (tester) async {
+      final dao = FakeGasAnalysesDao();
+      await _pump(tester,
+          dao: dao,
+          reading: _reading(18.5, 44.0),
+          openBlends: [
+            _openBlend('far', const DesiredMix(50, 0),
+                ago: const Duration(hours: 5)),
+            _openBlend('near', tx1845, role: GasRole.diluent),
+          ]);
+      await _tapAndSettle(tester, _key('blend-close-change'));
+      final near = tester.getTopLeft(_key('blend-choice-near')).dy;
+      final far = tester.getTopLeft(_key('blend-choice-far')).dy;
+      expect(near, lessThan(far));
+      expect(_key('blend-choice-none'), findsOneWidget);
+      expect(find.textContaining('Diluent'), findsWidgets);
+
+      await tester.tap(_key('blend-choice-far'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(_key('blend-close-text')).data,
+          startsWith('Closes EAN50 · blended 5 h 00 min ago'));
+    });
+
+    testWidgets('picking a hard-mismatched blend closes it and shows the '
+        'loud warning', (tester) async {
+      final dao = FakeGasAnalysesDao();
+      await _pump(tester,
+          dao: dao,
+          reading: _reading(55.0, 0),
+          openBlends: [_openBlend('deco', const DesiredMix(50, 0))]);
+      // Nothing matches by itself: the nearest is named, nothing is closed.
+      expect(tester.widget<Text>(_key('blend-close-text')).data,
+          startsWith('No open blend matches. Nearest: EAN50 ('));
+      expect(_key('blend-close-warning'), findsNothing);
+
+      await _tapAndSettle(tester, _key('blend-close-change'));
+      await tester.tap(_key('blend-choice-deco'));
+      await tester.pumpAndSettle();
+      expect(_controller!.warning?.level, WarningLevel.loud);
+      final warning = tester.widget<Text>(_key('blend-close-warning'));
+      expect(warning.data, contains('MOD at'));
+      expect(warning.style!.color, SafetyColors.danger);
+
+      await _tapAndSettle(tester, _key('analysis-save'));
+      expect(dao.added.single.desiredMix, const DesiredMix(50, 0));
+      expect(_openDao!.closedBy.keys, ['deco']);
+    });
+
+    testWidgets('an unmatched reading names the nearest blend in the '
+        'SnackBar', (tester) async {
+      final dao = FakeGasAnalysesDao();
+      await _pump(tester,
+          dao: dao,
+          reading: _reading(55.0, 0),
+          openBlends: [_openBlend('deco', const DesiredMix(50, 0))]);
+      await _tapAndSettle(tester, _key('analysis-save'));
+      expect(snack(tester),
+          contains('No open blend matches. Nearest: EAN50 ('));
+      expect(_openDao!.closeBlendCalls, isEmpty);
+    });
+
+    testWidgets('residual: saved as residual, no desired mix, no print, '
+        'closes nothing, fills the Blend tab', (tester) async {
+      final dao = FakeGasAnalysesDao();
+      final printer = FakeLabelPrinter();
+      final told = <(double, double, double?)>[];
+      await _pump(tester,
+          dao: dao,
+          reading: _reading(18.5, 44.0),
+          openBlends: [_openBlend('a', tx1845)],
+          labelPrinting: _service([printer]),
+          onResidualSaved: (o2, he, bar) => told.add((o2, he, bar)));
+      await _tapAndSettle(tester, _key('analysis-residual-toggle'));
+      // No label for a residual.
+      expect(
+          tester
+              .widget<ButtonStyleButton>(_key('analysis-save-print'))
+              .onPressed,
+          isNull);
+      expect(_key('blend-close-change'), findsNothing);
+
+      await _tapAndSettle(tester, _key('analysis-save'));
+      final a = dao.added.single;
+      expect(a.isResidual, isTrue);
+      expect(a.desiredMix, isNull);
+      expect(printer.printed, isEmpty);
+      expect(_openDao!.closeBlendCalls, isEmpty);
+      expect(told, [(18.5, 44.0, 230.0)]);
+      // It stays on until turned off.
+      expect(_controller!.residual, isTrue);
+      await _tapAndSettle(tester, _key('analysis-residual-toggle'));
+      expect(_controller!.residual, isFalse);
+      expect(
+          tester
+              .widget<ButtonStyleButton>(_key('analysis-save-print'))
+              .onPressed,
+          isNotNull);
+    });
+
+    testWidgets('without open blends there is no row, only the switch',
+        (tester) async {
+      await _pump(tester, dao: FakeGasAnalysesDao());
+      expect(_key('blend-close-row'), findsNothing);
+      expect(_key('analysis-residual-toggle'), findsOneWidget);
+    });
+
+    testWidgets('the row is at most two lines and 32 pt high, switch aside',
+        (tester) async {
+      await _pump(tester,
+          dao: FakeGasAnalysesDao(),
+          reading: _reading(18.5, 44.0),
+          size: const Size(320, 900),
+          openBlends: [_openBlend('a', tx1845)]);
+      expect(tester.getSize(_key('blend-close-row')).height, 32);
+      expect(_key('analysis-residual-toggle'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the chosen blend closed elsewhere while the unstable dialog '
+        'is up still saves', (tester) async {
+      final dao = FakeGasAnalysesDao();
+      final blend = _openBlend('a', tx1845);
+      await _pump(tester,
+          dao: dao,
+          reading: _reading(18.5, 44.0),
+          stability: ReadingStability.settling,
+          openBlends: [blend]);
+      await _tapAndSettle(tester, _key('analysis-save'));
+      expect(find.text('Reading not stable'), findsOneWidget);
+
+      await _openDao!.closeBlend(blend, 'elsewhere');
+      await tester.pumpAndSettle();
+      await tester.tap(_key('analysis-save-anyway'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(dao.added, hasLength(1));
+      expect(dao.added.single.desiredMix, tx1845);
+      expect(_openDao!.closedBy['a'], 'elsewhere');
+      expect(snack(tester), isNot(contains('closes')));
+    });
+
+    testWidgets('a close that fails leaves the analysis saved',
+        (tester) async {
+      final dao = FakeGasAnalysesDao();
+      final open = _ThrowingOpenBlends(blends: [_openBlend('a', tx1845)]);
+      await _pump(tester,
+          dao: dao, reading: _reading(18.5, 44.0), openDao: open);
+      await _tapAndSettle(tester, _key('analysis-save'));
+      expect(tester.takeException(), isNull);
+      expect(dao.added, hasLength(1));
+      expect(snack(tester), isNot(contains('closes')));
+      expect(find.textContaining('Save failed'), findsNothing);
     });
   });
 }
