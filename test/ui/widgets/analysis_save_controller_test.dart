@@ -97,12 +97,14 @@ void main() {
   Future<AnalysisSaveController> make({
     List<OpenBlend> blends = const [],
     AnalyzerReading reading = _ean32,
+    void Function(double o2, double he, double? bar)? onResidualSaved,
   }) async {
     openDao.blends.addAll(blends);
     final c = AnalysisSaveController(
       dao: dao,
       settings: settings,
       openBlends: openDao,
+      onResidualSaved: onResidualSaved,
       now: () => _now,
     );
     addTearDown(c.dispose);
@@ -138,7 +140,7 @@ void main() {
     // The diver's pick and tapped role go to every press as they are.
     expect(s.setup.desiredMix, const DesiredMix(32, 0));
     expect(s.setup.autoPickMix, isFalse);
-    expect(s.setup.gasRole, GasRole.diluent);
+    expect(s.setup.tappedRole, GasRole.diluent);
     expect(s.setup.analysedBy, 'EdP');
     expect(s.setup.analysedFor, 'Anna');
     expect(s.setup.fillPressureBar, 200);
@@ -161,15 +163,19 @@ void main() {
     var s = c.okSetup().setup;
     expect(s.autoPickMix, isTrue);
     expect(s.desiredMix, isNull, reason: 'the press picks for its own line');
-    // 21/35 is far from the EAN32 reading: no blend matches it.
-    expect(s.blendTarget, isNull);
-    expect(s.gasRole, isNull, reason: 'the press works it out from its mix');
+    // The press matches the open blends itself, by its own reading.
+    expect(s.openBlends.map((b) => b.id), ['b1']);
+    expect(s.blendChoice, isA<AutoBlend>());
+    expect(s.residual, isFalse);
+    expect(s.tappedRole, isNull);
+    expect(s.cylinderRole, isNull, reason: 'the press works it out');
 
     // A cylinder with a known role decides it; one without leaves it open.
     c.selectCylinder('c-dil');
-    expect(c.okSetup().setup.gasRole, GasRole.diluent);
+    expect(c.okSetup().setup.cylinderRole, GasRole.diluent);
+    expect(c.okSetup().setup.tappedRole, isNull);
     c.selectCylinder('c-s80');
-    expect(c.okSetup().setup.gasRole, isNull);
+    expect(c.okSetup().setup.cylinderRole, isNull);
 
     // The diver's "no mix" is passed as no mix, not as automatic.
     c.clearMix();
@@ -274,89 +280,20 @@ void main() {
   group('the open blend on OK', () {
     const target = DesiredMix(19, 40);
 
-    /// The log has entry [id] saved with [desired].
-    Future<void> stored(String id, DesiredMix? desired) => dao.addFromBridge(
-          id,
-          NewGasAnalysis(
-            analysedAt: DateTime(2026, 11, 7),
-            o2Percent: 19.6,
-            hePercent: 40.2,
-            stable: true,
-            desiredMix: desired,
-          ),
-        );
-
-    OkLogResult complete(OkSetup setup, String id) => OkLogResult(
-          code: FeedbackCode.saved,
-          text: 'Tx20/40',
-          analysisId: id,
-          complete: true,
-          setupUsed: setup,
-        );
-
     const reading = AnalyzerReading(
         o2: 19.6, he: 40.2, tempC: 21, baroHpa: 1013, raw: 'test');
 
-    test('the press is offered the target of the open blend its reading '
-        'matches', () async {
-      final c = await make(
-          reading: reading, blends: [_blend('b1', target)]);
-      expect(c.okSetup().setup.blendTarget, target);
-    });
-
-    test('a complete result changes nothing here; the target is offered '
-        'while the blend is open', () async {
-      final c = await make(
-          reading: reading, blends: [_blend('b1', target)]);
-      final logger = _Logger(dao);
-      c.bindLogger(logger);
-
-      final first = c.okSetup();
-      expect(first.setup.blendTarget, target);
-      await stored('a1', target);
-      logger.send(complete(first, 'a1'));
-      await _settle();
-      // No lease: the processor closes the blend (a later change), and until
-      // it is closed the next press is offered it too.
-      expect(c.okSetup().setup.blendTarget, target);
-      await openDao.closeBlend(openDao.blends.single, 'a1');
-      await _settle();
-      expect(c.okSetup().setup.blendTarget, isNull);
-    });
-
-    test('a complete result with another mix leaves the offer', () async {
-      final c = await make(
-          reading: reading, blends: [_blend('b1', target)]);
-      final logger = _Logger(dao);
-      c.bindLogger(logger);
-
-      final first = c.okSetup();
-      await stored('a1', const DesiredMix(18, 45));
-      logger.send(complete(first, 'a1'));
-      await _settle();
-
-      expect(c.okSetup().setup.blendTarget, target);
-    });
-
-    test('a press queued behind another is offered it as well (no lease)',
+    test('the press gets the open blends, to match by its own reading',
         () async {
-      final c = await make(
-          reading: reading, blends: [_blend('b1', target)]);
-      c.bindLogger(_Logger(dao));
-
-      final first = c.okSetup();
-      expect(first.setup.blendTarget, target);
-      final queued = c.okSetup();
-      expect(queued.setup.blendTarget, target);
-
-      // The first one needs sign-off: the offer is the same.
-      expect(c.okSetup().setup.blendTarget, target);
+      final c = await make(reading: reading, blends: [_blend('b1', target)]);
+      final s = c.okSetup().setup;
+      expect(s.openBlends.map((b) => b.id), ['b1']);
+      expect(s.blendChoice, isA<AutoBlend>());
     });
 
-    test('a newly blended gas is offered as it appears', () async {
+    test('a newly blended gas is passed as it appears', () async {
       final c = await make(reading: reading);
-      c.bindLogger(_Logger(dao));
-      expect(c.okSetup().setup.blendTarget, isNull);
+      expect(c.okSetup().setup.openBlends, isEmpty);
 
       await openDao.add(NewOpenBlend(
         target: target,
@@ -370,16 +307,141 @@ void main() {
         blendedAt: _now,
       ));
       await _settle();
-      expect(c.okSetup().setup.blendTarget, target);
+      expect(c.okSetup().setup.openBlends.single.target, target);
     });
 
-    test('a new logger changes nothing', () async {
-      final c = await make(
-          reading: reading, blends: [_blend('b1', target)]);
-      c.bindLogger(_Logger(dao));
-      expect(c.okSetup().setup.blendTarget, target);
-      c.bindLogger(_Logger(dao));
-      expect(c.okSetup().setup.blendTarget, target);
+    test('the diver\'s blend choice and "Residual analysis" go to the press',
+        () async {
+      final c = await make(reading: reading, blends: [_blend('b1', target)]);
+      final b = c.openBlends.single;
+      c.chooseBlend(PickedBlend(b));
+      var s = c.okSetup().setup;
+      expect(s.blendChoice, isA<PickedBlend>());
+      expect((s.blendChoice as PickedBlend).blend.id, 'b1');
+
+      c.chooseBlend(const NoBlend());
+      expect(c.okSetup().setup.blendChoice, isA<NoBlend>());
+
+      c.setResidual(true);
+      expect(c.okSetup().setup.residual, isTrue);
+    });
+
+    test('a picked blend that closed elsewhere counts as automatic',
+        () async {
+      final c = await make(reading: reading, blends: [_blend('b1', target)]);
+      c.chooseBlend(PickedBlend(c.openBlends.single));
+      openDao.dismissed.add('b1');
+      openDao.deleteAnalysis('nothing'); // pushes a change
+      await _settle();
+      expect(c.okSetup().setup.blendChoice, isA<AutoBlend>());
+    });
+
+    test('a complete result changes nothing about the blends here',
+        () async {
+      final c = await make(reading: reading, blends: [_blend('b1', target)]);
+      final logger = _Logger(dao);
+      c.bindLogger(logger);
+      final first = c.okSetup();
+      logger.send(_result(first, complete: true));
+      await _settle();
+      // The processor closes the blend; the card only hears of it from the
+      // open blends stream.
+      expect(c.okSetup().setup.openBlends, hasLength(1));
+      await openDao.closeBlend(openDao.blends.single, 'a1');
+      await _settle();
+      expect(c.okSetup().setup.openBlends, isEmpty);
+    });
+
+    group('a residual press', () {
+      OkLogResult residualResult(OkSetup setup, String id) => OkLogResult(
+            code: FeedbackCode.saved,
+            text: 'EAN32',
+            analysisId: id,
+            complete: true,
+            setupUsed: setup,
+          );
+
+      Future<void> storeResidual(String id, {double? bar = 45}) =>
+          dao.addFromBridge(
+            id,
+            NewGasAnalysis(
+              analysedAt: DateTime(2026, 11, 7),
+              o2Percent: 21.3,
+              hePercent: 34.8,
+              fillPressureBar: bar,
+              stable: true,
+              isResidual: true,
+            ),
+          );
+
+      test('fills the Blend tab with the stored gas and pressure', () async {
+        final calls = <(double, double, double?)>[];
+        final c = await make(
+          onResidualSaved: (o2, he, bar) => calls.add((o2, he, bar)),
+        );
+        final logger = _Logger(dao);
+        c.bindLogger(logger);
+        c.setResidual(true);
+        final setup = c.okSetup();
+        await storeResidual('a1');
+        logger.send(residualResult(setup, 'a1'));
+        await _settle();
+        expect(calls, [(21.3, 34.8, 45.0)]);
+      });
+
+      test('with no fill pressure the pressure is passed as null', () async {
+        final calls = <(double, double, double?)>[];
+        final c = await make(
+          onResidualSaved: (o2, he, bar) => calls.add((o2, he, bar)),
+        );
+        final logger = _Logger(dao);
+        c.bindLogger(logger);
+        c.setResidual(true);
+        final setup = c.okSetup();
+        await storeResidual('a1', bar: null);
+        logger.send(residualResult(setup, 'a1'));
+        await _settle();
+        expect(calls, [(21.3, 34.8, null)]);
+      });
+
+      test('a press that was not a residual does not call it', () async {
+        final calls = <(double, double, double?)>[];
+        final c = await make(
+          onResidualSaved: (o2, he, bar) => calls.add((o2, he, bar)),
+        );
+        final logger = _Logger(dao);
+        c.bindLogger(logger);
+        final setup = c.okSetup();
+        await storeResidual('a1');
+        logger.send(residualResult(setup, 'a1'));
+        await _settle();
+        expect(calls, isEmpty);
+      });
+
+      test('a late press saved as a plain analysis does not call it',
+          () async {
+        final calls = <(double, double, double?)>[];
+        final c = await make(
+          onResidualSaved: (o2, he, bar) => calls.add((o2, he, bar)),
+        );
+        final logger = _Logger(dao);
+        c.bindLogger(logger);
+        c.setResidual(true);
+        final setup = c.okSetup();
+        // The press was late: stored without the residual flag.
+        await dao.addFromBridge(
+          'a1',
+          NewGasAnalysis(
+            analysedAt: DateTime(2026, 11, 7),
+            o2Percent: 21.3,
+            hePercent: 34.8,
+            stable: true,
+          ),
+        );
+        logger.send(residualResult(setup, 'a1'));
+        await _settle();
+        expect(calls, isEmpty);
+      });
     });
   });
 
@@ -548,11 +610,11 @@ void main() {
     final c = await make();
     expect(c.role, GasRole.bailout, reason: 'EAN32 by the rule');
     expect(c.roleTapped, isFalse);
-    expect(c.okSetup().setup.gasRole, isNull);
+    expect(c.okSetup().setup.tappedRole, isNull);
 
     c.tapRole(GasRole.bailout);
     expect(c.roleTapped, isTrue);
-    expect(c.okSetup().setup.gasRole, GasRole.bailout);
+    expect(c.okSetup().setup.tappedRole, GasRole.bailout);
   });
 
   test('a non-number fill pressure is passed as no pressure', () async {

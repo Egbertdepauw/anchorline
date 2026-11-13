@@ -1,7 +1,9 @@
 import 'package:ccrlogger/analysis/gas_naming.dart';
+import 'package:ccrlogger/analysis/open_blend_match.dart';
 import 'package:ccrlogger/analyzer/bridge/bridge_protocol.dart';
 import 'package:ccrlogger/analyzer/bridge/record_to_analysis.dart';
 import 'package:ccrlogger/data/models/gas_analysis.dart';
+import 'package:ccrlogger/data/models/open_blend.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../_helpers/solo_capture_log.dart';
@@ -71,7 +73,7 @@ BridgeRecord drifting(double from, double to, {bool live = true}) =>
 LogOnOkSetup _setup({
   String? analysedBy = 'EdP',
   DesiredMix? desiredMix = const DesiredMix(21, 35),
-  GasRole gasRole = GasRole.diluent,
+  GasRole tappedRole = GasRole.diluent,
   String? analysedFor = 'Alex',
   bool printOnOk = true,
   bool printerConfigured = true,
@@ -81,7 +83,7 @@ LogOnOkSetup _setup({
 }) => LogOnOkSetup(
   analysedBy: analysedBy,
   desiredMix: desiredMix,
-  gasRole: gasRole,
+  tappedRole: tappedRole,
   analysedFor: analysedFor,
   printOnOk: printOnOk,
   printerConfigured: printerConfigured,
@@ -92,6 +94,24 @@ LogOnOkSetup _setup({
 );
 
 final _full = _setup();
+
+OpenBlend _blend(
+  String id,
+  DesiredMix target, {
+  GasRole role = GasRole.diluent,
+  DateTime? blendedAt,
+}) => OpenBlend(
+  id: id,
+  target: target,
+  targetPressureBar: 200,
+  residual: const DesiredMix(21, 0),
+  residualPressureBar: 20,
+  topoff: const DesiredMix(0, 70),
+  waterCapacityL: 3,
+  role: role,
+  blendedBy: null,
+  blendedAt: blendedAt ?? DateTime(2026, 11, 3, 9),
+);
 
 RecordOutcome _run(
   BridgeRecord record, {
@@ -514,14 +534,14 @@ void main() {
     LogOnOkSetup autoSetup({
       bool autoPickMix = true,
       DesiredMix? desiredMix,
-      DesiredMix? blendTarget,
-      GasRole? gasRole,
+      List<OpenBlend> openBlends = const [],
+      GasRole? tappedRole,
     }) => LogOnOkSetup(
       analysedBy: 'EdP',
       desiredMix: desiredMix,
-      blendTarget: blendTarget,
+      openBlends: openBlends,
       autoPickMix: autoPickMix,
-      gasRole: gasRole,
+      tappedRole: tappedRole,
       printOnOk: true,
       printerConfigured: true,
     );
@@ -562,13 +582,14 @@ void main() {
       expect(out.analysis.needsSignoff, isTrue);
     });
 
-    test('the Blend target is used when it grades within orange', () {
+    test('an open blend that grades within orange gives the mix', () {
       final out = decide(
         19.6,
         40.2,
-        setup: autoSetup(blendTarget: const DesiredMix(19, 40)),
+        setup: autoSetup(openBlends: [_blend('b1', const DesiredMix(19, 40))]),
       );
       expect(out.analysis.desiredMix, const DesiredMix(19, 40));
+      expect(out.blendToClose?.id, 'b1');
     });
 
     test('the role follows the picked mix', () {
@@ -624,7 +645,7 @@ void main() {
         decide(
           49.2,
           0.3,
-          setup: autoSetup(gasRole: GasRole.diluent),
+          setup: autoSetup(tappedRole: GasRole.diluent),
         ).analysis.gasRole,
         GasRole.diluent,
       );
@@ -639,6 +660,196 @@ void main() {
       final out = decide(20.6, 33.8, setup: autoSetup(), live: false);
       expect(out.analysis.desiredMix, isNull);
       expect(out.analysis.gasRole, GasRole.bailout);
+    });
+  });
+
+  group('open blends (issue #112)', () {
+    const tx1845 = DesiredMix(18, 45);
+
+    // Named, printing on, the mix picked per press, no role of its own.
+    LogOnOkSetup blendSetup({
+      List<OpenBlend> openBlends = const [],
+      BlendChoice blendChoice = const AutoBlend(),
+      bool autoPickMix = true,
+      DesiredMix? desiredMix,
+      GasRole? tappedRole,
+      GasRole? cylinderRole,
+      bool residual = false,
+      bool printOnOk = true,
+    }) => LogOnOkSetup(
+      analysedBy: 'EdP',
+      autoPickMix: autoPickMix,
+      desiredMix: desiredMix,
+      openBlends: openBlends,
+      blendChoice: blendChoice,
+      tappedRole: tappedRole,
+      cylinderRole: cylinderRole,
+      residual: residual,
+      printOnOk: printOnOk,
+      printerConfigured: true,
+    );
+
+    SaveRecord press(
+      double o2,
+      double he,
+      LogOnOkSetup setup, {
+      bool live = true,
+    }) => _save(
+      steady(21.0, 0.0, live: live, heldLine: soloLine(o2, he)),
+      setup: setup,
+    );
+
+    test('a live record takes the matching open blend\'s target and role', () {
+      final b = _blend('b1', tx1845, role: GasRole.bailout);
+      final out = press(18.2, 44.8, blendSetup(openBlends: [b]));
+      expect(out.blendToClose, b);
+      expect(out.analysis.desiredMix, tx1845);
+      expect(out.analysis.gasRole, GasRole.bailout, reason: 'blend role');
+      expect(out.printLabel, isTrue);
+    });
+
+    test('the oldest of equal open blends is the one to close', () {
+      final older = _blend('old', tx1845, blendedAt: DateTime(2026, 11, 3, 8));
+      final newer = _blend('new', tx1845, blendedAt: DateTime(2026, 11, 3, 10));
+      // Newer first in the list: the order does not decide it, the age does.
+      final out = press(
+        18.2,
+        44.8,
+        blendSetup(desiredMix: tx1845, autoPickMix: false, openBlends: [newer, older]),
+      );
+      expect(out.blendToClose?.id, 'old');
+    });
+
+    test('a late record gets no blend', () {
+      final b = _blend('b1', tx1845);
+      final out = press(18.2, 44.8, blendSetup(openBlends: [b]), live: false);
+      expect(out.blendToClose, isNull);
+      expect(out.analysis.desiredMix, isNull);
+      expect(out.analysis.gasRole, GasRole.bailout);
+      expect(out.analysis.isResidual, isFalse);
+    });
+
+    test('a reading that matches no open blend closes none', () {
+      final b = _blend('b1', const DesiredMix(10, 70));
+      final out = press(18.2, 44.8, blendSetup(openBlends: [b]));
+      expect(out.blendToClose, isNull);
+      expect(out.analysis.desiredMix, tx1845, reason: 'standard pick');
+    });
+
+    test('residual: no desired mix, no print, no blend, is_residual set', () {
+      final b = _blend('b1', tx1845);
+      final out = press(
+        18.2,
+        44.8,
+        blendSetup(openBlends: [b], residual: true),
+      );
+      expect(out.analysis.isResidual, isTrue);
+      expect(out.analysis.desiredMix, isNull);
+      expect(out.printLabel, isFalse);
+      expect(out.blendToClose, isNull);
+      // Nothing to hand the diver: sign-off stays as for any save without
+      // a print, here a named, live, complete entry.
+      expect(out.analysis.needsSignoff, isFalse);
+    });
+
+    test('residual also when a blend was picked and a mix was chosen', () {
+      final b = _blend('b1', tx1845);
+      final out = press(
+        18.2,
+        44.8,
+        blendSetup(
+          openBlends: [b],
+          blendChoice: PickedBlend(b),
+          residual: true,
+          autoPickMix: false,
+          desiredMix: tx1845,
+        ),
+      );
+      expect(out.analysis.desiredMix, isNull);
+      expect(out.printLabel, isFalse);
+      expect(out.blendToClose, isNull);
+    });
+
+    test('tapped role beats blend role, blend role beats cylinder role', () {
+      final b = _blend('b1', tx1845, role: GasRole.bailout);
+      final tapped = press(
+        18.2,
+        44.8,
+        blendSetup(
+          openBlends: [b],
+          tappedRole: GasRole.deco,
+          cylinderRole: GasRole.diluent,
+        ),
+      );
+      expect(tapped.analysis.gasRole, GasRole.deco);
+      final blendWins = press(
+        18.2,
+        44.8,
+        blendSetup(openBlends: [b], cylinderRole: GasRole.diluent),
+      );
+      expect(blendWins.analysis.gasRole, GasRole.bailout);
+      final cylinder = press(
+        18.2,
+        44.8,
+        blendSetup(cylinderRole: GasRole.bailout),
+      );
+      expect(cylinder.analysis.gasRole, GasRole.bailout, reason: 'cylinder');
+      expect(
+        press(18.2, 44.8, blendSetup()).analysis.gasRole,
+        GasRole.diluent,
+        reason: 'the mix rule',
+      );
+    });
+
+    test('a diver who cleared the mix closes no blend by reading', () {
+      final b = _blend('b1', tx1845);
+      final out = press(
+        18.2,
+        44.8,
+        blendSetup(openBlends: [b], autoPickMix: false),
+      );
+      expect(out.blendToClose, isNull);
+      expect(out.analysis.desiredMix, isNull);
+    });
+
+    test('a picked blend closes even with the mix cleared', () {
+      final b = _blend('b1', tx1845);
+      final out = press(
+        18.2,
+        44.8,
+        blendSetup(
+          openBlends: [b],
+          autoPickMix: false,
+          blendChoice: PickedBlend(b),
+        ),
+      );
+      expect(out.blendToClose, b);
+      expect(out.analysis.desiredMix, tx1845);
+    });
+
+    test('None: the pick uses standard mixes only and closes no blend', () {
+      final b = _blend('b1', const DesiredMix(19, 40));
+      final out = press(
+        19.6,
+        40.2,
+        blendSetup(openBlends: [b], blendChoice: const NoBlend()),
+      );
+      expect(out.blendToClose, isNull);
+      // The blend's Tx19/40 would match; None leaves only the standard mixes.
+      expect(out.analysis.desiredMix, isNot(const DesiredMix(19, 40)));
+    });
+
+    test('a picked blend that is a red mismatch still closes, and the print '
+        'is held back', () {
+      final b = _blend('b1', const DesiredMix(10, 70));
+      final out = press(
+        18.2,
+        44.8,
+        blendSetup(openBlends: [b], blendChoice: PickedBlend(b)),
+      );
+      expect(out.blendToClose, b);
+      expect(out.printLabel, isFalse);
+      expect(out.analysis.needsSignoff, isTrue);
     });
   });
 

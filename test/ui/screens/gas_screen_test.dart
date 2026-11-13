@@ -114,7 +114,6 @@ class _Rig {
       settings: settings,
       analysesDao: dao,
       labelPrinting: labelPrinting,
-      blend: blend,
       controller: controller = AnalyzerController(elapsed: fakeElapsed(tester)),
       keepAwake: (_) async {},
       transportOptions: [

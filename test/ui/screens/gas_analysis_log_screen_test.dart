@@ -1663,7 +1663,6 @@ void main() {
       final session = AnalyzerSession(
         settings: settings,
         analysesDao: dao,
-        blend: blend,
         controller: fakeClockAnalyzerController(tester),
         transportOptions: [
           AnalyzerTransportOption(

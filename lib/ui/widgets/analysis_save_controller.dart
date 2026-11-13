@@ -828,9 +828,10 @@ class AnalysisSaveController extends ChangeNotifier {
   /// from its held reading ([LogOnOkSetup.autoPickMix]), and works out its
   /// role from that unless the diver tapped one or the cylinder has one.
   ///
-  /// The press still takes the one blend target of [LogOnOkSetup.blendTarget]:
-  /// the target of the open blend the reading matches by itself. (The OK
-  /// path closes blends in its own right from the next change on.)
+  /// The press matches the open blends itself ([LogOnOkSetup.openBlends],
+  /// the diver's [BlendChoice] and "Residual analysis"), with the same rule
+  /// as the card, and closes the one it matched when it saves complete.
+  /// A picked blend that is not open any more counts as automatic.
   ///
   /// It is the logger's [OkLogger.setupProvider], asked once per press. It
   /// writes nothing to the settings; "Analysed by" is never written back.
@@ -838,15 +839,16 @@ class AnalysisSaveController extends ChangeNotifier {
     final printReady = this.printReady;
     final pressure = parseFillPressure(fillPressure.text);
     final cylinderRole = _cylinder(_knownCylinderId)?.role;
-    final gas = usableGas;
-    final target = gas == null ? null : _autoBlendFor(gas)?.target;
     final setup = LogOnOkSetup(
       analysedBy: analysedBy.text,
       desiredMix: _mixAutomatic ? null : _diverMix,
       autoPickMix: _mixAutomatic,
-      blendTarget: target,
-      gasRole: _tappedRole ??
-          (cylinderRole == null ? null : gasRoleForCylinderRole(cylinderRole)),
+      openBlends: _open,
+      blendChoice: _liveChoice,
+      residual: _residual,
+      tappedRole: _tappedRole,
+      cylinderRole:
+          cylinderRole == null ? null : gasRoleForCylinderRole(cylinderRole),
       analysedFor: _blankToNull(analysedFor.text),
       printOnOk: printReady && _printOnOk,
       printerConfigured: printReady,
@@ -872,6 +874,28 @@ class AnalysisSaveController extends ChangeNotifier {
     notifyListeners();
     // Not awaited: the mix just used may be new to the chips.
     if (id != null) unawaited(_loadMixOptions());
+    if (id != null && r.setupUsed?.setup.residual == true) {
+      unawaited(_residualPressed(id));
+    }
+  }
+
+  /// A residual press saved [id]: its gas, as stored, fills the Blend tab's
+  /// residual ([onResidualSaved]); a read that fails leaves the tab alone.
+  Future<void> _residualPressed(String id) async {
+    final GasAnalysis? stored;
+    try {
+      stored = await _readStored(id);
+    } catch (e) {
+      debugPrint('Log on OK: reading the residual entry back failed: $e');
+      return;
+    }
+    // A late press is saved as a plain analysis whatever the setup said.
+    if (_disposed || stored == null || !stored.isResidual) return;
+    onResidualSaved?.call(
+      stored.o2Percent,
+      stored.hePercent,
+      stored.fillPressureBar,
+    );
   }
 
   /// The per-cylinder fields [r]'s own press took, or null when it did not

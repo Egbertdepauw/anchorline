@@ -231,7 +231,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       settings: widget.settingsNotifier,
       analysesDao: _gasAnalysesDao,
       labelPrinting: _labelPrintService,
-      blend: _blendNotifier,
+      openBlends: _openBlendsDao,
     );
     _divePlanNotifier = DivePlanNotifier(
       dao: _divePlansDao,
