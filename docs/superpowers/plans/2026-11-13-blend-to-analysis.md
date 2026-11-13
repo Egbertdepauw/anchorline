@@ -302,7 +302,7 @@
   - `NewOpenBlend draftOpenBlend({String? blendedBy, required DateTime now})`
   - `void openBlendSaved()`: clears the override
   - `void applyResidualAnalysis({required double o2Percent, required double hePercent, double? pressureBar})`: rounds to whole percents through `setCurrentMix`, and calls `setCurrentPressure` only when `pressureBar != null`
-- Removes: `recentTarget`, `unusedRecentTarget`, `markRecentTargetUsed`, `_kLastEditedAt`, `_kTargetUsed`, `_lastEditedAt`, `_targetUsed`, `_recentTargetWindow` and the `now` constructor parameter, if nothing else uses it. Keep the target mix and pressure persistence (`loadTarget`) for the inputs, and update the library comment.
+- Keeps, for now: `recentTarget`, `unusedRecentTarget` and `markRecentTargetUsed`. Tasks 9–11 stop using them, and Task 11 removes them, so every commit builds.
 
 - [ ] **Step 1: Write the failing tests:**
   - `role guess follows target O2 and capacity`: target 18/45 with capacity 3 gives diluent; capacity 11.1 gives bailout; target 50/0 gives bailout with reason `'O2 above 32%'`
@@ -310,10 +310,9 @@
   - `override applies to this blend only`: `overrideRole(GasRole.deco)` gives `role == deco`; after `openBlendSaved()` the role is the guess again
   - `draftOpenBlend carries target, residual, top-off, capacity, role, name and time`
   - `applyResidualAnalysis rounds and fills; null pressure keeps the pressure`
-  - **Replace** the cases in the `recentTarget` groups: keep the `loadTarget` persistence cases (the target mix and pressure survive a restart; an edit before load wins) and delete the 24 h and "used" cases. They become open-blend cases in Tasks 9–11, as the spec asks.
 - [ ] **Step 2: Run both files and see them fail.**
 - [ ] **Step 3: Implement.** Also listen for `blendDiluentMaxL` changes through the existing `_onSettingsChanged`, so the guess updates.
-- [ ] **Step 4: Run them and expect them to pass.** Callers of the removed API won't compile until Tasks 9–11. Do this task on the branch together with a temporary shim only if a commit has to build on its own; otherwise commit Tasks 6 and 9–11 as one series and run `flutter analyze` at the end of Task 11.
+- [ ] **Step 4: Run them and expect them to pass.**
 - [ ] **Step 5: Commit:** `feat(blend): role guess, draft open blend and residual fill-in (#112)`
 
 ### Task 7: Blend tab, the "Blended" action, the role chip and the open-blends list
@@ -498,8 +497,14 @@
   - **Replace** the `unusedRecentTarget` cases at `gas_analysis_log_screen_test.dart:~1510-1700` with: `signing off on the Log tab closes the open blend`, and `signing off an entry of another mix leaves the blend open`
 - [ ] **Step 2: Run them and see them fail.**
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run them and the whole suite (`flutter analyze` and `flutter test`). Expect both clean, with no remaining reference to `recentTarget`, `unusedRecentTarget` or `markRecentTargetUsed` (`grep -rn` gives nothing).**
-- [ ] **Step 5: Commit:** `feat(gas-log): sign-off closes open blends (#112)`
+- [ ] **Step 4: Remove the single-target API from `BlendNotifier`:**
+  - remove `recentTarget`, `unusedRecentTarget`, `markRecentTargetUsed`, `_kLastEditedAt`, `_kTargetUsed`, `_lastEditedAt`, `_targetUsed` and `_recentTargetWindow`
+  - remove the `now` constructor parameter, if nothing else uses it
+  - keep the persistence of the target mix and pressure (`loadTarget`) for the inputs, and update the library comment
+
+  In `blend_notifier_target_test.dart`, keep the `loadTarget` cases (the target survives a restart; an edit before the load wins) and delete the 24 h and "used" cases. Their open-blend equivalents are in Tasks 9–11, as the spec asks.
+- [ ] **Step 5: Run the whole suite (`flutter analyze` and `flutter test`). Expect both clean, and expect `grep -rn "recentTarget\|markRecentTargetUsed" lib test` to find nothing.**
+- [ ] **Step 6: Commit:** `feat(gas-log): sign-off closes open blends; drop the single Blend target (#112)`
 
 ### Task 12: Deploy notes and PR
 
