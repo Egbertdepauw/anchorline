@@ -1,4 +1,5 @@
 import 'package:ccrlogger/analysis/mix_match.dart';
+import 'package:ccrlogger/analysis/mod.dart';
 import 'package:ccrlogger/analysis/open_blend_match.dart';
 import 'package:ccrlogger/data/models/gas_analysis.dart';
 import 'package:ccrlogger/data/models/open_blend.dart';
@@ -191,7 +192,12 @@ void main() {
     test('deco above target is loud', () {
       final r = w(GasRole.deco, 52.0, 0, const DesiredMix(50, 0));
       expect(r?.level, WarningLevel.loud);
-      expect(r?.text, 'O2 52.0% instead of 50%: MOD at 1.6 is 20 m, not 21 m.');
+      // Both depths floored, computed with the functions, not by hand.
+      final actual = floorDepthTolerant(modMeters(0.52, 1.6));
+      final planned = floorDepthTolerant(modMeters(0.50, 1.6));
+      expect(actual, lessThan(planned));
+      expect(r?.text,
+          'O2 52.0% instead of 50%: MOD at 1.6 is $actual m, not $planned m.');
     });
     test('backgas above target is loud', () {
       expect(w(GasRole.backgas, 22.5, 35, const DesiredMix(21, 35))?.level,
@@ -240,7 +246,37 @@ void main() {
       expect(label.headlinePpo2, 1.6);
       expect(r?.level, WarningLevel.loud);
       expect(r?.text,
-          'O2 51.0% instead of 45%: MOD at 1.6 is ${label.headlineMeters} m, not 24 m.');
+          'O2 51.0% instead of 45%: MOD at 1.6 is ${label.headlineMeters} m, '
+          'not ${floorDepthTolerant(modMeters(0.45, 1.6))} m.');
+    });
+    test('a loud warning never says the real MOD is not itself or deeper',
+        () {
+      final re = RegExp(r'is (\d+) m(?:, not (\d+) m)?\.$');
+      var loud = 0;
+      for (final use14 in [false, true]) {
+        for (var t = 21; t <= 99; t++) {
+          for (var k = 11; k <= 50; k++) {
+            final o2 = t + k / 10;
+            final r = mixWarning(
+              role: GasRole.deco,
+              o2Percent: o2,
+              hePercent: 0,
+              target: DesiredMix(t, 0),
+              use14ForDeeperMixes: use14,
+            );
+            if (r == null || r.level != WarningLevel.loud) continue;
+            loud++;
+            final m = re.firstMatch(r.text);
+            expect(m, isNotNull, reason: r.text);
+            final not = m!.group(2);
+            if (not != null) {
+              expect(int.parse(m.group(1)!), lessThan(int.parse(not)),
+                  reason: 'target $t analysed $o2 use14 $use14: ${r.text}');
+            }
+          }
+        }
+      }
+      expect(loud, greaterThan(0));
     });
     test('a match is null', () {
       expect(w(GasRole.deco, 50.4, 0, const DesiredMix(50, 0)), isNull);

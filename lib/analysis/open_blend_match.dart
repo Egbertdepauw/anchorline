@@ -9,6 +9,7 @@ import '../data/models/open_blend.dart';
 import '../labels/cylinder_label.dart';
 import 'gas_naming.dart';
 import 'mix_match.dart';
+import 'mod.dart';
 
 typedef RankedBlend = ({OpenBlend blend, MixMatch grade});
 
@@ -185,12 +186,21 @@ MixWarning? mixWarning({
     );
     final actual = limitDepthMeters(o2Percent, ppo2,
         desiredO2Percent: hard ? null : target.o2Percent);
-    final planned = limitDepthMeters(target.o2Percent.toDouble(), ppo2);
+    // The planned depth is floored like the analysed one, so the two are
+    // comparable (a stop-rounded planned depth could read as shallower than
+    // the real MOD of a richer gas).
+    final plannedM = modMeters(target.o2Percent / 100.0, ppo2);
+    final planned = plannedM.isFinite && plannedM >= 0
+        ? floorDepthTolerant(plannedM)
+        : null;
+    final base = 'O2 ${o2Percent.toStringAsFixed(1)}% instead of '
+        '${target.o2Percent}%: MOD at ${ppo2.toStringAsFixed(1)} is '
+        '${actual ?? '-'} m';
+    // Only say "not X m" when the real MOD is shallower than the planned.
+    final shallower = actual != null && planned != null && actual < planned;
     return (
       level: WarningLevel.loud,
-      text: 'O2 ${o2Percent.toStringAsFixed(1)}% instead of '
-          '${target.o2Percent}%: MOD at ${ppo2.toStringAsFixed(1)} is '
-          '${actual ?? '-'} m, not ${planned ?? '-'} m.',
+      text: shallower ? '$base, not $planned m.' : '$base.',
     );
   }
   return (
