@@ -398,12 +398,13 @@ class GasAnalysisEdit {
 }
 
 /// The desired mixes to offer as quick picks when saving an analysis: the
-/// Blend tab's target first (when given), then the distinct desired mixes of
-/// the first [lookback] analyses of [newestFirst], in order, with no
-/// duplicates. Analyses without a desired mix use up a lookback slot but add
+/// target of an open blend first (when given, see [blendTarget]), then the
+/// distinct desired mixes of the first [lookback] analyses of [newestFirst],
+/// in order, with no duplicates. Analyses without a desired mix use up a lookback slot but add
 /// nothing.
 List<DesiredMix> recentDesiredMixes(
   List<GasAnalysis> newestFirst, {
+  // Named for the old single Blend target; now an open blend's target.
   DesiredMix? blendTarget,
   int lookback = 10,
 }) {

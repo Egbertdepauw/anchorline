@@ -8,8 +8,8 @@
 /// note", and the hints. Its buttons are in the `AnalysisActionBar` pinned
 /// under the tab.
 ///
-/// The desired mix is picked automatically (the nearest standard mix or the
-/// Blend target, spec §4.3) and the verdict line says where it came from. A
+/// The desired mix is picked automatically (the target of a matching open
+/// blend, else the nearest standard mix, spec §4.3) and the verdict line says where it came from. A
 /// chip the diver taps is their pick until the next manual save.
 ///
 /// Log on OK (issue #113, spec §4.4) starts from the outlined "Log on OK"

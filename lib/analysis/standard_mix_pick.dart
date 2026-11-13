@@ -25,6 +25,8 @@ const List<DesiredMix> kStandardMixes = [
 ];
 
 /// Where a [MixPick] came from.
+/// [blendTarget] means the target of an open blend (the name predates open
+/// blends, when it was the Blend tab's single target).
 enum MixPickSource { blendTarget, standard }
 
 typedef MixPick = ({
@@ -42,6 +44,7 @@ typedef MixPick = ({
 MixPick? pickDesiredMix({
   required double o2Percent,
   required double hePercent,
+  // An open blend's target (the name is from the old single Blend target).
   DesiredMix? blendTarget,
 }) {
   MixMatch grade(DesiredMix m) => gradeMix(

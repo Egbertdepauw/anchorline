@@ -226,7 +226,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         debugPrint('Blend target restore failed: $e\n$st');
       }),
     );
-    // Log on OK uses up the Blend target, so the session gets the notifier.
+    // Log on OK closes the open blend it matches, so the session gets the
+    // open-blends DAO.
     _analyzerSession = AnalyzerSession(
       settings: widget.settingsNotifier,
       analysesDao: _gasAnalysesDao,
