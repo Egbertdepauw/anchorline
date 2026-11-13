@@ -64,19 +64,27 @@ class _Rig {
     this.printError,
     this.closeError,
     this.useClose = true,
+    this.saveInserts = true,
+    this.noPrinter = false,
+    this.markCompleteError,
     FakeOpenBlendsDao? dao,
   }) : openDao = dao ?? FakeOpenBlendsDao() {
     processor = OkRecordProcessor(
       save: (id, a) async {
         events.add('save');
         saved[id] = a;
-        return true;
+        return saveInserts;
       },
-      markComplete: (id) async => events.add('markComplete'),
-      printLabel: (a, copies) async {
-        events.add('print');
-        if (printError != null) throw printError!;
+      markComplete: (id) async {
+        events.add('markComplete');
+        if (markCompleteError != null) throw markCompleteError!;
       },
+      printLabel: noPrinter
+          ? null
+          : (a, copies) async {
+              events.add('print');
+              if (printError != null) throw printError!;
+            },
       closeBlend: !useClose
           ? null
           : (b, id) async {
@@ -91,6 +99,9 @@ class _Rig {
   final Object? printError;
   final Object? closeError;
   final bool useClose;
+  final bool saveInserts;
+  final bool noPrinter;
+  final Object? markCompleteError;
   final FakeOpenBlendsDao openDao;
   late final OkRecordProcessor processor;
   final events = <String>[];
@@ -148,6 +159,37 @@ void main() {
     expect(res.complete, isFalse);
     expect(r.events, ['save', 'print']);
     expect(r.openDao.closeBlendCalls, isEmpty);
+  });
+
+  test('an already-saved press does not close', () async {
+    final blend = _openBlend('b1');
+    final r = _Rig(
+        dao: FakeOpenBlendsDao(blends: [blend]), saveInserts: false);
+    final res = await r.press('r1', _setup([blend]));
+    expect(res.alreadySaved, isTrue);
+    expect(r.openDao.closeBlendCalls, isEmpty);
+    expect(r.events, isNot(contains('close')));
+  });
+
+  test('a press with NO PRINTER does not close', () async {
+    final blend = _openBlend('b1');
+    final r = _Rig(dao: FakeOpenBlendsDao(blends: [blend]), noPrinter: true);
+    final res = await r.press('r1', _setup([blend]));
+    expect(res.text, 'NO PRINTER');
+    expect(r.openDao.closeBlendCalls, isEmpty);
+    expect(r.events, isNot(contains('close')));
+  });
+
+  test('a markComplete that fails does not close', () async {
+    final blend = _openBlend('b1');
+    final r = _Rig(
+      dao: FakeOpenBlendsDao(blends: [blend]),
+      markCompleteError: StateError('db'),
+    );
+    final res = await r.press('r1', _setup([blend]));
+    expect(res.complete, isFalse);
+    expect(r.openDao.closeBlendCalls, isEmpty);
+    expect(r.events, isNot(contains('close')));
   });
 
   test('a press with no blend to close asks for none', () async {
