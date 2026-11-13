@@ -128,6 +128,58 @@ void main() {
     expect(await dao.listOpen(), isEmpty);
   });
 
+  test('closeOldestOpen with a cutoff leaves out a newer blend', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = OpenBlendsDao(ps, FakeSessionSource()..setUserId('u1'));
+    final older = await dao.add(
+        _blend(blendedAt: DateTime.fromMillisecondsSinceEpoch(1000)));
+    final newer = await dao.add(
+        _blend(blendedAt: DateTime.fromMillisecondsSinceEpoch(5000)));
+    const t = DesiredMix(18, 45);
+    final cutoff = DateTime.fromMillisecondsSinceEpoch(2000);
+
+    expect(await dao.closeOldestOpen(t, 'x1', blendedNoLaterThan: cutoff),
+        older);
+    // Only the newer blend is left, and it is past the cutoff.
+    expect(await dao.closeOldestOpen(t, 'x2', blendedNoLaterThan: cutoff),
+        isNull);
+    expect([for (final b in await dao.listOpen()) b.id], [newer]);
+  });
+
+  test('closeBlend fallback with a cutoff leaves out a newer blend', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = OpenBlendsDao(ps, FakeSessionSource()..setUserId('u1'));
+    await dao.add(
+        _blend(blendedAt: DateTime.fromMillisecondsSinceEpoch(1000)));
+    await dao.add(
+        _blend(blendedAt: DateTime.fromMillisecondsSinceEpoch(5000)));
+    final first = (await dao.listOpen()).first;
+    final cutoff = DateTime.fromMillisecondsSinceEpoch(2000);
+
+    expect(await dao.closeBlend(first, 'x1', blendedNoLaterThan: cutoff),
+        isTrue);
+    // first is closed; the fallback would pick the newer one, past the
+    // cutoff.
+    expect(await dao.closeBlend(first, 'x2', blendedNoLaterThan: cutoff),
+        isFalse);
+    expect(await dao.listOpen(), hasLength(1));
+  });
+
+  test('a second close for the same analysis id closes nothing', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = OpenBlendsDao(ps, FakeSessionSource()..setUserId('u1'));
+    await dao.add(
+        _blend(blendedAt: DateTime.fromMillisecondsSinceEpoch(1000)));
+    await dao.add(
+        _blend(blendedAt: DateTime.fromMillisecondsSinceEpoch(2000)));
+    final first = (await dao.listOpen()).first;
+
+    expect(await dao.closeBlend(first, 'x1'), isTrue);
+    expect(await dao.closeBlend(first, 'x1'), isFalse);
+    expect(await dao.closeOldestOpen(const DesiredMix(18, 45), 'x1'), isNull);
+    expect(await dao.listOpen(), hasLength(1));
+  });
+
   test('blendClosedBy returns the closed blend, null for unknown or dismissed',
       () async {
     final ps = await openPowerSyncForTest();

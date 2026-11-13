@@ -12,6 +12,12 @@ import '../analysis/open_blend_match.dart';
 import '../data/db/gas_analyses_dao.dart';
 import '../data/db/open_blends_dao.dart';
 
+/// How much newer than the analysis a blend may be and still be closed by
+/// its sign-off. Covers clock skew between the blending and the analysing
+/// device. A blend made later than this was made after the analysis, so the
+/// analysis can't be what it was waiting for.
+const blendSignOffSlack = Duration(minutes: 15);
+
 /// Closes the open blend that [signedOff], the entry as stored after its
 /// sign-off, belongs to. Nothing for an entry that still needs sign-off or
 /// is a residual.
@@ -33,21 +39,29 @@ Future<void> closeBlendOnSignOff({
     // One analysis closes one blend: a second call (a sign-off on the log,
     // then a save on the card's result) finds it already closed.
     if (await openBlends.blendClosedBy(signedOff.id) != null) return;
+    final cutoff = signedOff.analysedAt.add(blendSignOffSlack);
     final desired = signedOff.desiredMix;
     if (desired != null) {
-      await openBlends.closeOldestOpen(desired, signedOff.id);
+      await openBlends.closeOldestOpen(desired, signedOff.id,
+          blendedNoLaterThan: cutoff);
       return;
     }
     final ranked = rankOpenBlends(
       o2Percent: signedOff.o2Percent,
       hePercent: signedOff.hePercent,
-      open: await openBlends.listOpen(),
+      open: [
+        for (final b in await openBlends.listOpen())
+          if (!b.blendedAt.isAfter(cutoff)) b,
+      ],
     );
     if (ranked.isEmpty) return;
     final level = ranked.first.grade.level;
     if (level != MixMatchLevel.match && level != MixMatchLevel.orange) return;
     final rankedBlend = ranked.first.blend;
-    if (!await openBlends.closeBlend(rankedBlend, signedOff.id)) return;
+    if (!await openBlends.closeBlend(rankedBlend, signedOff.id,
+        blendedNoLaterThan: cutoff)) {
+      return;
+    }
     // closeBlend can fall back to another blend of the same target.
     final blend = await openBlends.blendClosedBy(signedOff.id) ?? rankedBlend;
     await analyses.update(

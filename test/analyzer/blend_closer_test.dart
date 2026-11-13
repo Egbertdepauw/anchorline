@@ -92,6 +92,56 @@ void main() {
     expect(edit.analysedFor, 'Anna');
   });
 
+  test('an analysis older than the blend closes nothing (desired mix)',
+      () async {
+    // The entry is analysed at 10:00; the blend was made at 11:00.
+    final blends = FakeOpenBlendsDao(blends: [
+      _blend('b1', _tx1845, DateTime(2026, 11, 13, 11)),
+    ]);
+    final analyses =
+        FakeGasAnalysesDao(analyses: [_entry('a1', desired: _tx1845)]);
+    await closeBlendOnSignOff(
+        signedOff: analyses.analyses.single,
+        openBlends: blends,
+        analyses: analyses);
+    expect(blends.closedBy, isEmpty);
+  });
+
+  test('an analysis older than the blend closes nothing (by reading)',
+      () async {
+    final blends = FakeOpenBlendsDao(blends: [
+      _blend('b1', _tx1845, DateTime(2026, 11, 13, 11)),
+    ]);
+    final analyses = FakeGasAnalysesDao(analyses: [_entry('a1')]);
+    await closeBlendOnSignOff(
+        signedOff: analyses.analyses.single,
+        openBlends: blends,
+        analyses: analyses);
+    expect(blends.closedBy, isEmpty);
+    expect(analyses.updated, isEmpty);
+  });
+
+  test('a blend 10 minutes newer than the analysis still closes (slack)',
+      () async {
+    final at = DateTime(2026, 11, 13, 10, 10);
+    final blends = FakeOpenBlendsDao(blends: [_blend('b1', _tx1845, at)]);
+    final analyses =
+        FakeGasAnalysesDao(analyses: [_entry('a1', desired: _tx1845)]);
+    await closeBlendOnSignOff(
+        signedOff: analyses.analyses.single,
+        openBlends: blends,
+        analyses: analyses);
+    expect(blends.closedBy, {'b1': 'a1'});
+
+    final blends2 = FakeOpenBlendsDao(blends: [_blend('b2', _tx1845, at)]);
+    final analyses2 = FakeGasAnalysesDao(analyses: [_entry('a2')]);
+    await closeBlendOnSignOff(
+        signedOff: analyses2.analyses.single,
+        openBlends: blends2,
+        analyses: analyses2);
+    expect(blends2.closedBy, {'b2': 'a2'});
+  });
+
   test('a reading that matches no blend closes nothing', () async {
     final blends = FakeOpenBlendsDao(blends: [_blend('b1', _tx1845, t0)]);
     final analyses =
@@ -171,7 +221,8 @@ void main() {
 
 class _ThrowingBlends extends FakeOpenBlendsDao {
   @override
-  Future<String?> closeOldestOpen(DesiredMix target, String analysisId) =>
+  Future<String?> closeOldestOpen(DesiredMix target, String analysisId,
+          {DateTime? blendedNoLaterThan}) =>
       throw StateError('boom');
 }
 
@@ -184,7 +235,9 @@ class _RacingBlends implements OpenBlendsDaoLike {
   @override
   Future<List<OpenBlend>> listOpen() async => [stale];
   @override
-  Future<bool> closeBlend(OpenBlend b, String id) => inner.closeBlend(b, id);
+  Future<bool> closeBlend(OpenBlend b, String id,
+          {DateTime? blendedNoLaterThan}) =>
+      inner.closeBlend(b, id, blendedNoLaterThan: blendedNoLaterThan);
   @override
   Future<OpenBlend?> blendClosedBy(String id) => inner.blendClosedBy(id);
   @override

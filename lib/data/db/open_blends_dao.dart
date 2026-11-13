@@ -37,11 +37,19 @@ abstract class OpenBlendsDaoLike {
   Stream<List<OpenBlend>> watchOpen();
 
   /// Closes [b] with [analysisId] if it is still open, otherwise the oldest
-  /// open blend with the same target. False when there is none.
-  Future<bool> closeBlend(OpenBlend b, String analysisId);
+  /// open blend with the same target. False when there is none, or when
+  /// [analysisId] already closed a blend (one analysis closes one blend).
+  ///
+  /// [blendedNoLaterThan] limits the fallback to blends made at or before
+  /// it (a sign-off never closes a blend made after the analysis).
+  Future<bool> closeBlend(OpenBlend b, String analysisId,
+      {DateTime? blendedNoLaterThan});
 
-  /// Closes the oldest open blend of [target]; returns its id, or null.
-  Future<String?> closeOldestOpen(DesiredMix target, String analysisId);
+  /// Closes the oldest open blend of [target]; returns its id, or null (also
+  /// null when [analysisId] already closed a blend). [blendedNoLaterThan]
+  /// limits it to blends made at or before that moment.
+  Future<String?> closeOldestOpen(DesiredMix target, String analysisId,
+      {DateTime? blendedNoLaterThan});
 
   /// The blend (not dismissed) that [analysisId] closed, or null.
   Future<OpenBlend?> blendClosedBy(String analysisId);
@@ -148,8 +156,10 @@ class OpenBlendsDao implements OpenBlendsDaoLike {
   }
 
   @override
-  Future<bool> closeBlend(OpenBlend b, String analysisId) =>
+  Future<bool> closeBlend(OpenBlend b, String analysisId,
+          {DateTime? blendedNoLaterThan}) =>
       _ps.writeTransaction((tx) async {
+        if (await _alreadyClosedBy(tx, analysisId)) return false;
         // Same predicate as listOpen, inside the transaction: two quick
         // closes can't both claim one blend.
         final (where, args) = _openWhere();
@@ -159,7 +169,7 @@ class OpenBlendsDao implements OpenBlendsDaoLike {
         );
         var id = still?['id'] as String?;
         if (id == null) {
-          final (sql, targetArgs) = _oldestOfTargetQuery(b.target);
+          final (sql, targetArgs) = _oldestOfTargetQuery(b.target, blendedNoLaterThan);
           id = (await tx.getOptional(sql, targetArgs))?['id'] as String?;
         }
         if (id == null) return false;
@@ -168,9 +178,11 @@ class OpenBlendsDao implements OpenBlendsDaoLike {
       });
 
   @override
-  Future<String?> closeOldestOpen(DesiredMix target, String analysisId) =>
+  Future<String?> closeOldestOpen(DesiredMix target, String analysisId,
+          {DateTime? blendedNoLaterThan}) =>
       _ps.writeTransaction((tx) async {
-        final (sql, args) = _oldestOfTargetQuery(target);
+        if (await _alreadyClosedBy(tx, analysisId)) return null;
+        final (sql, args) = _oldestOfTargetQuery(target, blendedNoLaterThan);
         final id = (await tx.getOptional(sql, args))?['id'] as String?;
         if (id == null) return null;
         await tx.execute(_closeSql, _closeArgs(id, analysisId));
@@ -189,13 +201,32 @@ class OpenBlendsDao implements OpenBlendsDaoLike {
     return row == null ? null : _rowToBlend(row);
   }
 
-  (String, List<Object?>) _oldestOfTargetQuery(DesiredMix target) {
+  /// True when a non-dismissed blend is already closed by [analysisId].
+  /// Checked inside the close transactions so two racing closes for one
+  /// analysis can't both claim a blend.
+  Future<bool> _alreadyClosedBy(dynamic tx, String analysisId) async {
+    final row = await tx.getOptional(
+      'SELECT 1 AS x FROM open_blends WHERE deleted_at IS NULL '
+      'AND closed_by_analysis_id = ? LIMIT 1',
+      [analysisId],
+    );
+    return row != null;
+  }
+
+  (String, List<Object?>) _oldestOfTargetQuery(
+      DesiredMix target, DateTime? blendedNoLaterThan) {
     final (where, args) = _openWhere();
     return (
       'SELECT b.id FROM open_blends b WHERE $where '
           'AND b.target_o2_percent = ? AND b.target_he_percent = ? '
+          '${blendedNoLaterThan != null ? 'AND b.blended_at <= ? ' : ''}'
           '$_order LIMIT 1',
-      [...args, target.o2Percent, target.hePercent],
+      [
+        ...args,
+        target.o2Percent,
+        target.hePercent,
+        ?blendedNoLaterThan?.millisecondsSinceEpoch,
+      ],
     );
   }
 

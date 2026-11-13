@@ -25,6 +25,9 @@ class FakeOpenBlendsDao implements OpenBlendsDaoLike {
   final Map<String, String> closedBy = {};
   final List<(OpenBlend, String)> closeBlendCalls = [];
   final List<(DesiredMix, String)> closeOldestCalls = [];
+
+  /// The blendedNoLaterThan argument of each closeBlend/closeOldestOpen call.
+  final List<DateTime?> blendedNoLaterThanCalls = [];
   final _changes = StreamController<void>.broadcast();
   int _nextId = 0;
 
@@ -104,17 +107,27 @@ class FakeOpenBlendsDao implements OpenBlendsDaoLike {
     }
   }
 
-  String? _oldestOpenOf(DesiredMix target) {
+  String? _oldestOpenOf(DesiredMix target, [DateTime? noLaterThan]) {
     for (final b in _open) {
-      if (b.target == target) return b.id;
+      if (b.target != target) continue;
+      if (noLaterThan != null && b.blendedAt.isAfter(noLaterThan)) continue;
+      return b.id;
     }
     return null;
   }
 
+  bool _alreadyClosedBy(String analysisId) => blends.any(
+      (b) => !dismissed.contains(b.id) && closedBy[b.id] == analysisId);
+
   @override
-  Future<bool> closeBlend(OpenBlend b, String analysisId) async {
+  Future<bool> closeBlend(OpenBlend b, String analysisId,
+      {DateTime? blendedNoLaterThan}) async {
     closeBlendCalls.add((b, analysisId));
-    final id = _open.any((x) => x.id == b.id) ? b.id : _oldestOpenOf(b.target);
+    blendedNoLaterThanCalls.add(blendedNoLaterThan);
+    if (_alreadyClosedBy(analysisId)) return false;
+    final id = _open.any((x) => x.id == b.id)
+        ? b.id
+        : _oldestOpenOf(b.target, blendedNoLaterThan);
     if (id == null) return false;
     closedBy[id] = analysisId;
     _changes.add(null);
@@ -122,9 +135,12 @@ class FakeOpenBlendsDao implements OpenBlendsDaoLike {
   }
 
   @override
-  Future<String?> closeOldestOpen(DesiredMix target, String analysisId) async {
+  Future<String?> closeOldestOpen(DesiredMix target, String analysisId,
+      {DateTime? blendedNoLaterThan}) async {
     closeOldestCalls.add((target, analysisId));
-    final id = _oldestOpenOf(target);
+    blendedNoLaterThanCalls.add(blendedNoLaterThan);
+    if (_alreadyClosedBy(analysisId)) return null;
+    final id = _oldestOpenOf(target, blendedNoLaterThan);
     if (id == null) return null;
     closedBy[id] = analysisId;
     _changes.add(null);
