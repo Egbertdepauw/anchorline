@@ -1,3 +1,4 @@
+import 'package:ccrlogger/data/models/gas_analysis.dart';
 import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/blend_screen.dart';
@@ -5,6 +6,8 @@ import 'package:ccrlogger/ui/theme/app_themes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../_helpers/fake_open_blends_dao.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -320,6 +323,92 @@ void main() {
       ]) {
         expect(y(tester, key), topoff, reason: key);
       }
+    });
+  });
+
+  group('open blends', () {
+    final fixedNow = DateTime(2026, 11, 13, 12);
+
+    Future<(BlendNotifier, FakeOpenBlendsDao, SettingsNotifier)> pumpOpen(
+        WidgetTester tester,
+        {void Function(BlendNotifier)? setup,
+        bool withDao = true}) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final settings = SettingsNotifier();
+      await settings.load();
+      final notifier = BlendNotifier(settings: settings);
+      setup?.call(notifier);
+      final dao = FakeOpenBlendsDao();
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: BlendScreen(
+            notifier: notifier,
+            settings: settings,
+            openBlends: withDao ? dao : null,
+            now: () => fixedNow,
+          ),
+        ),
+      ));
+      await tester.pump();
+      return (notifier, dao, settings);
+    }
+
+    Future<void> leave(WidgetTester tester) =>
+        tester.pumpWidget(const SizedBox());
+
+    testWidgets('Blended saves the draft and shows it in the list',
+        (tester) async {
+      final (n, dao, settings) = await pumpOpen(tester);
+      await settings.setYourInitials('EdP');
+      await tester.tap(k('blend-save-open'));
+      await tester.pump();
+      await tester.pump();
+      expect(dao.added, hasLength(1));
+      expect(dao.added.single.target, const DesiredMix(18, 45));
+      expect(dao.added.single.blendedBy, 'EdP');
+      expect(dao.added.single.blendedAt, fixedNow);
+      expect(find.text('Tx18/45 added to open blends'), findsOneWidget);
+      expect(find.text('Not yet analysed (1)'), findsOneWidget);
+      expect(find.text('just now'), findsOneWidget);
+      expect(n.roleOverridden, isFalse);
+      await leave(tester);
+    });
+
+    testWidgets(
+        'role chip shows the guess with its reason and an override sticks '
+        'for one blend', (tester) async {
+      final (n, dao, _) = await pumpOpen(tester);
+      final chip = find.descendant(
+          of: k('blend-role-chip'),
+          matching: find.text(
+              '${n.roleGuess.role.label} (${n.roleGuess.reason})'));
+      expect(chip, findsOneWidget);
+
+      await tester.tap(k('blend-role-chip'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Deco').last);
+      await tester.pumpAndSettle();
+      expect(n.role, GasRole.deco);
+      expect(find.descendant(of: k('blend-role-chip'), matching: find.text('Deco')),
+          findsOneWidget);
+
+      await tester.tap(k('blend-save-open'));
+      await tester.pump();
+      await tester.pump();
+      expect(dao.added.single.role, GasRole.deco);
+      expect(n.roleOverridden, isFalse);
+      expect(chip, findsOneWidget);
+      await leave(tester);
+    });
+
+    testWidgets('without a DAO the button and list hide but the chip stays',
+        (tester) async {
+      await pumpOpen(tester, withDao: false);
+      expect(k('blend-save-open'), findsNothing);
+      expect(find.textContaining('Not yet analysed'), findsNothing);
+      expect(k('blend-role-chip'), findsOneWidget);
+      await leave(tester);
     });
   });
 }

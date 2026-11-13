@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../data/db/gas_analyses_dao.dart';
+import '../../data/db/open_blends_dao.dart';
 import '../../labels/label_print_service.dart';
 import '../components/tab_top_bar.dart';
 import '../notifiers/analyzer_session.dart';
@@ -56,6 +57,7 @@ class GasScreen extends StatelessWidget {
     required this.session,
     required this.onHome,
     this.analysesDao,
+    this.openBlendsDao,
     this.labelPrinting,
   });
 
@@ -66,6 +68,9 @@ class GasScreen extends StatelessWidget {
 
   /// The cylinder analysis log for the Log tab.
   final GasAnalysesDaoLike? analysesDao;
+
+  /// The open blends, for the Blend tab and its count badge.
+  final OpenBlendsDaoLike? openBlendsDao;
   final LabelPrintService? labelPrinting;
 
   @override
@@ -76,10 +81,13 @@ class GasScreen extends StatelessWidget {
         appBar: TabTopBar(
           onHome: onHome,
           tabs: [
-            const _GasTab(
-              key: ValueKey('gas-tab-blend'),
+            _GasTab(
+              key: const ValueKey('gas-tab-blend'),
               icon: Icons.tune,
               label: 'Blend',
+              count: openBlendsDao == null
+                  ? null
+                  : _OpenCount(dao: openBlendsDao!),
             ),
             ListenableBuilder(
               listenable: session,
@@ -101,7 +109,8 @@ class GasScreen extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            _KeepAlive(BlendScreen(notifier: blend, settings: settings)),
+            _KeepAlive(BlendScreen(
+                notifier: blend, settings: settings, openBlends: openBlendsDao)),
             _KeepAlive(AnalyzerScreen(
                 settings: settings, session: session, blend: blend)),
             _KeepAlive(analysesDao == null
@@ -122,11 +131,18 @@ class GasScreen extends StatelessWidget {
 /// A tab with an icon and a label on one row, and an optional dot after it.
 /// A [Row] rather than [Tab.icon] so it fits the 56 pt bar.
 class _GasTab extends StatelessWidget {
-  const _GasTab({super.key, required this.icon, required this.label, this.dotColor});
+  const _GasTab({super.key,
+      required this.icon,
+      required this.label,
+      this.dotColor,
+      this.count});
 
   final IconData icon;
   final String label;
   final Color? dotColor;
+
+  /// A count badge after the label.
+  final Widget? count;
 
   @override
   Widget build(BuildContext context) {
@@ -137,6 +153,10 @@ class _GasTab extends StatelessWidget {
           Icon(icon, size: 18),
           const SizedBox(width: Spacing.xs),
           Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+          if (count != null) ...[
+            const SizedBox(width: Spacing.xs),
+            count!,
+          ],
           if (dotColor != null) ...[
             const SizedBox(width: Spacing.xs),
             Container(
@@ -149,6 +169,29 @@ class _GasTab extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// The number of open blends, as a small badge; nothing at 0.
+class _OpenCount extends StatelessWidget {
+  const _OpenCount({required this.dao});
+
+  final OpenBlendsDaoLike dao;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<OpenBlend>>(
+      stream: dao.watchOpen(),
+      builder: (context, snap) {
+        final n = snap.data?.length ?? 0;
+        if (n == 0) return const SizedBox.shrink();
+        return Badge(
+          key: const ValueKey('gas-tab-blend-count'),
+          label: Text('$n'),
+          backgroundColor: context.palette.accentPrimary,
+        );
+      },
     );
   }
 }

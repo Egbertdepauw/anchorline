@@ -5,6 +5,7 @@ import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
 import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
 import 'package:ccrlogger/sync/cloud/sync_health_service.dart';
 import 'package:ccrlogger/label_printer/label_bitmap.dart';
+import 'package:ccrlogger/data/db/open_blends_dao.dart';
 import 'package:ccrlogger/labels/label_print_service.dart';
 import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
@@ -26,6 +27,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../_helpers/fake_elapsed.dart';
 import '../../_helpers/fake_gas_analyses_dao.dart';
 import '../../_helpers/fake_label_printer.dart';
+import '../../_helpers/fake_open_blends_dao.dart';
 
 Finder _key(String k) => find.byKey(ValueKey(k));
 
@@ -99,6 +101,7 @@ class _Rig {
       ThemeData? theme,
       Size size = const Size(600, 3200),
       LabelPrintService? labelPrinting,
+      OpenBlendsDaoLike? openBlendsDao,
       Widget Function(Widget gas)? around}) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -129,6 +132,7 @@ class _Rig {
       settings: settings,
       session: session,
       analysesDao: dao,
+      openBlendsDao: openBlendsDao,
       labelPrinting: labelPrinting,
       onHome: () => homeTaps++,
     );
@@ -287,6 +291,29 @@ void main() {
     await rig.session.disconnect();
     await tester.pump();
     expect(_key('gas-tab-analyse-dot'), findsNothing);
+  });
+
+  _test('gas tab shows the open count', (tester, rig) async {
+    OpenBlend b(String id) => OpenBlend(
+          id: id,
+          target: const DesiredMix(18, 45),
+          targetPressureBar: 230,
+          residual: const DesiredMix(21, 0),
+          residualPressureBar: 0,
+          topoff: const DesiredMix(21, 0),
+          waterCapacityL: 12,
+          role: GasRole.bailout,
+          blendedBy: null,
+          blendedAt: DateTime(2026, 11, 13),
+        );
+    final blends = FakeOpenBlendsDao(blends: [b('x'), b('y')]);
+    await rig.pump(tester, openBlendsDao: blends);
+    expect(find.descendant(of: _key('gas-tab-blend-count'),
+        matching: find.text('2')), findsOneWidget);
+    await blends.dismiss('x');
+    await blends.dismiss('y');
+    await tester.pump();
+    expect(_key('gas-tab-blend-count'), findsNothing);
   });
 
   _test('the Analyse dot is green while connected without logging',

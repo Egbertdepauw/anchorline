@@ -26,6 +26,12 @@ class FakeOpenBlendsDao implements OpenBlendsDaoLike {
   final List<(OpenBlend, String)> closeBlendCalls = [];
   final List<(DesiredMix, String)> closeOldestCalls = [];
   final _changes = StreamController<void>.broadcast();
+  int _nextId = 0;
+
+  static String? _blankToNull(String? s) {
+    final t = s?.trim();
+    return t == null || t.isEmpty ? null : t;
+  }
 
   bool _isOpen(OpenBlend b) {
     if (dismissed.contains(b.id)) return false;
@@ -53,7 +59,10 @@ class FakeOpenBlendsDao implements OpenBlendsDaoLike {
   @override
   Future<String> add(NewOpenBlend b) async {
     added.add(b);
-    final id = 'b${added.length}';
+    var id = 'b${++_nextId}';
+    while (blends.any((x) => x.id == id)) {
+      id = 'b${++_nextId}';
+    }
     blends.add(OpenBlend(
       id: id,
       target: b.target,
@@ -63,7 +72,7 @@ class FakeOpenBlendsDao implements OpenBlendsDaoLike {
       topoff: b.topoff,
       waterCapacityL: b.waterCapacityL,
       role: b.role,
-      blendedBy: b.blendedBy,
+      blendedBy: _blankToNull(b.blendedBy),
       blendedAt: b.blendedAt,
     ));
     _changes.add(null);

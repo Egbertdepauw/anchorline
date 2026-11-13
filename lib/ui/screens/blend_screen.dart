@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 
 import '../../analysis/blending/gas_blender.dart';
 import '../../analysis/standard_mix_pick.dart';
+import '../../data/db/open_blends_dao.dart';
 import '../../data/models/gas_analysis.dart';
 import '../components/hero_stat.dart';
 import '../notifiers/blend_notifier.dart';
@@ -23,6 +24,7 @@ import '../theme/data_colors.dart';
 import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import '../widgets/desired_mix_picker.dart';
+import '../widgets/open_blends_section.dart';
 import '../../analysis/gas_naming.dart';
 
 class BlendScreen extends StatefulWidget {
@@ -30,10 +32,16 @@ class BlendScreen extends StatefulWidget {
     super.key,
     required this.notifier,
     required this.settings,
+    this.openBlends,
+    this.now = DateTime.now,
   });
 
   final BlendNotifier notifier;
   final SettingsNotifier settings;
+
+  /// Where "Blended" saves to and the open list reads from. Null hides both.
+  final OpenBlendsDaoLike? openBlends;
+  final DateTime Function() now;
 
   @override
   State<BlendScreen> createState() => _BlendScreenState();
@@ -58,6 +66,41 @@ class _BlendScreenState extends State<BlendScreen> {
     _standard(32, 0),
     _standard(50, 0),
   ];
+
+  Future<void> _pickRole(BuildContext chipContext) async {
+    final box = chipContext.findRenderObject()! as RenderBox;
+    final overlay =
+        Overlay.of(chipContext).context.findRenderObject()! as RenderBox;
+    final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
+    final picked = await showMenu<GasRole>(
+      context: chipContext,
+      position: RelativeRect.fromLTRB(
+        topLeft.dx,
+        topLeft.dy + box.size.height,
+        overlay.size.width - topLeft.dx - box.size.width,
+        0,
+      ),
+      items: [
+        for (final r in kGasRoleButtonOrder)
+          PopupMenuItem(value: r, child: Text(r.label)),
+      ],
+    );
+    if (picked != null) widget.notifier.overrideRole(picked);
+  }
+
+  Future<void> _saveOpenBlend() async {
+    final dao = widget.openBlends;
+    if (dao == null) return;
+    final n = widget.notifier;
+    final draft = n.draftOpenBlend(
+        blendedBy: widget.settings.yourInitials, now: widget.now());
+    final messenger = ScaffoldMessenger.of(context);
+    await dao.add(draft);
+    n.openBlendSaved();
+    messenger.showSnackBar(SnackBar(
+      content: Text('${draft.target.name} added to open blends'),
+    ));
+  }
 
   Future<void> _pickTopoffOther() async {
     final picked = await showOtherMixDialog(context);
@@ -96,6 +139,18 @@ class _BlendScreenState extends State<BlendScreen> {
                   topoff: topoff,
                   result: n.result,
                 ),
+                _RoleRow(
+                  roleLabel: n.role.label,
+                  reason: n.roleOverridden ? null : n.roleGuess.reason,
+                  onTap: _pickRole,
+                  onSave: widget.openBlends == null ? null : _saveOpenBlend,
+                ),
+                if (widget.openBlends != null)
+                  OpenBlendsSection(
+                    dao: widget.openBlends!,
+                    settings: widget.settings,
+                    now: widget.now,
+                  ),
                 _Section(
                   label: 'Target',
                   child: Column(
@@ -221,6 +276,68 @@ class _BlendScreenState extends State<BlendScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// The role chip (tap to change it) and the "Blended" button, under the plan
+/// band.
+class _RoleRow extends StatelessWidget {
+  const _RoleRow({
+    required this.roleLabel,
+    required this.reason,
+    required this.onTap,
+    required this.onSave,
+  });
+  final String roleLabel;
+  final String? reason;
+  final void Function(BuildContext chipContext) onTap;
+  final VoidCallback? onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final text = reason == null ? roleLabel : '$roleLabel ($reason)';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+          Spacing.md, Spacing.sm + 4, Spacing.md, Spacing.sm + 4),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: palette.surfaceRaised)),
+      ),
+      child: Wrap(
+        spacing: Spacing.sm,
+        runSpacing: Spacing.sm,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Builder(
+            builder: (chipContext) => InkWell(
+              key: const ValueKey('blend-role-chip'),
+              onTap: () => onTap(chipContext),
+              borderRadius: Radii.chipBr,
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 32),
+                alignment: Alignment.center,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  borderRadius: Radii.chipBr,
+                  color: palette.surfaceRaised,
+                  border: Border.all(color: palette.surfaceBezel),
+                ),
+                child: Text(text,
+                    style: AppTypography.body.copyWith(
+                        fontSize: 13, color: palette.textPrimary)),
+              ),
+            ),
+          ),
+          if (onSave != null)
+            FilledButton.tonal(
+              key: const ValueKey('blend-save-open'),
+              onPressed: onSave,
+              child: const Text('Blended'),
+            ),
+        ],
       ),
     );
   }
