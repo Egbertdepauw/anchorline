@@ -43,6 +43,9 @@ abstract class OpenBlendsDaoLike {
   /// Closes the oldest open blend of [target]; returns its id, or null.
   Future<String?> closeOldestOpen(DesiredMix target, String analysisId);
 
+  /// The blend (not dismissed) that [analysisId] closed, or null.
+  Future<OpenBlend?> blendClosedBy(String analysisId);
+
   /// Soft-deletes the blend.
   Future<void> dismiss(String id);
 }
@@ -173,6 +176,18 @@ class OpenBlendsDao implements OpenBlendsDaoLike {
         await tx.execute(_closeSql, _closeArgs(id, analysisId));
         return id;
       });
+
+  @override
+  Future<OpenBlend?> blendClosedBy(String analysisId) async {
+    final owner = _ownerId;
+    final row = await _ps.getOptional(
+      'SELECT b.* FROM open_blends b WHERE b.deleted_at IS NULL '
+      'AND b.closed_by_analysis_id = ?${owner != null ? ' AND b.owner_id = ?' : ''} '
+      '$_order LIMIT 1',
+      [analysisId, ?owner],
+    );
+    return row == null ? null : _rowToBlend(row);
+  }
 
   (String, List<Object?>) _oldestOfTargetQuery(DesiredMix target) {
     final (where, args) = _openWhere();

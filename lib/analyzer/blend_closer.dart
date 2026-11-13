@@ -30,6 +30,9 @@ Future<void> closeBlendOnSignOff({
 }) async {
   if (signedOff.needsSignoff || signedOff.isResidual) return;
   try {
+    // One analysis closes one blend: a second call (a sign-off on the log,
+    // then a save on the card's result) finds it already closed.
+    if (await openBlends.blendClosedBy(signedOff.id) != null) return;
     final desired = signedOff.desiredMix;
     if (desired != null) {
       await openBlends.closeOldestOpen(desired, signedOff.id);
@@ -43,8 +46,10 @@ Future<void> closeBlendOnSignOff({
     if (ranked.isEmpty) return;
     final level = ranked.first.grade.level;
     if (level != MixMatchLevel.match && level != MixMatchLevel.orange) return;
-    final blend = ranked.first.blend;
-    if (!await openBlends.closeBlend(blend, signedOff.id)) return;
+    final rankedBlend = ranked.first.blend;
+    if (!await openBlends.closeBlend(rankedBlend, signedOff.id)) return;
+    // closeBlend can fall back to another blend of the same target.
+    final blend = await openBlends.blendClosedBy(signedOff.id) ?? rankedBlend;
     await analyses.update(
       signedOff.id,
       GasAnalysisEdit(

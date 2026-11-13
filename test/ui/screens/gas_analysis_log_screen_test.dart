@@ -1757,6 +1757,69 @@ void main() {
       expect(find.text('Analyses · S80 left'), findsOneWidget);
       expect(_key('analysis-print-a1'), findsOneWidget);
     });
+
+    testWidgets('a cylinder in Equipment passes its open blends to the log, and a sign-off closes one',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      late final EquipmentDao equipment;
+      late final String cylinderId;
+      await tester.runAsync(() async {
+        final rig = await openEquipmentDaoForTest(db);
+        equipment = rig.dao;
+        cylinderId = await equipment.addCylinder(
+          label: 'S80 left',
+          role: CylinderRole.bailout,
+          bailoutOrder: 1,
+          volumeLiters: 11.1,
+          workingPressureBar: 207,
+        );
+      });
+      final analyses = FakeGasAnalysesDao(analyses: [
+        entry('a1', DateTime(2026, 10, 30), 32.1, 0,
+            cylinderId: cylinderId,
+            label: 'S80 left',
+            needsSignoff: true,
+            targetO2: 32,
+            targetHe: 0),
+      ]);
+      final blends = FakeOpenBlendsDao(blends: [
+        OpenBlend(
+          id: 'b1',
+          target: const DesiredMix(32, 0),
+          targetPressureBar: 200,
+          residual: const DesiredMix(21, 0),
+          residualPressureBar: 0,
+          topoff: const DesiredMix(21, 0),
+          waterCapacityL: 3,
+          role: GasRole.bailout,
+          blendedBy: null,
+          blendedAt: DateTime(2026, 10, 30, 16),
+        ),
+      ]);
+
+      await tester.runAsync(() async {
+        await tester.pumpWidget(MaterialApp(
+          home: CylinderDetailScreen(
+            dao: equipment,
+            id: cylinderId,
+            analysesDao: analyses,
+            openBlends: blends,
+          ),
+        ));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      await tester.pump();
+
+      await tapAndSettle(tester, _key('cylinder-analyses'));
+      expect(find.text('Analyses · S80 left'), findsOneWidget);
+      await tapAndSettle(tester, find.text('EAN32'));
+      await tapAndSettle(tester, _key('analysis-edit-signoff'));
+      expect(blends.closedBy, {'b1': 'a1'});
+    });
   });
 
   group('open blends (#112)', () {

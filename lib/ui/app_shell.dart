@@ -665,6 +665,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           settingsNotifier: widget.settingsNotifier,
                           analysesDao: _gasAnalysesDao,
                           labelPrinting: _labelPrintService,
+                          openBlends: _openBlendsDao,
                         ),
                         SettingsScreen(
                           notifier: widget.settingsNotifier,

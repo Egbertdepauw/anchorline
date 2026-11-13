@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:ccrlogger/analysis/standard_mix_pick.dart' show gasRoleForMix;
 import 'package:ccrlogger/analyzer/analyzer_controller.dart';
+import 'package:ccrlogger/analyzer/blend_closer.dart';
 import 'package:ccrlogger/analyzer/bridge/record_to_analysis.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
 import 'package:ccrlogger/analyzer/transport/demo_transport.dart';
@@ -1235,6 +1236,39 @@ void main() {
 
       expect(h.openBlends.closedBy.values, [h.dao.analyses.single.id]);
       expect(_resultText(tester), 'Saved EAN28');
+    });
+
+    _test('a sign-off on the log, then Edit and Save on the card, closes '
+        'one blend', (tester, h) async {
+      await h.pump(tester);
+      await h.blended(const DesiredMix(32, 0));
+      await h.blended(const DesiredMix(32, 0));
+      await h.connect(tester);
+      await _start(tester);
+      await _setUp(tester);
+
+      await h.feed(tester, 28.0, 0, seconds: 6);
+      await h.pressOk(tester);
+      expect(_resultText(tester), 'Needs sign-off: MISMATCH');
+      final id = h.dao.addedFromBridge.single.$1;
+
+      // The diver signs off on the Log tab: the entry is cleared and
+      // closes the older blend.
+      await h.dao.setNeedsSignoff(id, false);
+      await closeBlendOnSignOff(
+          signedOff: h.dao.analyses.single,
+          openBlends: h.openBlends,
+          analyses: h.dao);
+      expect(h.openBlends.closedBy, hasLength(1));
+      final first = h.openBlends.closedBy.keys.single;
+
+      await tester.tap(_key('analysis-ok-edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(_key('analysis-edit-save'));
+      await tester.pumpAndSettle();
+
+      expect(_resultText(tester), 'Saved EAN28');
+      expect(h.openBlends.closedBy, {first: id});
     });
 
     _test('Edit and Sign off uses up the per-cylinder fields',

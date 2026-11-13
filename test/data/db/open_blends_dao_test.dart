@@ -128,6 +128,18 @@ void main() {
     expect(await dao.listOpen(), isEmpty);
   });
 
+  test('blendClosedBy returns the closed blend, null for unknown or dismissed',
+      () async {
+    final ps = await openPowerSyncForTest();
+    final dao = OpenBlendsDao(ps, FakeSessionSource()..setUserId('u1'));
+    final id = await dao.add(_blend());
+    await dao.closeOldestOpen(const DesiredMix(18, 45), 'x1');
+    expect((await dao.blendClosedBy('x1'))?.id, id);
+    expect(await dao.blendClosedBy('nope'), isNull);
+    await dao.dismiss(id);
+    expect(await dao.blendClosedBy('x1'), isNull);
+  });
+
   test('closeOldestOpen picks the oldest of the target and ignores other mixes',
       () async {
     final ps = await openPowerSyncForTest();

@@ -1,6 +1,6 @@
 import 'package:ccrlogger/analyzer/blend_closer.dart';
+import 'package:ccrlogger/data/db/open_blends_dao.dart';
 import 'package:ccrlogger/data/models/gas_analysis.dart';
-import 'package:ccrlogger/data/models/open_blend.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../_helpers/fake_gas_analyses_dao.dart';
@@ -127,6 +127,39 @@ void main() {
     expect(blends.closedBy, isEmpty);
   });
 
+  test('calling it twice for the same entry closes only one blend', () async {
+    final blends = FakeOpenBlendsDao(blends: [
+      _blend('a', _tx1845, t0),
+      _blend('b', _tx1845, t0.add(const Duration(hours: 1))),
+    ]);
+    final analyses =
+        FakeGasAnalysesDao(analyses: [_entry('a1', desired: _tx1845)]);
+    for (var i = 0; i < 2; i++) {
+      await closeBlendOnSignOff(
+          signedOff: analyses.analyses.single,
+          openBlends: blends,
+          analyses: analyses);
+    }
+    expect(blends.closedBy, {'a': 'a1'});
+  });
+
+  test('the entry gets the role of the blend actually closed after a '
+      'fallback', () async {
+    final ranked = _blend('ranked', _tx1845, t0, role: GasRole.diluent);
+    final other = _blend('other', _tx1845, t0.add(const Duration(hours: 1)),
+        role: GasRole.bailout);
+    final blends = FakeOpenBlendsDao(blends: [ranked, other]);
+    // The ranked blend is closed elsewhere between listOpen and closeBlend.
+    blends.closedBy['ranked'] = 'elsewhere';
+    final analyses = FakeGasAnalysesDao(analyses: [_entry('a1')]);
+    await closeBlendOnSignOff(
+        signedOff: analyses.analyses.single,
+        openBlends: _RacingBlends(blends, ranked),
+        analyses: analyses);
+    expect(blends.closedBy['other'], 'a1');
+    expect(analyses.updated.single.$2.gasRole, GasRole.bailout);
+  });
+
   test('a failure is swallowed', () async {
     final analyses = FakeGasAnalysesDao(analyses: [_entry('a1', desired: _tx1845)]);
     await closeBlendOnSignOff(
@@ -140,4 +173,20 @@ class _ThrowingBlends extends FakeOpenBlendsDao {
   @override
   Future<String?> closeOldestOpen(DesiredMix target, String analysisId) =>
       throw StateError('boom');
+}
+
+/// Lists [stale] as still open, though it was closed meanwhile.
+class _RacingBlends implements OpenBlendsDaoLike {
+  _RacingBlends(this.inner, this.stale);
+  final FakeOpenBlendsDao inner;
+  final OpenBlend stale;
+
+  @override
+  Future<List<OpenBlend>> listOpen() async => [stale];
+  @override
+  Future<bool> closeBlend(OpenBlend b, String id) => inner.closeBlend(b, id);
+  @override
+  Future<OpenBlend?> blendClosedBy(String id) => inner.blendClosedBy(id);
+  @override
+  dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }

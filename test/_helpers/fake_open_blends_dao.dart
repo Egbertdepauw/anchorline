@@ -132,6 +132,14 @@ class FakeOpenBlendsDao implements OpenBlendsDaoLike {
   }
 
   @override
+  Future<OpenBlend?> blendClosedBy(String analysisId) async {
+    for (final b in blends) {
+      if (!dismissed.contains(b.id) && closedBy[b.id] == analysisId) return b;
+    }
+    return null;
+  }
+
+  @override
   Future<void> dismiss(String id) async {
     dismissed.add(id);
     _changes.add(null);
