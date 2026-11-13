@@ -1,6 +1,6 @@
 # Blend to analysis: open blends that an analysis closes
 
-Status: design, 2026-11-12, waiting for Egbert's review. Issue #112 (rescoped; see "Non-goals"). The far-off reading rule was confirmed by Egbert on 2026-11-13.
+Status: design, 2026-11-12, approved by Egbert 2026-11-13. Issue #112 (rescoped; see "Non-goals"). The far-off reading rule was confirmed by Egbert on 2026-11-13.
 
 ## Why
 
