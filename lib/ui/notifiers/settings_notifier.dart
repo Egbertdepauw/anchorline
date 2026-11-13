@@ -43,6 +43,8 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kBlendSequence = 'blend_fill_sequence';
   static const _kBlendUseRealGas = 'blend_use_real_gas';
   static const _kBlendFillTempC = 'blend_fill_temp_c';
+  static const _kBlendSettleMinutes = 'blend_settle_minutes';
+  static const _kBlendDiluentMaxL = 'blend_diluent_max_l';
   static const _kBlendSettledTempC = 'blend_settled_temp_c';
   static const _kAnalyzerModPpo2s = 'analyzer_mod_ppo2s';
   static const _kAnalyzerLogOnOk = 'analyzer_log_on_ok';
@@ -135,6 +137,8 @@ class SettingsNotifier extends ChangeNotifier {
   bool _analyzerPrintOnOk = true;
   String? _yourInitials;
   double _analyzerFillPressureStartBar = kDefaultFillPressureStartBar;
+  int _blendSettleMinutes = 60;
+  double _blendDiluentMaxL = 3.0;
   // ── Cylinder labels (device-local, never synced) ────────────────
   bool _labelUse14ForDeeperMixes = false;
   // The SOLO bridge paired on this device (device-local, never synced).
@@ -199,6 +203,12 @@ class SettingsNotifier extends ChangeNotifier {
 
   /// The pressure in bar the analyzer's "Fill pressure" field starts at.
   double get analyzerFillPressureStartBar => _analyzerFillPressureStartBar;
+
+  /// Minutes a fill needs to settle before its analysis is trusted (0-1440).
+  int get blendSettleMinutes => _blendSettleMinutes;
+
+  /// Water capacity in litres up to which a cylinder counts as diluent.
+  double get blendDiluentMaxL => _blendDiluentMaxL;
 
   /// Whether a cylinder label uses ppO2 1.4 instead of 1.6 for the MOD of a
   /// bailout/deco mix under 50 % O2.
@@ -354,6 +364,10 @@ class SettingsNotifier extends ChangeNotifier {
     _analyzerFillPressureStartBar =
         prefs.getDouble(_kAnalyzerFillPressureStart) ??
             kDefaultFillPressureStartBar;
+    _blendSettleMinutes =
+        (prefs.getInt(_kBlendSettleMinutes) ?? 60).clamp(0, 1440);
+    _blendDiluentMaxL =
+        (prefs.getDouble(_kBlendDiluentMaxL) ?? 3.0).clamp(0.5, 50.0);
     _labelUse14ForDeeperMixes = prefs.getBool(_kLabelUse14) ?? false;
     _analyzerBridgeId = prefs.getString(_kAnalyzerBridgeId);
     _analyzerBridgeName = prefs.getString(_kAnalyzerBridgeName);
@@ -731,6 +745,25 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_kAnalyzerFillPressureStart, bar);
+  }
+
+  Future<void> setBlendSettleMinutes(int v) async {
+    final clamped = v.clamp(0, 1440);
+    if (_blendSettleMinutes == clamped) return;
+    _blendSettleMinutes = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kBlendSettleMinutes, clamped);
+  }
+
+  Future<void> setBlendDiluentMaxL(double v) async {
+    if (v.isNaN) return;
+    final clamped = v.clamp(0.5, 50.0);
+    if (_blendDiluentMaxL == clamped) return;
+    _blendDiluentMaxL = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kBlendDiluentMaxL, clamped);
   }
 
   Future<void> setLabelUse14ForDeeperMixes(bool v) async {

@@ -1,8 +1,8 @@
 /// Tap-to-pick chips for the desired mix of a cylinder (issue #114).
 ///
 /// Used by the analyzer's save card and by the analysis log's edit dialog.
-/// The caller decides which mixes to offer (the Blend target, then the
-/// recent desired mixes of the log); "Other…" asks for any other mix.
+/// The caller decides which mixes to offer (the targets of the open
+/// blends, then the recent desired mixes of the log); "Other…" asks for any other mix.
 library;
 
 import 'package:flutter/material.dart';

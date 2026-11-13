@@ -9,7 +9,10 @@
 ///  2. `afterSave` runs (over the bridge: the `ACK`);
 ///  3. when printing: the label prints from an in-memory copy marked
 ///     complete, and the stored flag is cleared once it has;
-///  4. the result says what the bridge screen and the save card show.
+///  4. a save that is complete closes the open blend it matched
+///     ([SaveRecord.blendToClose], issue #112), after the print and the
+///     mark-complete when there was a print;
+///  5. the result says what the bridge screen and the save card show.
 ///
 /// A crash between the steps leaves the entry flagged, never unflagged
 /// without a label.
@@ -19,6 +22,7 @@ library;
 
 import '../analysis/gas_naming.dart';
 import '../data/models/gas_analysis.dart';
+import '../data/models/open_blend.dart';
 import 'bridge/bridge_protocol.dart';
 import 'bridge/record_to_analysis.dart';
 import 'ok_logger.dart';
@@ -28,10 +32,12 @@ class OkRecordProcessor {
     required Future<bool> Function(String id, NewGasAnalysis a) save,
     required Future<void> Function(String id) markComplete,
     Future<void> Function(GasAnalysis a, int copies)? printLabel,
+    Future<bool> Function(OpenBlend blend, String analysisId)? closeBlend,
     void Function(Object error, StackTrace stack)? onError,
   }) : _save = save,
        _markComplete = markComplete,
        _printLabel = printLabel,
+       _closeBlend = closeBlend,
        _onError = onError;
 
   /// False means a row with this id was already there, and nothing was
@@ -39,6 +45,10 @@ class OkRecordProcessor {
   final Future<bool> Function(String id, NewGasAnalysis a) _save;
   final Future<void> Function(String id) _markComplete;
   final Future<void> Function(GasAnalysis a, int copies)? _printLabel;
+
+  /// Closes an open blend with the saved analysis; false when it was closed
+  /// already (the second of two quick presses).
+  final Future<bool> Function(OpenBlend blend, String analysisId)? _closeBlend;
   final void Function(Object error, StackTrace stack)? _onError;
 
   /// Steps 1, 3 and 4 of spec §5 "Order of operations" for [record].
@@ -103,6 +113,20 @@ class OkRecordProcessor {
     } catch (_) {}
   }
 
+  /// Closes the blend of [outcome] with the saved row [rowId]. A failure is
+  /// reported and changes nothing: the analysis is saved either way, and the
+  /// blend stays open for the diver to close or dismiss.
+  Future<void> _close(SaveRecord outcome, String rowId) async {
+    final blend = outcome.blendToClose;
+    final close = _closeBlend;
+    if (blend == null || close == null) return;
+    try {
+      await close(blend, rowId);
+    } catch (e, st) {
+      _report(e, st);
+    }
+  }
+
   Future<OkLogResult> _saveAndPrint(
     SaveRecord outcome,
     OkSetup setup,
@@ -141,6 +165,7 @@ class OkRecordProcessor {
     await _after(afterSave);
 
     if (!outcome.printLabel) {
+      if (!analysis.needsSignoff) await _close(outcome, rowId);
       return OkLogResult(
         code: outcome.feedback,
         text: outcome.feedbackText,
@@ -193,6 +218,7 @@ class OkRecordProcessor {
         setupUsed: setup,
       );
     }
+    await _close(outcome, rowId);
     return OkLogResult(
       code: FeedbackCode.printed,
       text: mixName,

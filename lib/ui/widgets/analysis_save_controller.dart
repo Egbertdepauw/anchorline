@@ -3,8 +3,8 @@
 /// the form and its actions can be separate widgets that share one state.
 ///
 /// The analyzer screen owns the controller while it shows the form, and
-/// tells it the live reading, the Blend target, the connection and the Log
-/// on OK logger on every build ([update], [bindLogger]). The form's widgets
+/// tells it the live reading, the connection and the Log on OK logger on
+/// every build ([update], [bindLogger]). The form's widgets
 /// listen to it and call its actions.
 ///
 /// It captures the current reading plus the diver's context (cylinder from
@@ -14,12 +14,21 @@
 /// log what they've got.
 ///
 /// For cylinder labels the form also holds the desired mix and the gas role.
-/// The desired mix is picked automatically (spec §4.3): the unused Blend
-/// target or the nearest standard mix, and only when it grades match or
-/// orange against the reading, because up to a red match the label prints
-/// its name. A chip the diver taps is their pick until the next manual save.
+/// The desired mix is picked automatically (spec §4.3): the open blend that
+/// matches the reading or the nearest standard mix, and only when it grades
+/// match or orange against the reading, because up to a red match the label
+/// prints its name. A chip the diver taps is their pick until the next
+/// manual save.
+///
+/// A save closes an open blend (issue #112, [blendToClose]): the one the
+/// reading matches, the oldest of the mix the diver tapped, or the one the
+/// diver chose with [chooseBlend]. The analysis then takes the blend's target
+/// as its desired mix and the blend's role. A residual analysis ([residual])
+/// closes nothing, has no desired mix and isn't printed; it fills the Blend
+/// tab's residual gas through [onResidualSaved].
+///
 /// The role follows the rule of [resolveGasRole]: a tapped role, else the
-/// picked cylinder's, else Bailout / deco above 30 % O2. "Save & print"
+/// blend's, else the picked cylinder's, else Bailout above 30 % O2. "Save & print"
 /// saves the analysis and then prints its label. A hard mismatch with the
 /// desired mix is confirmed before anything is saved; a print that fails
 /// leaves the analysis saved.
@@ -36,13 +45,18 @@ import 'package:flutter/material.dart';
 import '../../analysis/fill_pressure.dart';
 import '../../analysis/gas_naming.dart';
 import '../../analysis/mix_match.dart';
+import '../../analysis/open_blend_match.dart';
+// The getter [AnalysisSaveController.nearestUnmatched] shadows the function.
+import '../../analysis/open_blend_match.dart' as match;
 import '../../analysis/standard_mix_pick.dart';
+import '../../analyzer/blend_closer.dart';
 import '../../analyzer/bridge/bridge_protocol.dart';
 import '../../analyzer/bridge/record_to_analysis.dart';
 import '../../analyzer/protocol/analyzer_reading.dart';
 import '../../analyzer/stability.dart';
 import '../../analyzer/ok_logger.dart';
 import '../../data/db/gas_analyses_dao.dart';
+import '../../data/db/open_blends_dao.dart';
 import '../../labels/label_print_service.dart';
 import '../notifiers/settings_notifier.dart';
 import 'analysis_action_bar.dart' show kSnackBarClearOfActionBar;
@@ -58,10 +72,13 @@ class AnalysisSaveController extends ChangeNotifier {
     required GasAnalysesDaoLike dao,
     required SettingsNotifier settings,
     LabelPrintService? labelPrinting,
+    OpenBlendsDaoLike? openBlends,
+    this.onResidualSaved,
     DateTime Function() now = DateTime.now,
   })  : _dao = dao,
         _settings = settings,
         _labelPrinting = labelPrinting,
+        _openBlends = openBlends,
         _now = now,
         _printOnOk = settings.analyzerPrintOnOk,
         analysedBy = TextEditingController(text: settings.yourInitials ?? '') {
@@ -70,11 +87,18 @@ class AnalysisSaveController extends ChangeNotifier {
     fillPressure.addListener(_onFillPressure);
     unawaited(_loadCylinders());
     unawaited(_loadMixOptions());
+    _watchOpenBlends();
   }
 
   final GasAnalysesDaoLike _dao;
   final SettingsNotifier _settings;
   final LabelPrintService? _labelPrinting;
+  final OpenBlendsDaoLike? _openBlends;
+
+  /// Called after a residual analysis is saved, with its O2, He and fill
+  /// pressure (null when none was entered). The screen sets it to
+  /// `BlendNotifier.applyResidualAnalysis`.
+  final void Function(double o2, double he, double? bar)? onResidualSaved;
 
   /// Clock, injectable for tests.
   final DateTime Function() _now;
@@ -94,30 +118,14 @@ class AnalysisSaveController extends ChangeNotifier {
   // ── What the screen tells it ────────────────────────────────────
   AnalyzerReading? _reading;
   ReadingStability _stability = ReadingStability.noData;
-  DesiredMix? _blendTarget;
-  DesiredMix? _unusedBlendTarget;
   bool _connected = false;
 
   /// The live reading to save; null before the first one.
   AnalyzerReading? get reading => _reading;
   ReadingStability get stability => _stability;
 
-  /// The Blend tab's target, when the diver used it recently; offered among
-  /// the desired mixes right after the selected one.
-  DesiredMix? get blendTarget => _blendTarget;
-
-  /// The recent Blend target that a complete save has not used yet; the
-  /// automatic pick prefers it.
-  DesiredMix? get unusedBlendTarget => _unusedBlendTarget;
-
   /// The analyzer is connected.
   bool get connected => _connected;
-
-  /// Called after a complete manual save of the Blend target, or the
-  /// sign-off of an OK press of it, so the target is used up (one blend is
-  /// one cylinder). An OK press that saves complete is marked by the
-  /// session. The screen sets it to `BlendNotifier.markRecentTargetUsed`.
-  VoidCallback? onBlendTargetUsed;
 
   /// Takes the screen's live values and re-evaluates the automatic mix pick
   /// for the reading. A session that connects (after not being connected)
@@ -131,20 +139,14 @@ class AnalysisSaveController extends ChangeNotifier {
   void update({
     AnalyzerReading? reading,
     required ReadingStability stability,
-    DesiredMix? blendTarget,
-    DesiredMix? unusedBlendTarget,
     required bool connected,
   }) {
     final changed = reading != _reading ||
         stability != _stability ||
-        blendTarget != _blendTarget ||
-        unusedBlendTarget != _unusedBlendTarget ||
         connected != _connected;
     final connecting = connected && !_connected;
     _reading = reading;
     _stability = stability;
-    _blendTarget = blendTarget;
-    _unusedBlendTarget = unusedBlendTarget;
     _connected = connected;
     _autoPick = _pickFor(usableGas);
     // Someone else analysing holds until Disconnect; a new session starts
@@ -173,6 +175,16 @@ class AnalysisSaveController extends ChangeNotifier {
   /// The role the diver tapped, or null to follow the rule.
   GasRole? _tappedRole;
 
+  // ── Open blends ─────────────────────────────────────────────────
+  StreamSubscription<List<OpenBlend>>? _openSub;
+  List<OpenBlend> _open = const [];
+
+  /// The diver's choice of the blend a save closes; a manual save resets it.
+  BlendChoice _choice = const AutoBlend();
+
+  /// "Residual analysis" is on: the next save is a residual.
+  bool _residual = false;
+
   /// "+ Add a note" was tapped; see [notesShown].
   bool _notesOpen = false;
   int _copies = 1;
@@ -196,8 +208,8 @@ class AnalysisSaveController extends ChangeNotifier {
       _cylinders.any((c) => c.id == _cylinderId) ? _cylinderId : null;
 
   /// The mix chips to offer, at most three so they fit one line on a
-  /// phone: the selected mix, then the Blend target, then the log's recent
-  /// desired mixes, with no duplicates.
+  /// phone: the selected mix, then the targets of the open blends, then the
+  /// log's recent desired mixes, with no duplicates.
   List<DesiredMix> get mixOptions {
     final out = <DesiredMix>[];
     void add(DesiredMix? m) {
@@ -207,15 +219,23 @@ class AnalysisSaveController extends ChangeNotifier {
     }
 
     add(desiredMix);
-    add(_blendTarget);
+    for (final b in _open) {
+      add(b.target);
+    }
     _recentMixes.forEach(add);
     return out;
   }
 
   static const _kMaxMixChips = 3;
 
-  /// The desired mix: the automatic pick for the reading, or the diver's.
-  DesiredMix? get desiredMix => _mixAutomatic ? _autoPick?.mix : _diverMix;
+  /// The desired mix: the target of the blend a save closes, else the
+  /// automatic pick for the reading, or the diver's. None for a residual.
+  DesiredMix? get desiredMix {
+    if (_residual) return null;
+    final blend = blendToClose;
+    if (blend != null) return blend.target;
+    return _mixAutomatic ? _autoPick?.mix : _diverMix;
+  }
 
   /// The desired mix follows the reading (no chip tapped since the last
   /// manual save).
@@ -223,22 +243,147 @@ class AnalysisSaveController extends ChangeNotifier {
 
   /// Where the automatic pick came from; null for the diver's pick and when
   /// nothing is picked.
-  MixPickSource? get mixSource => _mixAutomatic ? _autoPick?.source : null;
+  MixPickSource? get mixSource {
+    if (!_mixAutomatic || _residual) return null;
+    return blendToClose != null
+        ? MixPickSource.blendTarget
+        : _autoPick?.source;
+  }
 
   /// The gas role by the rule of [resolveGasRole], for [desiredMix].
-  GasRole get role => _roleFor(desiredMix, usableGas?.o2);
+  GasRole get role =>
+      _roleFor(desiredMix, usableGas?.o2, blendRole: blendToClose?.role);
 
   /// The diver tapped the role, so [role] is theirs rather than the rule's.
   bool get roleTapped => _tappedRole != null;
 
   /// The role for [mix] on a reading with [readingO2] % O2: the tapped role,
-  /// else the picked cylinder's, else by the O2 of the mix, or of the
-  /// reading when there is no mix (none at all is Diluent).
-  GasRole _roleFor(DesiredMix? mix, double? readingO2) => resolveGasRole(
+  /// else the blend's, else the picked cylinder's, else by the O2 of the
+  /// mix, or of the reading when there is no mix (none at all is Diluent).
+  GasRole _roleFor(
+    DesiredMix? mix,
+    double? readingO2, {
+    GasRole? blendRole,
+  }) =>
+      resolveGasRole(
         tapped: _tappedRole,
+        blendRole: blendRole,
         cylinderRole: _cylinder(_knownCylinderId)?.role,
         o2PercentForRule: mix?.o2Percent.toDouble() ?? readingO2 ?? 0,
       );
+
+  /// The clock the controller uses, for "blended 5 min ago".
+  DateTime now() => _now();
+
+  /// The open blends, oldest first.
+  List<OpenBlend> get openBlends => _open;
+
+  /// "Residual analysis" is on.
+  bool get residual => _residual;
+
+  /// The choice the diver made, with a picked blend that is not open any
+  /// more (closed or dismissed elsewhere) counted as automatic.
+  BlendChoice get _liveChoice {
+    final c = _choice;
+    if (c is PickedBlend && !_open.any((b) => b.id == c.blend.id)) {
+      return const AutoBlend();
+    }
+    return c;
+  }
+
+  /// The blend a save would close now, or null: [blendForAnalysis] for the
+  /// reading, the diver's choice and the mix they tapped. A diver who
+  /// cleared the mix on purpose gets no automatic match.
+  OpenBlend? get blendToClose {
+    final gas = usableGas;
+    return gas == null ? null : _blendFor(gas);
+  }
+
+  OpenBlend? _blendFor(({double o2, double he}) gas) {
+    final choice = _liveChoice;
+    if (!_mixAutomatic && _diverMix == null && choice is AutoBlend) {
+      return null;
+    }
+    return blendForAnalysis(
+      o2Percent: gas.o2,
+      hePercent: gas.he,
+      choice: choice,
+      chosenMix: _mixAutomatic ? null : _diverMix,
+      residual: _residual,
+      open: _open,
+    );
+  }
+
+  /// The nearest open blend when none matches and it grades red or hard,
+  /// for the note "No open blend matches. Nearest: ...". Not when the diver
+  /// chose a blend, none, or a mix themselves.
+  RankedBlend? get nearestUnmatched {
+    final gas = usableGas;
+    return gas == null ? null : _nearestFor(gas);
+  }
+
+  RankedBlend? _nearestFor(({double o2, double he}) gas) {
+    if (_residual || !_mixAutomatic || _liveChoice is! AutoBlend) return null;
+    if (_blendFor(gas) != null) return null;
+    return match.nearestUnmatched(
+        o2Percent: gas.o2, hePercent: gas.he, open: _open);
+  }
+
+  /// Every open blend graded against the reading, best first, for the
+  /// "Change" sheet.
+  List<RankedBlend> get blendChoices {
+    final gas = usableGas;
+    return gas == null
+        ? const []
+        : rankOpenBlends(o2Percent: gas.o2, hePercent: gas.he, open: _open);
+  }
+
+  /// The mismatch warning of the analysis a save would make, against the
+  /// blend's target or the desired mix; null for a match, a residual or
+  /// nothing to compare.
+  MixWarning? get warning {
+    final gas = usableGas;
+    final target = blendToClose?.target ?? desiredMix;
+    if (gas == null || _residual || target == null) return null;
+    return mixWarning(
+      role: role,
+      o2Percent: gas.o2,
+      hePercent: gas.he,
+      target: target,
+      use14ForDeeperMixes: _settings.labelUse14ForDeeperMixes,
+    );
+  }
+
+  /// The diver picks the blend a save closes, or none, or automatic again.
+  void chooseBlend(BlendChoice c) {
+    _choice = c;
+    _autoPick = _pickFor(usableGas);
+    notifyListeners();
+  }
+
+  /// "Residual analysis" on or off. A saved residual turns it off again.
+  void setResidual(bool on) {
+    if (_residual == on) return;
+    _residual = on;
+    notifyListeners();
+  }
+
+  void _watchOpenBlends() {
+    final dao = _openBlends;
+    if (dao == null) return;
+    // Subscribed once, as the Blend tab's list is: a stream made in a build
+    // would be a new query on every frame.
+    _openSub = dao.watchOpen().listen(
+      (list) {
+        if (_disposed) return;
+        _open = list;
+        _autoPick = _pickFor(usableGas);
+        notifyListeners();
+      },
+      onError: (Object e) =>
+          debugPrint('Analysis save card: watching the open blends failed: $e'),
+    );
+  }
 
   int get copies => _copies;
 
@@ -270,12 +415,17 @@ class AnalysisSaveController extends ChangeNotifier {
   /// "Save analysis" can be tapped now.
   bool get canSave => usableGas != null && !busy && fillPressureValid;
 
+  /// "Save & print" can be tapped now: a residual has no label.
+  bool get canSaveAndPrint => canSave && !_residual;
+
   /// The diver picks a mix with a chip or "Other…", or none (null, the
   /// selected chip tapped again). It is their pick until the next manual
-  /// save.
+  /// save. A mix of their own replaces a blend they chose: the save closes
+  /// the oldest open blend of that mix.
   void pickMix(DesiredMix? mix) {
     _mixAutomatic = false;
     _diverMix = mix;
+    _choice = const AutoBlend();
     notifyListeners();
   }
 
@@ -311,15 +461,27 @@ class AnalysisSaveController extends ChangeNotifier {
   CylinderChoice? _cylinder(String? id) =>
       _cylinders.where((c) => c.id == id).firstOrNull;
 
-  /// The automatic pick for [gas]: the unused Blend target or the nearest
-  /// standard mix, within orange, or null.
+  /// The automatic pick for [gas]: the target of the open blend that
+  /// matches it, or the nearest standard mix, within orange, or null.
   MixPick? _pickFor(({double o2, double he})? gas) => gas == null
       ? null
       : pickDesiredMix(
           o2Percent: gas.o2,
           hePercent: gas.he,
-          blendTarget: _unusedBlendTarget,
+          // With "None" chosen the pick is a standard mix, so the verdict
+          // and the row agree that no open blend is involved.
+          blendTarget:
+              _choice is NoBlend ? null : _autoBlendFor(gas)?.target,
         );
+
+  /// The blend the app matches to [gas] by itself.
+  OpenBlend? _autoBlendFor(({double o2, double he}) gas) => blendForAnalysis(
+        o2Percent: gas.o2,
+        hePercent: gas.he,
+        choice: const AutoBlend(),
+        residual: false,
+        open: _open,
+      );
 
   /// "Fill pressure starts at", written whole when it is whole (`230`).
   String _startPressure() {
@@ -370,9 +532,12 @@ class AnalysisSaveController extends ChangeNotifier {
   ///
   /// Everything saved is taken when the save starts, before any dialog: the
   /// reading, and the desired mix and role worked out for that reading. An
-  /// automatic pick is never taken from a later line.
+  /// automatic pick is never taken from a later line. So is the blend it
+  /// closes: one chosen but closed elsewhere meanwhile falls back to the
+  /// oldest open blend of its mix, or closes nothing, and the analysis is
+  /// saved all the same.
   Future<void> save(BuildContext context, {bool print = false}) async {
-    final printTo = print ? _labelPrinting : null;
+    final printTo = print && !_residual ? _labelPrinting : null;
     final gas = usableGas;
     final pressure = parseFillPressure(fillPressure.text);
     // The guard goes up before the first await, so a second tap while a
@@ -383,8 +548,12 @@ class AnalysisSaveController extends ChangeNotifier {
     try {
       // Snapshot before any await: the reading keeps updating at 1 Hz.
       final reading = _reading!;
-      final desired = _mixAutomatic ? _pickFor(gas)?.mix : _diverMix;
-      final blendTarget = _blendTarget;
+      final residual = _residual;
+      final blend = _blendFor(gas);
+      final nearest = blend == null ? _nearestFor(gas) : null;
+      final desired = residual
+          ? null
+          : blend?.target ?? (_mixAutomatic ? _pickFor(gas)?.mix : _diverMix);
       final analysis = NewGasAnalysis(
         cylinderId: _cylinderId,
         analysedBy: analysedBy.text,
@@ -403,7 +572,8 @@ class AnalysisSaveController extends ChangeNotifier {
         stable: _stability == ReadingStability.stable,
         notes: notes.text,
         desiredMix: desired,
-        gasRole: _roleFor(desired, gas.o2),
+        gasRole: _roleFor(desired, gas.o2, blendRole: blend?.role),
+        isResidual: residual,
       );
       final copies = _copies;
       final messenger = ScaffoldMessenger.of(context);
@@ -411,10 +581,13 @@ class AnalysisSaveController extends ChangeNotifier {
       if (_disposed || !context.mounted) return;
       if (printTo != null && !await _confirmMix(context, analysis)) return;
       if (_disposed || !context.mounted) return;
-      final saved = await _add(analysis, messenger);
-      if (saved != null && desired != null && desired == blendTarget) {
-        _useBlendTarget();
-      }
+      final saved = await _add(
+        analysis,
+        messenger,
+        blend: blend,
+        nearest: nearest,
+        residualBar: residual ? pressure.bar : null,
+      );
       if (saved == null || printTo == null) return;
       if (_disposed || !context.mounted) return;
       _saving = false;
@@ -504,10 +677,18 @@ class AnalysisSaveController extends ChangeNotifier {
   /// the previous analysis stays until dismissed (it has a Retry), so a new
   /// bar would queue behind it: a failed save would go unseen, and the old
   /// Retry would still be offered.
+  ///
+  /// With a [blend] the saved analysis then closes it; a failure there is
+  /// logged and leaves the analysis saved. [nearest] is the open blend that
+  /// is near but doesn't match, named in the SnackBar. A residual's fill
+  /// pressure is [residualBar].
   Future<GasAnalysis?> _add(
     NewGasAnalysis a,
-    ScaffoldMessengerState messenger,
-  ) async {
+    ScaffoldMessengerState messenger, {
+    OpenBlend? blend,
+    RankedBlend? nearest,
+    double? residualBar,
+  }) async {
     final String id;
     try {
       id = await _dao.add(a);
@@ -518,6 +699,20 @@ class AnalysisSaveController extends ChangeNotifier {
     }
     final saved = GasAnalysis.fromNew(id, a,
         cylinderLabel: _cylinder(a.cylinderId)?.label);
+    if (a.isResidual) {
+      // Back to a fill: the next cylinder is not a residual by default.
+      _residual = false;
+      onResidualSaved?.call(a.o2Percent, a.hePercent, residualBar);
+    }
+    var closed = false;
+    final openBlends = _openBlends;
+    if (blend != null && openBlends != null) {
+      try {
+        closed = await openBlends.closeBlend(blend, id);
+      } catch (e) {
+        debugPrint('Analysis save card: closing the blend failed: $e');
+      }
+    }
     if (_disposed) return saved;
     // Keep cylinder, diver and "for" for the next fill. The fill pressure
     // goes back to its start and the note clears. The desired mix goes
@@ -532,6 +727,7 @@ class AnalysisSaveController extends ChangeNotifier {
       _diverMix = null;
       _tappedRole = null;
       _copies = 1;
+      _choice = const AutoBlend();
     }
     _notesOpen = false;
     notifyListeners();
@@ -542,7 +738,11 @@ class AnalysisSaveController extends ChangeNotifier {
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(_clearOfBar(
       Text('Saved ${gasMixName(a.o2Percent, a.hePercent)} to the '
-          'analysis log${a.stable ? '' : ' (not stable)'}.'),
+          'analysis log${a.stable ? '' : ' (not stable)'}'
+          '${closed ? ' · closes ${blend!.target.name}' : ''}'
+          '${!closed && nearest != null ? ' · No open blend matches. '
+              'Nearest: ${nearest.blend.target.name} '
+              '(${nearest.grade.level.name})' : ''}.'),
     ));
     return saved;
   }
@@ -553,16 +753,6 @@ class AnalysisSaveController extends ChangeNotifier {
         behavior: SnackBarBehavior.floating,
         margin: kSnackBarClearOfActionBar,
       );
-
-  /// A completed save used the Blend target: it is not picked again (one
-  /// blend is one cylinder) until the next Blend edit.
-  void _useBlendTarget() {
-    onBlendTargetUsed?.call();
-    if (_disposed) return;
-    _unusedBlendTarget = null;
-    _autoPick = _pickFor(usableGas);
-    notifyListeners();
-  }
 
   // ── Log on OK ───────────────────────────────────────────────────
   OkLogger? _okLogger;
@@ -583,12 +773,6 @@ class AnalysisSaveController extends ChangeNotifier {
   /// put back to their start, because the diver may already be typing for
   /// the next cylinder while the label prints. Null once used up.
   ({String? cylinderId, double? pressure, String notes})? _takenForResult;
-
-  /// The setup of the press the unused Blend target was offered to, until
-  /// that press's outcome is known. Meanwhile no other press is offered the
-  /// target: presses are handled one after the other, and a press queued
-  /// behind it asks for its setup before the first one's result arrives.
-  LogOnOkSetup? _targetOfferedTo;
 
   /// A Log on OK logger is bound: the form is the setup of its OK presses.
   bool get okMode => _okLogger != null;
@@ -617,7 +801,6 @@ class AnalysisSaveController extends ChangeNotifier {
     _unbindLogger();
     _okResult = null;
     _takenForResult = null;
-    _targetOfferedTo = null;
     if (logger != null) {
       _okLogger = logger;
       logger.setupProvider = okSetup;
@@ -648,26 +831,27 @@ class AnalysisSaveController extends ChangeNotifier {
   /// from its held reading ([LogOnOkSetup.autoPickMix]), and works out its
   /// role from that unless the diver tapped one or the cylinder has one.
   ///
-  /// It is the logger's [OkLogger.setupProvider], asked once per press,
-  /// and it has one side effect: the unused Blend target goes to one press
-  /// at a time. The press that gets it holds it until its outcome is known
-  /// ([_onOkResult]), so a press queued behind it gets none. It writes
-  /// nothing to the settings; "Analysed by" is never written back.
+  /// The press matches the open blends itself ([LogOnOkSetup.openBlends],
+  /// the diver's [BlendChoice] and "Residual analysis"), with the same rule
+  /// as the card, and closes the one it matched when it saves complete.
+  /// A picked blend that is not open any more counts as automatic.
+  ///
+  /// It is the logger's [OkLogger.setupProvider], asked once per press. It
+  /// writes nothing to the settings; "Analysed by" is never written back.
   OkSetup okSetup() {
     final printReady = this.printReady;
     final pressure = parseFillPressure(fillPressure.text);
     final cylinderRole = _cylinder(_knownCylinderId)?.role;
-    final unused = _unusedBlendTarget;
-    // A lease on an older target (the diver blended again since) is no
-    // reason to keep the new one back.
-    final target = _targetOfferedTo?.blendTarget == unused ? null : unused;
     final setup = LogOnOkSetup(
       analysedBy: analysedBy.text,
       desiredMix: _mixAutomatic ? null : _diverMix,
       autoPickMix: _mixAutomatic,
-      blendTarget: target,
-      gasRole: _tappedRole ??
-          (cylinderRole == null ? null : gasRoleForCylinderRole(cylinderRole)),
+      openBlends: _open,
+      blendChoice: _liveChoice,
+      residual: _residual,
+      tappedRole: _tappedRole,
+      cylinderRole:
+          cylinderRole == null ? null : gasRoleForCylinderRole(cylinderRole),
       analysedFor: _blankToNull(analysedFor.text),
       printOnOk: printReady && _printOnOk,
       printerConfigured: printReady,
@@ -676,7 +860,6 @@ class AnalysisSaveController extends ChangeNotifier {
       notes: notes.text,
       modPpo2s: _settings.analyzerModPpo2s,
     );
-    if (target != null) _targetOfferedTo = setup;
     return (setup: setup, copies: _copies);
   }
 
@@ -685,50 +868,39 @@ class AnalysisSaveController extends ChangeNotifier {
   /// the same cylinder again still has them. The name, desired mix, tapped
   /// role, "for", copies and print switch stay for the next cylinder.
   ///
-  /// Marking the Blend target used is the session's (`AnalyzerSession`),
-  /// which hears every press to the end, also one that finishes after Stop
-  /// or Disconnect when this form no longer listens. Here the press that
-  /// held the target only lets go of it ([_releaseTarget]).
   void _onOkResult(OkLogResult r) {
     if (_disposed) return;
     _okResult = r;
     _takenForResult = _takenBy(r);
     if (r.complete) _useUpTaken();
     final id = r.analysisId;
-    if (_targetOfferedTo != null &&
-        identical(r.setupUsed?.setup, _targetOfferedTo)) {
-      if (r.complete && id != null) {
-        unawaited(_releaseTarget(id));
-      } else {
-        // Not saved complete: the target is still unused.
-        _targetOfferedTo = null;
-      }
-    }
     notifyListeners();
     // Not awaited: the mix just used may be new to the chips.
     if (id != null) unawaited(_loadMixOptions());
+    if (id != null && r.setupUsed?.setup.residual == true) {
+      unawaited(_residualPressed(id));
+    }
   }
 
-  /// The press that held the Blend target saved complete: its entry is read
-  /// back, and then the target is let go of. When the entry has the target,
-  /// this form stops offering it at once, not only from the screen's next
-  /// build, which brings the session's used mark.
-  Future<void> _releaseTarget(String id) async {
-    final held = _targetOfferedTo;
-    GasAnalysis? stored;
+  /// A residual press saved [id]: its gas, as stored, fills the Blend tab's
+  /// residual ([onResidualSaved]); a read that fails leaves the tab alone.
+  Future<void> _residualPressed(String id) async {
+    final GasAnalysis? stored;
     try {
       stored = await _readStored(id);
     } catch (e) {
-      debugPrint('Analysis save card: reading the OK entry failed: $e');
+      debugPrint('Log on OK: reading the residual entry back failed: $e');
+      return;
     }
-    if (_disposed) return;
-    final target = _unusedBlendTarget;
-    if (stored != null && target != null && stored.desiredMix == target) {
-      _unusedBlendTarget = null;
-      _autoPick = _pickFor(usableGas);
-      notifyListeners();
-    }
-    if (identical(_targetOfferedTo, held)) _targetOfferedTo = null;
+    // A late press is saved as a plain analysis whatever the setup said.
+    if (_disposed || stored == null || !stored.isResidual) return;
+    // Back to a fill, as after a manual residual save.
+    setResidual(false);
+    onResidualSaved?.call(
+      stored.o2Percent,
+      stored.hePercent,
+      stored.fillPressureBar,
+    );
   }
 
   /// The per-cylinder fields [r]'s own press took, or null when it did not
@@ -808,7 +980,7 @@ class AnalysisSaveController extends ChangeNotifier {
         context,
         dao: _dao,
         analysis: stored,
-        mixOptions: recentDesiredMixes(log, blendTarget: _blendTarget),
+        mixOptions: recentDesiredMixes(log, blendTarget: _open.firstOrNull?.target),
         suggestedAnalysedBy: name.isEmpty ? null : name,
       );
       if (_disposed || !context.mounted) return;
@@ -836,14 +1008,13 @@ class AnalysisSaveController extends ChangeNotifier {
         notifyListeners();
       } else if (!r.complete && !after.needsSignoff) {
         // Signed off: nothing is left to do for this entry, so its press
-        // counts as complete and uses up what it took, the Blend target
-        // included.
+        // counts as complete, uses up what it took and closes its blend.
         _useUpTaken();
-        final target = _blendTarget;
-        if (target != null &&
-            _unusedBlendTarget != null &&
-            after.desiredMix == target) {
-          _useBlendTarget();
+        final blends = _openBlends;
+        if (blends != null) {
+          await closeBlendOnSignOff(
+              signedOff: after, openBlends: blends, analyses: _dao);
+          if (_disposed || !identical(_okResult, r)) return;
         }
         _okResult = OkLogResult(
           code: r.code == FeedbackCode.printed
@@ -867,6 +1038,9 @@ class AnalysisSaveController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    // Not awaited, like the logger's: see [_unbindLogger].
+    unawaited(_openSub?.cancel());
+    _openSub = null;
     _unbindLogger();
     fillPressure.removeListener(_onFillPressure);
     analysedBy.dispose();

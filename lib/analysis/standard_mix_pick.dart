@@ -25,6 +25,8 @@ const List<DesiredMix> kStandardMixes = [
 ];
 
 /// Where a [MixPick] came from.
+/// [blendTarget] means the target of an open blend (the name predates open
+/// blends, when it was the Blend tab's single target).
 enum MixPickSource { blendTarget, standard }
 
 typedef MixPick = ({
@@ -42,6 +44,7 @@ typedef MixPick = ({
 MixPick? pickDesiredMix({
   required double o2Percent,
   required double hePercent,
+  // An open blend's target (the name is from the old single Blend target).
   DesiredMix? blendTarget,
 }) {
   MixMatch grade(DesiredMix m) => gradeMix(
@@ -91,13 +94,16 @@ const double kBailoutRoleAboveO2Percent = 30;
 GasRole gasRoleForMix(double o2Percent) =>
     o2Percent > kBailoutRoleAboveO2Percent ? GasRole.bailout : GasRole.diluent;
 
-/// A tapped role wins, then the cylinder's role, then the mix.
+/// A tapped role wins, then the role of the open blend being closed, then
+/// the cylinder's role, then the mix.
 GasRole resolveGasRole({
   GasRole? tapped,
+  GasRole? blendRole,
   String? cylinderRole,
   required double o2PercentForRule,
 }) {
   if (tapped != null) return tapped;
+  if (blendRole != null) return blendRole;
   if (cylinderRole != null) return gasRoleForCylinderRole(cylinderRole);
   return gasRoleForMix(o2PercentForRule);
 }

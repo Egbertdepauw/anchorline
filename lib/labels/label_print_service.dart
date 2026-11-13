@@ -77,6 +77,10 @@ class LabelPrintService {
   /// Whether a printer is saved. Says nothing about it being in range.
   bool get isConfigured => _printerId() != null;
 
+  /// The live "Use 1.4 for deeper mixes" setting, so a screen that shows
+  /// a MOD warning follows the same rule as the label.
+  bool get use14ForDeeperMixes => _use14ForDeeperMixes();
+
   /// The label for [a] under the current "Use 1.4 for deeper mixes"
   /// setting, so a reprint follows a setting changed since the first print.
   CylinderLabel labelFor(GasAnalysis a) => CylinderLabel.fromAnalysis(
@@ -91,7 +95,7 @@ class LabelPrintService {
   /// before it.
   ///
   /// Throws a [LabelPrinterException] when [a] still needs sign-off
-  /// ([kSignOffBeforePrintMessage]), when no printer is saved, when the
+  /// ([kSignOffBeforePrintMessage]) or is a residual, when no printer is saved, when the
   /// printer can't be reached ("Printer not found" after [connectTimeout]),
   /// or when it reports a fault that stops the job.
   ///
@@ -102,6 +106,12 @@ class LabelPrintService {
     if (a.needsSignoff) {
       return Future<List<PrinterFault>>.error(
         const LabelPrinterException(kSignOffBeforePrintMessage),
+      );
+    }
+    if (a.isResidual) {
+      // A residual reading is what was left in the cylinder, not a fill.
+      return Future<List<PrinterFault>>.error(
+        const LabelPrinterException('A residual analysis has no label'),
       );
     }
     return _enqueue(labelFor(a), copies);

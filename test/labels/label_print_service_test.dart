@@ -343,6 +343,27 @@ void main() {
       expect(rig.printer.disconnects, 0);
     });
 
+    test('a residual analysis is refused before any connect', () async {
+      final rig = _Rig();
+      final residual = GasAnalysis(
+        id: 'a1',
+        analysedAt: _when,
+        o2Percent: 32,
+        hePercent: 0,
+        stable: true,
+        isResidual: true,
+      );
+      await expectLater(
+        rig.service.printAnalysis(residual),
+        throwsA(_printerError('A residual analysis has no label')),
+      );
+      expect(rig.requestedIds, isEmpty);
+      expect(rig.rendered, isEmpty);
+      expect(rig.printer.connects, 0);
+      expect(rig.printer.printed, isEmpty);
+      expect(rig.printer.disconnects, 0);
+    });
+
     test('a connect failure is "Printer not found", and still disconnects',
         () async {
       final rig = _Rig(

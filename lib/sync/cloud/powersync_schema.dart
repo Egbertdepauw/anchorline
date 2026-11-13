@@ -111,14 +111,15 @@ const appSchema = Schema([
   // of the ppO2 limits (bar) the MODs were shown for; the mix label and MOD
   // depths are derived from o2/he, never stored. stable is 0/1.
   // target_o2_percent / target_he_percent are the desired mix in whole
-  // percents (null target O2 = none set); gas_role is 'diluent' or 'bailout'
-  // (null = bailout/deco). Issue #114 (cylinder labels).
+  // percents (null target O2 = none set); gas_role is 'bailout', 'diluent',
+  // 'backgas' or 'deco' (null = bailout). Issue #114 (cylinder labels).
   // needs_signoff is 0/1: the entry waits in the log for the diver to sign
   // it off. capture_source is null for a screen save, 'bridge_ok' for a
   // capture made on the SOLO's OK press through the ESP32 bridge and 'usb_ok'
   // for one the app made itself on a USB cable (Log on OK); bridge_record_id
   // is '<bridge>/<rid>'; analysed_for is who the gas is for (free text).
-  // Issue #113.
+  // Issue #113. is_residual is 0/1: an analysis of what was left in the
+  // cylinder before a fill, which closes no blend (issue #112).
   Table('gas_analyses', [
     Column.text('owner_id'),
     Column.text('cylinder_id'),
@@ -139,6 +140,7 @@ const appSchema = Schema([
     Column.text('capture_source'),
     Column.text('bridge_record_id'),
     Column.text('analysed_for'),
+    Column.integer('is_residual'),
     Column.integer('created_at'),
     Column.integer('updated_at'),
     Column.integer('deleted_at'),
@@ -153,6 +155,32 @@ const appSchema = Schema([
     Column.text('subject'),
     Column.integer('text_version'),
     Column.integer('accepted_at'),
+    Column.integer('created_at'),
+    Column.integer('updated_at'),
+    Column.integer('deleted_at'),
+    Column.integer('version'),
+    Column.integer('sync_status'),
+  ]),
+  // Open blends (issue #112): blends logged on the Blend tab and not yet
+  // closed by an analysis. closed_by_analysis_id is a soft reference to
+  // gas_analyses.id (no FK, nullable). Percents are whole numbers, pressures
+  // bar, water_capacity_l litres; gas_role is 'bailout', 'diluent',
+  // 'backgas' or 'deco'.
+  Table('open_blends', [
+    Column.text('owner_id'),
+    Column.integer('target_o2_percent'),
+    Column.integer('target_he_percent'),
+    Column.real('target_pressure_bar'),
+    Column.integer('residual_o2_percent'),
+    Column.integer('residual_he_percent'),
+    Column.real('residual_pressure_bar'),
+    Column.integer('topoff_o2_percent'),
+    Column.integer('topoff_he_percent'),
+    Column.real('water_capacity_l'),
+    Column.text('gas_role'),
+    Column.text('blended_by'),
+    Column.integer('blended_at'),
+    Column.text('closed_by_analysis_id'),
     Column.integer('created_at'),
     Column.integer('updated_at'),
     Column.integer('deleted_at'),
