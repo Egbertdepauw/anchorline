@@ -515,6 +515,20 @@ void main() {
       expect(s.analyzerFillPressureStartBar, 200);
       expect((await _reload()).analyzerFillPressureStartBar, 200);
     });
+
+    testWidgets('Settle time and Diluent cylinder fields update the notifier',
+        (tester) async {
+      final s = await open(tester);
+      expect(s.blendSettleMinutes, 60);
+      expect(s.blendDiluentMaxL, 3.0);
+      await tester.enterText(_k('settings-blend-settle-minutes'), '90');
+      await tester.pumpAndSettle();
+      expect(s.blendSettleMinutes, 90);
+      await tester.enterText(_k('settings-blend-diluent-max-l'), '4.5');
+      await tester.pumpAndSettle();
+      expect(s.blendDiluentMaxL, 4.5);
+      expect((await _reload()).blendSettleMinutes, 90);
+    });
   });
 
   group('Sync', () {
