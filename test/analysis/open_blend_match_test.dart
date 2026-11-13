@@ -2,6 +2,7 @@ import 'package:ccrlogger/analysis/mix_match.dart';
 import 'package:ccrlogger/analysis/open_blend_match.dart';
 import 'package:ccrlogger/data/models/gas_analysis.dart';
 import 'package:ccrlogger/data/models/open_blend.dart';
+import 'package:ccrlogger/labels/cylinder_label.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 final _now = DateTime.utc(2026, 11, 13, 12);
@@ -43,16 +44,21 @@ void main() {
       expect(b?.id, 'old');
     });
 
-    test('match beats orange, then the smaller O2 difference', () {
-      final open = [ob('a', 18, 45), ob('b', 21, 35)];
-      final b = blendForAnalysis(
-        o2Percent: 20.6,
-        hePercent: 34.0,
-        choice: const AutoBlend(),
-        residual: false,
-        open: open,
-      );
-      expect(b?.id, 'b');
+    test('match beats orange', () {
+      // 18/37 is an orange (O2 2.0, He 2.0 off), 21/35 a match, listed first.
+      final open = [ob('orange', 18, 37), ob('match', 21, 35)];
+      final r = rankOpenBlends(o2Percent: 20.0, hePercent: 35.0, open: open);
+      expect(r.map((e) => e.grade.level),
+          [MixMatchLevel.match, MixMatchLevel.orange]);
+      expect(r.first.blend.id, 'match');
+    });
+
+    test('of two oranges the smaller O2 difference wins', () {
+      final open = [ob('far', 18, 0), ob('near', 21, 0)];
+      final r = rankOpenBlends(o2Percent: 19.6, hePercent: 0, open: open);
+      expect(r.map((e) => e.grade.level),
+          [MixMatchLevel.orange, MixMatchLevel.orange]);
+      expect(r.first.blend.id, 'near');
     });
 
     test('no blend within orange closes nothing', () {
@@ -199,6 +205,42 @@ void main() {
     test('diluent above target is mild', () {
       expect(w(GasRole.diluent, 23.0, 35, const DesiredMix(21, 35))?.level,
           WarningLevel.mild);
+    });
+    test('helium-only mismatch is mild', () {
+      expect(w(GasRole.backgas, 21.04, 38, const DesiredMix(21, 35))?.level,
+          WarningLevel.mild);
+      expect(w(GasRole.deco, 21.4, 38, const DesiredMix(21, 35))?.level,
+          WarningLevel.mild);
+    });
+    test('deco 51.5 against 50 is loud', () {
+      expect(w(GasRole.deco, 51.5, 0, const DesiredMix(50, 0))?.level,
+          WarningLevel.loud);
+    });
+    test('hard mismatch matches the label', () {
+      final r = mixWarning(
+        role: GasRole.deco,
+        o2Percent: 51.0,
+        hePercent: 0,
+        target: const DesiredMix(45, 0),
+        use14ForDeeperMixes: true,
+      );
+      final label = CylinderLabel.fromAnalysis(
+        GasAnalysis(
+          id: 'a',
+          analysedAt: _now,
+          o2Percent: 51.0,
+          hePercent: 0,
+          stable: true,
+          targetO2Percent: 45,
+          targetHePercent: 0,
+          gasRole: GasRole.deco,
+        ),
+        use14ForDeeperMixes: true,
+      );
+      expect(label.headlinePpo2, 1.6);
+      expect(r?.level, WarningLevel.loud);
+      expect(r?.text,
+          'O2 51.0% instead of 45%: MOD at 1.6 is ${label.headlineMeters} m, not 24 m.');
     });
     test('a match is null', () {
       expect(w(GasRole.deco, 50.4, 0, const DesiredMix(50, 0)), isNull);

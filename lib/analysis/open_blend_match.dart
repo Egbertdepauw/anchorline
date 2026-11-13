@@ -145,9 +145,7 @@ RoleGuess guessBlendRole({
   if (targetO2Percent > kBlendBailoutAboveO2Percent) {
     return (role: GasRole.bailout, reason: 'O2 above 32%');
   }
-  final cap = waterCapacityL == waterCapacityL.roundToDouble()
-      ? waterCapacityL.round().toString()
-      : waterCapacityL.toString();
+  final cap = waterCapacityL.toStringAsFixed(1).replaceFirst(RegExp(r'\.0$'), '');
   return (
     role: waterCapacityL <= diluentMaxL ? GasRole.diluent : GasRole.bailout,
     reason: '$cap L',
@@ -175,19 +173,24 @@ MixWarning? mixWarning({
     targetHePercent: target.hePercent,
   );
   if (g.level == MixMatchLevel.match) return null;
-  if (!role.isDiluent && o2Percent > target.o2Percent) {
+  if (!role.isDiluent &&
+      g.o2Off > kO2MatchMax &&
+      o2Percent > target.o2Percent) {
+    // Same ppO2 and depth rule as the cylinder label (CylinderLabel
+    // .fromAnalysis): a hard mismatch is judged on the analysed gas.
+    final hard = g.level == MixMatchLevel.hard;
     final ppo2 = bailoutModPpo2(
-      o2PercentForRule: target.o2Percent,
+      o2PercentForRule: hard ? o2Percent.round() : target.o2Percent,
       use14ForDeeperMixes: use14ForDeeperMixes,
     );
     final actual = limitDepthMeters(o2Percent, ppo2,
-        desiredO2Percent: target.o2Percent);
+        desiredO2Percent: hard ? null : target.o2Percent);
     final planned = limitDepthMeters(target.o2Percent.toDouble(), ppo2);
     return (
       level: WarningLevel.loud,
       text: 'O2 ${o2Percent.toStringAsFixed(1)}% instead of '
           '${target.o2Percent}%: MOD at ${ppo2.toStringAsFixed(1)} is '
-          '$actual m, not $planned m.',
+          '${actual ?? '-'} m, not ${planned ?? '-'} m.',
     );
   }
   return (
