@@ -5,14 +5,10 @@
 /// synchronous recompute.
 ///
 /// Blend drafts are session-scoped (we don't save them across app
-/// restarts), with one exception: the target mix and pressure, plus the
-/// time of the diver's last edit of any Blend input, are kept on the device
-/// (SharedPreferences, never synced). A diver blends a cylinder and
-/// analyses it later, often after restarting the app, and the gas analyzer
-/// offers the target they just blended to as the desired mix of that
-/// analysis (see [BlendNotifier.recentTarget], #114). Any edit counts as
-/// using the target, not only an edit of the target itself, because a diver
-/// who blends their usual mix only enters the residual gas and pressure.
+/// restarts), with one exception: the target mix and pressure are kept on
+/// the device (SharedPreferences, never synced), so the inputs start from
+/// the last target. Which blends still wait for an analysis is not kept
+/// here: that is the open blends (#112), which sync.
 library;
 
 import 'dart:async';
@@ -27,10 +23,7 @@ import '../../data/models/open_blend.dart';
 import 'settings_notifier.dart';
 
 class BlendNotifier extends ChangeNotifier {
-  /// [now] is the clock [recentTarget] measures its 24 h window against;
-  /// tests inject their own.
-  BlendNotifier({required this.settings, DateTime Function()? now})
-      : _now = now ?? DateTime.now {
+  BlendNotifier({required this.settings}) {
     settings.addListener(_onSettingsChanged);
     _syncDefaultsFromSettings();
     _recompute();
@@ -39,18 +32,8 @@ class BlendNotifier extends ChangeNotifier {
   static const _kTargetO2 = 'blend_target_o2';
   static const _kTargetHe = 'blend_target_he';
   static const _kTargetPressureBar = 'blend_target_pressure_bar';
-  // The time of the last edit of any Blend input, not only the target.
-  static const _kLastEditedAt = 'blend_target_edited_at';
-  // One blend is one cylinder: set once a complete save used the target,
-  // cleared by the next Blend edit.
-  static const _kTargetUsed = 'blend_target_used';
-
-  /// How long after the diver last edited a Blend input the target still
-  /// counts as "the mix they are blending" for [recentTarget].
-  static const _recentTargetWindow = Duration(hours: 24);
 
   final SettingsNotifier settings;
-  final DateTime Function() _now;
 
   // Current cylinder.
   int _currentOxygenPercent = 21;
@@ -62,15 +45,9 @@ class BlendNotifier extends ChangeNotifier {
   int _targetOxygenPercent = 18;
   int _targetHeliumPercent = 45;
   double _targetPressureBar = 230;
-  // When the diver last edited any Blend input; null until they have (a
-  // fresh install has a default target nobody chose). loadTarget restores
-  // it as stored and never resets it.
-  DateTime? _lastEditedAt;
-  // Whether the diver edited anything / the target mix / the target
-  // pressure in this session. A loadTarget that finishes after that must
-  // not overwrite their edit, or the edit time.
-  bool _editedThisSession = false;
-  bool _targetUsed = false;
+  // Whether the diver edited the target mix / the target pressure in this
+  // session. A loadTarget that finishes after that must not overwrite
+  // their edit.
   bool _mixEditedThisSession = false;
   bool _pressureEditedThisSession = false;
   bool _disposed = false;
@@ -127,28 +104,23 @@ class BlendNotifier extends ChangeNotifier {
 
   // ── Mutations ─────────────────────────────────────────────────────
   // Every setter below is driven by the diver typing or tapping on the
-  // Blend tab. A call that changes a value counts as an edit
-  // ([_markEdited]); a call with the value already held (an echo) returns
-  // early and counts as nothing.
+  // Blend tab. A call with the value already held (an echo) returns early.
   void setCurrentMix(int o2, int he) {
     if (_currentOxygenPercent == o2 && _currentHeliumPercent == he) return;
     _currentOxygenPercent = o2.clamp(1, 100);
     _currentHeliumPercent = he.clamp(0, 99);
-    _markEdited();
     _markDirty();
   }
 
   void setCurrentPressure(double bar) {
     if (_currentPressureBar == bar) return;
     _currentPressureBar = bar.clamp(0, 400);
-    _markEdited();
     _markDirty();
   }
 
   void setWaterCapacity(double litres) {
     if (_waterCapacityL == litres) return;
     _waterCapacityL = litres.clamp(0.5, 50);
-    _markEdited();
     _markDirty();
   }
 
@@ -157,7 +129,6 @@ class BlendNotifier extends ChangeNotifier {
     _targetOxygenPercent = o2.clamp(1, 100);
     _targetHeliumPercent = he.clamp(0, 99);
     _mixEditedThisSession = true;
-    _markEdited();
     _markDirty();
     unawaited(_storeTargetMix(_targetOxygenPercent, _targetHeliumPercent));
   }
@@ -166,7 +137,6 @@ class BlendNotifier extends ChangeNotifier {
     if (_targetPressureBar == bar) return;
     _targetPressureBar = bar.clamp(0, 400);
     _pressureEditedThisSession = true;
-    _markEdited();
     _markDirty();
     unawaited(_storeTargetPressure(_targetPressureBar));
   }
@@ -175,21 +145,18 @@ class BlendNotifier extends ChangeNotifier {
     if (_topoffOxygenPercent == o2 && _topoffHeliumPercent == he) return;
     _topoffOxygenPercent = o2.clamp(1, 100);
     _topoffHeliumPercent = he.clamp(0, 99);
-    _markEdited();
     _markDirty();
   }
 
   void setSequence(FillSequence s) {
     if (_sequence == s) return;
     _sequence = s;
-    _markEdited();
     _markDirty();
   }
 
   void setUseRealGas(bool v) {
     if (_useRealGas == v) return;
     _useRealGas = v;
-    _markEdited();
     _markDirty();
   }
 
@@ -197,7 +164,6 @@ class BlendNotifier extends ChangeNotifier {
     final clamped = v.clamp(-20.0, 80.0);
     if (_fillTempC == clamped) return;
     _fillTempC = clamped;
-    _markEdited();
     _markDirty();
   }
 
@@ -205,7 +171,6 @@ class BlendNotifier extends ChangeNotifier {
     final clamped = v.clamp(-20.0, 80.0);
     if (_settledTempC == clamped) return;
     _settledTempC = clamped;
-    _markEdited();
     _markDirty();
   }
 
@@ -251,37 +216,9 @@ class BlendNotifier extends ChangeNotifier {
     if (pressureBar != null) setCurrentPressure(pressureBar);
   }
 
-  /// The target mix, if the diver edited any Blend input (the target, but
-  /// also the residual gas, the start pressure, the top-off ...) in the last
-  /// 24 h; null otherwise. A target nobody has been blending to, like the
-  /// default one on a fresh install, is never returned. An edit time in the
-  /// future (the clock moved back) counts as expired.
-  DesiredMix? recentTarget() {
-    final editedAt = _lastEditedAt;
-    if (editedAt == null) return null;
-    final age = _now().difference(editedAt);
-    if (age.isNegative || age >= _recentTargetWindow) return null;
-    return DesiredMix(_targetOxygenPercent, _targetHeliumPercent);
-  }
-
-  /// [recentTarget], unless a complete save has already used it. The
-  /// analyzer picks from this, so one blend isn't offered to a second
-  /// cylinder; the chips keep using [recentTarget].
-  DesiredMix? unusedRecentTarget() => _targetUsed ? null : recentTarget();
-
-  /// Marks the current target as used by a saved analysis. The next Blend
-  /// edit clears it. Listeners hear of it, so the Analyse tab stops offering
-  /// the target also when the sign-off that used it was on the Log tab.
-  Future<void> markRecentTargetUsed() async {
-    if (_targetUsed) return;
-    _targetUsed = true;
-    if (!_disposed) notifyListeners();
-    await _storeTargetUsed(true);
-  }
-
   /// Restores the target saved on this device. Call it once at startup; it
   /// needn't be awaited. Anything the diver changed before it finishes is
-  /// kept. The edit time is restored as stored, not reset to now.
+  /// kept.
   Future<void> loadTarget() async {
     final prefs = await SharedPreferences.getInstance();
     if (_disposed) return;
@@ -296,37 +233,12 @@ class BlendNotifier extends ChangeNotifier {
     if (!_pressureEditedThisSession && pressure != null) {
       _targetPressureBar = pressure.clamp(0, 400);
     }
-    final editedAtMs = prefs.getInt(_kLastEditedAt);
-    if (!_editedThisSession && editedAtMs != null) {
-      _lastEditedAt = DateTime.fromMillisecondsSinceEpoch(editedAtMs);
-      _targetUsed = prefs.getBool(_kTargetUsed) ?? false;
-    }
     _markDirty();
   }
 
   // ── Internals ─────────────────────────────────────────────────────
-  /// Records that the diver just edited a Blend input and keeps the time on
-  /// the device. Fire-and-forget, like SettingsNotifier's setters.
-  void _markEdited() {
-    _editedThisSession = true;
-    _targetUsed = false;
-    unawaited(_storeTargetUsed(false));
-    final editedAt = _lastEditedAt = _now();
-    unawaited(_storeEditedAt(editedAt));
-  }
-
   // Each store writes only the field its setter changed, so a mix edit
   // can't clobber a stored pressure that loadTarget hasn't read yet.
-  Future<void> _storeEditedAt(DateTime editedAt) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_kLastEditedAt, editedAt.millisecondsSinceEpoch);
-  }
-
-  Future<void> _storeTargetUsed(bool used) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kTargetUsed, used);
-  }
-
   Future<void> _storeTargetMix(int o2, int he) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kTargetO2, o2);
