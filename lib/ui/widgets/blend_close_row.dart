@@ -24,8 +24,8 @@ class BlendCloseRow extends StatelessWidget {
 
   final AnalysisSaveController controller;
 
-  /// "Closes Tx18/45 · blended 1 h 05 min ago", "No open blend" or "No open
-  /// blend matches. Nearest: Tx50 (red)"; null when there is nothing to
+  /// "Closes Tx18/45 · blended 1 h 05 min ago", "Closes no blend" or "No
+  /// open blend matches. Nearest: Tx50 (red)"; null when there is nothing to
   /// say (no open blends, or a residual).
   String? _text() {
     final c = controller;
@@ -41,7 +41,8 @@ class BlendCloseRow extends StatelessWidget {
       return 'No open blend matches. Nearest: ${nearest.blend.target.name} '
           '(${nearest.grade.level.name})';
     }
-    return 'No open blend';
+    // Open blends exist (checked above) but none will close.
+    return 'Closes no blend';
   }
 
   @override

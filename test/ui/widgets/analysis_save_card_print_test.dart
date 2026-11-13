@@ -88,7 +88,8 @@ class _ThrowingOpenBlends extends FakeOpenBlendsDao {
   _ThrowingOpenBlends({super.blends});
 
   @override
-  Future<bool> closeBlend(OpenBlend b, String analysisId) =>
+  Future<bool> closeBlend(OpenBlend b, String analysisId,
+          {DateTime? blendedNoLaterThan}) =>
       throw Exception('offline');
 }
 
@@ -1118,7 +1119,7 @@ void main() {
       await tester.tap(_key('blend-choice-none'));
       await tester.pumpAndSettle();
       expect(tester.widget<Text>(_key('blend-close-text')).data,
-          'No open blend');
+          'Closes no blend');
 
       await _tapAndSettle(tester, _key('analysis-save'));
       expect(dao.added, hasLength(1));
