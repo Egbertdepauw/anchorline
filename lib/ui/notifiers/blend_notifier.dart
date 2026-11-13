@@ -21,7 +21,9 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../analysis/blending/gas_blender.dart';
+import '../../analysis/open_blend_match.dart';
 import '../../data/models/gas_analysis.dart';
+import '../../data/models/open_blend.dart';
 import 'settings_notifier.dart';
 
 class BlendNotifier extends ChangeNotifier {
@@ -73,6 +75,10 @@ class BlendNotifier extends ChangeNotifier {
   bool _pressureEditedThisSession = false;
   bool _disposed = false;
 
+  // A role the diver chose for the blend being edited; null means "use the
+  // guess". Cleared by openBlendSaved.
+  GasRole? _roleOverride;
+
   // Top-off.
   int _topoffOxygenPercent = 21;
   int _topoffHeliumPercent = 0;
@@ -106,6 +112,18 @@ class BlendNotifier extends ChangeNotifier {
   double get fillTempC => _fillTempC;
   double get settledTempC => _settledTempC;
   BlendResult? get result => _result;
+
+  /// The role guessed from the target O2, the water capacity and the
+  /// diluent size in Settings.
+  RoleGuess get roleGuess => guessBlendRole(
+        targetO2Percent: _targetOxygenPercent,
+        waterCapacityL: _waterCapacityL,
+        diluentMaxL: settings.blendDiluentMaxL,
+      );
+
+  /// The role the open blend gets: the diver's choice, else [roleGuess].
+  GasRole get role => _roleOverride ?? roleGuess.role;
+  bool get roleOverridden => _roleOverride != null;
 
   // ── Mutations ─────────────────────────────────────────────────────
   // Every setter below is driven by the diver typing or tapping on the
@@ -189,6 +207,48 @@ class BlendNotifier extends ChangeNotifier {
     _settledTempC = clamped;
     _markEdited();
     _markDirty();
+  }
+
+  /// Overrides the guessed role for the blend being edited.
+  void overrideRole(GasRole r) {
+    if (_roleOverride == r) return;
+    _roleOverride = r;
+    notifyListeners();
+  }
+
+  /// The open blend to save for the current inputs.
+  NewOpenBlend draftOpenBlend({String? blendedBy, required DateTime now}) {
+    final by = blendedBy?.trim();
+    return NewOpenBlend(
+      target: DesiredMix(_targetOxygenPercent, _targetHeliumPercent),
+      targetPressureBar: _targetPressureBar,
+      residual: DesiredMix(_currentOxygenPercent, _currentHeliumPercent),
+      residualPressureBar: _currentPressureBar,
+      topoff: DesiredMix(_topoffOxygenPercent, _topoffHeliumPercent),
+      waterCapacityL: _waterCapacityL,
+      role: role,
+      blendedBy: (by == null || by.isEmpty) ? null : by,
+      blendedAt: now,
+    );
+  }
+
+  /// Call after the open blend was saved: the role override applied to that
+  /// blend only.
+  void openBlendSaved() {
+    if (_roleOverride == null) return;
+    _roleOverride = null;
+    notifyListeners();
+  }
+
+  /// Fills the Blend tab's residual gas from a residual analysis. The
+  /// pressure is left alone when [pressureBar] is null.
+  void applyResidualAnalysis({
+    required double o2Percent,
+    required double hePercent,
+    double? pressureBar,
+  }) {
+    setCurrentMix(o2Percent.round(), hePercent.round());
+    if (pressureBar != null) setCurrentPressure(pressureBar);
   }
 
   /// The target mix, if the diver edited any Blend input (the target, but
