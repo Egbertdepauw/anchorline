@@ -33,6 +33,22 @@ pull request, keep that project's copyright and licence notices, and add
 it to [`NOTICE.md`](NOTICE.md). Code from libdivecomputer (LGPL 2.1 or
 later) and Subsurface (GPL version 2) is welcome on those terms.
 
+### Code derived from libdivecomputer
+
+The Shearwater parser files listed in [`NOTICE.md`](NOTICE.md) are
+translated from libdivecomputer and keep its licence, the LGPL version 2.1
+or later. Anchorline ships them through the app stores because its source
+is open, and in that spirit two rules apply to them:
+
+- **Changes stay open.** A change to one of these files stays public in
+  this repository, under the same licence. Keep the copyright and licence
+  header at the top of the file.
+- **Improvements go back upstream.** If your change fixes or adds
+  something that libdivecomputer lacks (a parsing bug, a new field, a
+  firmware quirk), say so in the pull request. It will be shared with
+  libdivecomputer's maintainer or mailing list, so every program that
+  uses libdivecomputer benefits.
+
 The name "Anchorline" and its logo stay with the project; contributing
 code doesn't change that. See [`LICENSING.md`](LICENSING.md).
 

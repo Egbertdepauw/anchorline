@@ -27,6 +27,10 @@ Shearwater code. Without libdivecomputer it would not exist.
   - `packages/subsurface_core/lib/shearwater/parser/constants.dart`
   - `lib/shearwater/parser/decompressor.dart`
   - `packages/subsurface_core/lib/shearwater/parser/hardware.dart`
+- **Changes and improvements:** changes to these files stay public under
+  the same licence, and improvements that would help libdivecomputer are
+  shared back with its community. See
+  [`CONTRIBUTING.md`](CONTRIBUTING.md#code-derived-from-libdivecomputer).
 
 The Bluetooth download code in `lib/shearwater/ble/` and
 `lib/shearwater/parser/slip_decoder.dart` is Anchorline's own
