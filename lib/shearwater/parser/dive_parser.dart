@@ -25,12 +25,13 @@ export 'package:subsurface_core/shearwater/parser/parsed_dive.dart';
 
 /// Result of parsing one dive from a buffer that may contain more.
 ///
-/// Used by [ShearwaterDiveParser.parseOne] to support iterating through
-/// a single-session multi-dive blob (the format a Shearwater Petrel
-/// emits when you ask it to download the entire on-flash log in one
-/// request — all dives end-to-end, terminated by the LRE end-marker
-/// at the very end of the log, with each dive's on-flash 128-byte
-/// alignment padding preserved between them).
+/// Used by [ShearwaterDiveParser.parseOne] to walk a buffer that holds
+/// several decompressed dives back to back, each padded to the next
+/// 128-byte boundary as on flash. Downloads don't produce such a buffer:
+/// Anchorline downloads one dive at a time, as libdivecomputer does, and
+/// the Petrel ends each dive's compressed stream with its own LRE end
+/// marker. Multi-dive buffers only existed during a May 2026 experiment
+/// that downloaded the whole log in one session, reverted in #40.
 class ParseResult {
   /// The dive that was parsed.
   final ParsedDive dive;
@@ -109,14 +110,15 @@ class ShearwaterDiveParser {
 ///   - (legacy/Predator) a 128-byte footer block, optionally followed by
 ///     a 128-byte final block.
 ///
-/// When the Petrel streams the entire on-flash log in one download
-/// session, these per-dive ends sit back-to-back in the decompressed
-/// stream. This function finds where one dive's bytes stop and the
-/// next dive's bytes begin.
+/// In a buffer that holds several dives back to back (see [ParseResult]),
+/// this finds where one dive's bytes stop and the next dive's begin. A
+/// per-dive download holds exactly one dive: in the recorded Petrel 3
+/// trace each one is a single final record followed by zero padding to
+/// the next 128-byte boundary, so for those the end found here is
+/// `data.length`.
 ///
-/// Falls back to `data.length` when no boundary marker is found (i.e.
-/// the buffer holds exactly one dive without trailing pad — the case
-/// when callers feed a per-dive blob from `parse()`).
+/// Falls back to `data.length` when no final record is found; the buffer
+/// is then taken to be one dive.
 int _findDiveEnd(Uint8List data, int startOffset, ShearwaterModel model) {
   if (model.isPetrel) {
     // PNF: scan 32-byte records for the [logRecordFinal] (0xFF) marker.

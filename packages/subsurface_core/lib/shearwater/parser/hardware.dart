@@ -4,14 +4,16 @@
 // Copyright (C) 2026 Egbert de Pauw
 //
 // Translated to Dart from libdivecomputer's src/shearwater_common.c (the
-// hardware ID to model table) and changed for Anchorline in 2026. Like the
-// original, this file is free software under the GNU Lesser General Public
-// License, version 2.1 or (at your option) any later version. See
+// hardware ID to model table) and src/shearwater_common.h (the model
+// numbers), and changed for Anchorline in 2026. Like the original, this
+// file is free software under the GNU Lesser General Public License,
+// version 2.1 or (at your option) any later version. See
 // LICENSES/LGPL-2.1.txt and NOTICE.md.
 
 /// Shearwater dive computer model identification.
 ///
-/// Hardware ID → model mapping from libdivecomputer shearwater_common.c.
+/// Model number → model mapping from libdivecomputer shearwater_common.h,
+/// and the older hardware ID → model mapping from shearwater_common.c.
 library;
 
 /// Shearwater dive computer models.
@@ -46,7 +48,45 @@ enum ShearwaterModel {
   int get sampleSize => isPetrel ? 32 : 16;
 }
 
+/// Map a model number (from RDBI 0x8060) to a [ShearwaterModel].
+///
+/// The device reports the model numbers libdivecomputer uses
+/// (`shearwater_common.h`, read directly since libdivecomputer
+/// `f351434`). The Petrel and Petrel 2 share number 3, so [hardwareId]
+/// (RDBI 0x8050) tells them apart: the original Petrel's hardware IDs
+/// are in [modelFromHardware]'s table, and any other hardware ID with
+/// number 3 is taken as a Petrel 2.
+///
+/// Number 14, the Perdix 3, uses a newer protocol variant Anchorline
+/// doesn't support; it and any number not listed here map to
+/// [ShearwaterModel.unknown].
+ShearwaterModel modelFromNumber(int modelNumber, {required int hardwareId}) {
+  return switch (modelNumber) {
+    2 => ShearwaterModel.predator,
+    3 => modelFromHardware(hardwareId) == ShearwaterModel.petrel
+        ? ShearwaterModel.petrel
+        : ShearwaterModel.petrel2,
+    4 => ShearwaterModel.nerd,
+    5 => ShearwaterModel.perdix,
+    6 => ShearwaterModel.perdixAi,
+    7 => ShearwaterModel.nerd2,
+    8 => ShearwaterModel.teric,
+    9 => ShearwaterModel.peregrine,
+    10 => ShearwaterModel.petrel3,
+    11 => ShearwaterModel.perdix2,
+    12 => ShearwaterModel.tern, // Tern and Tern TX
+    13 => ShearwaterModel.peregrineTx,
+    _ => ShearwaterModel.unknown,
+  };
+}
+
 /// Map a hardware ID (from RDBI 0x8050) to a [ShearwaterModel].
+///
+/// libdivecomputer dropped this table in `f351434` for the model number
+/// ([modelFromNumber]), because new hardware IDs appear faster than the
+/// table gets updated. Anchorline keeps it as the fallback for a device
+/// that NAKs RDBI 0x8060, and to name a dive computer from the hardware
+/// ID stored with it.
 ShearwaterModel modelFromHardware(int hardwareId) {
   return switch (hardwareId) {
     0x0101 || 0x0202 => ShearwaterModel.predator,

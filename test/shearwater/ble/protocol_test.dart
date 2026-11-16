@@ -9,13 +9,20 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// Mock BLE I/O that replays a combined.txt trace.
 ///
-/// Download Inits (0x35) are answered by address, the way the device
-/// answers them: the replay jumps to the next recorded download of the
-/// requested address. A test that asks for dives in another order than the
-/// recording (the transport asks in ascending address order, the trace has
-/// them newest first) still gets each dive's own bytes, so a mispairing of
-/// entry and blob shows up instead of being replayed into place. Everything
-/// else replays in recorded order.
+/// Every request must match the recording. Download Inits (0x35) are
+/// answered by address, the way the device answers them: an Init may come
+/// wherever the recording has one, and the replay jumps to the next
+/// recorded download of the requested address, whose Init must match the
+/// request byte for byte. A test that asks for dives in another order than
+/// the recording (the transport asks in ascending address order, the trace
+/// has them newest first) still gets each dive's own bytes, so a mispairing
+/// of entry and blob shows up instead of being replayed into place. Every
+/// other request must be the next one in the recording, with one
+/// exception: an RDBI request the recording doesn't have at that point
+/// (the trace predates RDBI 0x8060) is answered from [rdbiResponses], or
+/// with a NAK when the identifier isn't in there. [rewriteResponse] can
+/// replace recorded responses, to replay the trace with variations the
+/// recorded device never sent.
 class TraceMockBle implements BleIo {
   final List<_TraceEntry> _entries;
 
@@ -28,39 +35,98 @@ class TraceMockBle implements BleIo {
 
   int _index = 0;
 
-  TraceMockBle(String tracePath) : this._(_parseTrace(tracePath));
+  /// Response data (after the `62 id_hi id_lo` header) for RDBI
+  /// identifiers the recording doesn't have.
+  final Map<int, List<int>> rdbiResponses;
 
-  TraceMockBle._(this._entries) : _initsByAddress = _indexInits(_entries);
+  /// Called with each recorded response payload (after the 4-byte packet
+  /// header); a non-null result is sent instead.
+  final List<int>? Function(Uint8List payload)? rewriteResponse;
+
+  /// RDBI identifiers requested that the recording doesn't have, in order.
+  final List<int> unrecordedRdbiIds = [];
+
+  /// Payload of a response to an unrecorded request, sent on the next read.
+  List<int>? _unrecordedResponse;
+
+  TraceMockBle(String tracePath,
+      {Map<int, List<int>> rdbiResponses = const {},
+      List<int>? Function(Uint8List payload)? rewriteResponse})
+      : this._(_parseTrace(tracePath), rdbiResponses, rewriteResponse);
+
+  TraceMockBle._(this._entries, this.rdbiResponses, this.rewriteResponse)
+      : _initsByAddress = _indexInits(_entries);
 
   @override
   Future<void> writeBytes(Uint8List data) async {
+    // All requests in this protocol fit in one BLE frame.
+    final request = _payload([data]);
+
+    // Find the next W entry and verify it matches what the protocol sends.
+    var next = _index;
+    while (next < _entries.length && _entries[next].direction != 'W') {
+      next++;
+    }
+
     final address = _initAddress(data);
     if (address != null) {
+      if (next < _entries.length &&
+          _initAddress(_entries[next].bytes) == null) {
+        throw StateError('Download Init ${_hexBytes(request)} where the '
+            'recording has ${_hexBytes(_payload([_entries[next].bytes]))}');
+      }
       final recorded = _initsByAddress[address] ?? const <int>[];
       final replayed = _initsReplayed[address] ?? 0;
       if (replayed >= recorded.length) {
         throw StateError('Trace has no further download of address '
             '0x${address.toRadixString(16)}');
       }
+      final init = recorded[replayed];
+      final recordedInit = _payload([_entries[init].bytes]);
+      if (!_sameBytes(recordedInit, request)) {
+        throw StateError('Request ${_hexBytes(request)} does not match the '
+            'recorded ${_hexBytes(recordedInit)}');
+      }
       _initsReplayed[address] = replayed + 1;
       // Continue right after that Init, with its recorded response.
-      _index = recorded[replayed] + 1;
+      _index = init + 1;
       return;
     }
 
-    // Find the next W entry and verify it matches what the protocol sends.
-    while (_index < _entries.length && _entries[_index].direction != 'W') {
-      _index++;
+    if (next < _entries.length &&
+        _sameBytes(_payload([_entries[next].bytes]), request)) {
+      // Advance past this W entry.
+      _index = next + 1;
+      return;
     }
-    if (_index >= _entries.length) {
+
+    if (request.length == 3 && request[0] == 0x22) {
+      final id = (request[1] << 8) | request[2];
+      unrecordedRdbiIds.add(id);
+      final response = rdbiResponses[id];
+      // A NAK with NRC 0x31 (requestOutOfRange), what a UDS device sends
+      // for an identifier it doesn't support.
+      _unrecordedResponse = response == null
+          ? [0x7F, 0x22, 0x31]
+          : [0x62, request[1], request[2], ...response];
+      return;
+    }
+
+    if (next >= _entries.length) {
       throw StateError('Trace exhausted: no more W entries');
     }
-    // Advance past this W entry.
-    _index++;
+    throw StateError('Request ${_hexBytes(request)} does not match the '
+        'recorded ${_hexBytes(_payload([_entries[next].bytes]))}');
   }
 
   @override
   Future<List<Uint8List>> readFrames() async {
+    final unrecorded = _unrecordedResponse;
+    if (unrecorded != null) {
+      _unrecordedResponse = null;
+      return _frames(unrecorded);
+    }
+
     // Collect consecutive R entries (multi-frame BLE reads).
     final frames = <Uint8List>[];
     while (_index < _entries.length && _entries[_index].direction == 'R') {
@@ -70,8 +136,32 @@ class TraceMockBle implements BleIo {
     if (frames.isEmpty) {
       throw StateError('Trace exhausted: no R entries after W');
     }
-    return frames;
+    final replacement = rewriteResponse?.call(_payload(frames));
+    return replacement == null ? frames : _frames(replacement);
   }
+
+  /// The command payload of a packet sent as BLE [frames], without the
+  /// 4-byte packet header.
+  static Uint8List _payload(List<Uint8List> frames) {
+    final packet = BleSlipCodec.decode(frames);
+    return packet.length < 4 ? packet : Uint8List.sublistView(packet, 4);
+  }
+
+  /// BLE frames for a response packet carrying [payload].
+  static List<Uint8List> _frames(List<int> payload) =>
+      BleSlipCodec.encode(Uint8List.fromList(
+          [0x01, 0xFF, payload.length + 1, 0x00, ...payload]));
+
+  static bool _sameBytes(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  static String _hexBytes(List<int> bytes) =>
+      bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
 
   @override
   void drainPendingFrames() {
@@ -215,6 +305,130 @@ void main() {
       final fixture = File('test/fixtures/dives/dive_718.bin').readAsBytesSync();
       expect(diveData.length, equals(fixture.length));
       expect(diveData, equals(fixture));
+    });
+  });
+
+  group('parseDownloadInitResponse', () {
+    int parse(List<int> payload) =>
+        ShearwaterProtocol.parseDownloadInitResponse(
+            Uint8List.fromList(payload));
+
+    test('reads the 1-byte field the Petrel 3 sends', () {
+      // As recorded: manifest and dive init responses.
+      expect(parse([0x75, 0x10, 0x82]), equals(130));
+      expect(parse([0x75, 0x10, 0x92]), equals(146));
+    });
+
+    test('reads longer fields, big-endian', () {
+      expect(parse([0x75, 0x20, 0x00, 0x92]), equals(146));
+      expect(parse([0x75, 0x30, 0x00, 0x00, 0xFE]), equals(254));
+      expect(parse([0x75, 0x40, 0x00, 0x00, 0x00, 0x92]), equals(146));
+    });
+
+    test('takes the field length from the upper nibble only', () {
+      expect(parse([0x75, 0x1F, 0x92]), equals(146));
+    });
+
+    test('rejects a response that is not an init response', () {
+      expect(() => parse([0x7F, 0x35, 0x31]),
+          throwsA(isA<ProtocolException>()));
+      expect(() => parse([0x75]), throwsA(isA<ProtocolException>()));
+    });
+
+    test('rejects a field longer than 4 bytes', () {
+      expect(() => parse([0x75, 0x50, 0x00, 0x00, 0x00, 0x00, 0x92]),
+          throwsA(isA<ProtocolException>()));
+    });
+
+    test('rejects a truncated field', () {
+      expect(() => parse([0x75, 0x20, 0x00]),
+          throwsA(isA<ProtocolException>()));
+      expect(() => parse([0x75, 0x10]), throwsA(isA<ProtocolException>()));
+    });
+
+    test('rejects packets larger than the protocol carries', () {
+      expect(parse([0x75, 0x10, maxPacketSizeV1]), equals(254));
+      expect(() => parse([0x75, 0x20, 0x00, 0xFF]),
+          throwsA(isA<ProtocolException>()));
+      // The Perdix 3's largest dive packet, per libdivecomputer.
+      expect(() => parse([0x75, 0x20, 0x09, 0x02]),
+          throwsA(isA<ProtocolException>()));
+    });
+  });
+
+  group('download with a multi-byte init response field', () {
+    /// Replays the trace with every init response's 1-byte max-packet
+    /// field (`75 10 nn`) rewritten as [field].
+    TraceMockBle withInitField(List<int> Function(int maxPacket) field) =>
+        TraceMockBle('test/fixtures/raw/subsurface2.combined.txt',
+            rewriteResponse: (payload) =>
+                payload.length == 3 && payload[0] == 0x75 && payload[1] == 0x10
+                    ? [0x75, ...field(payload[2])]
+                    : null);
+
+    Future<void> readDeviceInfoRdbis(ShearwaterProtocol p) async {
+      await p.rdbi(idSerial);
+      await p.rdbi(idFirmware);
+      await p.rdbi(idHardware);
+      await p.rdbi(idLogUpload);
+    }
+
+    test('downloads the manifest and dive 718 with a 2-byte field',
+        () async {
+      final p = ShearwaterProtocol(withInitField((n) => [0x20, 0x00, n]));
+      await readDeviceInfoRdbis(p);
+
+      for (var i = 0; i < 5; i++) {
+        final manifest = await p.download(
+          address: manifestAddr,
+          size: manifestSize,
+          compressed: false,
+        );
+        expect(manifest.length, equals(manifestSize));
+      }
+
+      final diveData = await p.download(
+        address: 0x808A6AC0,
+        size: 0xFFFFFF,
+        compressed: true,
+      );
+      final fixture = File('test/fixtures/dives/dive_718.bin').readAsBytesSync();
+      expect(diveData, equals(fixture));
+    });
+
+    test('stops when the device announces packets above 254 bytes',
+        () async {
+      final p = ShearwaterProtocol(withInitField((_) => [0x20, 0x09, 0x02]));
+      await readDeviceInfoRdbis(p);
+
+      await expectLater(
+        p.download(
+          address: manifestAddr,
+          size: manifestSize,
+          compressed: false,
+        ),
+        throwsA(isA<ProtocolException>().having(
+            (e) => e.message, 'message', contains('max packet 2306'))),
+      );
+    });
+  });
+
+  group('RDBI NAK', () {
+    test('throws RdbiNakException for an identifier the device NAKs',
+        () async {
+      // The recording has no RDBI 0x8060; the replay NAKs it.
+      await protocol.rdbi(idSerial);
+      await protocol.rdbi(idFirmware);
+      await protocol.rdbi(idHardware);
+      await expectLater(
+        protocol.rdbi(idModel),
+        throwsA(isA<RdbiNakException>()
+            .having((e) => e.id, 'id', idModel)
+            .having((e) => e.errorCode, 'errorCode', 0x31)),
+      );
+      // The replay carries on with the next recorded request.
+      final data = await protocol.rdbi(idLogUpload);
+      expect(data[1], equals(0x80));
     });
   });
 }
