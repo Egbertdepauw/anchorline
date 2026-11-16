@@ -235,12 +235,21 @@ class _SignedInRow extends StatelessWidget {
 String _formatSyncStatus(SyncStatusSnapshot s) {
   final state = _statusLabel(s);
   final last = s.lastSyncedAt;
-  if (last == null) return state;
-  return '$state  Last synced: ${_relativeTime(last, DateTime.now())}';
+  final line = last == null
+      ? state
+      : '$state  Last synced: ${_relativeTime(last, DateTime.now())}';
+  if (!_isBlocked(s)) return line;
+  return '$line\n$_blockedHelper';
 }
+
+const _blockedHelper =
+    'The server refused a change. It uploads by itself once the server is fixed.';
+
+bool _isBlocked(SyncStatusSnapshot s) => s.connected && s.uploadBlockedByServer;
 
 String _statusLabel(SyncStatusSnapshot s) {
   if (!s.connected) return '🔴 Offline';
+  if (s.uploadBlockedByServer) return '🔴 Upload blocked by the server';
   if (s.uploading || s.downloading) return '🟡 Syncing…';
   return '🟢 Synced';
 }
