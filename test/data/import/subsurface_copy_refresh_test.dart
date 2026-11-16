@@ -202,9 +202,10 @@ void main() {
     }
     expect(outcomes, everyElement(ImportOutcome.refreshed));
 
-    // The shifted copy (dive #714 in the trace) started 7 s after the trace.
+    // The shifted copy (dive #715 in the trace, 2026-04-04) started 7 s
+    // after the trace.
     final shifted = downloaded
-        .singleWhere((d) => d.converted.dive.dcDiveNumber == 714);
+        .singleWhere((d) => d.converted.dive.dcDiveNumber == 715);
     final shiftedBefore = before.singleWhere(
         (r) => r['start_time'] == startOf(shifted) + 7);
     final shiftedAfter = (await diveRows())
@@ -284,26 +285,24 @@ void main() {
       return (mixes, {for (final c in cyl) c.gasMixIndex: c.cylinderId});
     }
 
-    // Dive 718: the 21/41 diluent (cyl0) moves to its new index; the 100%
+    // Dive 711 (2026-03-19): the 21/41 diluent (cyl0) moves to its new index; the 100%
     // and 21% mixes are gone.
-    final (m718, c718) = await read(718);
-    expect(m718[4], {'o2': 21, 'he': 41, 'dil': true});
-    expect(c718, {-2: 'cyl2', -1: 'cyl1', 4: 'cyl0'});
+    final (m711, c711) = await read(711);
+    expect(m711[4], {'o2': 21, 'he': 41, 'dil': true});
+    expect(c711, {-2: 'cyl2', -1: 'cyl1', 4: 'cyl0'});
 
-    // Dive 717: its 22/41 diluent (cyl0) is not on the refreshed dive and
+    // Dive 712 (2026-03-20): its 22/41 diluent (cyl0) is not on the refreshed dive and
     // becomes unassigned; its 99% oxygen (cyl1) follows its mix to index 0.
-    final (m717, c717) = await read(717);
-    expect(m717.any((m) => m['o2'] == 22), isFalse);
-    expect(m717[0], {'o2': 99, 'he': 0, 'dil': false});
-    expect(c717, {-2: 'cyl2', -1: 'cyl0', 0: 'cyl1'});
+    final (m712, c712) = await read(712);
+    expect(m712.any((m) => m['o2'] == 22), isFalse);
+    expect(m712[0], {'o2': 99, 'he': 0, 'dil': false});
+    expect(c712, {-2: 'cyl2', -1: 'cyl0', 0: 'cyl1'});
   });
 
   test('refreshed copies are not offered as new on the next scan', () async {
     await bootstrap();
-    // The scan's listings, one per downloaded dive. The trace replays its
-    // blobs in the order they were recorded, not the order requested, so a
-    // blob's own number and start (what the stored dive carries) are the
-    // coherent pair; the manifest's pairing differs for this trace only.
+    // The scan's listings, one per downloaded dive: each dive's own number
+    // and start, which are also what the manifest lists for it.
     final downloaded = await _downloadAll();
     final listings = [
       for (final d in downloaded)
