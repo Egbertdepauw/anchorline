@@ -2,6 +2,9 @@
 
 **Date:** 2026-11-15
 **Status:** Approved by Egbert, 2026-11-15
+**Revised:** 2026-11-16, sections 2, 10 and 12: the other authors' code
+ships in every build, the store builds too, and is left out of the store
+builds only if an author asks.
 **Supersedes:** the engine decision ("pure-Dart ports, no FFI") in
 [`2026-06-04-multi-dc-driver-architecture-design.md`](2026-06-04-multi-dc-driver-architecture-design.md).
 Its data-model changes and the idea of one download shape for every brand
@@ -168,7 +171,7 @@ platform's own toolchain (Xcode clang, the Android NDK, MSVC, clang/gcc on
 Linux), with no CocoaPods, Gradle or CMake changes.
 
 - **What's compiled:** libdivecomputer's `src/*.c` for the families in this
-  build (see "store builds" below), plus `native/`. One dynamic library per
+  build (see "Left-out families" below), plus `native/`. One dynamic library per
   target. On iOS and macOS the hook output becomes a framework.
 - **No optional dependencies in phases 1–2:** no libusb, hidapi, BlueZ or
   libmtp. Bluetooth goes through custom I/O (section 4). Serial support is
@@ -177,10 +180,12 @@ Linux), with no CocoaPods, Gradle or CMake changes.
   autotools. We commit fixed versions per platform family (POSIX, Windows)
   in `native/`, and the update script regenerates `version.h` from the
   pinned commit.
-- **Store builds and left-out families (section 10):** the hook reads a
-  list of families to leave out, passed as a hook user-define (from
-  `pubspec.yaml` or the build command; the builder picks the mechanism that
-  works per build). Left-out families' source files are not compiled.
+- **Left-out families (section 10):** every build compiles every family.
+  The hook can still leave families out, for a store build whose author
+  asked for that: it reads a list of families to leave out, passed as a
+  hook user-define (from `pubspec.yaml` or the build command; the builder
+  picks the mechanism that works per build). The list starts empty.
+  Left-out families' source files are not compiled.
   Generated stub functions return `DC_STATUS_UNSUPPORTED`, so no
   libdivecomputer file needs patching. The Dart side asks the native
   library which families are present and lists only those. Code that isn't
@@ -677,12 +682,13 @@ downloaded dive it skips it, as today.
   | John Van Ostrand | Cochran |
   | David Carron (with Jef) | McLean |
 
-  Egbert asks Jef how to handle these in his next email (the draft is in
-  the shared notes folder for this group of sessions). Until Jef answers,
-  the **store builds** (iOS, Google Play, Mac App Store) leave these
-  families out (section 2), and the **website builds** (Windows, Linux, and
-  anything else distributed outside the stores) carry everything. After his
-  answer, the leave-out list changes in one place.
+  **Every build carries these families,** the **store builds** (iOS,
+  Google Play, Mac App Store) as well as the **website builds** (Windows,
+  Linux, and anything else distributed outside the stores). Egbert's email
+  to Jef (2026-11-16) says so and asks him to pass it on: if any of these
+  authors would rather not have their code in the store builds, their
+  families go on the leave-out list (section 2) for those builds, and the
+  website builds keep them. The list changes in one place.
 - **Precedent, for context:** Subsurface-mobile ships the whole library in
   the App Store and Google Play without an exception. In a 2019 talk
   (reported by LWN) the project said it had declared its licence to Apple
@@ -772,8 +778,9 @@ Each phase is one or more PRs, planned separately.
    - The per-dive cell agreement summary for families with cells.
    - Every Bluetooth family listed, "not yet tested by us" until a
      recording checks it.
-   - Store builds wait for Jef's answer about the other authors (section
-     10); website builds can ship first.
+   - Store and website builds carry the same families. If an author asks
+     for their code to stay out of the store builds, the leave-out list
+     drops it there (sections 2 and 10).
 3. **Cable and classic-Bluetooth computers.** libdivecomputer's serial
    code and a port picker on desktop. Classic Bluetooth through
    libdivecomputer's own code on Windows, and through the app on Android
@@ -812,7 +819,8 @@ Each phase is one or more PRs, planned separately.
 
 ## Left to the builder
 
-- The exact hook user-define mechanism for the leave-out list, per build.
+- The exact hook user-define mechanism for the leave-out list, per build
+  (it starts empty).
 - `config.h` contents per platform; which `src/` files are platform-only.
 - The ffigen version and configuration.
 - Isolate lifetime (one per download or one long-lived), and the C layer's
@@ -848,8 +856,11 @@ Each phase is one or more PRs, planned separately.
 - **Bluetooth differences per platform.** Notification sizes, MTU and write
   behaviour differ. The `BleCentral` seam already absorbs some of this for
   the SOLO bridge and the label printer.
-- **Store approval timing.** Store builds can't list the other authors'
-  families until Jef answers. Website builds aren't affected.
+- **An author asks to be left out.** If one of the other authors (section
+  10) asks for their code to stay out of the store builds, those families
+  leave the store builds from the next release: divers on those builds keep
+  their dives but can't download new ones there. Website builds aren't
+  affected.
 - **A refresh bug damages many dives at once.** A refresh rewrites
   imported data on every device through sync. Mitigated by the refresh
   tests, the rule that a failed or empty parse never replaces a dive, and
