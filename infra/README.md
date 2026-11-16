@@ -28,8 +28,12 @@ the app gets from Supabase auth.
 
 Paste the contents of `powersync-sync-rules.yaml` into the PowerSync
 instance's sync configuration and deploy it. It is Sync Streams
-(`config: edition: 3`): one auto-subscribed stream, `user_data`, with one
-query per table, scoped on `owner_id = auth.user_id()`. The file name is
+(`config: edition: 3`): two auto-subscribed streams. `user_data` has one
+query per table, scoped on `owner_id = auth.user_id()`; `dives`,
+`dive_samples`, `dive_computers` and `dive_bailout_carry` also carry
+`AND dc_family IS NULL` there. `libdc_dives` carries the rows with
+`dc_family` set, only to builds that connect with `dc_engines >= 2`
+(`lib/sync/cloud/sync_params.dart`). The file name is
 kept from the Sync Rules days so the many references to it stay valid.
 
 The app needs no subscribe call: `auto_subscribe: true` makes every client
@@ -62,6 +66,22 @@ they can no longer be deployed. Switching:
    more download traffic than usual for a day.
 4. Check one device: sync goes green, the dive count matches, and an edit
    made after the switch reaches a second device.
+
+Deploy checklist for the `libdc_dives` gate (libdivecomputer phase 1):
+
+- Validate the file in the dashboard editor before deploying. The Streams
+  docs show `connection.parameter()` compared with a column, not with a
+  constant; if Validate rejects `connection.parameter('dc_engines') >= 2`,
+  use the fallback (`auto_subscribe: false` and no `connection.parameter`
+  clauses; phase 2 then subscribes explicitly).
+- If the switch from Sync Rules (#208) isn't deployed yet, deploy both
+  together: every device re-syncs fully once either way, so it should happen
+  once.
+- After deploying, run the fake-row check: in the SQL editor insert a
+  `dives` row for your account with `dc_family = 999`. It must not appear on
+  a build that sends `dc_engines: 1`, and must appear on a debug build with
+  `kSyncConnectionParams` set to `{'dc_engines': 2}`. Delete the row in SQL
+  afterwards.
 
 Edition 3 also turns on PowerSync's edition 2 fixes: ISO 8601 timestamps
 and custom Postgres type handling. Neither changes our data. The synced

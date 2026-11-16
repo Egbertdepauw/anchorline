@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:ccrlogger/sync/cloud/auth_service.dart';
 import 'package:ccrlogger/sync/cloud/ccrlogger_backend_connector.dart';
 import 'package:ccrlogger/sync/cloud/cloud_sync_coordinator.dart';
+import 'package:ccrlogger/sync/cloud/sync_params.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:powersync/powersync.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -66,11 +67,16 @@ class _RecordingTarget implements CloudSyncTarget {
   int connectCalls = 0;
   int disconnectCalls = 0;
   PowerSyncBackendConnector? lastConnector;
+  Map<String, Object?>? lastParams;
 
   @override
-  Future<void> connect(PowerSyncBackendConnector connector) async {
+  Future<void> connect(
+    PowerSyncBackendConnector connector, {
+    Map<String, Object?>? params,
+  }) async {
     connectCalls++;
     lastConnector = connector;
+    lastParams = params;
   }
 
   @override
@@ -162,6 +168,21 @@ void main() {
     expect(h.target.connectCalls, 1);
     expect(h.target.lastConnector, isA<CcrloggerBackendConnector>());
     expect(h.coord.isConnected, isTrue);
+  });
+
+  test('connect passes {dc_engines: 1}', () async {
+    final h = _build(signedIn: true);
+    addTearDown(() {
+      h.coord.dispose();
+      h.auth.dispose();
+      h.client.dispose();
+    });
+
+    h.coord.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(h.target.lastParams, {'dc_engines': 1});
+    expect(h.target.lastParams, kSyncConnectionParams);
   });
 
   test('successful sign-in triggers connect; sign-out triggers disconnect',
