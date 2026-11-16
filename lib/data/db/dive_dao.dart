@@ -108,31 +108,45 @@ class DiveDao {
   }) async {
     final dive = converted.dive;
 
+    // A Subsurface copy (-1) or an empty blob must never replace a stored
+    // raw blob, nor touch the rawBlobMissing mark.
+    final blobWritable =
+        parserVersion != kSubsurfaceImportedParserVersion && rawBlob.isNotEmpty;
+    Future<void> keepBlob(String id) async {
+      if (blobWritable) await _storeRawBlob(id, rawBlob);
+    }
+
     final sameId = await _storedKey(dive.id);
     if (sameId != null) {
       final outcome = await _refreshStored(sameId, converted, parserVersion,
           fromDownload: true);
-      await _storeRawBlob(sameId.id, rawBlob);
+      await keepBlob(sameId.id);
       return outcome;
     }
 
     String? candidatesJson;
     if (matchSubsurfaceCopies) {
       final matches = await _sameDiveCandidates(converted);
-      if (matches.length == 1) {
-        final match = matches.single;
-        final outcome = await _refreshStored(match, converted, parserVersion,
+      // A row that already passed the dive-number check (a download, or a
+      // refreshed copy) is decisive, even with unrefreshed copies in the
+      // window; this is the rule alreadyDownloadedAmong uses.
+      final decisive = matches.where((m) => m.parserVersion >= 0).toList();
+      final chosen = decisive.length == 1
+          ? decisive.single
+          : (decisive.isEmpty && matches.length == 1 ? matches.single : null);
+      if (chosen != null) {
+        final outcome = await _refreshStored(chosen, converted, parserVersion,
             fromDownload: true);
-        await _storeRawBlob(match.id, rawBlob);
+        await keepBlob(chosen.id);
         return outcome;
       }
-      if (matches.length > 1) {
+      if (matches.isNotEmpty) {
         candidatesJson = jsonEncode([for (final m in matches) m.id]);
       }
     }
 
     await _insertDive(converted, parserVersion, candidatesJson);
-    await _storeRawBlob(dive.id, rawBlob);
+    await keepBlob(dive.id);
     return candidatesJson == null
         ? ImportOutcome.inserted
         : ImportOutcome.insertedFlagged;

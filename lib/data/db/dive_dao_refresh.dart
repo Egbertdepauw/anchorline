@@ -101,8 +101,12 @@ extension _DiveDaoRefresh on DiveDao {
   /// Replaces the imported data of [diveId] in one PowerSync transaction.
   ///
   /// Never touches `id`, `imported_at`, `deleted_at`,
-  /// `subsurface_uploaded_at`, `match_candidates_json` or `dc_firmware` (the
-  /// converter does not capture it). The Postgres triggers refuse a lowered
+  /// `subsurface_uploaded_at` or `match_candidates_json`.
+  ///
+  /// `start_time` is never changed either: the Subsurface writer finds a
+  /// pushed dive on Subsurface Cloud by the exact `(serial, startTime)` key,
+  /// so moving it would push the dive again as a new Dive-NNN. `end_time`
+  /// becomes the stored start plus the incoming dive's length. The Postgres triggers refuse a lowered
   /// `parser_version` and a same-version change to the sample blobs; the
   /// caller only gets here with a higher version, so neither fires.
   Future<void> _writeRefresh(
@@ -126,16 +130,19 @@ extension _DiveDaoRefresh on DiveDao {
     await _ps.writeTransaction((tx) async {
       final old = await tx.getOptional(
           'SELECT gas_mixes_json FROM dives WHERE id = ?', [diveId]);
-      final oldMixes = _decodeMixes(old?['gas_mixes_json'] as String?);
+      // The dive vanished since the check: write nothing (no orphan samples).
+      if (old == null) return;
+      final oldMixes = _decodeMixes(old['gas_mixes_json'] as String?);
 
       await tx.execute(
         'UPDATE dives SET '
         'owner_id = COALESCE(owner_id, ?), '
-        'start_time = ?, end_time = ?, utc_offset_minutes = ?, '
+        'end_time = start_time + ?, utc_offset_minutes = ?, '
         'duration_seconds = ?, max_depth_mm = ?, dive_mode = ?, '
         'deco_model = ?, gf_low = ?, gf_high = ?, '
         'atmospheric_pressure_mbar = ?, water_density = ?, log_version = ?, '
-        'dc_model = ?, dc_vendor = COALESCE(?, dc_vendor), dc_product = ?, '
+        'dc_model = ?, dc_firmware = COALESCE(?, dc_firmware), '
+        'dc_vendor = COALESCE(?, dc_vendor), dc_product = ?, '
         'dc_family = ?, dc_model_code = ?, sample_interval_ms = ?, '
         'gas_mixes_json = ?, tanks_json = ?, sensor_calibration_json = ?, '
         'configured_stack_seconds = ?, stack_remaining_at_start_seconds = ?, '
@@ -145,8 +152,9 @@ extension _DiveDaoRefresh on DiveDao {
         'WHERE id = ?',
         [
           _ownerId,
-          dive.startTime.millisecondsSinceEpoch ~/ 1000,
-          dive.endTime.millisecondsSinceEpoch ~/ 1000,
+          (dive.endTime.millisecondsSinceEpoch -
+                  dive.startTime.millisecondsSinceEpoch) ~/
+              1000,
           dive.utcOffsetMinutes,
           dive.duration.inSeconds,
           (dive.maxDepthMeters * 1000).round(),
@@ -158,6 +166,7 @@ extension _DiveDaoRefresh on DiveDao {
           dive.waterDensityKgM3,
           dive.logVersion,
           dive.dcModel.index,
+          null, // dc_firmware: the converter does not capture it yet
           dive.dcVendor,
           dive.dcProduct,
           dive.dcFamily,
@@ -205,6 +214,13 @@ extension _DiveDaoRefresh on DiveDao {
         );
       }
 
+      // The sync gate filters carry rows by dc_family; keep it in step.
+      await tx.execute(
+        'UPDATE dive_bailout_carry SET dc_family = ?, updated_at = ?, '
+        'version = COALESCE(version, 0) + 1 '
+        'WHERE dive_id = ? AND dc_family IS NOT ?',
+        [dive.dcFamily, nowMs, diveId, dive.dcFamily],
+      );
       await _remapDiveCylindersTx(tx, diveId, oldMixes, dive.gasMixes, nowMs);
     });
   }

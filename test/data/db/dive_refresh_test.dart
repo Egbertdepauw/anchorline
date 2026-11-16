@@ -48,6 +48,8 @@ ConvertedDive _rebuild(
   List<model.DiveGasMix>? mixes,
   double? maxDepth,
   Duration? duration,
+  String? vendor,
+  bool nullVendor = false,
 }) {
   final d = c.dive;
   final shift = Duration(seconds: shiftSeconds);
@@ -76,7 +78,7 @@ ConvertedDive _rebuild(
       configuredStackSeconds: d.configuredStackSeconds,
       stackRemainingAtStartSeconds: d.stackRemainingAtStartSeconds,
       stackRemainingAtEndSeconds: d.stackRemainingAtEndSeconds,
-      dcVendor: d.dcVendor,
+      dcVendor: nullVendor ? null : (vendor ?? d.dcVendor),
       dcProduct: d.dcProduct,
       dcFamily: d.dcFamily,
       dcModelCode: d.dcModelCode,
@@ -120,6 +122,40 @@ void main() {
     );
     expect(out, ImportOutcome.inserted);
   }
+
+  Future<void> addLayers(String id) async {
+    await ps.execute(
+        'INSERT INTO dive_annotations (id, owner_id, dive_id, notes, version) '
+        "VALUES ('ann1', 'test-user', ?, 'nice', 1)",
+        [id]);
+    await ps.execute(
+        'INSERT INTO dive_attachments (id, owner_id, parent_kind, parent_id, '
+        "version) VALUES ('att1', 'test-user', 'dive', ?, 1)",
+        [id]);
+    await ps.execute(
+        'INSERT INTO dive_merge_links (id, owner_id, group_id, version) '
+        "VALUES (?, 'test-user', 'grp1', 1)",
+        [id]);
+    await ps.execute(
+        'INSERT INTO dive_bailout_carry (id, owner_id, dive_id, version) '
+        "VALUES ('bo1', 'test-user', ?, 1)",
+        [id]);
+    await equipment.setDiveCylinders(id, [
+      (gasMixIndex: 0, cylinderId: 'cylA'),
+      (gasMixIndex: 1, cylinderId: 'cylB'),
+    ]);
+  }
+
+  Future<List<Object?>> layered() async => [
+        for (final q in [
+          'SELECT * FROM dive_annotations',
+          'SELECT * FROM dive_attachments',
+          'SELECT * FROM dive_merge_links',
+          'SELECT * FROM dive_bailout_carry',
+          'SELECT * FROM dive_cylinders ORDER BY id',
+        ])
+          (await ps.getAll(q)).map((r) => Map.of(r)).toList(),
+      ];
 
   group('refresh in place', () {
     test(
@@ -304,7 +340,7 @@ void main() {
       final row = await diveRow('ss1');
       expect(row['parser_version'], 1);
       expect(row['dc_dive_number'], 718);
-      expect(row['start_time'], c.dive.startTime.millisecondsSinceEpoch ~/ 1000);
+      expect(row['start_time'], before['start_time']);
       expect(row['subsurface_uploaded_at'], 4321);
       expect(row['imported_at'], before['imported_at']);
       expect(await dao.getRawBlob('ss1'), _raw(718));
@@ -407,6 +443,135 @@ void main() {
             )
           ], vendor: kShearwaterVendor, serial: _serial),
           isEmpty);
+    });
+
+    test('a copy refresh keeps the copy\'s start time', () async {
+      final c = _fx(718);
+      await storeCopy(copyOf(c, 'ss1', 30));
+      final before = await diveRow('ss1');
+      await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 1);
+      final row = await diveRow('ss1');
+      expect(row['start_time'], before['start_time']);
+      expect((row['end_time'] as int) - (row['start_time'] as int),
+          (c.dive.endTime.millisecondsSinceEpoch -
+                  c.dive.startTime.millisecondsSinceEpoch) ~/
+              1000);
+    });
+
+    test('a re-download after that still finds the refreshed copy', () async {
+      final c = _fx(718);
+      await storeCopy(copyOf(c, 'ss1', 30));
+      await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 1);
+      expect(
+          await dao.importDive(
+              converted: c, rawBlob: _raw(718), parserVersion: 1),
+          ImportOutcome.unchanged);
+      expect(await diveCount(), 1);
+      expect(
+          await dao.alreadyDownloadedAmong([
+            (
+              diveId: c.dive.id,
+              startTimeSeconds: c.dive.startTime.millisecondsSinceEpoch ~/ 1000,
+              diveNumber: 718,
+            )
+          ], vendor: kShearwaterVendor, serial: _serial),
+          {c.dive.id});
+    });
+
+    test('an incoming copy never replaces a stored raw blob', () async {
+      final c = _fx(718);
+      await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 1);
+      await dao.importDive(
+          converted: c,
+          rawBlob: Uint8List(0),
+          parserVersion: kSubsurfaceImportedParserVersion,
+          matchSubsurfaceCopies: false);
+      expect(await dao.getRawBlob(c.dive.id), _raw(718));
+      await dao.importDive(
+          converted: c,
+          rawBlob: _raw(711),
+          parserVersion: kSubsurfaceImportedParserVersion,
+          matchSubsurfaceCopies: false);
+      expect(await dao.getRawBlob(c.dive.id), _raw(718));
+    });
+
+    test('a refreshed copy and an unrefreshed copy in the window: the '
+        'refreshed one is used, nothing inserted', () async {
+      final c = _fx(718);
+      await storeCopy(copyOf(c, 'ss2', 30));
+      await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 1);
+      await storeCopy(copyOf(c, 'ss1', 10));
+
+      final out = await dao.importDive(
+          converted: c, rawBlob: _raw(711), parserVersion: 1);
+
+      expect(out, ImportOutcome.unchanged);
+      expect(await diveCount(), 2);
+      expect(await dao.getRawBlob('ss2'), _raw(711));
+      expect((await diveRow('ss1'))['parser_version'], -1);
+    });
+
+    test('layered rows survive a copy refresh', () async {
+      final c = _fx(718);
+      await storeCopy(copyOf(c, 'ss1', 30));
+      await addLayers('ss1');
+      final before = await layered();
+      final out = await dao.importDive(
+          converted: c, rawBlob: _raw(718), parserVersion: 1);
+      expect(out, ImportOutcome.refreshed);
+      expect(await layered(), before);
+    });
+
+    test('dc_vendor COALESCE: a NULL incoming vendor keeps the stored one',
+        () async {
+      final c = _rebuild(_fx(718), nullVendor: true);
+      await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 1);
+      await ps.execute("UPDATE dives SET dc_vendor = 'Keeper' WHERE id = ?",
+          [c.dive.id]);
+      await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 2);
+      expect((await diveRow(c.dive.id))['dc_vendor'], 'Keeper');
+    });
+
+    test('the rawBlobMissing mark is cleared by a later successful write',
+        () async {
+      final c = _fx(718);
+      await db.customStatement('DROP TABLE dive_raw_blobs');
+      await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 1);
+      expect((await db.select(db.diveImportMarks).get()).single.rawBlobMissing,
+          isTrue);
+      await db.createMigrator().createTable(db.diveRawBlobs);
+      await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 1);
+      expect((await db.select(db.diveImportMarks).get()).single.rawBlobMissing,
+          isFalse);
+      expect(await dao.getRawBlob(c.dive.id), _raw(718));
+    });
+
+    test('a throw mid-refresh leaves PowerSync unchanged', () async {
+      final c = _rebuild(_fx(718), mixes: [_air, _tx]);
+      final id = c.dive.id;
+      await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 1);
+      await equipment.setDiveCylinders(id, [
+        (gasMixIndex: 0, cylinderId: 'cAir'),
+        (gasMixIndex: 1, cylinderId: 'cTx'),
+      ]);
+      // The gone mix moves to index -1: an INSERT, which the trigger refuses
+      // after the dives and dive_samples updates have run.
+      await ps.execute('CREATE TRIGGER boom INSTEAD OF INSERT ON dive_cylinders '
+          "BEGIN SELECT RAISE(ABORT, 'boom'); END");
+      final dBefore = await diveRow(id);
+      final sBefore = await samplesRow(id);
+      final cBefore = await layered();
+
+      await expectLater(
+          dao.importDive(
+              converted: _rebuild(c, mixes: [_air], maxDepth: 77.0),
+              rawBlob: _raw(718),
+              parserVersion: 2),
+          throwsA(anything));
+
+      expect(await diveRow(id), dBefore);
+      expect(await samplesRow(id), sBefore);
+      expect(await layered(), cBefore);
     });
   });
 

@@ -99,8 +99,8 @@ class EquipmentDao {
       if (existing == null) return;
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
-        'UPDATE dive_cylinders SET owner_id = ?, deleted_at = ?, '
-        'updated_at = ?, version = ? WHERE id = ?',
+        'UPDATE dive_cylinders SET owner_id = COALESCE(owner_id, ?), '
+        'deleted_at = ?, updated_at = ?, version = ? WHERE id = ?',
         [_ownerId, now, now, newVersion, id],
       );
     });
