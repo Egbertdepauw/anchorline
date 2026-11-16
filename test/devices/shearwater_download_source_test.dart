@@ -142,6 +142,18 @@ void main() {
           [for (final g in b.gasMixes) g.toJson()]);
       expect([for (final t in a.tanks) t.toJson()],
           [for (final t in b.tanks) t.toJson()]);
+      expect(a.dcVendor, b.dcVendor);
+      expect(a.dcProduct, b.dcProduct);
+      expect(got.converted.events, hasLength(expected.events.length));
+      for (var k = 0; k < expected.events.length; k++) {
+        final ga = got.converted.events[k];
+        final gb = expected.events[k];
+        expect(ga.timeMs, gb.timeMs);
+        expect(ga.type, gb.type);
+        expect(ga.rawType, gb.rawType);
+        expect(ga.value, gb.value);
+        expect(ga.bearing, gb.bearing);
+      }
       final ea = SampleCodec.encode(got.converted.samples);
       final eb = SampleCodec.encode(expected.samples);
       expect(ea.keys, eb.keys);

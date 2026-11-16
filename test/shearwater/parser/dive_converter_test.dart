@@ -1,9 +1,12 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
 import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:subsurface_core/data/models/dive.dart';
+import 'package:subsurface_core/data/sample_codec/event_codec.dart';
+import 'package:subsurface_core/shearwater/parser/constants.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -214,6 +217,134 @@ void main() {
         dive718.sensorCalibration,
         equals(parsed718.header.sensorCalibration),
       );
+    });
+  });
+
+  group('events and brand fields', () {
+    test('converted Shearwater dives carry vendor Shearwater and the product name',
+        () {
+      expect(dive718.dcVendor, kShearwaterVendor);
+      expect(dive718.dcVendor, 'Shearwater');
+      final data = File('test/fixtures/dives/dive_711.bin').readAsBytesSync();
+      final c711 = DiveConverter.convert(
+        parsed: ShearwaterDiveParser(model: ShearwaterModel.petrel3)
+            .parse(data),
+        dcSerial: 0xB89641E4,
+        dcDiveNumber: 711,
+        dcModel: ShearwaterModel.petrel3,
+      );
+      expect(c711.dive.dcVendor, 'Shearwater');
+      expect(c711.dive.dcProduct, 'Petrel 3');
+      // The engine family and model code are for libdivecomputer dives.
+      expect(c711.dive.dcFamily, isNull);
+      expect(c711.dive.dcModelCode, isNull);
+    });
+
+    test('an unknown model has a vendor but no product name', () {
+      final c = DiveConverter.convert(
+        parsed: parsed718,
+        dcSerial: 1,
+        dcDiveNumber: 1,
+        dcModel: ShearwaterModel.unknown,
+      );
+      expect(c.dive.dcVendor, 'Shearwater');
+      expect(c.dive.dcProduct, isNull);
+    });
+
+    test('the converter passes the parsed events on', () {
+      final withBookmarks = ParsedDive(
+        header: parsed718.header,
+        footer: parsed718.footer,
+        gasMixes: parsed718.gasMixes,
+        tanks: parsed718.tanks,
+        samples: parsed718.samples,
+        events: [
+          DiveEvent(
+              timeMs: 30000,
+              type: DiveEventType.bookmark,
+              rawType: infoEventTagLog,
+              bearing: 270,
+              value: 7),
+        ],
+        finalRecord: parsed718.finalRecord,
+      );
+      final c = DiveConverter.convert(
+        parsed: withBookmarks,
+        dcSerial: 0xB89641E4,
+        dcDiveNumber: 718,
+        dcModel: ShearwaterModel.petrel3,
+      );
+      expect(c.events, hasLength(1));
+      expect(c.events.single.type, DiveEventType.bookmark);
+      expect(c.events.single.rawType, infoEventTagLog);
+      expect(c.events.single.timeMs, 30000);
+      expect(c.events.single.value, 7);
+      expect(c.events.single.bearing, 270);
+    });
+
+    test('a bookmark in the log becomes a stored event', () {
+      // None of the fixtures has a bookmark, so turn two of dive_718's sample
+      // records (32-byte PNF records) into tag-log info events.
+      final data = Uint8List.fromList(
+          File('test/fixtures/dives/dive_718.bin').readAsBytesSync());
+      final view = ByteData.sublistView(data);
+      final sampleOffsets = [
+        for (var o = 0; o + 32 <= data.length; o += 32)
+          if (data[o] == logRecordDiveSample) o
+      ];
+      expect(sampleOffsets.length, greaterThan(20));
+      final withBearing = sampleOffsets[9];
+      final noBearing = sampleOffsets[19];
+      for (final o in [withBearing, noBearing]) {
+        data[o] = logRecordInfoEvent;
+        data[o + 1] = infoEventTagLog;
+      }
+      view.setUint32(withBearing + 8, 270);
+      view.setUint32(withBearing + 12, 7);
+      view.setUint32(noBearing + 8, 0xFFFFFFFF);
+      view.setUint32(noBearing + 12, 8);
+
+      final parsed = ShearwaterDiveParser(model: ShearwaterModel.petrel3)
+          .parse(data);
+      final c = DiveConverter.convert(
+        parsed: parsed,
+        dcSerial: 0xB89641E4,
+        dcDiveNumber: 718,
+        dcModel: ShearwaterModel.petrel3,
+      );
+      expect(c.events, hasLength(2));
+      final interval = c.dive.sampleIntervalMs;
+      expect(c.events[0].type, DiveEventType.bookmark);
+      expect(c.events[0].rawType, infoEventTagLog);
+      expect(c.events[0].timeMs, 9 * interval);
+      expect(c.events[0].bearing, 270);
+      expect(c.events[0].value, 7);
+      expect(c.events[1].type, DiveEventType.bookmark);
+      expect(c.events[1].rawType, infoEventTagLog);
+      expect(c.events[1].timeMs, 18 * interval);
+      expect(c.events[1].bearing, isNull);
+      expect(c.events[1].value, 8);
+    });
+
+    test('a bookmark word beyond int32 is left out so the dive still imports',
+        () {
+      final data = Uint8List.fromList(
+          File('test/fixtures/dives/dive_718.bin').readAsBytesSync());
+      final o = [
+        for (var o = 0; o + 32 <= data.length; o += 32)
+          if (data[o] == logRecordDiveSample) o
+      ][5];
+      data[o] = logRecordInfoEvent;
+      data[o + 1] = infoEventTagLog;
+      ByteData.sublistView(data)
+        ..setUint32(o + 8, 0x80000000)
+        ..setUint32(o + 12, 0xFFFFFFFE);
+      final parsed =
+          ShearwaterDiveParser(model: ShearwaterModel.petrel3).parse(data);
+      expect(parsed.events, hasLength(1));
+      expect(parsed.events.single.bearing, isNull);
+      expect(parsed.events.single.value, isNull);
+      expect(EventCodec.encode(parsed.events), isNotNull);
     });
   });
 

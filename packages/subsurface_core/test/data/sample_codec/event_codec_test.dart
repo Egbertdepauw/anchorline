@@ -67,4 +67,86 @@ void main() {
     // Not even valid zlib.
     expect(EventCodec.decode(Uint8List.fromList([1, 2, 3])), isEmpty);
   });
+
+  test('v1 golden bytes: wire codes, offsets and int32 sign handling', () {
+    final blob = EventCodec.encode([
+      DiveEvent(
+        timeMs: 0x00012345,
+        type: DiveEventType.bookmark,
+        rawType: 0x0026,
+        value: -2,
+        bearing: 270,
+      ),
+      DiveEvent(
+        timeMs: 0xFFFFFFFF,
+        type: DiveEventType.ascentWarning,
+        rawType: 0xFFFF,
+        value: -0x80000000,
+      ),
+    ])!;
+    final raw = ColumnPacker.unpackBytes(blob);
+    expect(raw, [
+      // version, count
+      0x01, 0x00, 0x02,
+      // event 1: timeMs, wire (bookmark), flags (value+bearing), rawType,
+      // value -2, bearing 270
+      0x00, 0x01, 0x23, 0x45, 0x01, 0x03, 0x00, 0x26,
+      0xFF, 0xFF, 0xFF, 0xFE, 0x00, 0x00, 0x01, 0x0E,
+      // event 2: timeMs, wire (ascentWarning), flags (value only), rawType,
+      // value int32 min, bearing absent
+      0xFF, 0xFF, 0xFF, 0xFF, 0x06, 0x01, 0xFF, 0xFF,
+      0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ]);
+    final back = EventCodec.decode(blob);
+    expect(back[0].value, -2);
+    expect(back[1].value, -0x80000000);
+    expect(back[1].bearing, isNull);
+  });
+
+  group('encode rejects values the format cannot hold', () {
+    DiveEvent event({
+      int timeMs = 0,
+      int rawType = 0,
+      int? value,
+      int? bearing,
+    }) =>
+        DiveEvent(
+          timeMs: timeMs,
+          type: DiveEventType.other,
+          rawType: rawType,
+          value: value,
+          bearing: bearing,
+        );
+
+    void rejects(String name, DiveEvent e) => test(name, () {
+          expect(() => EventCodec.encode([e]), throwsArgumentError);
+        });
+
+    rejects('negative timeMs', event(timeMs: -1));
+    rejects('timeMs above uint32', event(timeMs: 0x100000000));
+    rejects('negative rawType', event(rawType: -1));
+    rejects('rawType above uint16', event(rawType: 0x10000));
+    rejects('value above int32', event(value: 0x80000000));
+    rejects('value below int32', event(value: -0x80000001));
+    rejects('bearing above int32', event(bearing: 0x80000000));
+    rejects('bearing below int32', event(bearing: -0x80000001));
+
+    test('more than 0xFFFF events', () {
+      final many = List.generate(0x10000, (_) => event());
+      expect(() => EventCodec.encode(many), throwsArgumentError);
+    });
+
+    test('the extremes of every range are accepted', () {
+      final blob = EventCodec.encode([
+        event(
+            timeMs: 0xFFFFFFFF,
+            rawType: 0xFFFF,
+            value: -0x80000000,
+            bearing: 0x7FFFFFFF),
+      ]);
+      expect(EventCodec.decode(blob).single.bearing, 0x7FFFFFFF);
+      expect(EventCodec.encode(List.generate(0xFFFF, (_) => event())),
+          isNotNull);
+    });
+  });
 }

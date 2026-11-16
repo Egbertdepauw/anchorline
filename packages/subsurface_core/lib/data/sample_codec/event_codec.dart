@@ -28,9 +28,39 @@ class EventCodec {
   static const int _flagValue = 1;
   static const int _flagBearing = 2;
 
+  static const int _maxCount = 0xFFFF;
+  static const int _maxUint16 = 0xFFFF;
+  static const int _maxUint32 = 0xFFFFFFFF;
+  static const int _minInt32 = -0x80000000;
+  static const int _maxInt32 = 0x7FFFFFFF;
+
   /// Encodes [events]; null when there are none.
+  ///
+  /// Throws [ArgumentError] for more than 0xFFFF events or a field the format
+  /// cannot hold (rawType outside uint16, timeMs outside uint32, value or
+  /// bearing outside int32).
   static Uint8List? encode(List<DiveEvent> events) {
     if (events.isEmpty) return null;
+    if (events.length > _maxCount) {
+      throw ArgumentError.value(
+          events.length, 'events', 'more than $_maxCount events');
+    }
+    for (final e in events) {
+      if (e.rawType < 0 || e.rawType > _maxUint16) {
+        throw ArgumentError.value(e.rawType, 'rawType', 'outside 0..65535');
+      }
+      if (e.timeMs < 0 || e.timeMs > _maxUint32) {
+        throw ArgumentError.value(e.timeMs, 'timeMs', 'outside 0..4294967295');
+      }
+      final value = e.value;
+      if (value != null && (value < _minInt32 || value > _maxInt32)) {
+        throw ArgumentError.value(value, 'value', 'outside int32');
+      }
+      final bearing = e.bearing;
+      if (bearing != null && (bearing < _minInt32 || bearing > _maxInt32)) {
+        throw ArgumentError.value(bearing, 'bearing', 'outside int32');
+      }
+    }
     final raw = Uint8List(_headerBytes + events.length * _eventBytes);
     final view = ByteData.sublistView(raw);
     raw[0] = formatVersion;

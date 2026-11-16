@@ -809,6 +809,8 @@ List<DiveSample> _parseSamples(Uint8List data, _CacheResult cache) {
 
 // ── Event parsing ──────────────────────────────────────────────
 
+const int _maxInt32 = 0x7FFFFFFF;
+
 List<DiveEvent> _parseEvents(Uint8List data, _CacheResult cache) {
   final events = <DiveEvent>[];
   final pnf = cache.pnf;
@@ -844,8 +846,12 @@ List<DiveEvent> _parseEvents(Uint8List data, _CacheResult cache) {
         events.add(DiveEvent(
           timeMs: time,
           type: DiveEventType.bookmark,
-          bearing: w1 != 0xFFFFFFFF ? w1 : null,
-          value: w2,
+          rawType: infoEventTagLog,
+          // 0xFFFFFFFF marks "no bearing". The stored events hold int32, so
+          // a word above that range (never seen on a real log) is left out
+          // rather than making the whole dive fail to import.
+          bearing: w1 <= _maxInt32 ? w1 : null,
+          value: w2 <= _maxInt32 ? w2 : null,
         ));
       }
     }

@@ -25,7 +25,7 @@ class ConvertedDive {
   final Dive dive;
   final SampleSet samples;
 
-  /// Events for the stored events blob. Empty until the converter fills it.
+  /// Events for the stored events blob.
   final List<DiveEvent> events;
 
   ConvertedDive({
@@ -124,6 +124,8 @@ class DiveConverter {
       configuredStackSeconds: header.configuredStackSeconds,
       stackRemainingAtStartSeconds: header.stackRemainingAtStartSeconds,
       stackRemainingAtEndSeconds: header.stackRemainingAtEndSeconds,
+      dcVendor: kShearwaterVendor,
+      dcProduct: shearwaterProductName(dcModel),
     );
 
     // ── Samples ──
@@ -231,7 +233,7 @@ class DiveConverter {
       tankPressuresBar: tankPressuresBar,
     );
 
-    return ConvertedDive(dive: dive, samples: samples);
+    return ConvertedDive(dive: dive, samples: samples, events: parsed.events);
   }
 
   static int _findGasMixIndex(List<GasMix> mixes, int o2, int he) {
