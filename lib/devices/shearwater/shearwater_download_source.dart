@@ -117,6 +117,15 @@ class ShearwaterDownloadSource implements DiveDownloadSource {
           final listing = _listing(event.manifest);
           try {
             final parsed = parser.parse(event.data);
+            // The dive id takes the dive number from the manifest entry and
+            // the start time from the blob. If the manifest went stale
+            // between listDives and this download (a dive overwritten or
+            // removed), the entry can come back with another dive's blob,
+            // and importing it would store a hybrid id that names no real
+            // dive. So a blob whose header disagrees with its entry fails
+            // that entry as DiveSourceDiveFailed (the catch below) and is not
+            // imported; the rest of the download carries on.
+            event.manifest.checkBlobHeader(parsed.header);
             final converted = DiveConverter.convert(
               parsed: parsed,
               dcSerial: _serial,

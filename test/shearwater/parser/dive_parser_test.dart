@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:subsurface_core/shearwater/parser/constants.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
+import 'package:ccrlogger/shearwater/parser/manifest_parser.dart';
 import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -180,6 +181,44 @@ void main() {
         expect(dive.footer.diveTimeSeconds, greaterThan(0),
             reason: 'Dive $num should have a dive time');
       }
+    });
+  });
+
+  group('dive number', () {
+    test('PNF: opening record 0 carries the dive number the manifest lists',
+        () {
+      // Opening record 0 has the legacy header's layout with the record
+      // type in byte 0: dive number at +2, start time at +12. The device
+      // manifest agrees for every fixture.
+      final manifest = ManifestParser.parse(
+          File('test/fixtures/manifest.bin').readAsBytesSync());
+      final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
+      for (final num in [711, 712, 713, 714, 715, 716, 717, 718]) {
+        final header = parser.parse(loadFixture('dive_$num.bin')).header;
+        final entry = manifest.firstWhere((e) => e.diveNumber == num);
+        expect(header.diveNumber, num, reason: 'dive $num');
+        expect(header.startTimestamp, entry.startTimestamp,
+            reason: 'dive $num');
+      }
+    });
+
+    test('legacy: the 128-byte header carries the dive number at +2', () {
+      // Header block (0xFFFF, dive number, ..., start time at +12, log
+      // version at +127), then the footer block (0xFFFE, same dive
+      // number), as libdivecomputer's shearwater_predator.c reads them.
+      final blob = Uint8List(256);
+      final view = ByteData.sublistView(blob);
+      view.setUint16(0, 0xFFFF);
+      view.setUint16(2, 1234);
+      view.setUint32(12, 0x60000000);
+      blob[127] = 6;
+      view.setUint16(128, 0xFFFE);
+      view.setUint16(130, 1234);
+      final header =
+          ShearwaterDiveParser(model: ShearwaterModel.predator).parse(blob).header;
+      expect(header.isPnf, isFalse);
+      expect(header.diveNumber, 1234);
+      expect(header.startTimestamp, 0x60000000);
     });
   });
 

@@ -1,5 +1,6 @@
 import 'package:ccrlogger/shearwater/ble/mock_ble_transport.dart';
 import 'package:ccrlogger/shearwater/ble/shearwater_ble_transport.dart';
+import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
 import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,6 +23,23 @@ void main() {
     final manifest = await mock.readManifest();
     expect(manifest.length, equals(8));
     expect(manifest.first.diveNumber, greaterThan(0));
+  });
+
+  test('each manifest entry describes the blob it is answered with', () async {
+    final mock = MockBleTransport(perDiveDelay: Duration.zero);
+    await mock.readDeviceInfo();
+    final manifest = await mock.readManifest();
+    final dives = (await mock.downloadDives(manifest).toList())
+        .whereType<DownloadedDive>()
+        .toList();
+    expect(dives, hasLength(8));
+    final parser = ShearwaterDiveParser(model: ShearwaterModel.petrel3);
+    for (final d in dives) {
+      final header = parser.parse(d.data).header;
+      expect(header.diveNumber, d.manifest.diveNumber);
+      expect(header.startTimestamp, d.manifest.startTimestamp,
+          reason: 'dive ${d.manifest.diveNumber}');
+    }
   });
 
   test('downloadDives yields one blob per manifest entry', () async {
