@@ -39,6 +39,12 @@ class DiveHeader {
   /// Unix timestamp (seconds since epoch) from opening[0] offset 12.
   final int startTimestamp;
 
+  /// The device's dive number, uint16 BE at opening[0] offset 2. The legacy
+  /// header block and PNF opening record 0 share this layout (PNF puts the
+  /// record type where legacy has its first 0xFF), and the device manifest
+  /// lists the same number. Null only for a header built by hand.
+  final int? diveNumber;
+
   /// Dive mode detected from samples/header.
   final DiveMode diveMode;
 
@@ -94,6 +100,7 @@ class DiveHeader {
 
   DiveHeader({
     required this.startTimestamp,
+    this.diveNumber,
     required this.diveMode,
     required this.decoModel,
     required this.gfLow,

@@ -2,19 +2,52 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ccrlogger/shearwater/ble/protocol.dart';
+import 'package:ccrlogger/shearwater/ble/slip_codec.dart';
 import 'package:subsurface_core/shearwater/parser/constants.dart';
 import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Mock BLE I/O that replays a combined.txt trace.
+///
+/// Download Inits (0x35) are answered by address, the way the device
+/// answers them: the replay jumps to the next recorded download of the
+/// requested address. A test that asks for dives in another order than the
+/// recording (the transport asks in ascending address order, the trace has
+/// them newest first) still gets each dive's own bytes, so a mispairing of
+/// entry and blob shows up instead of being replayed into place. Everything
+/// else replays in recorded order.
 class TraceMockBle implements BleIo {
   final List<_TraceEntry> _entries;
+
+  /// Trace indices of the recorded Init writes, per requested address, in
+  /// recorded order (the manifest address is downloaded once per page).
+  final Map<int, List<int>> _initsByAddress;
+
+  /// How many recorded downloads of each address have been replayed.
+  final Map<int, int> _initsReplayed = {};
+
   int _index = 0;
 
-  TraceMockBle(String tracePath) : _entries = _parseTrace(tracePath);
+  TraceMockBle(String tracePath) : this._(_parseTrace(tracePath));
+
+  TraceMockBle._(this._entries) : _initsByAddress = _indexInits(_entries);
 
   @override
   Future<void> writeBytes(Uint8List data) async {
+    final address = _initAddress(data);
+    if (address != null) {
+      final recorded = _initsByAddress[address] ?? const <int>[];
+      final replayed = _initsReplayed[address] ?? 0;
+      if (replayed >= recorded.length) {
+        throw StateError('Trace has no further download of address '
+            '0x${address.toRadixString(16)}');
+      }
+      _initsReplayed[address] = replayed + 1;
+      // Continue right after that Init, with its recorded response.
+      _index = recorded[replayed] + 1;
+      return;
+    }
+
     // Find the next W entry and verify it matches what the protocol sends.
     while (_index < _entries.length && _entries[_index].direction != 'W') {
       _index++;
@@ -45,6 +78,27 @@ class TraceMockBle implements BleIo {
     // No-op: the trace mock has no concurrent producer, so there are
     // never "stale" frames to drop — each readFrames() consumes its
     // exact lockstep R entries.
+  }
+
+  /// The flash address of the download Init (0x35) one BLE frame carries,
+  /// or null for any other command.
+  static int? _initAddress(Uint8List frame) {
+    // Inits fit in one frame: [frames=1, index=0, SLIP data...].
+    if (frame.length < 2 || frame[0] != 1) return null;
+    final packet = BleSlipCodec.decode([frame]);
+    // [0xFF, 0x01, len, 0x00, 0x35, compression, 0x34, address (4), size (3)]
+    if (packet.length < 11 || packet[4] != 0x35) return null;
+    return (packet[7] << 24) | (packet[8] << 16) | (packet[9] << 8) | packet[10];
+  }
+
+  static Map<int, List<int>> _indexInits(List<_TraceEntry> entries) {
+    final inits = <int, List<int>>{};
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].direction != 'W') continue;
+      final address = _initAddress(entries[i].bytes);
+      if (address != null) (inits[address] ??= []).add(i);
+    }
+    return inits;
   }
 
   static List<_TraceEntry> _parseTrace(String path) {

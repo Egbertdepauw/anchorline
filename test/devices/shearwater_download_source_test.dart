@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ccrlogger/devices/dive_download_source.dart';
@@ -47,6 +48,70 @@ class _FakeLink implements ShearwaterLink {
 
   @override
   Future<void> disconnect() async {}
+}
+
+/// The device's own manifest entries for the eight fixture dives (711-718).
+List<ManifestEntry> _fixtureEntries() => ManifestParser.parse(
+        File('test/fixtures/manifest.bin').readAsBytesSync())
+    .where((e) => e.diveNumber >= 711 && e.diveNumber <= 718)
+    .toList();
+
+Uint8List _fixtureBlob(int diveNumber) =>
+    File('test/fixtures/dives/dive_$diveNumber.bin').readAsBytesSync();
+
+/// A copy of [e] with another dive number or start time, as a stale
+/// manifest could list it.
+ManifestEntry _restamped(ManifestEntry e, {int? diveNumber, int? start}) =>
+    ManifestEntry(
+      header: e.header,
+      diveNumber: diveNumber ?? e.diveNumber,
+      fingerprint: e.fingerprint,
+      startTimestamp: start ?? e.startTimestamp,
+      endTimestamp: e.endTimestamp,
+      address: e.address,
+      endAddress: e.endAddress,
+    );
+
+/// A link that lists [manifest] and answers each entry with the fixture
+/// blob of the dive [blobFor] names (its own dive by default), so a test
+/// can hand an entry another dive's bytes.
+class _FixtureLink implements ShearwaterLink {
+  final List<ManifestEntry> manifest;
+  final Map<int, int> blobFor;
+  _FixtureLink(this.manifest, {this.blobFor = const {}});
+
+  @override
+  Future<DeviceInfo> readDeviceInfo() => _FakeLink(const []).readDeviceInfo();
+
+  @override
+  Future<List<ManifestEntry>> readManifest({Uint8List? lastFingerprint}) async =>
+      manifest;
+
+  @override
+  Stream<DownloadEvent> downloadDives(List<ManifestEntry> entries) async* {
+    for (final e in entries) {
+      yield DownloadedDive(
+        manifest: e,
+        data: _fixtureBlob(blobFor[e.diveNumber] ?? e.diveNumber),
+      );
+    }
+  }
+
+  @override
+  Future<void> disconnect() async {}
+}
+
+/// The dive or failure for each downloaded entry, keyed by dive number.
+Future<Map<int, DiveSourceEvent>> _outcomes(ShearwaterLink link) async {
+  final source = await ShearwaterDownloadSource.open(link);
+  final events = await source.download().toList();
+  return {
+    for (final e in events)
+      if (e is DiveSourceDive)
+        e.listing!.diveNumber: e
+      else if (e is DiveSourceDiveFailed)
+        e.listing!.diveNumber: e,
+  };
 }
 
 ManifestEntry _entry(int n, int start) => ManifestEntry(
@@ -124,6 +189,7 @@ void main() {
       expect(got.parserVersion, kShearwaterParserVersion);
       expect(got.fingerprint, refDives[i].manifest.fingerprint);
       expect(got.listing!.diveNumber, refDives[i].manifest.diveNumber);
+      expect(got.converted.dive.id, got.listing!.diveId);
       final a = got.converted.dive;
       final b = expected.dive;
       expect(a.id, b.id);
@@ -174,6 +240,83 @@ void main() {
     expect(outcomes[0], isA<DiveSourceDiveFailed>());
     expect((outcomes[0] as DiveSourceDiveFailed).listing!.diveNumber, 1);
     expect(outcomes[1], isA<DiveSourceDive>());
+  });
+
+  test('correctly paired dives keep the dive id their manifest entry gives',
+      () async {
+    final out = await _outcomes(_FixtureLink(_fixtureEntries()));
+    expect(out.keys, unorderedEquals([711, 712, 713, 714, 715, 716, 717, 718]));
+    for (final e in _fixtureEntries()) {
+      final dive = out[e.diveNumber]! as DiveSourceDive;
+      final id = generateDiveId(0xB89641E4, e.diveNumber, e.startTimestamp);
+      expect(dive.listing!.diveId, id);
+      expect(dive.converted.dive.id, id);
+      expect(dive.converted.dive.dcDiveNumber, e.diveNumber);
+    }
+  });
+
+  test('a blob that belongs to another entry fails that entry only', () async {
+    // A stale manifest: the entry for 717 comes back with 718's bytes.
+    final out = await _outcomes(
+        _FixtureLink(_fixtureEntries(), blobFor: {717: 718}));
+    expect(out.keys, unorderedEquals([711, 712, 713, 714, 715, 716, 717, 718]));
+
+    final failed = out[717];
+    expect(failed, isA<DiveSourceDiveFailed>());
+    final error = (failed! as DiveSourceDiveFailed).error;
+    expect(error, isA<ManifestMismatchException>());
+    final mismatch = error as ManifestMismatchException;
+    expect(mismatch.entry.diveNumber, 717);
+    expect(mismatch.blobDiveNumber, 718);
+    expect(mismatch.blobStartTimestamp, 0x69E4A356);
+
+    for (final n in [711, 712, 713, 714, 715, 716, 718]) {
+      expect(out[n], isA<DiveSourceDive>(), reason: 'dive $n');
+    }
+    // 718 itself still arrives under its own id, once.
+    final e718 = _fixtureEntries().firstWhere((e) => e.diveNumber == 718);
+    expect((out[718]! as DiveSourceDive).converted.dive.id,
+        generateDiveId(0xB89641E4, 718, e718.startTimestamp));
+  });
+
+  test('a blob with the entry\'s start time but another dive number fails',
+      () async {
+    final e718 = _fixtureEntries().firstWhere((e) => e.diveNumber == 718);
+    // The entry says 4242; the blob (718's) says 718.
+    final out = await _outcomes(_FixtureLink(
+        [_restamped(e718, diveNumber: 4242)],
+        blobFor: {4242: 718}));
+    final failed = out[4242];
+    expect(failed, isA<DiveSourceDiveFailed>());
+    expect((failed! as DiveSourceDiveFailed).error,
+        isA<ManifestMismatchException>());
+  });
+
+  test('a blob with the entry\'s dive number but another start time fails',
+      () async {
+    final e718 = _fixtureEntries().firstWhere((e) => e.diveNumber == 718);
+    final out = await _outcomes(_FixtureLink(
+        [_restamped(e718, start: e718.startTimestamp + 60)]));
+    final failed = out[718];
+    expect(failed, isA<DiveSourceDiveFailed>());
+    expect((failed! as DiveSourceDiveFailed).error,
+        isA<ManifestMismatchException>());
+  });
+
+  test('the trace transport pairs every dive with its own entry', () async {
+    // Ascending-address requests against a trace recorded newest first:
+    // every dive must still land under its own manifest entry.
+    final source = await ShearwaterDownloadSource.open(_traceTransport());
+    final listings = await source.listDives();
+    final events =
+        await source.download(selection: listings.take(3).toList()).toList();
+    expect(events.whereType<DiveSourceDiveFailed>(), isEmpty);
+    final dives = events.whereType<DiveSourceDive>().toList();
+    expect(dives, hasLength(3));
+    for (final d in dives) {
+      expect(d.converted.dive.id, d.listing!.diveId);
+      expect(d.rawBlob, _fixtureBlob(d.listing!.diveNumber));
+    }
   });
 
   test('a selection entry the source never listed throws StateError', () async {
