@@ -48,7 +48,7 @@ class AnalysisVerdict extends StatelessWidget {
     final color = mixMatchColor(match.level);
     final suffix = switch (source) {
       MixPickSource.standard => ', the nearest standard mix',
-      MixPickSource.blendTarget => ', the Blend target',
+      MixPickSource.blendTarget => ', an open blend',
       null => '',
     };
     return Row(

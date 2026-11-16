@@ -100,7 +100,7 @@ class AnalysisActionBar extends StatelessWidget {
       );
 
   VoidCallback? _onSave(BuildContext context, {bool print = false}) =>
-      controller.canSave
+      (print ? controller.canSaveAndPrint : controller.canSave)
           ? () => controller.save(context, print: print)
           : null;
 

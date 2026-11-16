@@ -28,6 +28,8 @@ void main() {
         'gas_analyses',
         // Accepted texts: the planner safety warning (#184).
         'user_acknowledgements',
+        // Open blends closed by an analysis (#112).
+        'open_blends',
       });
     });
 
@@ -83,6 +85,8 @@ void main() {
       expect(col('gas_analyses', 'target_o2_percent').type, ColumnType.integer);
       expect(col('gas_analyses', 'target_he_percent').type, ColumnType.integer);
       expect(col('gas_analyses', 'gas_role').type, ColumnType.text);
+      // Residual flag (#112).
+      expect(col('gas_analyses', 'is_residual').type, ColumnType.integer);
     });
 
     test('no raw tables (everything is PowerSync-managed)', () {

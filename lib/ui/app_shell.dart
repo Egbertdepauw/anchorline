@@ -16,6 +16,7 @@ import '../data/db/dive_derived_stats_dao.dart';
 import '../data/db/dive_merge_dao.dart';
 import '../data/db/dive_plans_dao.dart';
 import '../data/db/gas_analyses_dao.dart';
+import '../data/db/open_blends_dao.dart';
 import '../data/db/equipment_dao.dart';
 import '../data/db/import_state_dao.dart';
 import '../ble/ble_central_default.dart' show bleCentralAvailable;
@@ -114,6 +115,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final DiveListNotifier _diveListNotifier;
   late final DivePlansDao _divePlansDao;
   late final GasAnalysesDao _gasAnalysesDao;
+  late final OpenBlendsDao _openBlendsDao;
   late final UserAcknowledgementsDao _userAcknowledgementsDao;
   /// Null where the app has no Bluetooth LE central (the web).
   late final LabelPrintService? _labelPrintService;
@@ -197,6 +199,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       widget.powerSyncDb,
       SupabaseAuthSessionSource(Supabase.instance.client),
     );
+    _openBlendsDao = OpenBlendsDao(
+      widget.powerSyncDb,
+      SupabaseAuthSessionSource(Supabase.instance.client),
+    );
     _userAcknowledgementsDao = UserAcknowledgementsDao(
       widget.powerSyncDb,
       SupabaseAuthSessionSource(Supabase.instance.client),
@@ -220,12 +226,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         debugPrint('Blend target restore failed: $e\n$st');
       }),
     );
-    // Log on OK uses up the Blend target, so the session gets the notifier.
+    // Log on OK closes the open blend it matches, so the session gets the
+    // open-blends DAO.
     _analyzerSession = AnalyzerSession(
       settings: widget.settingsNotifier,
       analysesDao: _gasAnalysesDao,
       labelPrinting: _labelPrintService,
-      blend: _blendNotifier,
+      openBlends: _openBlendsDao,
     );
     _divePlanNotifier = DivePlanNotifier(
       dao: _divePlansDao,
@@ -644,6 +651,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           settings: widget.settingsNotifier,
                           session: _analyzerSession,
                           analysesDao: _gasAnalysesDao,
+                          openBlendsDao: _openBlendsDao,
                           labelPrinting: _labelPrintService,
                           onHome: _goHome,
                         ),
@@ -658,6 +666,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           settingsNotifier: widget.settingsNotifier,
                           analysesDao: _gasAnalysesDao,
                           labelPrinting: _labelPrintService,
+                          openBlends: _openBlendsDao,
                         ),
                         SettingsScreen(
                           notifier: widget.settingsNotifier,

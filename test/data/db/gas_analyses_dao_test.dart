@@ -51,6 +51,7 @@ void main() {
     DesiredMix? desiredMix,
     GasRole gasRole = GasRole.bailout,
     bool needsSignoff = false,
+    bool isResidual = false,
     CaptureSource captureSource = CaptureSource.screen,
     String? bridgeRecordId,
     String? analysedFor,
@@ -70,6 +71,7 @@ void main() {
         desiredMix: desiredMix,
         gasRole: gasRole,
         needsSignoff: needsSignoff,
+        isResidual: isResidual,
         captureSource: captureSource,
         bridgeRecordId: bridgeRecordId,
         analysedFor: analysedFor,
@@ -555,5 +557,33 @@ void main() {
     expect(byId['o2only']!.desiredMix, const DesiredMix(32, 0));
     expect(byId['o2only']!.match!.level, MixMatchLevel.match);
     expect(byId['heonly']!.desiredMix, isNull);
+  });
+
+  test('is_residual round-trips and an edit keeps it', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    final id = await dao.add(analysis(isResidual: true));
+    expect((await dao.list()).single.isResidual, isTrue);
+
+    await dao.update(
+      id,
+      const GasAnalysisEdit(
+        desiredMix: DesiredMix(21, 35),
+        gasRole: GasRole.diluent,
+        analysedBy: 'Sam',
+        notes: null,
+        cylinderId: null,
+        fillPressureBar: 200,
+        analysedFor: null,
+      ),
+    );
+    expect((await dao.list()).single.isResidual, isTrue);
+  });
+
+  test('a row without is_residual reads as not residual', () async {
+    final ps = await openPowerSyncForTest();
+    final dao = GasAnalysesDao(ps, FakeSessionSource()..setUserId('u1'));
+    await insertRawAnalysis(ps, 'old1');
+    expect((await dao.list()).single.isResidual, isFalse);
   });
 }

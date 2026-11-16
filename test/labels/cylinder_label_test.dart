@@ -385,6 +385,19 @@ void main() {
     });
   });
 
+  group('new roles', () {
+    test('deco and backgas print like bailout', () {
+      final base =
+          _label(_analysis(50, 0, desiredO2: 50, desiredHe: 0));
+      for (final role in [GasRole.deco, GasRole.backgas]) {
+        final l = _label(
+            _analysis(50, 0, desiredO2: 50, desiredHe: 0, role: role));
+        expect(l.kind, CylinderLabelKind.bailout);
+        expect(l.headlineMeters, base.headlineMeters);
+      }
+    });
+  });
+
   group('text', () {
     test('helium below the noise floor is left out of the footer', () {
       final l = _label(_analysis(20.6, 0.4));
