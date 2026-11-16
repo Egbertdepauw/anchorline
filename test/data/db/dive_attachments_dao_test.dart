@@ -71,6 +71,32 @@ void main() {
     dao = DiveAttachmentsDao(db, session);
   });
 
+  test('softDelete keeps an existing owner and claims an ownerless row',
+      () async {
+    Future<String?> ownerOf(String id) async => (await db.get(
+        'SELECT owner_id FROM dive_attachments WHERE id = ?',
+        [id]))['owner_id'] as String?;
+    for (final id in ['a1', 'a2', 'a3']) {
+      await dao.insertFile(_file(id: id, diveId: 'd1'));
+    }
+    await db.execute(
+        'UPDATE dive_attachments SET owner_id = ? WHERE id IN (?, ?)',
+        ['uid-a', 'a1', 'a2']);
+    await db.execute(
+        'UPDATE dive_attachments SET owner_id = NULL WHERE id = ?', ['a3']);
+
+    session.setUserId('uid-b');
+    await dao.softDelete('a1');
+    session.clear();
+    await dao.softDelete('a2');
+    session.setUserId('uid-b');
+    await dao.softDelete('a3');
+
+    expect(await ownerOf('a1'), 'uid-a');
+    expect(await ownerOf('a2'), 'uid-a');
+    expect(await ownerOf('a3'), 'uid-b');
+  });
+
   group('listForDive', () {
     test('empty list when nothing attached', () async {
       expect(await dao.listForDive('d1'), isEmpty);

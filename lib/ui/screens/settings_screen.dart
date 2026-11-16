@@ -14,6 +14,8 @@ import '../../labels/label_print_service.dart';
 import '../../sync/attachments/attachment_object_wiper.dart';
 import '../../sync/attachments/attachment_signer.dart';
 import '../../sync/cloud/account_deleter.dart';
+import '../../sync/cloud/ccrlogger_backend_connector.dart'
+    show CcrloggerBackendConnector;
 import '../../sync/cloud/auth_service.dart';
 import '../../shearwater/ble/ble_debug_logger.dart';
 import '../../sync/cloud/cloud_data_wiper.dart';
@@ -547,6 +549,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final supa = Supabase.instance.client;
     var processed = 0;
     var failed = 0;
+    var otherAccount = 0;
+    final signedInUserId = supa.auth.currentSession?.user.id;
     final errors = <String, int>{}; // error message → count
     var lastId = 0;
 
@@ -576,6 +580,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (table == null || id == null) {
             // Malformed entry; remove to keep the queue moving.
             await psDb.execute('DELETE FROM ps_crud WHERE id = ?', [crudId]);
+            continue;
+          }
+          // Same attribution check as the regular upload: an op queued by
+          // another account is left in ps_crud, not sent and not deleted.
+          final updateType = switch (op) {
+            'PUT' => UpdateType.put,
+            'PATCH' => UpdateType.patch,
+            'DELETE' => UpdateType.delete,
+            _ => null,
+          };
+          if (updateType != null &&
+              await CcrloggerBackendConnector.isQueuedByAnotherAccount(
+                op: updateType,
+                table: table,
+                id: id,
+                data: data is Map<String, dynamic> ? data : null,
+                signedInUserId: signedInUserId,
+                // The table is validated against the synced tables by the
+                // check before this runs, so the interpolation is safe.
+                fetchLocalRow: (t, i) =>
+                    psDb.getOptional('SELECT * FROM $t WHERE id = ?', [i]),
+              )) {
+            otherAccount++;
             continue;
           }
           switch (op) {
@@ -619,6 +646,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ..writeln('Pushed:      $processed')
       ..writeln('Failed:      $failed')
       ..writeln('ps_crud now: $remainingCount');
+    if (otherAccount > 0) {
+      report
+        ..writeln('')
+        ..writeln('$otherAccount changes belong to another account and were '
+            'left in the queue.');
+    }
     if (errors.isNotEmpty) {
       report.writeln('');
       report.writeln('Failure reasons:');

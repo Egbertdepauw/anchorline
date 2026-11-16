@@ -632,6 +632,73 @@ void main() {
         expect(q.records, isEmpty);
       });
     });
+    group('isQueuedByAnotherAccount', () {
+      Future<bool> check(
+        UpdateType op, {
+        String table = 'dive_annotations',
+        Map<String, dynamic>? data,
+        String? signedIn = 'uid-b',
+        Map<String, dynamic>? Function(String, String)? local,
+        List<(String, String)>? lookups,
+      }) =>
+          CcrloggerBackendConnector.isQueuedByAnotherAccount(
+            op: op,
+            table: table,
+            id: 'x1',
+            data: data,
+            signedInUserId: signedIn,
+            fetchLocalRow: local == null
+                ? null
+                : (t, i) async {
+                    lookups?.add((t, i));
+                    return local(t, i);
+                  },
+          );
+
+      test('PUT: another account, own account, ownerless', () async {
+        expect(await check(UpdateType.put, data: {'owner_id': 'uid-a'}), isTrue);
+        expect(await check(UpdateType.put, data: {'owner_id': 'uid-b'}), isFalse);
+        expect(await check(UpdateType.put, data: {'x': 1}), isFalse);
+        expect(await check(UpdateType.put, data: {'owner_id': 'uid-a'}, signedIn: null),
+            isFalse);
+      });
+
+      test('PATCH: another account, own, ownerless, missing', () async {
+        expect(await check(UpdateType.patch, local: (_, _) => {'owner_id': 'uid-a'}),
+            isTrue);
+        expect(await check(UpdateType.patch, local: (_, _) => {'owner_id': 'uid-b'}),
+            isFalse);
+        expect(await check(UpdateType.patch, local: (_, _) => {'owner_id': null}),
+            isFalse);
+        expect(await check(UpdateType.patch, local: (_, _) => null), isFalse);
+      });
+
+      test('PATCH: non-synced table and null session never look up', () async {
+        final lookups = <(String, String)>[];
+        expect(
+            await check(UpdateType.patch,
+                table: 'ps_untyped',
+                local: (_, _) => {'owner_id': 'uid-a'},
+                lookups: lookups),
+            isFalse);
+        expect(
+            await check(UpdateType.patch,
+                signedIn: null,
+                local: (_, _) => {'owner_id': 'uid-a'},
+                lookups: lookups),
+            isFalse);
+        expect(lookups, isEmpty);
+      });
+
+      test('DELETE is never another account\'s', () async {
+        final lookups = <(String, String)>[];
+        expect(
+            await check(UpdateType.delete,
+                local: (_, _) => {'owner_id': 'uid-a'}, lookups: lookups),
+            isFalse);
+        expect(lookups, isEmpty);
+      });
+    });
   });
 
   group('permission-denied reporting', () {

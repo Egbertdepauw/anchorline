@@ -132,7 +132,7 @@ class DiveAnnotationsDao {
         final newVersion = (existing['version'] as int? ?? 0) + 1;
         await tx.execute(
           'UPDATE dive_annotations SET '
-          'owner_id = ?, '
+          'owner_id = COALESCE(owner_id, ?), '
           'site_name = ?, '
           'site_latitude_e5 = ?, '
           'site_longitude_e5 = ?, '

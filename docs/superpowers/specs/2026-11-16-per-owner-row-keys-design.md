@@ -328,6 +328,17 @@ owner is a signed-in account other than the current one:
   says A, even after B signs in. A row with no owner (a signed-out import)
   is claimable, so its PATCH uploads. A PATCH whose local row no longer
   exists uploads as today (see DELETE).
+
+  Local updates keep an existing owner: every DAO UPDATE that writes
+  `owner_id` from the session uses `owner_id = COALESCE(owner_id, ?)`, so
+  an owned row is not re-owned and an ownerless row is still claimed. That
+  is what keeps the local row naming A through a signed-out edit or an edit
+  under B. (The Settings "Re-assign dives to this account" path re-owns on
+  purpose and is unchanged.)
+
+  The Settings "Push stuck uploads" drain replays ps_crud directly, so it
+  calls the same check (`CcrloggerBackendConnector.isQueuedByAnotherAccount`)
+  and leaves such ops in the queue.
 - **DELETE**: carries no data, and its local row is gone, so it has no
   owner to read. It uploads as today. The only hard deletes in the app
   are on `dive_plans` (random ids), `oxygen_cells` (`cell_<ms>_<slot>`)

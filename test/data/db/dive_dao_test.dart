@@ -139,12 +139,14 @@ void main() {
   late AppDatabase db;
   late DiveDao dao;
   late PowerSyncDatabase openPs;
+  late FakeSessionSource session;
 
   setUp(() async {
     db = _createInMemoryDb();
     final rig = await openDiveDaoForTest(db);
     dao = rig.dao;
     openPs = rig.ps;
+    session = rig.session;
   });
 
   tearDown(() async {
@@ -492,6 +494,31 @@ void main() {
           parserVersion: 1,
         );
       }
+    });
+
+    test('softDeleteDive keeps an existing owner and claims an ownerless row',
+        () async {
+      Future<String?> ownerOf(String id) async => (await openPs
+          .get('SELECT owner_id FROM dives WHERE id = ?', [id]))['owner_id']
+          as String?;
+      final ids = (await dao.getAllDives()).map((d) => d.id).toList();
+      await openPs.execute(
+          'UPDATE dives SET owner_id = ? WHERE id = ?', ['uid-a', ids[0]]);
+      await openPs.execute(
+          'UPDATE dives SET owner_id = ? WHERE id = ?', ['uid-a', ids[1]]);
+      await openPs
+          .execute('UPDATE dives SET owner_id = NULL WHERE id = ?', [ids[2]]);
+
+      session.setUserId('uid-b');
+      await dao.softDeleteDive(ids[0]);
+      session.clear();
+      await dao.softDeleteDive(ids[1]);
+      session.setUserId('uid-b');
+      await dao.softDeleteDive(ids[2]);
+
+      expect(await ownerOf(ids[0]), 'uid-a');
+      expect(await ownerOf(ids[1]), 'uid-a');
+      expect(await ownerOf(ids[2]), 'uid-b');
     });
 
     test('softDeleteDive hides the dive from getAllDives', () async {

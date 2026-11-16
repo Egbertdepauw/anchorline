@@ -224,9 +224,13 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   /// Since 0027 the server keys every row by (owner_id, id), so two accounts
   /// can own the same id and a PATCH queued by account A would update B's
   /// same-id row under B's session. A PATCH carries only the changed columns,
-  /// but its row is still local, and the local row names A: PowerSync does not
-  /// publish downloaded data while the upload queue holds anything, so while
-  /// A's ops wait the local row keeps A as `owner_id`, even after B signs in.
+  /// but its row is still local, and the local row names A. PowerSync does not
+  /// publish downloaded data while the upload queue holds anything (priority 0
+  /// excepted; `can_apply_sync_changes` in powersync-sqlite-core's
+  /// `crates/core/src/sync/sync_local.rs`), and local updates keep an existing
+  /// owner (`owner_id = COALESCE(owner_id, ?)`), so while A's ops wait the
+  /// local row keeps A as `owner_id`, even after a signed-out edit or an edit
+  /// under B's session.
   /// A PATCH whose local row names another account is quarantined unsent. An
   /// ownerless row (a signed-out import, claimed by the sign-in backfill) or a
   /// row that no longer exists uploads as before.
@@ -245,13 +249,14 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   }) async {
     final signedInUserId = _sessions.currentSession?.user.id;
     for (final op in entries) {
-      if (_queuedByAnotherAccount(op, signedInUserId)) {
-        await _quarantine?.record(op, OtherAccountOpException());
-        debugPrint('replayCrud: quarantined ${op.op.name} ${op.table} '
-            'id=${op.id} — queued by another account');
-        continue;
-      }
-      if (await _patchOfAnotherAccount(op, signedInUserId, fetchLocalRow)) {
+      if (await isQueuedByAnotherAccount(
+        op: op.op,
+        table: op.table,
+        id: op.id,
+        data: op.opData,
+        signedInUserId: signedInUserId,
+        fetchLocalRow: fetchLocalRow,
+      )) {
         await _quarantine?.record(op, OtherAccountOpException());
         debugPrint('replayCrud: quarantined ${op.op.name} ${op.table} '
             'id=${op.id} — queued by another account');
@@ -313,34 +318,42 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
     }
   }
 
-  /// Whether [op] is a PUT that names an owner other than [signedInUserId].
-  /// An ownerless PUT is not: the sign-in backfill claims it, and until it
-  /// runs the RLS rejection is retried.
-  static bool _queuedByAnotherAccount(CrudEntry op, String? signedInUserId) {
-    if (op.op != UpdateType.put || signedInUserId == null) return false;
-    final owner = op.opData?['owner_id'];
-    return owner != null && owner != signedInUserId;
-  }
-
-  /// Whether [op] is a PATCH of a local row that names an owner other than
-  /// [signedInUserId]. Without a session or a [fetchLocalRow] there is
-  /// nothing to compare, and a table outside [kSyncedTableNames] is never
-  /// looked up, since the name goes into SQL. A missing or ownerless row is
-  /// not another account's.
-  Future<bool> _patchOfAnotherAccount(
-    CrudEntry op,
-    String? signedInUserId,
+  /// Whether an op belongs to an account other than [signedInUserId], so it
+  /// must not be sent under this session. Shared by [replayCrud] and the
+  /// Settings "Push stuck uploads" drain, which would otherwise bypass it.
+  ///
+  /// - PUT: its [data] names an `owner_id` other than [signedInUserId]. An
+  ///   ownerless PUT is not: the sign-in backfill claims it, and until it
+  ///   runs the RLS rejection is retried.
+  /// - PATCH: the local row's `owner_id` (via [fetchLocalRow]) names another
+  ///   account. Without a session or a [fetchLocalRow] there is nothing to
+  ///   compare, and a table outside [kSyncedTableNames] is never looked up,
+  ///   since the name goes into SQL. A missing or ownerless row is not
+  ///   another account's.
+  /// - DELETE: never (see [replayCrud]).
+  static Future<bool> isQueuedByAnotherAccount({
+    required UpdateType op,
+    required String table,
+    required String id,
+    Map<String, dynamic>? data,
+    required String? signedInUserId,
     Future<Map<String, dynamic>?> Function(String table, String id)?
         fetchLocalRow,
-  ) async {
-    if (op.op != UpdateType.patch ||
-        signedInUserId == null ||
-        fetchLocalRow == null ||
-        !kSyncedTableNames.contains(op.table)) {
-      return false;
+  }) async {
+    if (signedInUserId == null) return false;
+    switch (op) {
+      case UpdateType.put:
+        final owner = data?['owner_id'];
+        return owner != null && owner != signedInUserId;
+      case UpdateType.patch:
+        if (fetchLocalRow == null || !kSyncedTableNames.contains(table)) {
+          return false;
+        }
+        final owner = (await fetchLocalRow(table, id))?['owner_id'];
+        return owner != null && owner != signedInUserId;
+      case UpdateType.delete:
+        return false;
     }
-    final owner = (await fetchLocalRow(op.table, op.id))?['owner_id'];
-    return owner != null && owner != signedInUserId;
   }
 
   /// SQLSTATE codes for backend rejections that a retry of the same payload

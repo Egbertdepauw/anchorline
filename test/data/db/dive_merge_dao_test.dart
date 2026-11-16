@@ -66,4 +66,29 @@ void main() {
     await dao.mergeDives(['d1', 'd2']);
     expect(await ownerCount('d1'), 1);
   });
+
+  test('re-merging keeps an existing owner and claims an ownerless link',
+      () async {
+    Future<String?> ownerOf(String id) async => (await rig.ps.get(
+        'SELECT owner_id FROM dive_merge_links WHERE id = ?',
+        [id]))['owner_id'] as String?;
+    final group = generateMergeGroupId(['d1', 'd2']);
+    await dao.mergeDives(['d1', 'd2']);
+    await dao.unmerge(group);
+    await rig.ps.execute(
+        'UPDATE dive_merge_links SET owner_id = ? WHERE id = ?',
+        ['uid-a', 'd1']);
+    await rig.ps
+        .execute('UPDATE dive_merge_links SET owner_id = NULL WHERE id = ?', ['d2']);
+
+    rig.session.setUserId('uid-b');
+    await dao.mergeDives(['d1', 'd2']);
+    expect(await ownerOf('d1'), 'uid-a');
+    expect(await ownerOf('d2'), 'uid-b');
+
+    await dao.unmerge(group);
+    rig.session.clear();
+    await dao.mergeDives(['d1', 'd2']);
+    expect(await ownerOf('d1'), 'uid-a');
+  });
 }

@@ -60,7 +60,7 @@ class DiveMergeDao {
       for (final diveId in diveIds) {
         if (existing.contains(diveId)) {
           await tx.execute(
-            'UPDATE dive_merge_links SET group_id = ?, owner_id = ?, '
+            'UPDATE dive_merge_links SET group_id = ?, owner_id = COALESCE(owner_id, ?), '
             'deleted_at = NULL, updated_at = ?, '
             'version = COALESCE(version, 0) + 1, '
             'sync_status = 0 WHERE id = ?',

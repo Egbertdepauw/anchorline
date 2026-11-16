@@ -141,7 +141,7 @@ class EquipmentDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_cylinders SET '
-        'owner_id = ?, cylinder_id = ?, deleted_at = NULL, '
+        'owner_id = COALESCE(owner_id, ?), cylinder_id = ?, deleted_at = NULL, '
         'updated_at = ?, version = ? WHERE id = ?',
         [_ownerId, cylinderId, now, newVersion, id],
       );
@@ -199,7 +199,7 @@ class EquipmentDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_computers SET '
-        'owner_id = ?, model = ?, firmware_version = ?, '
+        'owner_id = COALESCE(owner_id, ?), model = ?, firmware_version = ?, '
         'dc_vendor = ?, dc_product = ?, dc_family = ?, dc_model_code = ?, '
         'updated_at = ?, version = ? '
         'WHERE id = ?',
@@ -240,7 +240,7 @@ class EquipmentDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_computers SET '
-        'owner_id = ?, nickname = ?, updated_at = ?, version = ? '
+        'owner_id = COALESCE(owner_id, ?), nickname = ?, updated_at = ?, version = ? '
         'WHERE id = ?',
         [_ownerId, nickname, now, newVersion, id],
       );
@@ -383,7 +383,7 @@ class EquipmentDao {
       final newNotes = notes ?? existing['notes'] as String?;
       await tx.execute(
         'UPDATE oxygen_cells SET '
-        'owner_id = ?, slot = ?, label = ?, installed_date = ?, notes = ?, '
+        'owner_id = COALESCE(owner_id, ?), slot = ?, label = ?, installed_date = ?, notes = ?, '
         'updated_at = ?, version = ? '
         'WHERE id = ?',
         [_ownerId, newSlot, newLabel, newInstalled, newNotes,
@@ -403,7 +403,7 @@ class EquipmentDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE oxygen_cells SET '
-        'owner_id = ?, retired_date = ?, updated_at = ?, version = ? '
+        'owner_id = COALESCE(owner_id, ?), retired_date = ?, updated_at = ?, version = ? '
         'WHERE id = ?',
         [_ownerId, retiredAt.millisecondsSinceEpoch, now, newVersion, id],
       );
@@ -661,7 +661,7 @@ class EquipmentDao {
       final newNotes = notes ?? existing['notes'] as String?;
       await tx.execute(
         'UPDATE scrubber_sessions SET '
-        'owner_id = ?, started_date = ?, media_type = ?, notes = ?, '
+        'owner_id = COALESCE(owner_id, ?), started_date = ?, media_type = ?, notes = ?, '
         'updated_at = ?, version = ? '
         'WHERE id = ?',
         [_ownerId, newStarted, newMediaType, newNotes, now, newVersion, id],
@@ -686,7 +686,7 @@ class EquipmentDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE scrubber_sessions SET '
-        'owner_id = ?, total_minutes = ?, updated_at = ?, version = ? '
+        'owner_id = COALESCE(owner_id, ?), total_minutes = ?, updated_at = ?, version = ? '
         'WHERE id = ?',
         [_ownerId, minutes, now, newVersion, id],
       );
@@ -704,7 +704,7 @@ class EquipmentDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE scrubber_sessions SET '
-        'owner_id = ?, deleted_at = ?, updated_at = ?, version = ? '
+        'owner_id = COALESCE(owner_id, ?), deleted_at = ?, updated_at = ?, version = ? '
         'WHERE id = ?',
         [_ownerId, now, now, newVersion, id],
       );
@@ -864,7 +864,7 @@ class EquipmentDao {
       final newNotes = notes ?? existing['notes'] as String?;
       await tx.execute(
         'UPDATE cylinders SET '
-        'owner_id = ?, label = ?, role = ?, bailout_order = ?, '
+        'owner_id = COALESCE(owner_id, ?), label = ?, role = ?, bailout_order = ?, '
         'volume_liters = ?, working_pressure_bar = ?, notes = ?, '
         'updated_at = ?, version = ? '
         'WHERE id = ?',
@@ -885,7 +885,7 @@ class EquipmentDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE cylinders SET '
-        'owner_id = ?, deleted_at = ?, updated_at = ?, version = ? '
+        'owner_id = COALESCE(owner_id, ?), deleted_at = ?, updated_at = ?, version = ? '
         'WHERE id = ?',
         [_ownerId, now, now, newVersion, id],
       );
@@ -933,7 +933,7 @@ class EquipmentDao {
         final newVersion = (existing['version'] as int? ?? 0) + 1;
         await tx.execute(
           'UPDATE pressure_mappings SET '
-          'owner_id = ?, cylinder_id = ?, updated_at = ?, version = ? '
+          'owner_id = COALESCE(owner_id, ?), cylinder_id = ?, updated_at = ?, version = ? '
           'WHERE id = ?',
           [_ownerId, cylinderId, now, newVersion, id],
         );

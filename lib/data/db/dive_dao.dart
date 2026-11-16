@@ -427,7 +427,7 @@ class DiveDao {
       if (existing == null) return;
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
-        'UPDATE dives SET owner_id = ?, deleted_at = ?, version = ? WHERE id = ?',
+        'UPDATE dives SET owner_id = COALESCE(owner_id, ?), deleted_at = ?, version = ? WHERE id = ?',
         [_ownerId, nowMs, newVersion, id],
       );
       // Stamp the children with the SAME deleted_at as the dive so restoreDive
@@ -435,14 +435,14 @@ class DiveDao {
       // user had removed independently beforehand).
       await tx.execute(
         'UPDATE dive_bailout_carry '
-        'SET owner_id = ?, deleted_at = ?, updated_at = ?, '
+        'SET owner_id = COALESCE(owner_id, ?), deleted_at = ?, updated_at = ?, '
         '    version = COALESCE(version, 0) + 1 '
         'WHERE dive_id = ? AND deleted_at IS NULL',
         [_ownerId, nowMs, nowMs, id],
       );
       await tx.execute(
         'UPDATE dive_attachments '
-        'SET owner_id = ?, deleted_at = ?, updated_at = ?, '
+        'SET owner_id = COALESCE(owner_id, ?), deleted_at = ?, updated_at = ?, '
         '    version = COALESCE(version, 0) + 1 '
         "WHERE parent_kind = 'dive' AND parent_id = ? AND deleted_at IS NULL",
         [_ownerId, nowMs, nowMs, id],
@@ -469,20 +469,20 @@ class DiveDao {
       final deletedAt = existing['deleted_at'] as int?;
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
-        'UPDATE dives SET owner_id = ?, deleted_at = NULL, version = ? WHERE id = ?',
+        'UPDATE dives SET owner_id = COALESCE(owner_id, ?), deleted_at = NULL, version = ? WHERE id = ?',
         [_ownerId, newVersion, id],
       );
       if (deletedAt != null) {
         await tx.execute(
           'UPDATE dive_bailout_carry '
-          'SET owner_id = ?, deleted_at = NULL, updated_at = ?, '
+          'SET owner_id = COALESCE(owner_id, ?), deleted_at = NULL, updated_at = ?, '
           '    version = COALESCE(version, 0) + 1 '
           'WHERE dive_id = ? AND deleted_at = ?',
           [_ownerId, nowMs, id, deletedAt],
         );
         await tx.execute(
           'UPDATE dive_attachments '
-          'SET owner_id = ?, deleted_at = NULL, updated_at = ?, '
+          'SET owner_id = COALESCE(owner_id, ?), deleted_at = NULL, updated_at = ?, '
           '    version = COALESCE(version, 0) + 1 '
           "WHERE parent_kind = 'dive' AND parent_id = ? AND deleted_at = ? "
           'AND upload_state != ?',
@@ -616,7 +616,7 @@ class DiveDao {
         if (existing == null) continue;
         final newVersion = (existing['version'] as int? ?? 0) + 1;
         await tx.execute(
-          'UPDATE dives SET owner_id = ?, subsurface_uploaded_at = ?, '
+          'UPDATE dives SET owner_id = COALESCE(owner_id, ?), subsurface_uploaded_at = ?, '
           'version = ? WHERE id = ?',
           [_ownerId, whenSeconds, newVersion, id],
         );

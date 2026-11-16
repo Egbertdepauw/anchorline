@@ -275,7 +275,7 @@ class DiveAttachmentsDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_attachments SET '
-        'owner_id = ?, '
+        'owner_id = COALESCE(owner_id, ?), '
         'title = ?, '
         'description = ?, '
         'display_order = ?, '
@@ -320,7 +320,7 @@ class DiveAttachmentsDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_attachments SET '
-        'owner_id = ?, '
+        'owner_id = COALESCE(owner_id, ?), '
         'upload_state = ?, '
         'checksum_sha256 = ?, '
         'storage_key = ?, '
@@ -354,7 +354,7 @@ class DiveAttachmentsDao {
       final newAttempts = (existing['upload_attempts'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_attachments SET '
-        'owner_id = ?, '
+        'owner_id = COALESCE(owner_id, ?), '
         'upload_state = ?, '
         'upload_attempts = ?, '
         'updated_at = ?, '
@@ -409,7 +409,7 @@ class DiveAttachmentsDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_attachments SET '
-        'owner_id = ?, upload_state = ?, deleted_at = ?, updated_at = ?, '
+        'owner_id = COALESCE(owner_id, ?), upload_state = ?, deleted_at = ?, updated_at = ?, '
         'version = ? '
         'WHERE id = ?',
         [
@@ -454,7 +454,7 @@ class DiveAttachmentsDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_attachments SET '
-        'owner_id = ?, upload_state = ?, deleted_at = ?, updated_at = ?, '
+        'owner_id = COALESCE(owner_id, ?), upload_state = ?, deleted_at = ?, updated_at = ?, '
         'version = ? '
         'WHERE id = ?',
         [
@@ -484,7 +484,7 @@ class DiveAttachmentsDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_attachments SET '
-        'owner_id = ?, deleted_at = ?, updated_at = ?, version = ? '
+        'owner_id = COALESCE(owner_id, ?), deleted_at = ?, updated_at = ?, version = ? '
         'WHERE id = ?',
         [_ownerId, now, now, newVersion, id],
       );
@@ -505,7 +505,7 @@ class DiveAttachmentsDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_attachments SET '
-        'owner_id = ?, deleted_at = NULL, updated_at = ?, version = ? '
+        'owner_id = COALESCE(owner_id, ?), deleted_at = NULL, updated_at = ?, version = ? '
         'WHERE id = ?',
         [_ownerId, now, newVersion, id],
       );
