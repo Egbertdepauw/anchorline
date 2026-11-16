@@ -1,6 +1,7 @@
 # Per-owner row keys on the server
 
-Date: 2026-11-16. Status: draft, awaiting Egbert's approval.
+Date: 2026-11-16. Status: approved by Egbert, 2026-11-16. Plan:
+`docs/superpowers/plans/2026-11-16-per-owner-row-keys.md`.
 
 ## 1. The problem
 
