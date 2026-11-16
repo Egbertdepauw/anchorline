@@ -8,8 +8,8 @@
 /// note", and the hints. Its buttons are in the `AnalysisActionBar` pinned
 /// under the tab.
 ///
-/// The desired mix is picked automatically (the nearest standard mix or the
-/// Blend target, spec §4.3) and the verdict line says where it came from. A
+/// The desired mix is picked automatically (the target of a matching open
+/// blend, else the nearest standard mix, spec §4.3) and the verdict line says where it came from. A
 /// chip the diver taps is their pick until the next manual save.
 ///
 /// Log on OK (issue #113, spec §4.4) starts from the outlined "Log on OK"
@@ -37,6 +37,7 @@ import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import 'analysis_fields.dart';
 import 'analysis_save_controller.dart';
+import 'blend_close_row.dart';
 import 'desired_mix_picker.dart';
 import 'label_print_controls.dart';
 
@@ -170,7 +171,15 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
               ],
             ],
           ),
-          const SizedBox(height: 10),
+          // No height of its own without open blends.
+          BlendCloseRow(controller: c),
+          // Own line, only on a mismatch, with or without open blends.
+          if (c.warning != null) ...[
+            const SizedBox(height: 4),
+            BlendWarning(controller: c),
+          ],
+          SizedBox(
+              height: c.openBlends.isEmpty || c.residual ? 10 : 4),
           SegmentedButton<GasRole>(
             key: const ValueKey('analysis-gas-role'),
             // A check on a role the diver set, which stays for every OK
@@ -188,17 +197,13 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
                 RoundedRectangleBorder(borderRadius: Radii.buttonBr),
               ),
             ),
-            segments: const [
-              ButtonSegment(
-                value: GasRole.diluent,
-                label: Text('Diluent',
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-              ButtonSegment(
-                value: GasRole.bailout,
-                label: Text('Bailout / deco',
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
+            segments: [
+              for (final r in kGasRoleButtonOrder)
+                ButtonSegment(
+                  value: r,
+                  label:
+                      Text(r.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
             ],
             selected: {c.role},
             // Lets a tap on the role already shown through (as an empty
@@ -288,19 +293,33 @@ class _AnalysisSaveCardState extends State<AnalysisSaveCard> {
                 decoration: _bare(context),
               ),
             ),
-            ?setUpPrinter,
+            Row(
+              children: [
+                Expanded(
+                    child: setUpPrinter ?? const SizedBox(height: 0)),
+                ResidualSwitch(controller: c),
+              ],
+            ),
           ] else
             // On one line when they fit, so a phone without a printer still
-            // has the tab on one screen.
-            Wrap(
-              spacing: Spacing.lg,
+            // has the tab on one screen. The "Residual analysis" switch
+            // takes the right-hand end of it.
+            Row(
               children: [
-                _link(
-                  key: const ValueKey('analysis-add-note'),
-                  label: '+ Add a note',
-                  onPressed: c.openNotes,
+                Expanded(
+                  child: Wrap(
+                    spacing: Spacing.lg,
+                    children: [
+                      _link(
+                        key: const ValueKey('analysis-add-note'),
+                        label: '+ Add a note',
+                        onPressed: c.openNotes,
+                      ),
+                      ?setUpPrinter,
+                    ],
+                  ),
                 ),
-                ?setUpPrinter,
+                ResidualSwitch(controller: c),
               ],
             ),
           if (usable && !stable) ...[

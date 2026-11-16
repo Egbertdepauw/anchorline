@@ -192,6 +192,33 @@ class GasSettingsTab extends StatelessWidget {
                   ],
                 ),
               ),
+              SettingRow(
+                title: 'Settle time (min)',
+                control: SettingTextField(
+                  key: const ValueKey('settings-blend-settle-minutes'),
+                  initialValue: notifier.blendSettleMinutes.toString(),
+                  width: 76,
+                  keyboardType: TextInputType.number,
+                  onChanged: (s) {
+                    final v = int.tryParse(s);
+                    if (v != null) notifier.setBlendSettleMinutes(v);
+                  },
+                ),
+              ),
+              SettingRow(
+                title: 'Diluent cylinder up to (L)',
+                control: SettingTextField(
+                  key: const ValueKey('settings-blend-diluent-max-l'),
+                  initialValue: _bar(notifier.blendDiluentMaxL),
+                  suffix: 'L',
+                  width: 76,
+                  keyboardType: decimalKeyboard,
+                  onChanged: (s) {
+                    final v = double.tryParse(s);
+                    if (v != null) notifier.setBlendDiluentMaxL(v);
+                  },
+                ),
+              ),
             ],
           ),
           SettingsGroup(

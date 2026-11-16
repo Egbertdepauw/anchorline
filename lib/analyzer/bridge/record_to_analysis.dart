@@ -24,8 +24,10 @@ import 'package:intl/intl.dart';
 
 import '../../analysis/gas_naming.dart';
 import '../../analysis/mix_match.dart';
+import '../../analysis/open_blend_match.dart';
 import '../../analysis/standard_mix_pick.dart';
 import '../../data/models/gas_analysis.dart';
+import '../../data/models/open_blend.dart';
 import '../protocol/solo_line_parser.dart';
 import '../stability.dart';
 import 'bridge_protocol.dart';
@@ -49,9 +51,12 @@ class LogOnOkSetup {
   const LogOnOkSetup({
     this.analysedBy,
     this.desiredMix,
-    this.gasRole,
+    this.tappedRole,
+    this.cylinderRole,
     this.autoPickMix = false,
-    this.blendTarget,
+    this.openBlends = const [],
+    this.blendChoice = const AutoBlend(),
+    this.residual = false,
     this.analysedFor,
     this.printOnOk = false,
     this.printerConfigured = false,
@@ -64,17 +69,27 @@ class LogOnOkSetup {
   final String? analysedBy;
   final DesiredMix? desiredMix;
 
-  /// The tapped role, or a picked cylinder's known role. Null means follow
+  /// The role the diver tapped; it beats the blend's and the cylinder's.
+  final GasRole? tappedRole;
+
+  /// The picked cylinder's known role. Null means follow the blend, else
   /// the mix: see [gasRoleForMix].
-  final GasRole? gasRole;
+  final GasRole? cylinderRole;
 
   /// True while the diver has not picked or cleared a mix: each press then
   /// gets the nearest standard mix of its own held reading ([pickDesiredMix]).
   final bool autoPickMix;
 
-  /// The recent Blend target that is not used up. The auto pick prefers it
-  /// when it grades within orange.
-  final DesiredMix? blendTarget;
+  /// The open blends a press may close (issue #112), oldest first. Matched
+  /// with [blendForAnalysis], like every other save path.
+  final List<OpenBlend> openBlends;
+
+  /// What the diver chose for the blend a press closes.
+  final BlendChoice blendChoice;
+
+  /// "Residual analysis" is on: the press saves a residual, with no desired
+  /// mix, no label and no blend closed.
+  final bool residual;
   final String? analysedFor;
 
   /// The diver wants a label printed on OK.
@@ -128,6 +143,7 @@ class SaveRecord extends RecordOutcome {
     required this.analysis,
     required this.printLabel,
     required this.live,
+    this.blendToClose,
     required FeedbackCode feedback,
     required String feedbackText,
   }) : super(rid, feedback, feedbackText);
@@ -151,6 +167,10 @@ class SaveRecord extends RecordOutcome {
   /// then, and not for an entry that still needs sign-off, because OK on the
   /// same cylinder again needs them.
   final bool live;
+
+  /// The open blend this save closes once it is complete, or null (issue
+  /// #112). Never set for a late record or a residual.
+  final OpenBlend? blendToClose;
 }
 
 /// Decides what to do with [record], in this order (spec section 5):
@@ -171,7 +191,12 @@ class SaveRecord extends RecordOutcome {
 ///     [LogOnOkSetup.modPpo2s] always applies. The desired mix is the
 ///     diver's pick, else (with [LogOnOkSetup.autoPickMix]) the nearest
 ///     standard mix of this record's own held reading, only ever a match or
-///     orange. The role is the setup's, else follows that mix (or the
+///     orange. A live record also matches an open blend
+///     ([blendForAnalysis]); its target is then the desired mix and it is
+///     the [SaveRecord.blendToClose]. A diver who cleared the mix on
+///     purpose (no pick, no mix) gets no blend by reading. A residual has
+///     no desired mix, no print and no blend. The role is the tapped one,
+///     else the blend's, else the cylinder's, else follows the mix (or the
 ///     reading when there is none).
 ///  7. The desired mix is graded against the measured gas.
 ///  8. Print only if live, the diver asked for it, a printer exists, there
@@ -264,18 +289,38 @@ RecordOutcome recordToAnalysis({
 
   // 6. The setup, for a live record only.
   final analysedBy = live ? _blankToNull(setup.analysedBy) : null;
-  final desiredMix = live
-      ? (setup.desiredMix ??
+  final residual = live && setup.residual;
+  final OpenBlend? blend;
+  if (!live || residual) {
+    blend = null;
+  } else if (setup.desiredMix == null &&
+      !setup.autoPickMix &&
+      setup.blendChoice is AutoBlend) {
+    // The diver cleared the mix on purpose: no match by reading.
+    blend = null;
+  } else {
+    blend = blendForAnalysis(
+      o2Percent: o2,
+      hePercent: he,
+      choice: setup.blendChoice,
+      chosenMix: setup.desiredMix,
+      residual: false,
+      open: setup.openBlends,
+    );
+  }
+  // Without a blend the pick is the nearest standard mix, which is also what
+  // "None" asks for.
+  final desiredMix = !live || residual
+      ? null
+      : (blend?.target ??
+            setup.desiredMix ??
             (setup.autoPickMix
-                ? pickDesiredMix(
-                    o2Percent: o2,
-                    hePercent: he,
-                    blendTarget: setup.blendTarget,
-                  )?.mix
-                : null))
-      : null;
+                ? pickDesiredMix(o2Percent: o2, hePercent: he)?.mix
+                : null));
   final gasRole = live
-      ? (setup.gasRole ??
+      ? (setup.tappedRole ??
+            blend?.role ??
+            setup.cylinderRole ??
             gasRoleForMix(desiredMix?.o2Percent.toDouble() ?? o2))
       : GasRole.bailout;
   final analysedFor = live ? setup.analysedFor : null;
@@ -301,6 +346,7 @@ RecordOutcome recordToAnalysis({
   // one (red and hard mean no print, nobody sees the colour in a pocket).
   final printLabel =
       live &&
+      !residual &&
       setup.printOnOk &&
       setup.printerConfigured &&
       named &&
@@ -346,9 +392,11 @@ RecordOutcome recordToAnalysis({
       captureSource: source,
       bridgeRecordId: '$bridgeId/$rid',
       analysedFor: analysedFor,
+      isResidual: residual,
     ),
     printLabel: printLabel,
     live: live,
+    blendToClose: blend,
     feedback: feedback.$1,
     feedbackText: feedback.$2,
   );

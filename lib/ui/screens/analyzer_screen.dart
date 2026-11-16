@@ -29,6 +29,7 @@ import 'package:flutter/material.dart';
 
 import '../../analyzer/analyzer_controller.dart';
 import '../../data/db/gas_analyses_dao.dart';
+import '../../data/db/open_blends_dao.dart';
 import '../../labels/label_print_service.dart';
 import '../notifiers/analyzer_session.dart';
 import '../notifiers/blend_notifier.dart';
@@ -57,6 +58,7 @@ class AnalyzerScreen extends StatefulWidget {
     required this.settings,
     required this.session,
     this.blend,
+    this.openBlends,
   });
 
   final SettingsNotifier settings;
@@ -64,9 +66,12 @@ class AnalyzerScreen extends StatefulWidget {
   /// The analyzer connection and Log on OK, owned by the app shell.
   final AnalyzerSession session;
 
-  /// The Blend tab's notifier, read live: its recent target (#114) is
-  /// offered first as the desired mix on the save card.
+  /// The Blend tab's notifier: a residual analysis fills its residual gas.
   final BlendNotifier? blend;
+
+  /// The open blends an analysis closes (#112); null keeps the card to
+  /// plain analyses.
+  final OpenBlendsDaoLike? openBlends;
 
   @override
   State<AnalyzerScreen> createState() => _AnalyzerScreenState();
@@ -99,7 +104,9 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
     // The form saves to the session's log with the settings it was made
     // with; another session or settings get a form of their own.
     if (!identical(oldWidget.session, widget.session) ||
-        !identical(oldWidget.settings, widget.settings)) {
+        !identical(oldWidget.settings, widget.settings) ||
+        !identical(oldWidget.openBlends, widget.openBlends) ||
+        !identical(oldWidget.blend, widget.blend)) {
       _retireSaveController();
     }
   }
@@ -133,7 +140,7 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
   /// Keeps [_saveController] in step with the screen, on every build: made
   /// when the save card is shown, retired when it goes away (so a card shown
   /// again starts fresh, from Your initials), and told the reading,
-  /// the Blend target, the connection and the Log on OK logger.
+  /// the connection and the Log on OK logger.
   void _syncSaveController() {
     final dao = _analysesDao;
     if (dao == null || !_showsSaveCard) {
@@ -144,14 +151,16 @@ class _AnalyzerScreenState extends State<AnalyzerScreen> {
       dao: dao,
       settings: widget.settings,
       labelPrinting: _labelPrinting,
+      openBlends: widget.openBlends,
+      onResidualSaved: widget.blend == null
+          ? null
+          : (o2, he, bar) => widget.blend!.applyResidualAnalysis(
+              o2Percent: o2, hePercent: he, pressureBar: bar),
     );
     save
-      ..onBlendTargetUsed = widget.blend?.markRecentTargetUsed
       ..update(
         reading: _controller.latest,
         stability: _controller.stability,
-        blendTarget: widget.blend?.recentTarget(),
-        unusedBlendTarget: widget.blend?.unusedRecentTarget(),
         connected: _controller.isConnected,
       )
       ..bindLogger(_session.okLogger);

@@ -51,6 +51,23 @@ void main() {
     });
     test('resolveGasRole: a tapped role wins over cylinder and mix', () =>
         expect(resolveGasRole(tapped: GasRole.diluent, cylinderRole: CylinderRole.oxygen, o2PercentForRule: 50), GasRole.diluent));
+    test('resolveGasRole: blend role wins over cylinder and mix; tapped wins '
+        'over blend', () {
+      expect(
+          resolveGasRole(
+              blendRole: GasRole.diluent,
+              cylinderRole: CylinderRole.oxygen,
+              o2PercentForRule: 50),
+          GasRole.diluent);
+      expect(resolveGasRole(blendRole: GasRole.diluent, o2PercentForRule: 50),
+          GasRole.diluent);
+      expect(
+          resolveGasRole(
+              tapped: GasRole.bailout,
+              blendRole: GasRole.diluent,
+              o2PercentForRule: 20),
+          GasRole.bailout);
+    });
     test('resolveGasRole: a known cylinder role wins over the mix', () =>
         expect(resolveGasRole(cylinderRole: CylinderRole.diluent, o2PercentForRule: 50), GasRole.diluent));
     test('resolveGasRole: a cylinder without a role follows the mix', () =>

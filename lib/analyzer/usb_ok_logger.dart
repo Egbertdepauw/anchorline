@@ -20,6 +20,7 @@ library;
 import 'dart:async';
 
 import '../data/models/gas_analysis.dart';
+import '../data/models/open_blend.dart';
 import 'bridge/bridge_protocol.dart';
 import 'bridge/record_to_analysis.dart';
 import 'hold_detector.dart';
@@ -53,6 +54,7 @@ class UsbOkLogger implements OkLogger {
     required Future<bool> Function(String id, NewGasAnalysis a) save,
     required Future<void> Function(String id) markComplete,
     Future<void> Function(GasAnalysis a, int copies)? printLabel,
+    Future<bool> Function(OpenBlend blend, String analysisId)? closeBlend,
     Duration Function()? elapsed,
     DateTime Function()? now,
     Duration? tickInterval = kOkTickInterval,
@@ -61,6 +63,7 @@ class UsbOkLogger implements OkLogger {
          save: save,
          markComplete: markComplete,
          printLabel: printLabel,
+         closeBlend: closeBlend,
          onError: onError,
        ),
        _elapsed = elapsed ?? _stopwatchClock(),

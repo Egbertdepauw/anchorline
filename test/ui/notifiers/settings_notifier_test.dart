@@ -722,5 +722,32 @@ void main() {
       await reloaded.setAnalyzerFillPressureStartBar(double.nan);
       expect(reloaded.analyzerFillPressureStartBar, 200.0);
     });
+
+    test('blend settle time and diluent size: defaults, persist, clamp',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final s = SettingsNotifier();
+      await s.load();
+      expect(s.blendSettleMinutes, 60);
+      expect(s.blendDiluentMaxL, 3.0);
+      await s.setBlendSettleMinutes(90);
+      await s.setBlendDiluentMaxL(4.5);
+      final reloaded = SettingsNotifier();
+      await reloaded.load();
+      expect(reloaded.blendSettleMinutes, 90);
+      expect(reloaded.blendDiluentMaxL, 4.5);
+      await reloaded.setBlendSettleMinutes(-5);
+      expect(reloaded.blendSettleMinutes, 0);
+      await reloaded.setBlendSettleMinutes(2000);
+      expect(reloaded.blendSettleMinutes, 1440);
+      await reloaded.setBlendDiluentMaxL(0.1);
+      expect(reloaded.blendDiluentMaxL, 0.5);
+      await reloaded.setBlendDiluentMaxL(99);
+      expect(reloaded.blendDiluentMaxL, 50.0);
+      final again = SettingsNotifier();
+      await again.load();
+      expect(again.blendSettleMinutes, 1440);
+      expect(again.blendDiluentMaxL, 50.0);
+    });
   });
 }
