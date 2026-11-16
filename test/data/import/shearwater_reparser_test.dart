@@ -9,6 +9,7 @@ import 'package:ccrlogger/data/import/import_problem_reporter.dart';
 import 'package:ccrlogger/data/import/shearwater_reparser.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
 import 'package:ccrlogger/shearwater/parser/parser_version.dart';
+import 'package:subsurface_core/shearwater/parser/constants.dart' show infoEventTagLog;
 import 'package:ccrlogger/sync/cloud/sync_status_source.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
@@ -20,6 +21,7 @@ import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:subsurface_core/subsurface_core.dart'
     show kSubsurfaceImportedParserVersion;
 
+import '../../_helpers/patched_dive_718.dart';
 import '../../_helpers/powersync_test_helper.dart';
 
 const _serial = 0xB89641E4;
@@ -139,7 +141,7 @@ void main() {
         'UPDATE dives SET deleted_at = 5 WHERE id = ?', [deleted]);
     final libdc = await storeOld(713);
     await ps.execute(
-        "UPDATE dives SET dc_family = 'x' WHERE id = ?", [libdc]);
+        'UPDATE dives SET dc_family = 1 WHERE id = ?', [libdc]);
 
     final r = await reparser().run();
 
@@ -304,6 +306,70 @@ void main() {
     }
   });
 
+  test('a v1 row gains its events, vendor, product and samples version',
+      () async {
+    final c = _fx(718);
+    final id = c.dive.id;
+    await dao.importDive(
+        converted: c, rawBlob: patchedDive718(), parserVersion: 1);
+    // What a build from before the reader update stored.
+    await ps.execute(
+        'UPDATE dives SET dc_vendor = NULL, dc_product = NULL WHERE id = ?',
+        [id]);
+    await ps.execute(
+        'UPDATE dive_samples SET events_blob = NULL, parser_version = NULL '
+        'WHERE id = ?',
+        [id]);
+    expect(await dao.getEvents(id), isEmpty);
+
+    final r = await reparser().run();
+
+    expect(r.refreshed, 1);
+    final events = await dao.getEvents(id);
+    expect(events, hasLength(2));
+    final interval = c.dive.sampleIntervalMs;
+    expect(events[0].type, DiveEventType.bookmark);
+    expect(events[0].rawType, infoEventTagLog);
+    expect(events[0].timeMs, 9 * interval);
+    expect(events[0].value, 7);
+    expect(events[0].bearing, 270);
+    expect(events[1].type, DiveEventType.bookmark);
+    expect(events[1].rawType, infoEventTagLog);
+    expect(events[1].timeMs, 18 * interval);
+    expect(events[1].value, 8);
+    expect(events[1].bearing, isNull);
+    final d = await row(id);
+    expect(d['dc_vendor'], 'Shearwater');
+    expect(d['dc_product'], 'Petrel 3');
+    expect(d['parser_version'], kShearwaterParserVersion);
+    expect((await ps.get('SELECT parser_version FROM dive_samples '
+            'WHERE id = ?', [id]))['parser_version'],
+        kShearwaterParserVersion);
+  });
+
+  test('an unchanged gas list leaves every cylinder row untouched', () async {
+    final id = await storeOld(718);
+    await equipment.setDiveCylinders(id, [
+      (gasMixIndex: 0, cylinderId: 'cylA'),
+      (gasMixIndex: 7, cylinderId: 'cylOut'),
+    ]);
+    final before = [
+      for (final r in await ps.getAll(
+          'SELECT * FROM dive_cylinders ORDER BY id'))
+        Map.of(r)
+    ];
+    expect(before, hasLength(2));
+
+    await reparser().run();
+
+    expect((await row(id))['parser_version'], kShearwaterParserVersion);
+    expect([
+      for (final r in await ps.getAll(
+          'SELECT * FROM dive_cylinders ORDER BY id'))
+        Map.of(r)
+    ], before);
+  });
+
   test('a candidate with a NULL serial is marked and reported, not thrown',
       () async {
     final id = await storeOld(718);
@@ -404,6 +470,33 @@ void main() {
       current = SyncStatusSnapshot(connected: true, lastSyncedAt: previous);
       final w = wait()();
       controller.add(SyncStatusSnapshot(connected: true, lastSyncedAt: previous));
+      expect(await w, isFalse);
+    });
+
+    test('a sync already shown after the baseline completes true at once',
+        () async {
+      clock = DateTime.utc(2026, 11, 16, 12, 0, 5);
+      final baseline = SyncBaseline(
+          startedAt: DateTime.utc(2026, 11, 16, 12),
+          lastSyncedAt: DateTime.utc(2026, 11, 15));
+      current = SyncStatusSnapshot(
+          connected: true, lastSyncedAt: DateTime.utc(2026, 11, 16, 12, 0, 2));
+      final w = waitUntilSyncedFor(
+        isSignedIn: () => true,
+        status: _FakeStatus(() => current, controller.stream),
+        now: () => clock,
+        baseline: baseline,
+        timeout: const Duration(seconds: 30),
+      );
+      // No stream event: the immediate check must be enough.
+      expect(await w(), isTrue);
+    });
+
+    test('not connected never counts, even with a fresh lastSyncedAt',
+        () async {
+      final w = wait()();
+      controller.add(SyncStatusSnapshot(
+          connected: false, lastSyncedAt: clock.add(const Duration(seconds: 3))));
       expect(await w, isFalse);
     });
 

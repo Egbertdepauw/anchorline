@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
 import 'package:subsurface_core/shearwater/parser/hardware.dart';
 
+import '../../_helpers/patched_dive_718.dart';
+
 /// Pins what the Shearwater reader produces for each fixture. When the
 /// reader's output changes on purpose, bump [kShearwaterParserVersion]
 /// (so stored dives are re-parsed) and paste the new digests here.
@@ -24,6 +26,8 @@ const Map<int, String> _pinnedDigests = {
   717: '51fd216166e3f8ae9df466539036798b2fba78f65a4066540ac35914d6e8708e',
   718: '186b92afb24505ed8612ea0af3241a20470a59003b7a27af5d931de13bf8b9c1',
 };
+
+const String _patchedDive718Digest = '29b37177b1d55027f8838f36863ceb3006fafef91a1f73c2e515eb5efde5cc39';
 
 /// SHA-256 over the converter's output for one dive: every scalar field in a
 /// fixed, named order, the gas and tank JSON, the raw bytes of every sample
@@ -118,6 +122,18 @@ ConvertedDive convertFixture(int number) {
   );
 }
 
+/// dive_718 with two bookmarks patched in: the only guarded input with events.
+ConvertedDive convertPatchedDive718() {
+  final parsed = ShearwaterDiveParser(model: ShearwaterModel.petrel3)
+      .parse(patchedDive718());
+  return DiveConverter.convert(
+    parsed: parsed,
+    dcSerial: 0xB89641E4,
+    dcDiveNumber: 718,
+    dcModel: ShearwaterModel.petrel3,
+  );
+}
+
 void main() {
   test('reader output matches the digests for this version', () {
     const message = 'Shearwater reader output changed: bump '
@@ -128,5 +144,8 @@ void main() {
       expect(readerDigest(convertFixture(entry.key)), entry.value,
           reason: message);
     }
+    printOnFailure('patched dive_718 (two bookmarks)');
+    expect(readerDigest(convertPatchedDive718()), _patchedDive718Digest,
+        reason: message);
   });
 }

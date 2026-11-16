@@ -38,7 +38,9 @@ class LocalDataWiper {
       await _db.customStatement('DELETE FROM cylinders');
       await _db.customStatement('DELETE FROM pressure_mappings');
       await _db.customStatement('DELETE FROM dive_cylinders');
-      await _db.customStatement('DELETE FROM dive_import_marks');
+      // Raw blobs survive a reset, so raw_blob_missing stays true; only the
+      // failure record (per reader version) is cleared.
+      await _db.customStatement('UPDATE dive_import_marks SET reparse_failed_version = NULL');
     });
     // PowerSync: disconnect + clear local SQLite. Re-sync on next start.
     //

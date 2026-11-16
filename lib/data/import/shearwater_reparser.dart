@@ -161,6 +161,24 @@ class ShearwaterReparser {
   }
 }
 
+/// What the sync status looked like before this launch's sync could start.
+/// Capture it before `CloudSyncCoordinator.start()`: a first sync that
+/// finishes before the wait begins would otherwise read as the previous
+/// session's value and never count.
+class SyncBaseline {
+  const SyncBaseline({required this.startedAt, required this.lastSyncedAt});
+
+  /// The instant the baseline was taken.
+  final DateTime startedAt;
+
+  /// `lastSyncedAt` at that instant (persisted from an earlier session).
+  final DateTime? lastSyncedAt;
+
+  factory SyncBaseline.capture(SyncStatusSource status,
+          {DateTime Function() now = DateTime.now}) =>
+      SyncBaseline(startedAt: now(), lastSyncedAt: status.currentStatus.lastSyncedAt);
+}
+
 /// A [ShearwaterReparser.waitUntilSynced] for the app.
 ///
 /// Signed out: completes `true` at once (nothing to wait for).
@@ -168,7 +186,11 @@ class ShearwaterReparser {
 /// `downloading` with a `lastSyncedAt` after this call, so the dive list the
 /// re-parse reads is this launch's, not last session's; `false` after
 /// [timeout], and the re-parse then waits for the next launch.
+///
+/// [baseline] is taken before sync starts; without it the start and the
+/// previous value are read when the returned function is called.
 Future<bool> Function() waitUntilSyncedFor({
+  SyncBaseline? baseline,
   required bool Function() isSignedIn,
   required SyncStatusSource status,
   DateTime Function() now = DateTime.now,
@@ -180,11 +202,12 @@ Future<bool> Function() waitUntilSyncedFor({
     // the start rounded down to the second. The value present at the start
     // belongs to an earlier session (even one under a second ago) and never
     // counts.
-    final startedAt = now();
+    final startedAt = baseline?.startedAt ?? now();
     final startedSecond = DateTime.fromMillisecondsSinceEpoch(
         startedAt.millisecondsSinceEpoch ~/ 1000 * 1000,
         isUtc: startedAt.isUtc);
-    final previous = status.currentStatus.lastSyncedAt;
+    final previous =
+        baseline != null ? baseline.lastSyncedAt : status.currentStatus.lastSyncedAt;
     bool synced(SyncStatusSnapshot s) =>
         s.connected &&
         !s.downloading &&

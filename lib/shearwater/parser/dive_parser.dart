@@ -847,9 +847,10 @@ List<DiveEvent> _parseEvents(Uint8List data, _CacheResult cache) {
           timeMs: time,
           type: DiveEventType.bookmark,
           rawType: infoEventTagLog,
-          // 0xFFFFFFFF marks "no bearing". The stored events hold int32, so
-          // a word above that range (never seen on a real log) is left out
-          // rather than making the whole dive fail to import.
+          // w1 0xFFFFFFFF means "no bearing" (libdivecomputer). libdivecomputer
+          // keeps w2 as a uint32; the stored events hold int32, so a word
+          // above that range is left out rather than making the whole dive
+          // fail to import.
           bearing: w1 <= _maxInt32 ? w1 : null,
           value: w2 <= _maxInt32 ? w2 : null,
         ));

@@ -9,6 +9,8 @@ import 'package:subsurface_core/data/sample_codec/event_codec.dart';
 import 'package:subsurface_core/shearwater/parser/constants.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../_helpers/patched_dive_718.dart';
+
 void main() {
   late ParsedDive parsed718;
   late Dive dive718;
@@ -224,7 +226,6 @@ void main() {
     test('converted Shearwater dives carry vendor Shearwater and the product name',
         () {
       expect(dive718.dcVendor, kShearwaterVendor);
-      expect(dive718.dcVendor, 'Shearwater');
       final data = File('test/fixtures/dives/dive_711.bin').readAsBytesSync();
       final c711 = DiveConverter.convert(
         parsed: ShearwaterDiveParser(model: ShearwaterModel.petrel3)
@@ -283,27 +284,7 @@ void main() {
     });
 
     test('a bookmark in the log becomes a stored event', () {
-      // None of the fixtures has a bookmark, so turn two of dive_718's sample
-      // records (32-byte PNF records) into tag-log info events.
-      final data = Uint8List.fromList(
-          File('test/fixtures/dives/dive_718.bin').readAsBytesSync());
-      final view = ByteData.sublistView(data);
-      final sampleOffsets = [
-        for (var o = 0; o + 32 <= data.length; o += 32)
-          if (data[o] == logRecordDiveSample) o
-      ];
-      expect(sampleOffsets.length, greaterThan(20));
-      final withBearing = sampleOffsets[9];
-      final noBearing = sampleOffsets[19];
-      for (final o in [withBearing, noBearing]) {
-        data[o] = logRecordInfoEvent;
-        data[o + 1] = infoEventTagLog;
-      }
-      view.setUint32(withBearing + 8, 270);
-      view.setUint32(withBearing + 12, 7);
-      view.setUint32(noBearing + 8, 0xFFFFFFFF);
-      view.setUint32(noBearing + 12, 8);
-
+      final data = patchedDive718();
       final parsed = ShearwaterDiveParser(model: ShearwaterModel.petrel3)
           .parse(data);
       final c = DiveConverter.convert(

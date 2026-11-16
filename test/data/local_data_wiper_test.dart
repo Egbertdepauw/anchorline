@@ -57,10 +57,13 @@ void main() {
 
     expect(await count(() => db.customSelect('SELECT id FROM dives').get()),
         0);
-    expect(
-        await count(
-            () => db.customSelect('SELECT dive_id FROM dive_import_marks').get()),
-        0);
+    // Raw blobs survive a reset, so the row stays; only the failure clears.
+    final mark = await db
+        .customSelect('SELECT raw_blob_missing, reparse_failed_version '
+            'FROM dive_import_marks')
+        .getSingle();
+    expect(mark.read<bool>('raw_blob_missing'), isTrue);
+    expect(mark.data['reparse_failed_version'], isNull);
     expect(await count(() => ps.getAll('SELECT id FROM dives')), 0);
     expect(await count(() => ps.getAll('SELECT id FROM gas_analyses')), 0);
     expect(blockedCalls, 1);

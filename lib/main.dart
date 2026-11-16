@@ -97,6 +97,9 @@ void main() async {
   final authService =
       AuthService(backfiller: OwnerIdBackfiller(db, powerSyncDb));
 
+  // Taken before sync can start, for the re-parse's wait for a first sync.
+  final syncBaseline = SyncBaseline.capture(PowerSyncStatusSource(powerSyncDb));
+
   // Held for the app lifetime; tear-down happens at process exit. AppShell
   // calls forceReconnect() on lifecycle resume to recover from stale
   // WebSockets after Mac sleep / backgrounding.
@@ -115,7 +118,8 @@ void main() async {
   // in the background. Started once Sentry is initialised (before that its
   // reports go nowhere), never awaited, and never throws.
   void startReparse() =>
-      unawaited(_startReparse(db, powerSyncDb, session, authService));
+      unawaited(
+          _startReparse(db, powerSyncDb, session, authService, syncBaseline));
 
   final app = CCRLogApp(
     db: db,
@@ -192,7 +196,7 @@ void main() async {
 /// Starts the background re-parse. Errors are reported with `where: 'reparse'`
 /// and swallowed; building the reparser itself is inside the same guard.
 Future<void> _startReparse(AppDatabase db, PowerSyncDatabase powerSyncDb,
-    SessionSource session, AuthService authService) async {
+    SessionSource session, AuthService authService, SyncBaseline baseline) async {
   try {
     await ShearwaterReparser(
       diveDao: DiveDao(db, powerSyncDb, session),
@@ -201,6 +205,7 @@ Future<void> _startReparse(AppDatabase db, PowerSyncDatabase powerSyncDb,
       waitUntilSynced: waitUntilSyncedFor(
         isSignedIn: () => authService.isSignedIn,
         status: PowerSyncStatusSource(powerSyncDb),
+        baseline: baseline,
       ),
     ).run();
   } catch (e, st) {
