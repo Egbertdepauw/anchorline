@@ -10,7 +10,7 @@ void main() {
   final config =
       File('infra/powersync-sync-rules.yaml').readAsStringSync();
   final query = RegExp(
-    r'^\s*-\s*SELECT \* FROM ([a-z_]+) WHERE owner_id = auth\.user_id\(\)\s*$',
+    r'^\s*-\s*SELECT \* FROM ([a-z_]+) WHERE owner_id = auth\.user_id\(\)(\s.*)?$',
     multiLine: true,
   );
   final streamTables = [
@@ -46,7 +46,10 @@ void main() {
         .allMatches(config)
         .length;
     expect(selects, streamTables.length,
-        reason: 'a SELECT that is not "WHERE owner_id = auth.user_id()" '
-            'would sync other users\' rows or fail to parse');
+        reason: 'every query must be one line of the form '
+            '"- SELECT * FROM <table> WHERE owner_id = auth.user_id() ..."; '
+            'a query that does not start that way is either not owner-scoped '
+            '(it would sync other users\' rows) or written in a form this '
+            'test cannot read (a block scalar, a column list)');
   });
 }

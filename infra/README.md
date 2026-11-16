@@ -42,10 +42,18 @@ Sync Rules (`bucket_definitions:`) are deprecated. PowerSync removes them in
 the Service major version of 15 September 2027, and from 15 December 2027
 they can no longer be deployed. Switching:
 
+0. Paste the file into the dashboard and run **Validate** before
+   deploying. Compare it with what the dashboard's "Migrate to Sync
+   Streams" produces from the current Sync Rules: the same tables, each
+   scoped on `owner_id`. Edition 3 and the `queries:` shape were not checked
+   against a live Service when this file was written.
 1. Before deploying, let every device you use finish syncing, so no
    changes are waiting to upload. PowerSync's docs don't say what happens
    to a client's pending upload queue during the switch, so don't test
-   that with real data.
+   that with real data. To check a device: make no edits for a minute, and
+   Settings → Sync must show synced (green), not uploading. The upload
+   queue (`ps_crud`) is then empty; the sync-recovery skill
+   (`.claude/skills/sync-recovery`) shows how to inspect it if in doubt.
 2. Deploy the file. The Service reprocesses the data in the background
    while the old config keeps serving clients, then switches over without
    downtime.

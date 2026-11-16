@@ -8,7 +8,10 @@
 # A new PowerSync-backed table needs a query line here, and the file has to
 # be deployed to the PowerSync dashboard before that table syncs (CLAUDE.md
 # principle 7). test/sync/cloud/sync_streams_config_test.dart checks that
-# every table in lib/sync/cloud/powersync_schema.dart has a line here.
+# every table in lib/sync/cloud/powersync_schema.dart has a line here. It
+# reads each query as one line starting
+# `- SELECT * FROM <table> WHERE owner_id = auth.user_id()`; extra filters
+# after that (`AND deleted_at IS NULL`) are fine, other forms are not.
 config:
   edition: 3
 
