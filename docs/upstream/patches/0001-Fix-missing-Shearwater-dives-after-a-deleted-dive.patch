@@ -1,0 +1,39 @@
+From 43a1c1f3fd5f9defb30dab44c82824b94bb5bbf5 Mon Sep 17 00:00:00 2001
+From: Egbert de Pauw <egbert@despaankamer.nl>
+Date: Sun, 15 Nov 2026 16:33:06 +0100
+Subject: [PATCH] Fix missing Shearwater dives after a deleted dive
+
+When a dive is deleted on a Shearwater dive computer, its manifest
+record stays in place with the header 0x5A23. The manifest loop skips
+those records and counts them, but appends only the first count *
+RECORD_SIZE bytes of the page to the manifest buffer. With deleted
+records in the page, the last records before the stop point are cut
+off, and every valid dive among them is never downloaded. That is up
+to one dive for every deleted record in the same manifest page: the
+oldest new dives on an incremental download, or the last dives of a
+full page on a full download.
+
+Append all records up to the current offset instead, including the
+deleted ones. The download loop already skips the deleted records.
+---
+ src/shearwater_petrel.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/shearwater_petrel.c b/src/shearwater_petrel.c
+index c1cc880..734e43c 100644
+--- a/src/shearwater_petrel.c
++++ b/src/shearwater_petrel.c
+@@ -292,8 +292,11 @@ shearwater_petrel_device_foreach (dc_device_t *abstract, dc_dive_callback_t call
+ 		current += 1;
+ 		maximum -= RECORD_COUNT - count - deleted;
+ 
+-		// Append the manifest records to the main buffer.
+-		if (!dc_buffer_append (manifests, data, count * RECORD_SIZE)) {
++		// Append the manifest records to the main buffer. The deleted
++		// records are included, because they can be interleaved with
++		// the valid ones. They are skipped again when the dives are
++		// downloaded.
++		if (!dc_buffer_append (manifests, data, offset)) {
+ 			ERROR (abstract->context, "Insufficient buffer space available.");
+ 			dc_buffer_free (buffer);
+ 			dc_buffer_free (manifests);
