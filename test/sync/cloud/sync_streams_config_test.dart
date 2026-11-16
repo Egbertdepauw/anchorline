@@ -84,11 +84,26 @@ void main() {
     for (final t in gatedTables) {
       final u = userData.where((l) => tableOf(l) == t).toList();
       expect(u, hasLength(1), reason: '$t in user_data');
-      expect(u.single, contains('AND dc_family IS NULL'));
+      expect(u.single,
+          '- SELECT * FROM $t WHERE owner_id = auth.user_id() '
+          'AND dc_family IS NULL');
       final g = libdc.where((l) => tableOf(l) == t).toList();
       expect(g, hasLength(1), reason: '$t in libdc_dives');
-      expect(g.single, contains('AND dc_family IS NOT NULL'));
-      expect(g.single, contains(gateClause));
+      expect(g.single,
+          '- SELECT * FROM $t WHERE owner_id = auth.user_id() '
+          'AND dc_family IS NOT NULL AND $gateClause');
+    }
+  });
+
+  test('every ungated user_data line is exactly the bare owner-scoped query',
+      () {
+    // No ungated table has a deleted_at filter today; add the table here if
+    // one is ever introduced on purpose.
+    for (final l in streamQueries('user_data')) {
+      final t = tableOf(l)!;
+      if (gatedTables.contains(t)) continue;
+      expect(l, '- SELECT * FROM $t WHERE owner_id = auth.user_id()',
+          reason: 'no OR, no dc_family filter on an ungated table');
     }
   });
 
