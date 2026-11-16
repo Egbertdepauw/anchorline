@@ -294,6 +294,29 @@ class DiveDao {
     return rows.map((r) => r['id'] as String).toSet();
   }
 
+  /// The PowerSync side of the background re-parse's candidate query:
+  /// Shearwater dives (`dc_family IS NULL`, Subsurface copies at -1 included)
+  /// below [belowVersion] that are not deleted. Whether a dive has a local raw
+  /// blob, or a recorded failure, is Drift's to say; the reparser intersects.
+  Future<List<({String id, int? dcModel, int? dcSerial, int? dcDiveNumber})>>
+      reparseCandidates(int belowVersion) async {
+    final rows = await _ps.getAll(
+      'SELECT id, dc_model, dc_serial, dc_dive_number FROM dives '
+      'WHERE dc_family IS NULL AND parser_version < ? AND deleted_at IS NULL '
+      'ORDER BY start_time DESC',
+      [belowVersion],
+    );
+    return [
+      for (final r in rows)
+        (
+          id: r['id'] as String,
+          dcModel: r['dc_model'] as int?,
+          dcSerial: r['dc_serial'] as int?,
+          dcDiveNumber: r['dc_dive_number'] as int?,
+        ),
+    ];
+  }
+
   /// Every stored dive's matching columns, soft-deleted rows included.
   Future<List<StoredDiveKey>> storedDiveKeys() async {
     final rows = await _ps.getAll(_storedKeySelect);

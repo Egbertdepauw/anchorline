@@ -227,10 +227,27 @@ extension _DiveDaoRefresh on DiveDao {
         'WHERE dive_id = ? AND dc_family IS NOT ?',
         [dive.dcFamily, nowMs, diveId, dive.dcFamily],
       );
-      await _remapCylindersForRefreshTx(
-          tx, diveId, oldMixes, dive.gasMixes, nowMs);
+      // An unchanged own gas list means an unchanged merged list too, so no
+      // cylinder row needs to move (and none is touched).
+      if (!_sameGasList(oldMixes, dive.gasMixes)) {
+        await _remapCylindersForRefreshTx(
+            tx, diveId, oldMixes, dive.gasMixes, nowMs);
+      }
       return true;
     });
+  }
+
+  /// Same O2, He and diluent flag, in the same order.
+  static bool _sameGasList(List<DiveGasMix> a, List<DiveGasMix> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].oxygenPercent != b[i].oxygenPercent ||
+          a[i].heliumPercent != b[i].heliumPercent ||
+          a[i].isDiluent != b[i].isDiluent) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Remaps the cylinder rows a refresh of [diveId] can affect. A merged

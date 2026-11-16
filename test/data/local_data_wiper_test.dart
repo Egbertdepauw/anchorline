@@ -35,6 +35,11 @@ Future<(AppDatabase, PowerSyncDatabase)> _seeded() async {
       "INSERT INTO dive_raw_blobs (dive_id, raw_blob) VALUES ('d1', x'0102')");
   await db.customStatement(
       "INSERT INTO import_states (dc_serial) VALUES ('1234')");
+  // Device-local re-parse bookkeeping.
+  await db.customStatement(
+    'INSERT INTO dive_import_marks (dive_id, raw_blob_missing, '
+    "reparse_failed_version) VALUES ('d1', 1, 2)",
+  );
   await db.customStatement('INSERT INTO dive_derived_stats '
       "(dive_id, parser_version) VALUES ('d1', 1)");
   await db.customStatement('INSERT INTO sync_quarantine (op_client_id, '
@@ -89,6 +94,26 @@ void main() {
     final blobs = await db.select(db.diveRawBlobs).get();
     expect(blobs.single.diveId, 'd1');
     expect(blobs.single.rawBlob, [1, 2]);
+  });
+
+  test('wipe() keeps the import marks but clears the re-parse failures',
+      () async {
+    final (db, ps) = await _seeded();
+
+    await LocalDataWiper(
+      db: db,
+      powerSyncDb: ps,
+      markFixturesBlocked: () async {},
+    ).wipe();
+
+    // The raw blobs stay, so a blob that failed to store is still missing;
+    // a dive that failed to re-parse gets another try after the reset.
+    final mark = await db
+        .customSelect('SELECT raw_blob_missing, reparse_failed_version '
+            'FROM dive_import_marks')
+        .getSingle();
+    expect(mark.read<bool>('raw_blob_missing'), isTrue);
+    expect(mark.data['reparse_failed_version'], isNull);
   });
 
   test('wipeDeletedAccount() empties every Drift table, raw blobs included',
