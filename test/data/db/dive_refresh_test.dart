@@ -754,5 +754,21 @@ void main() {
           {21: 'cAir', 100: 'cO2', 18: 'cTx'});
       expect(rows, {0: 'cAir', 1: 'cO2', 2: 'cTx'});
     });
+
+    test('a merge group with one live member remaps against its own list',
+        () async {
+      final m = await mergedPair([_air, _air, _o2], [_tx]);
+      await equipment.setDiveCylinders(m.first, [
+        (gasMixIndex: 0, cylinderId: 'A'),
+        (gasMixIndex: 1, cylinderId: 'B'),
+        (gasMixIndex: 2, cylinderId: 'C'),
+      ]);
+      await dao.softDeleteDive(m.second);
+      await dao.importDive(
+          converted: _rebuild(m.a, mixes: [_air, _o2]),
+          rawBlob: _raw(718),
+          parserVersion: 2);
+      expect(await cylinders(m.first), {0: 'A', -1: 'B', 1: 'C'});
+    });
   });
 }

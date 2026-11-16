@@ -259,7 +259,9 @@ extension _DiveDaoRefresh on DiveDao {
         [link['group_id']],
       );
       final ids = [for (final r in rows) r['id'] as String];
-      if (ids.contains(diveId)) {
+      // A group with one live member (the other is deleted) shows as a single
+      // dive, keyed by its own raw gas list.
+      if (ids.length >= 2 && ids.contains(diveId)) {
         // The dives row already holds the new list; the old one is [oldMixes].
         final others = [
           for (final r in rows) _decodeMixes(r['gas_mixes_json'] as String?),
