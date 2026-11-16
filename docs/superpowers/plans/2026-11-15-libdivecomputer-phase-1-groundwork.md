@@ -846,3 +846,46 @@ One shape for every engine (spec section 6): open, download, and emit a `Convert
 - PR 2's config is deployed, and the fake-row check passed.
 - Phase 2 sets `kSyncConnectionParams` to `{'dc_engines': 2}` (or subscribes to `libdc_dives`) in the same PR that makes the Subsurface writer skip dives with `dc_family` set.
 - libdivecomputer dives use `refreshMayWrite` with their own counter, and `DcIdentity` / `DiveSourceIdentified` for identity.
+
+---
+
+## Changes made during execution (2026-11-16)
+
+The six PRs are #216 (PR 1), #224 (PR 2), #217 (PR 3), #218 (PR 4), #222 (PR 5) and #223 (PR 6). Where this plan and the code differ, the code and this list are what was decided. The reviews below found each issue against real code or a reproduction.
+
+- **PR 1, the guard.** `keep_newer_parse()` stays on `dives`. `dive_samples` has its own `keep_newer_samples()`, which also refuses a same-version (or version-omitted) change to any blob or `sample_count` when the stored version is >= 0. Builds before phase 1 never send `dive_samples.parser_version`, so their upserts would otherwise replace refreshed profiles. The two can't share one function, because PL/pgSQL resolves `new.<field>` at parse time. The check script asserts its own results.
+- **PR 1, deploy order.** 0026 must be live before PR 1 is *merged*, not only before this branch runs. Without it, every build from `main` stalls its uploads on PGRST204 until the migration lands.
+- **PR 3 (Task 7), serials.** In phase 1, Subsurface copies keep storing the legacy hex reading in `dc_serial`. Installed builds key copies by that reading in `RemoteSnapshot` and the bootstrap, so a decimal value would make them overwrite the original Divecomputer file on Subsurface Cloud. The per-brand reading is exposed on the mapper output (`brandSerial`) and used only for matching. Every serial-keyed match uses `subsurfaceSerialForms(vendor, serial)` from `subsurface_core`; Task 10 imports it instead of defining its own. The bootstrap writes a copy's annotation only when it inserted the dive.
+- **PR 4, fingerprints (deferred to phase 2).** The shape needs `sinceFingerprint` up front. libdivecomputer only learns the serial at DEVINFO, inside `dc_device_foreach`, and newest-first engines need "keep the first dive's fingerprint, only on a clean finish". So phase 2 moves fingerprint lookup and saving into the source, for example as a `FingerprintStore`, or as a final event that carries the fingerprint to keep.
+- **PR 5 (Task 10), matching.** `effectiveVendor(null, v >= 0)` is Shearwater. `findSameDive` takes `int? diveNumber`: when the incoming dive is a download, a stored download (or refreshed copy) matches only with the same dive number. That rule tells apart two short dives from one computer. A candidate with download data is decisive over unrefreshed copies in the window. `remapCylinderRows` keeps a row at its index when the same mix is still there.
+- **PR 5 (Task 11), start time.** A refresh never changes `start_time`; `end_time` becomes the stored start plus the incoming duration. The Subsurface writer and every installed build identify a pushed dive by `(serial, start_time)`, and nothing reads `subsurface_uploaded_at`. A refreshed copy therefore keeps Subsurface's start time, a few seconds off the Petrel's at most. Spec 7a's column list is amended accordingly.
+- **PR 5 (Task 11), raw blobs and the rest.**
+  - A Subsurface copy (-1) or an empty blob never writes a raw blob.
+  - `dc_firmware` and `dc_product` are written with `COALESCE`.
+  - A change to `dc_family` also moves the dive's `dive_bailout_carry` rows.
+  - Merged dives are remapped against the group's merged gas list, but only when the group has two or more live members.
+  - An unchanged gas list skips the remap.
+- **PR 5 (Task 12), callers.**
+  - Sentry gets only the error type and the stack (`redactImportError`). `SqliteException` text carries the statement's parameters.
+  - A rejected dive is reported as `UnusableParse`.
+  - The dive screen saves only the cylinder assignments changed in that session.
+  - After an import that refreshed dives, View dives pops back to the list through the unsaved-changes guards.
+- **PR 6 (Task 16), the re-parse.**
+  - It only counts non-empty raw blobs; old installs have empty rows for copies.
+  - It captures the sync baseline before `CloudSyncCoordinator.start()` and compares whole seconds, because PowerSync's `lastSyncedAt` has no sub-second part.
+  - It starts inside Sentry's `appRunner`.
+  - It marks a dive only on a parse failure, a bad identity column or `rejected`. A write error stops the run unmarked.
+  - "Reset local data" clears only the failure marks.
+- **PR 6 (Task 15).** `EventCodec.encode` rejects out-of-range fields. The parser drops a tag-log value above int32, a bounded divergence from libdc that a re-parse can recover. A ninth guarded input with two bookmarks makes the guard see events. Version 1 had been written while the reader's output changed (2026-04-28 and 2026-05-06), so very old dives change in more than events and brand fields.
+
+### Before phase 2, in addition to the list above
+
+- The fingerprint ownership change from PR 4.
+- `dc_family` must be write-once per dive id. Otherwise, the dive, its samples and its carry rows must move between streams in one transaction.
+- `ArgumentError` from the codecs inside `_encodedSamples` is treated as a write error. A libdivecomputer engine should mark the dive instead.
+- On an engine mismatch, `unchanged` still writes the incoming blob under the other engine's row.
+- Gated libdivecomputer downloads store decimal serials while copies keep hex. That breaks three things:
+  - equipment lookups;
+  - the serial shown on the dive screen;
+  - the merge validator's equal-serial rule.
+- The future server-side Subsurface sync must not use `updated_at` or `version` alone to decide what needs pushing.
