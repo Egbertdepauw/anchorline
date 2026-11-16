@@ -77,25 +77,28 @@ fi
 # `powersync` publication must be created in the same file with
 # `primary key (owner_id, id)`. Ids are computed from hardware and dive data,
 # so two accounts can share one (0027, CLAUDE.md principle 7).
+# Only sees single-line, unquoted `add table` / `for table` forms (the rule 6
+# convention).
 fail8=0
 for f in "${sqls[@]}"; do
   name="$(basename "$f")"
   num="${name%%_*}"
   case "$num" in ''|*[!0-9]*) continue ;; esac
   [ "$((10#$num))" -ge 27 ] || continue
-  body="$(grep -vE '^[[:space:]]*--' "$f" | tr '[:upper:]' '[:lower:]')"
+  body="$( { grep -vE '^[[:space:]]*--' "$f" || true; } | sed -E 's/--.*$//' | tr '[:upper:]' '[:lower:]')"
   tables="$( {
-    printf '%s\n' "$body" | sed -nE 's/.*add table[[:space:]]+(public\.)?([a-z0-9_]+).*/\2/p'
+    printf '%s\n' "$body" | sed -nE "s/.*add table[[:space:]]+([^;']*).*/\1/p" \
+      | tr ',' '\n' | sed -E 's/^[[:space:]]*(public\.)?//; s/[^a-z0-9_].*$//'
     printf '%s\n' "$body" | sed -nE 's/.*create publication.*for table[[:space:]]+([^;]*).*/\1/p' \
       | tr ',' '\n' | sed -E 's/^[[:space:]]*(public\.)?//; s/[^a-z0-9_].*$//'
   } | { grep -E '.' || true; } | sort -u)"
   for t in $tables; do
-    # The create table block, whitespace-collapsed, up to the closing `);`.
+    # The create table block, whitespace-collapsed, up to the first line with `;`.
     block="$(printf '%s\n' "$body" | awk -v t="$t" '
       BEGIN { re = "^[ \t]*create table if not exists[ \t]+(public\\.)?" t "([ \t(]|$)" }
       $0 ~ re { on = 1 }
       on { printf "%s ", $0 }
-      on && /^[ \t]*\)[ \t]*;/ { exit }
+      on && /;/ { exit }
     ' | tr -s '[:space:]' ' ')"
     if ! printf '%s' "$block" | grep -qE 'primary key ?\( ?owner_id ?, ?id ?\)'; then
       echo "  $name  synced table $t needs primary key (owner_id, id)"
