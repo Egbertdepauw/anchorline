@@ -1,8 +1,10 @@
-import 'package:sentry_flutter/sentry_flutter.dart' show Sentry, Scope;
-import 'package:sqlite3/common.dart' show SqliteException;
+import 'dart:async' show unawaited;
+
+import '../../diagnostics/sentry_redaction.dart' show captureRedactedException;
 
 /// Reports an import problem that is not the diver's doing (a rejected or
-/// failed dive). [where] names the step: `download` or `bootstrap`.
+/// failed dive). [where] names the step: `download`, `bootstrap` or
+/// `reparse`.
 typedef ImportProblemReporter = void Function(
     Object error, StackTrace? stack, String where);
 
@@ -16,35 +18,10 @@ class UnusableParse implements Exception {
   String toString() => 'UnusableParse';
 }
 
-/// What Sentry gets in place of an import error: the error's type and, for a
-/// SQLite error, its result code. Never its message: a database error's text
-/// carries the statement and its parameters (serials, ids, the user id).
-class ImportProblem implements Exception {
-  final String errorType;
-  final int? extendedResultCode;
-
-  const ImportProblem(this.errorType, [this.extendedResultCode]);
-
-  @override
-  String toString() => extendedResultCode == null
-      ? errorType
-      : '$errorType (result code $extendedResultCode)';
-}
-
-/// The [ImportProblem] standing for [error].
-Object redactImportError(Object error) => ImportProblem(
-      error.runtimeType.toString(),
-      error is SqliteException ? error.extendedResultCode : null,
-    );
-
-/// The production [ImportProblemReporter]: sends the redacted error and the
-/// real stack trace to Sentry with the tag `import.where`. It adds no serial,
-/// dive data or user data.
+/// The production [ImportProblemReporter]: sends the error, redacted to its
+/// type ([captureRedactedException]), and the real stack trace to Sentry with
+/// the tag `import.where`. No serial, dive data or user data.
 void reportImportProblemToSentry(
-    Object error, StackTrace? stack, String where) {
-  Sentry.captureException(
-    redactImportError(error),
-    stackTrace: stack,
-    withScope: (Scope scope) => scope.setTag('import.where', where),
-  );
-}
+        Object error, StackTrace? stack, String where) =>
+    unawaited(
+        captureRedactedException(error, stack, tags: {'import.where': where}));

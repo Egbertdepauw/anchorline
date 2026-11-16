@@ -16,6 +16,7 @@ import 'data/db/equipment_dao.dart';
 import 'data/import/import_problem_reporter.dart';
 import 'data/import/shearwater_reparser.dart';
 import 'dev/fixture_seeder.dart';
+import 'diagnostics/sentry_redaction.dart';
 import 'sync/cloud/auth_service.dart';
 import 'sync/cloud/ccrlogger_backend_connector.dart';
 import 'sync/cloud/cloud_config.dart';
@@ -154,6 +155,12 @@ void main() async {
         // tracesSampleRate: 0 keeps overhead minimal and stays inside
         // the free-tier quota for a small beta cohort.
         options.tracesSampleRate = 0;
+        // No debugPrint/print breadcrumbs. Sentry would attach the last 100
+        // console lines to every event, and many of them interpolate raw
+        // errors, ids and serials. Sentry gets no user data
+        // (diagnostics/sentry_redaction.dart). It also leaves debugPrint
+        // writing to the console, which the integration would replace.
+        options.enablePrintBreadcrumbs = false;
         // CI builds report the channel as the environment and a release
         // name that carries the build number. Builds made without those
         // defines (hand-built store builds, until CI ships them) keep
@@ -162,24 +169,10 @@ void main() async {
         if (environment != null) options.environment = environment;
         final release = BuildInfo.sentryRelease;
         if (release != null) options.release = release;
-        // Drop benign network noise the Supabase SDK reports while it's
-        // retrying internally. AuthRetryableFetchException is the SDK's
-        // own "this attempt failed, I'll retry" signal — the diver's
-        // device just blipped offline (cell tower handoff, sleep
-        // wake-up, etc.). The SDK retries and recovers without our
-        // help; sending these to Sentry pollutes the dashboard with
-        // events we can't action.
-        options.beforeSend = (event, hint) {
-          final thrown = event.throwable?.toString() ??
-              event.exceptions?.firstOrNull?.type ??
-              '';
-          if (thrown.contains('AuthRetryableFetchException') ||
-              thrown.contains('Failed host lookup') ||
-              thrown.contains('SocketException')) {
-            return null; // swallow
-          }
-          return event;
-        };
+        // Drops the Supabase SDK's retry noise and takes the text out of
+        // every error, uncaught ones included: an error's text can carry
+        // serials, dive data or the user id.
+        options.beforeSend = sentryBeforeSend;
       },
       appRunner: () {
         _reportAppDataMoveProblems(appData);

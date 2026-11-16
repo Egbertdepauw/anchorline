@@ -7,9 +7,9 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 
 import '../../data/models/gas_analysis.dart';
+import '../../diagnostics/sentry_redaction.dart';
 import '../../label_printer/label_printer.dart';
 import '../../labels/label_print_service.dart';
 import '../theme/tokens.dart';
@@ -21,11 +21,12 @@ const String _kChanged =
     'This analysis changed. Print it again from the log.';
 
 /// Where [reportLabelPrintError] sends an error and its stack trace:
-/// Sentry, which `main.dart` only starts in release builds. Elsewhere the
-/// capture does nothing. Tests replace it to see what is reported.
+/// Sentry, without the error's text ([captureRedactedException]). `main.dart`
+/// only starts Sentry in release builds; elsewhere the capture does nothing.
+/// Tests replace it to see what is reported.
 @visibleForTesting
 Future<void> Function(Object error, StackTrace stack) labelPrintErrorSink =
-    (error, stack) => Sentry.captureException(error, stackTrace: stack);
+    captureRedactedException;
 
 /// Logs and reports a print error that isn't the printer's, such as a
 /// render bug or a failed read of the log. The user sees "Printing

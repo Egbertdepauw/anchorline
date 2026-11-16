@@ -18,10 +18,11 @@
 /// comes back empty, a site is skipped, a `Dive-NNN` still counts by name
 /// with empty lines (so the planner aborts that dive rather than
 /// overwriting it), and a `Divecomputer` is still selected by name with no
-/// serial and empty lines. Missing fields on a
-/// Divecomputer (no Serial keyvalue, malformed folder name) just mean
-/// that dive can't ever match a CCRLog dive — that's fine, the planner
-/// will allocate a fresh Dive-NNN for it. We do not abort the snapshot
+/// serial and empty lines. A parsed Divecomputer with no Serial keyvalue
+/// is indexed under serial 0, the serial the bootstrap gives that dive.
+/// A Divecomputer that is unreadable or fails to parse, or a malformed
+/// folder name, means that dive can't match a CCRLog dive; the planner
+/// will allocate a fresh Dive-NNN for one. We do not abort the snapshot
 /// on individual-file failures; the cost of refusing to sync because of
 /// one corrupt fixture from 2008 is much worse than skipping it.
 library;
@@ -197,8 +198,15 @@ class RemoteSnapshot {
           divecomputerText,
           kind: SubsurfaceFileKind.divecomputer,
         );
+        // A Divecomputer without a usable Serial (manually added dives,
+        // computers Subsurface logged no serial for) is keyed under
+        // serial 0: that is how the bootstrap stores such a dive
+        // (`SubsurfaceToCcrlogMapper.mapDive`, `serial ?? 0`). Left out
+        // of the index, its first push would take the new-dive branch
+        // and overwrite this folder's Divecomputer.
         serial = _serialFromDivecomputer(
-            parsed.lines, _vendorOf(parsed.lines));
+                parsed.lines, _vendorOf(parsed.lines)) ??
+            0;
         divecomputerLines = parsed.lines;
       } catch (_) {
         // Leave serial + lines null/empty; this dive won't match a CCRLog
