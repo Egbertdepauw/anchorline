@@ -223,12 +223,19 @@ class DaoBootstrapDataSource implements BootstrapDataSource {
     required ConvertedDive converted,
     required Uint8List rawBlob,
     required int parserVersion,
-  }) =>
-      _diveDao.importDive(
-        converted: converted,
-        rawBlob: rawBlob,
-        parserVersion: parserVersion,
-      );
+  }) async {
+    // Task 12 rewires this; until then a bootstrap dive is never matched
+    // against other stored dives, as before.
+    final outcome = await _diveDao.importDive(
+      converted: converted,
+      rawBlob: rawBlob,
+      parserVersion: parserVersion,
+      matchSubsurfaceCopies: false,
+    );
+    return outcome == ImportOutcome.inserted ||
+        outcome == ImportOutcome.insertedFlagged ||
+        outcome == ImportOutcome.refreshed;
+  }
 
   @override
   Future<void> upsertAnnotation(DiveAnnotation annotation) =>

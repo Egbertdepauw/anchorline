@@ -426,12 +426,15 @@ class ImportNotifier extends ChangeNotifier {
           case DiveSourceDive():
             _currentDiveNumber = event.listing?.diveNumber;
             try {
-              final imported = await _dao.importDive(
+              final outcome = await _dao.importDive(
                 converted: event.converted,
                 rawBlob: event.rawBlob,
                 parserVersion: event.parserVersion,
               );
-              if (imported) {
+              // Task 12 reports each outcome properly.
+              if (outcome == ImportOutcome.inserted ||
+                  outcome == ImportOutcome.insertedFlagged ||
+                  outcome == ImportOutcome.refreshed) {
                 _downloadedCount++;
                 lastSuccessfulFingerprint = event.fingerprint;
               }

@@ -88,6 +88,24 @@ class EquipmentDao {
     });
   }
 
+  /// Soft-deletes the cylinder row for [gasMixIndex]. A later
+  /// [setDiveCylinder] at the same index revives it.
+  Future<void> removeDiveCylinder(String diveId, int gasMixIndex) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _ps.writeTransaction((tx) async {
+      final id = '$diveId:$gasMixIndex';
+      final existing = await tx
+          .getOptional('SELECT version FROM dive_cylinders WHERE id = ?', [id]);
+      if (existing == null) return;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE dive_cylinders SET owner_id = ?, deleted_at = ?, '
+        'updated_at = ?, version = ? WHERE id = ?',
+        [_ownerId, now, now, newVersion, id],
+      );
+    });
+  }
+
   Future<void> setDiveCylinders(
     String diveId,
     List<({int gasMixIndex, String? cylinderId})> mappings,
@@ -123,8 +141,8 @@ class EquipmentDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_cylinders SET '
-        'owner_id = ?, cylinder_id = ?, updated_at = ?, version = ? '
-        'WHERE id = ?',
+        'owner_id = ?, cylinder_id = ?, deleted_at = NULL, '
+        'updated_at = ?, version = ? WHERE id = ?',
         [_ownerId, cylinderId, now, newVersion, id],
       );
     }
