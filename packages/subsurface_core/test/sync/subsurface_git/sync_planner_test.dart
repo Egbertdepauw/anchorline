@@ -16,8 +16,10 @@ import 'dart:typed_data';
 import 'package:subsurface_core/data/models/annotation.dart';
 import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/sync/subsurface_git/format/subsurface_format.dart';
 import 'package:subsurface_core/sync/subsurface_git/format/subsurface_parser.dart';
 import 'package:subsurface_core/sync/subsurface_git/mapper.dart';
+import 'package:subsurface_core/sync/subsurface_git/remote_snapshot.dart';
 import 'package:subsurface_core/sync/subsurface_git/sync_inputs.dart';
 import 'package:subsurface_core/sync/subsurface_git/sync_planner.dart';
 import 'package:test/test.dart';
@@ -123,6 +125,44 @@ void main() {
       expect(plan.stats.updatedDives, 1);
     });
 
+    test('a remote Divesoft dive (decimal Serial) is matched by a local dive '
+        'stored with either serial reading', () {
+      final files = <String, String?>{
+        '2026/04/19-Sun-15=18=45/Dive-705': 'duration 57:30 min\n'
+            'rating 2\n'
+            'divemaster ""\n'
+            'buddy ""\n'
+            'suit ""\n',
+        '2026/04/19-Sun-15=18=45/Divecomputer':
+            'model "Divesoft Liberty"\nkeyvalue "Serial" "1234567"\n',
+      };
+      final snap = RemoteSnapshot.fromFiles(files);
+      for (final serial in [1234567, 0x1234567]) {
+        final plan = SyncPlanner().plan(
+          ccrlogDives: [
+            _bundle(
+              diveId: _diveIdA,
+              gasMixes: const [],
+              annotation: _testAnnotation(rating: 5),
+              dcSerial: serial,
+            ),
+          ],
+          existingDivesBySerialAndStart: snap.existingDivesBySerialAndStart,
+          existingMaxDiveNumber: snap.existingMaxDiveNumber,
+          existingTopLevel: const [],
+          existingSites: const {},
+        );
+        expect(plan.stats.newDives, 0, reason: 'serial $serial');
+        expect(
+          plan.filesToWrite.keys.where((k) => k.endsWith('/Divecomputer')),
+          isEmpty,
+          reason: 'serial $serial',
+        );
+        expect(plan.filesToWrite.keys.where((k) => k.contains('Dive-705')),
+            hasLength(1));
+      }
+    });
+
     test('existing dive with empty (unreadable) Dive-NNN aborts rather '
         'than silently overwriting', () {
       final planner = SyncPlanner();
@@ -198,19 +238,121 @@ void main() {
         existingSites: {subsurfaceHex: existingSiteLines},
       );
 
-      // The site write goes to the EXISTING Subsurface UUID.
+      // The new dive points at the EXISTING Subsurface UUID.
       expect(
-        plan.filesToWrite.keys,
-        contains('01-Divesites/Site-$subsurfaceHex'),
+        plan.filesToWrite['2026/04/19-Sun-15=18=45/Dive-705'],
+        contains('divesiteid $subsurfaceHex\n'),
       );
-      // No orphan under CCRLog's SHA-256 hash was created.
-      final orphanCandidates = plan.filesToWrite.keys
-          .where((k) =>
-              k.startsWith('01-Divesites/') && !k.endsWith(subsurfaceHex))
+      // No orphan under CCRLog's SHA-256 hash was created, and the
+      // existing Site file already holds what CCRLog would write.
+      final siteWrites = plan.filesToWrite.keys
+          .where((k) => k.startsWith('01-Divesites/'))
           .toList();
-      expect(orphanCandidates, isEmpty,
+      expect(siteWrites, isEmpty,
           reason: 'CCRLog must not create duplicate Site files for sites '
               'Subsurface already has under its own UUID.');
+    });
+
+    group('a new dive at GPS that two existing sites share', () {
+      const shoreHex = _shoreHex;
+      const platformHex = _platformHex;
+      final existingSites = _sharedGpsSites();
+      SyncPlan planNewDive(String siteName) => SyncPlanner().plan(
+            ccrlogDives: [
+              _bundle(
+                diveId: _diveIdA,
+                annotation: _annotation(
+                  diveId: _diveIdA,
+                  siteName: siteName,
+                  siteLatitude: 52.12345,
+                  siteLongitude: 4.56789,
+                ),
+              ),
+            ],
+            existingDivesBySerialAndStart: const {},
+            existingMaxDiveNumber: 0,
+            existingTopLevel: const [],
+            existingSites: existingSites,
+          );
+      const divePath = '2026/04/19-Sun-15=18=45/Dive-705';
+
+      test('points at the site with its name and renames neither', () {
+        for (final (name, hex) in [
+          ('Quarry North - Shore entry', shoreHex),
+          ('Quarry North - Platform', platformHex),
+        ]) {
+          final plan = planNewDive(name);
+          expect(plan.filesToWrite[divePath], contains('divesiteid $hex\n'),
+              reason: name);
+          expect(
+            plan.filesToWrite.keys.where((k) => k.startsWith('01-Divesites/')),
+            isEmpty,
+            reason: name,
+          );
+        }
+      });
+
+      test('with a name neither site has, gets a site of its own', () {
+        final plan = planNewDive('Quarry North - Night entry');
+
+        final siteWrites = plan.filesToWrite.keys
+            .where((k) => k.startsWith('01-Divesites/'))
+            .toList();
+        expect(siteWrites, hasLength(1));
+        final hex = siteWrites.single.substring('01-Divesites/Site-'.length);
+        expect(hex, isNot(anyOf(shoreHex, platformHex)));
+        expect(plan.filesToWrite[siteWrites.single],
+            contains('name "Quarry North - Night entry"\n'));
+        expect(plan.filesToWrite[divePath], contains('divesiteid $hex\n'));
+      });
+    });
+
+    // The merge never rewrites an existing dive's `divesiteid`, so its
+    // site goes into the Site file it points to only when that is still
+    // the same place.
+    group('an existing dive pointing at one of two same-GPS sites', () {
+      SyncPlan planExisting(
+        String siteName, {
+        double lat = 52.12345,
+        double lon = 4.56789,
+      }) =>
+          _planAgainst(
+            'duration 57:30 min\n'
+            'divesiteid $_shoreHex\n',
+            _annotation(
+              diveId: _diveIdA,
+              siteName: siteName,
+              siteLatitude: lat,
+              siteLongitude: lon,
+            ),
+            existingSites: _sharedGpsSites(),
+          );
+      Iterable<String> siteWrites(SyncPlan plan) =>
+          plan.filesToWrite.keys.where((k) => k.startsWith('01-Divesites/'));
+
+      test('renamed in CCRLog: renames the site it points to', () {
+        final plan = planExisting('Quarry North - Shore entry (east)');
+
+        expect(siteWrites(plan), ['01-Divesites/Site-$_shoreHex']);
+        expect(plan.filesToWrite['01-Divesites/Site-$_shoreHex'],
+            contains('name "Quarry North - Shore entry (east)"\n'));
+      });
+
+      test('given the other site\'s name in CCRLog: renames neither', () {
+        final plan = planExisting('Quarry North - Platform');
+
+        expect(siteWrites(plan), isEmpty);
+      });
+
+      test('moved elsewhere in CCRLog: leaves the site it points to', () {
+        final plan = planExisting('Quarry South', lat: 52.2, lon: 4.6);
+
+        final writes = siteWrites(plan).toList();
+        expect(writes, hasLength(1));
+        expect(writes.single,
+            isNot(anyOf('01-Divesites/Site-$_shoreHex',
+                '01-Divesites/Site-$_platformHex')));
+      });
     });
 
     test('site dedup: two CCRLog dives at same lat/lon → one Site-XXXX',
@@ -863,7 +1005,146 @@ void main() {
       // CCRLog's three default cylinders were NOT injected.
       expect(out, isNot(contains('"3L tank"')));
     });
+
+    // Older Subsurface files often lack the divemaster / buddy / suit
+    // lines the mapper always emits. On the real repository the merge
+    // appended `divemaster ""` to 523 dives and `suit ""` to 436.
+    test('empty owned lines the file lacks are not appended', () {
+      final plan = _planAgainst(
+        'duration 57:30 min\n'
+        'rating 3\n',
+        DiveAnnotation(
+          diveId: _diveIdA,
+          rating: 3,
+          createdAt: DateTime.utc(2026, 5, 1),
+          updatedAt: DateTime.utc(2026, 5, 1),
+        ),
+      );
+      expect(plan.filesToWrite, isEmpty);
+      expect(plan.stats.skippedDives, 1);
+    });
+
+    test('an owned line that reads the same is not rewritten for '
+        'formatting', () {
+      final plan = _planAgainst(
+        'duration 57:30 min\n'
+        'rating 7\n'
+        'buddy "Adri , Bjorn Hack"\n'
+        'airtemp 25°C\n'
+        'weightsystem weight=2.376kg description="p-weight"\n'
+        'weightsystem weight=0.0kg\n',
+        DiveAnnotation(
+          diveId: _diveIdA,
+          // The read mapper clamps ratings to 1..5.
+          rating: 5,
+          buddies: const ['Adri', 'Bjorn Hack'],
+          airTempC: 25,
+          weights: const [
+            Weight(weightKg: 2.376, description: 'p-weight'),
+            Weight(weightKg: 0, description: ''),
+          ],
+          createdAt: DateTime.utc(2026, 5, 1),
+          updatedAt: DateTime.utc(2026, 5, 1),
+        ),
+      );
+      expect(plan.filesToWrite, isEmpty);
+      expect(plan.stats.skippedDives, 1);
+    });
+
+    test('a real owned edit made in CCRLog is still pushed', () {
+      final plan = _planAgainst(
+        'duration 57:30 min\n'
+        'divemaster ""\n'
+        'buddy "Adri , Bjorn Hack"\n'
+        'suit "Wetsuit"\n'
+        'weightsystem weight=2.376kg description="p-weight"\n'
+        'weightsystem weight=1.0kg description="belt"\n',
+        DiveAnnotation(
+          diveId: _diveIdA,
+          divemaster: 'Robin',
+          buddies: const ['Adri', 'Kim'],
+          // suit cleared in CCRLog
+          chill: 4,
+          weights: const [
+            Weight(weightKg: 2.376, description: 'p-weight'),
+            Weight(weightKg: 1.5, description: 'belt'),
+          ],
+          createdAt: DateTime.utc(2026, 5, 1),
+          updatedAt: DateTime.utc(2026, 5, 1),
+        ),
+      );
+      const divePath = '2026/04/19-Sun-15=18=45/Dive-42';
+      expect(plan.stats.updatedDives, 1);
+      expect(plan.diveIdsPlanned, [_diveIdA]);
+      expect(plan.filesToWrite.keys.where((k) => k.contains('Divecomputer')),
+          isEmpty);
+      expect(
+        plan.filesToWrite[divePath],
+        'duration 57:30 min\n'
+        'divemaster "Robin"\n'
+        'buddy "Adri, Kim"\n'
+        'suit ""\n'
+        // The group is replaced as a whole, at gram precision.
+        'weightsystem weight=2.376kg description="p-weight"\n'
+        'weightsystem weight=1.5kg description="belt"\n'
+        'chill 4\n',
+      );
+    });
   });
+}
+
+/// Two distinct Subsurface sites at the exact same coordinates, as a real
+/// repository has them.
+const _shoreHex = 'aaaa0001';
+const _platformHex = 'aaaa0002';
+Map<String, List<SsLine>> _sharedGpsSites() => {
+      _shoreHex: parseSubsurfaceFile(
+        'name "Quarry North - Shore entry"\n'
+        'description ""\n'
+        'notes ""\n'
+        'gps 52.123450 4.567890\n',
+        kind: SubsurfaceFileKind.site,
+      ).lines,
+      _platformHex: parseSubsurfaceFile(
+        'name "Quarry North - Platform"\n'
+        'description ""\n'
+        'notes ""\n'
+        'gps 52.123450 4.567890\n',
+        kind: SubsurfaceFileKind.site,
+      ).lines,
+    };
+
+/// Plan one existing dive whose Dive-NNN on the remote is [existingText],
+/// with [annotation] as CCRLog's annotation and no cylinders.
+SyncPlan _planAgainst(
+  String existingText,
+  DiveAnnotation annotation, {
+  Map<String, List<SsLine>> existingSites = const {},
+}) {
+  final bundle = _bundle(
+    diveId: _diveIdA,
+    annotation: annotation,
+    gasMixes: const [],
+  );
+  return SyncPlanner().plan(
+    ccrlogDives: [bundle],
+    existingDivesBySerialAndStart: {
+      (serial: bundle.dive.dcSerial, startTime: bundle.dive.startTime):
+          ExistingRemoteDive(
+        folderSegments: ['2026', '04', '19-Sun-15=18=45'],
+        diveNumber: 42,
+        serial: bundle.dive.dcSerial,
+        startTime: bundle.dive.startTime,
+        diveLines: parseSubsurfaceFile(
+          existingText,
+          kind: SubsurfaceFileKind.dive,
+        ).lines,
+      ),
+    },
+    existingMaxDiveNumber: 42,
+    existingTopLevel: const [],
+    existingSites: existingSites,
+  );
 }
 
 // ── helpers ──────────────────────────────────────────────────────────
@@ -880,8 +1161,10 @@ CcrlogDiveBundle _bundle({
   DiveAnnotation? annotation,
   List<SubsurfaceDiveComputerInput>? userDiveComputers,
   List<DiveGasMix>? gasMixes,
+  int dcSerial = 0xb89641e4,
 }) {
-  final dive = _ccrPetrelDive(diveId: diveId, startTime: startTime);
+  final dive = _ccrPetrelDive(
+      diveId: diveId, startTime: startTime, dcSerial: dcSerial);
   return CcrlogDiveBundle(
     dive: dive,
     samples: _smallSampleSet(diveId: diveId),
@@ -896,10 +1179,11 @@ CcrlogDiveBundle _bundle({
 SubsurfaceDiveInput _ccrPetrelDive({
   required String diveId,
   int startTime = 1776611925,
+  int dcSerial = 0xb89641e4,
 }) {
   return SubsurfaceDiveInput(
     id: diveId,
-    dcSerial: 0xb89641e4,
+    dcSerial: dcSerial,
     dcDiveNumber: 705,
     startTime: startTime,
     durationSeconds: 3450,

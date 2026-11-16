@@ -605,6 +605,9 @@ class _CacheResult {
 
     final header = DiveHeader(
       startTimestamp: uint32BE(data, opening[0] + (pnf ? 12 : 12)),
+      // Legacy: libdivecomputer's shearwater_predator.c reads this as the
+      // "internal dive number" and checks it against the footer's.
+      diveNumber: uint16BE(data, opening[0] + 2),
       diveMode: diveMode,
       decoModel: decoModel,
       gfLow: data[gfIdx],
@@ -811,6 +814,8 @@ List<DiveSample> _parseSamples(Uint8List data, _CacheResult cache) {
 
 // ── Event parsing ──────────────────────────────────────────────
 
+const int _maxInt32 = 0x7FFFFFFF;
+
 List<DiveEvent> _parseEvents(Uint8List data, _CacheResult cache) {
   final events = <DiveEvent>[];
   final pnf = cache.pnf;
@@ -846,8 +851,13 @@ List<DiveEvent> _parseEvents(Uint8List data, _CacheResult cache) {
         events.add(DiveEvent(
           timeMs: time,
           type: DiveEventType.bookmark,
-          bearing: w1 != 0xFFFFFFFF ? w1 : null,
-          value: w2,
+          rawType: infoEventTagLog,
+          // w1 0xFFFFFFFF means "no bearing" (libdivecomputer). libdivecomputer
+          // keeps w2 as a uint32; the stored events hold int32, so a word
+          // above that range is left out rather than making the whole dive
+          // fail to import.
+          bearing: w1 <= _maxInt32 ? w1 : null,
+          value: w2 <= _maxInt32 ? w2 : null,
         ));
       }
     }

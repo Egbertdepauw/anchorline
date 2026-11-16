@@ -8,6 +8,7 @@ import 'dart:typed_data';
 
 import 'byte_reader.dart';
 import 'package:subsurface_core/shearwater/parser/constants.dart';
+import 'package:subsurface_core/shearwater/parser/parsed_dive.dart';
 
 /// A single entry in the dive manifest.
 class ManifestEntry {
@@ -62,6 +63,50 @@ class ManifestEntry {
     required this.address,
     required this.endAddress,
   });
+
+  /// Throws [ManifestMismatchException] unless [blobHeader], parsed from the
+  /// blob downloaded for this entry, is the dive this entry describes: the
+  /// same start time and, when the header carries one, the same dive number.
+  ///
+  /// libdivecomputer relies on the same identity. Its fingerprint is this
+  /// entry's bytes 4-7 when it reads the manifest, and the blob's bytes 12-15
+  /// (the opening start time) when it hands a dive over (shearwater_petrel.c),
+  /// so the two must be equal for incremental downloads to stop where they
+  /// should.
+  void checkBlobHeader(DiveHeader blobHeader) {
+    final number = blobHeader.diveNumber;
+    if (blobHeader.startTimestamp != startTimestamp ||
+        (number != null && number != diveNumber)) {
+      throw ManifestMismatchException(
+        entry: this,
+        blobDiveNumber: number,
+        blobStartTimestamp: blobHeader.startTimestamp,
+      );
+    }
+  }
+}
+
+/// A downloaded blob that is not the dive its manifest entry describes, as
+/// happens when the manifest went stale between reading it and downloading
+/// (a dive overwritten or removed in between).
+class ManifestMismatchException implements Exception {
+  final ManifestEntry entry;
+
+  /// The blob's own dive number, null when its header carries none.
+  final int? blobDiveNumber;
+  final int blobStartTimestamp;
+
+  const ManifestMismatchException({
+    required this.entry,
+    required this.blobDiveNumber,
+    required this.blobStartTimestamp,
+  });
+
+  @override
+  String toString() => 'ManifestMismatchException: the manifest lists dive '
+      '#${entry.diveNumber} starting at ${entry.startTimestamp}, but the '
+      'downloaded blob is dive #${blobDiveNumber ?? '?'} starting at '
+      '$blobStartTimestamp';
 }
 
 /// Parses Shearwater dive manifest data.

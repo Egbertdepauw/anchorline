@@ -18,6 +18,7 @@ import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import '../parser/manifest_parser.dart';
 import 'ble_io_impl.dart';
 import 'protocol.dart';
+import 'shearwater_link.dart';
 
 /// Information about the connected dive computer.
 class DeviceInfo {
@@ -122,7 +123,7 @@ class DownloadedDive extends DownloadEvent {
 /// }
 /// await transport.disconnect();
 /// ```
-class ShearwaterBleTransport {
+class ShearwaterBleTransport implements ShearwaterLink {
   /// Number of `0x36` block requests kept in flight when downloading a
   /// dive. Default 2 = "send the next request while still receiving the
   /// current one", which roughly halves wall time on slow BLE links if
@@ -165,6 +166,7 @@ class ShearwaterBleTransport {
   }
 
   /// Read device identification info.
+  @override
   Future<DeviceInfo> readDeviceInfo() async {
     final p = _protocol!;
 
@@ -228,6 +230,7 @@ class ShearwaterBleTransport {
   ///
   /// Pass [lastFingerprint] for incremental sync — dives newer than
   /// the fingerprint are returned.
+  @override
   Future<List<ManifestEntry>> readManifest({
     Uint8List? lastFingerprint,
   }) async {
@@ -291,6 +294,7 @@ class ShearwaterBleTransport {
   /// request with NAK 0x24, and on Android its UDS session then stayed
   /// wedged for the next dive. Downloading the whole log in one session
   /// was tried next; #40 replaced both with this.
+  @override
   Stream<DownloadEvent> downloadDives(List<ManifestEntry> manifest) {
     late final StreamController<DownloadEvent> controller;
     controller = StreamController<DownloadEvent>(
@@ -441,6 +445,10 @@ class ShearwaterBleTransport {
                 entry.compressedSize > 0 ? entry.compressedSize : diveBytes.length,
             currentEntry: entry,
           ));
+          // Paired by request only: these are the bytes at the entry's
+          // address, which a stale manifest can make another dive's.
+          // ShearwaterDownloadSource checks the blob's header against the
+          // entry before it uses either.
           controller.add(DownloadedDive(manifest: entry, data: diveBytes));
         }
       }
@@ -453,6 +461,7 @@ class ShearwaterBleTransport {
   }
 
   /// Disconnect and clean up.
+  @override
   Future<void> disconnect() async {
     // Send shutdown WDBI if connected.
     try {

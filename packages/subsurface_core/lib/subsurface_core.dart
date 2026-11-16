@@ -4,10 +4,12 @@ library;
 
 export 'data/models/annotation.dart';
 export 'data/models/dive.dart';
+export 'data/models/dive_event.dart';
 export 'data/models/sample_set.dart';
 export 'data/sample_codec/active_per_mix.dart';
 export 'data/sample_codec/column_packer.dart';
 export 'data/sample_codec/dive_stats.dart';
+export 'data/sample_codec/event_codec.dart';
 export 'data/sample_codec/sample_codec.dart';
 export 'shearwater/parser/constants.dart';
 export 'shearwater/parser/hardware.dart';
@@ -21,4 +23,5 @@ export 'sync/subsurface_git/sync_inputs.dart';
 export 'sync/subsurface_git/mapper.dart';
 export 'sync/subsurface_git/sync_planner.dart';
 export 'sync/subsurface_git/remote_snapshot.dart';
+export 'sync/subsurface_git/subsurface_model.dart';
 export 'sync/subsurface_git/subsurface_to_ccrlog_mapper.dart';

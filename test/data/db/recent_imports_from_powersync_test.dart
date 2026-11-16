@@ -43,13 +43,15 @@ void main() {
     final dive = (await diveDao.getAllDives()).single;
 
     // Before the fix this returned [] (Drift `dives` table is empty).
-    final recent = await equipDao.recentImportsForComputer(serial);
+    final recent = await equipDao.recentImportsForComputer(
+        vendor: kShearwaterVendor, serial: serial);
     expect(recent, isNotEmpty);
     expect(recent.first.id, dive.id);
     expect(recent.first.dcSerial, serial);
 
     // A different computer's serial sees nothing.
-    final other = await equipDao.recentImportsForComputer(0xDEADBEEF);
+    final other = await equipDao.recentImportsForComputer(
+        vendor: kShearwaterVendor, serial: 0xDEADBEEF);
     expect(other, isEmpty);
   });
 }

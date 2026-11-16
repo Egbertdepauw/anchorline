@@ -1,0 +1,17 @@
+duration 49:00 min
+rating 3
+visibility 3
+wavesize 5
+current 5
+surge 5
+chill 4
+tags "X-CCR", "DPV", "CCR"
+divesiteid fa6c080e
+divemaster ""
+buddy "Anna Visser"
+suit "ScubaForce Xpedition SE Droogpak - X-Nine onderpak"
+notes "Duikje bij duikstek Hotel Bellevue. er liggen wat objecten en ik heb een mooie snoek gezien"
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=21.0% he=41.0% use="diluent" depth=6.871m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=100.0% end=151.96bar use="oxygen" depth=23.017m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" depth=68.063m
+airtemp 13.0°C

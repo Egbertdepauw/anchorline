@@ -77,6 +77,26 @@ void main() {
     expect(downloaded.data, equals(fixture));
   });
 
+  test('each entry is paired with the blob downloaded from its own address',
+      () async {
+    await transport.readDeviceInfo();
+    final manifest = await transport.readManifest();
+
+    // The trace recorded 718 before 717 (manifest order), while the
+    // transport asks in ascending address order (717 first). The replay
+    // answers by address, so each entry must get its own dive's bytes.
+    final events =
+        await transport.downloadDives(manifest.take(3).toList()).toList();
+    final dives = events.whereType<DownloadedDive>().toList();
+    expect([for (final d in dives) d.manifest.diveNumber], [716, 717, 718]);
+    for (final d in dives) {
+      final fixture = File(
+              'test/fixtures/dives/dive_${d.manifest.diveNumber}.bin')
+          .readAsBytesSync();
+      expect(d.data, equals(fixture), reason: 'dive ${d.manifest.diveNumber}');
+    }
+  });
+
   group('model number (RDBI 0x8060)', () {
     /// The recorded trace, with RDBI 0x8060 (which it doesn't have)
     /// answered by [modelResponse], or NAKed when that's null.

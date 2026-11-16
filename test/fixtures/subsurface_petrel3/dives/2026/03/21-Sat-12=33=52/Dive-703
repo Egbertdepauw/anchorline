@@ -1,0 +1,18 @@
+duration 52:10 min
+rating 3
+visibility 3
+wavesize 5
+current 5
+surge 5
+chill 4
+tags "X-CCR", "CCR"
+divesiteid 583b0890
+divemaster ""
+buddy "Ben Mulder, Anna Visser"
+suit "ScubaForce Xpedition SE Droogpak - X-Nine onderpak"
+notes "Leuke duik, relatief diepe duik, Diepste duik voor Anna en Ben.
+	"
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=22.0% he=41.0% start=150.03bar use="diluent" depth=6.962m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=99.0% use="oxygen" depth=23.109m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" depth=68.155m
+airtemp 15.0°C

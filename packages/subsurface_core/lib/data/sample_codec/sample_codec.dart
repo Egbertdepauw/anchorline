@@ -13,7 +13,8 @@ class SampleCodec {
   /// Encode a [SampleSet] into a map of column name → gzipped blob.
   ///
   /// `tankPressures` is only present when the SampleSet has at least one
-  /// tank channel; absent for OC dives and older imports.
+  /// tank channel; absent for OC dives and older imports. `cellPpo2` is
+  /// only present when the SampleSet has per-cell ppO2 channels.
   static Map<String, Uint8List> encode(SampleSet samples) {
     final out = <String, Uint8List>{
       'depth': ColumnPacker.packFloat32(samples.depthMeters),
@@ -31,7 +32,10 @@ class SampleCodec {
       'status': ColumnPacker.packUint8(samples.statusFlags),
     };
     if (samples.tankPressuresBar.isNotEmpty) {
-      out['tankPressures'] = _packTankPressures(samples.tankPressuresBar);
+      out['tankPressures'] = _packChannels(samples.tankPressuresBar);
+    }
+    if (samples.cellPpo2Bar.isNotEmpty) {
+      out['cellPpo2'] = _packChannels(samples.cellPpo2Bar);
     }
     return out;
   }
@@ -44,6 +48,7 @@ class SampleCodec {
     required int sampleIntervalMs,
   }) {
     final tankBlob = blobs['tankPressures'];
+    final cellBlob = blobs['cellPpo2'];
     return SampleSet(
       diveId: diveId,
       sampleCount: sampleCount,
@@ -69,16 +74,20 @@ class SampleCodec {
           ColumnPacker.unpackUint8(blobs['status']!, sampleCount),
       tankPressuresBar: tankBlob == null
           ? const []
-          : _unpackTankPressures(tankBlob, sampleCount),
+          : _unpackChannels(tankBlob, sampleCount),
+      cellPpo2Bar: cellBlob == null
+          ? const []
+          : _unpackChannels(cellBlob, sampleCount),
     );
   }
 
-  // Tank-pressure blob layout (all big-endian for portability):
-  //   uint8  numTanks
-  //   for each tank:
+  // Multi-channel blob layout (tank pressures, cell ppO2; big-endian for
+  // portability):
+  //   uint8  numChannels
+  //   for each channel:
   //     uint32 packedLen
   //     bytes  ColumnPacker.packFloat32(channel)
-  static Uint8List _packTankPressures(List<Float32List> channels) {
+  static Uint8List _packChannels(List<Float32List> channels) {
     final packed = channels.map(ColumnPacker.packFloat32).toList();
     var totalLen = 1;
     for (final p in packed) {
@@ -97,7 +106,7 @@ class SampleCodec {
     return out;
   }
 
-  static List<Float32List> _unpackTankPressures(Uint8List blob, int count) {
+  static List<Float32List> _unpackChannels(Uint8List blob, int count) {
     if (blob.isEmpty) return const [];
     final n = blob[0];
     if (n == 0) return const [];

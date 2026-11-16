@@ -1,0 +1,14 @@
+duration 60:30 min
+rating 3
+tags "MOD2ANNA", "CCR", "X-CCR"
+divesiteid a36eace9
+divemaster ""
+buddy "Anna Visser"
+suit ""
+notes "Wrakken parade rondje en MOD2 oefeningen"
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=99.0% depth=6.3m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=50.0% depth=22.446m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=20.0% he=48.0% depth=71.376m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=50.0% use="diluent" depth=22.446m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=20.0% he=48.0% use="diluent" depth=71.376m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=18.0% he=23.0% use="diluent" depth=80.428m

@@ -12,6 +12,7 @@ import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/dive_detail_screen.dart';
 import 'package:ccrlogger/ui/screens/sites_map_screen.dart';
+import 'package:ccrlogger/ui/util/format.dart' show formatDateTime;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -106,6 +107,149 @@ Future<void> _pumpScreen(
 }
 
 void main() {
+  /// Seeds dive 718 flagged as a possible duplicate of dive 717 (and of a
+  /// missing id). With [deleteOther] the candidate is soft-deleted.
+  Future<({_Seed s, Dive dive, Dive other})> seedFlagged(WidgetTester tester,
+      {bool deleteOther = false}) async {
+    final s = await _seedDive(tester);
+    late final Dive dive;
+    late final Dive other;
+    await tester.runAsync(() async {
+      final data = File('test/fixtures/dives/dive_717.bin').readAsBytesSync();
+      final parsed =
+          ShearwaterDiveParser(model: ShearwaterModel.petrel3).parse(data);
+      await s.dao.importDive(
+          converted: DiveConverter.convert(
+              parsed: parsed,
+              dcSerial: 0xB89641E4,
+              dcDiveNumber: 717,
+              dcModel: ShearwaterModel.petrel3),
+          rawBlob: data,
+          parserVersion: 1);
+      other = (await s.dao.getAllDives()).firstWhere((d) => d.id != s.dive.id);
+      await s.psDb.execute(
+          'UPDATE dives SET match_candidates_json = ? WHERE id = ?',
+          ['["${other.id}","gone"]', s.dive.id]);
+      dive = (await s.dao.getAllDives()).firstWhere((d) => d.id == s.dive.id);
+      if (deleteOther) await s.dao.softDeleteDive(other.id);
+    });
+    return (s: s, dive: dive, other: other);
+  }
+
+  /// The banner chains several reads; each continuation needs a pump.
+  Future<void> settleBanner(WidgetTester tester) async {
+    for (var i = 0; i < 14; i++) {
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await tester.pump();
+      });
+    }
+    await tester.pump();
+  }
+
+  Future<void> leave(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  }
+
+  testWidgets('a flagged dive shows the banner with links to its candidates',
+      (tester) async {
+    final f = await seedFlagged(tester);
+    await _pumpScreen(tester, f.s.db, f.s.equipmentDao, f.s.annotationsDao,
+        f.dive, f.s.dao);
+    await settleBanner(tester);
+
+    expect(find.text('This dive may be the same as 1 other dive in your log.'),
+        findsOneWidget);
+    expect(find.text(formatDateTime(f.other.startTime)), findsOneWidget);
+    await leave(tester);
+  });
+
+  testWidgets('the banner leaves out a soft-deleted candidate',
+      (tester) async {
+    final f = await seedFlagged(tester, deleteOther: true);
+    await _pumpScreen(tester, f.s.db, f.s.equipmentDao, f.s.annotationsDao,
+        f.dive, f.s.dao);
+    await settleBanner(tester);
+    expect(find.textContaining('may be the same as'), findsNothing);
+    await leave(tester);
+  });
+
+  testWidgets('tapping a candidate link opens that dive', (tester) async {
+    final f = await seedFlagged(tester);
+    await _pumpScreen(tester, f.s.db, f.s.equipmentDao, f.s.annotationsDao,
+        f.dive, f.s.dao);
+    await settleBanner(tester);
+
+    await tester.tap(find.text(formatDateTime(f.other.startTime)));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(DiveDetailScreen, skipOffstage: false),
+        findsNWidgets(2));
+    // Dive 717's own screen (it has no flag): its title carries its number.
+    expect(find.textContaining('717'), findsWidgets);
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await leave(tester);
+  });
+
+  testWidgets('a merged dive shows the banner when any member is flagged',
+      (tester) async {
+    final f = await seedFlagged(tester);
+    late final String earliestId;
+    await tester.runAsync(() async {
+      // Dive 716 joins the flagged 718 in a group. The flag is on 718, not
+      // on 716, which the screen anchors annotations to.
+      final data = File('test/fixtures/dives/dive_716.bin').readAsBytesSync();
+      final parsed =
+          ShearwaterDiveParser(model: ShearwaterModel.petrel3).parse(data);
+      await f.s.dao.importDive(
+          converted: DiveConverter.convert(
+              parsed: parsed,
+              dcSerial: 0xB89641E4,
+              dcDiveNumber: 716,
+              dcModel: ShearwaterModel.petrel3),
+          rawBlob: data,
+          parserVersion: 1);
+      earliestId = (await f.s.dao.getAllDives())
+          .firstWhere((d) => d.dcDiveNumber == 716)
+          .id;
+      for (final id in [earliestId, f.s.dive.id]) {
+        await f.s.psDb.execute(
+            'INSERT INTO dive_merge_links (id, owner_id, group_id, version) '
+            "VALUES (?, 'test-user', 'grp-1', 1)",
+            [id]);
+      }
+    });
+    await tester.runAsync(() async {
+      await tester.pumpWidget(MaterialApp(
+        home: DiveDetailScreen(
+          dive: f.s.dive.copyWith(id: 'grp-1'),
+          dao: f.s.dao,
+          annotationsDao: f.s.annotationsDao,
+          equipmentDao: f.s.equipmentDao,
+          settingsNotifier: SettingsNotifier(),
+          annotationsDiveId: earliestId,
+        ),
+      ));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pump();
+    await settleBanner(tester);
+    expect(find.text('This dive may be the same as 1 other dive in your log.'),
+        findsOneWidget);
+    await leave(tester);
+  });
+
+  testWidgets('an unflagged dive shows no banner', (tester) async {
+    final s = await _seedDive(tester);
+    await _pumpScreen(
+        tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
+    await settleBanner(tester);
+    expect(find.textContaining('may be the same as'), findsNothing);
+    await leave(tester);
+  });
+
   testWidgets('shows formatted STACK end-of-dive remaining', (tester) async {
     // 23777s start, 20293s end, 25200s configured (real dive_718 numbers).
     final s = await _seedDive(tester,
@@ -221,6 +365,7 @@ void main() {
           "UPDATE dives SET tanks_json = ? WHERE id = ?",
           [tanksJson, s.dive.id]);
       final dcId = await s.equipmentDao.upsertDiveComputer(
+        vendor: kShearwaterVendor,
         serial: 0xB89641E4,
         model: 0,
       );

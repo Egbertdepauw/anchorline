@@ -18,16 +18,49 @@
 library;
 
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:drift/drift.dart';
 import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
+import 'package:subsurface_core/data/models/dive_event.dart';
 import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/data/sample_codec/event_codec.dart';
 import 'package:subsurface_core/data/sample_codec/sample_codec.dart';
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
+import 'package:subsurface_core/subsurface_core.dart'
+    show kShearwaterVendor, kSubsurfaceImportedParserVersion;
+import '../../analysis/merge/merged_gas_mixes.dart';
+import '../import/cylinder_remap.dart';
+import '../import/refresh_policy.dart';
+import '../import/same_dive_matcher.dart';
 import '../models/dive_attachment.dart' show UploadState;
 import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
 import 'database.dart';
+
+part 'dive_dao_refresh.dart';
+
+/// What [DiveDao.importDive] did with an incoming dive.
+enum ImportOutcome {
+  /// A new dive was stored.
+  inserted,
+
+  /// A new dive was stored, but several stored dives look like the same dive;
+  /// it carries their ids in `match_candidates_json`.
+  insertedFlagged,
+
+  /// A stored dive's imported data was replaced in place.
+  refreshed,
+
+  /// The dive was already stored and nothing needed to change (the raw blob
+  /// is still stored).
+  unchanged,
+
+  /// The incoming parse was unusable (no samples or no duration); the stored
+  /// dive stays as it was.
+  rejected,
+}
 
 class DiveDao {
   final AppDatabase _drift;
@@ -48,28 +81,99 @@ class DiveDao {
 
   // ── Import ─────────────────────────────────────────────────────────────
 
-  /// Atomically import a dive: PowerSync `dives` + `dive_samples` +
-  /// Drift `dive_raw_blobs`. Returns `true` if newly imported, `false`
-  /// if the dive id already existed (dedup happens against PowerSync, so
-  /// a dive imported on another device + synced down also counts as a
-  /// duplicate — exactly what we want for "import once").
-  Future<bool> importDive({
+  /// Imports a downloaded dive, in this order:
+  ///
+  /// 1. The dive's id is already stored: refresh it in place when
+  ///    [refreshMayWrite] and [isUsableParse] allow ([ImportOutcome.refreshed]),
+  ///    [ImportOutcome.rejected] when only the parse is unusable, otherwise
+  ///    [ImportOutcome.unchanged].
+  /// 2. Else, with [matchSubsurfaceCopies], look for the same dive under
+  ///    another id (a Subsurface Cloud copy, possibly refreshed before). One
+  ///    match is handled as step 1 under the match's id; several are not
+  ///    replaced: the dive is stored as new and flagged with their ids
+  ///    ([ImportOutcome.insertedFlagged]).
+  /// 3. Else store a new dive ([ImportOutcome.inserted]).
+  ///
+  /// Whenever the dive is stored or kept, the raw blob is written under the
+  /// stored id. That is a local Drift write that cannot join the PowerSync
+  /// transaction; if it throws, `DiveImportMarks.rawBlobMissing` is set and the
+  /// outcome is returned anyway. A later successful write clears the flag.
+  ///
+  /// Dedup runs against PowerSync, so a dive imported on another device and
+  /// synced down counts as stored ("import once").
+  Future<ImportOutcome> importDive({
     required ConvertedDive converted,
     required Uint8List rawBlob,
     required int parserVersion,
+    bool matchSubsurfaceCopies = true,
   }) async {
     final dive = converted.dive;
 
-    if (await diveExists(dive.id)) {
-      // Even when metadata already synced from another device, store the
-      // raw blob locally — the parser-bug-fix re-parse path needs it.
-      await _drift.into(_drift.diveRawBlobs).insertOnConflictUpdate(
-            DiveRawBlobsCompanion.insert(diveId: dive.id, rawBlob: rawBlob),
-          );
-      return false;
+    // A Subsurface copy (-1) or an empty blob must never replace a stored
+    // raw blob, nor touch the rawBlobMissing mark.
+    final blobWritable =
+        parserVersion != kSubsurfaceImportedParserVersion && rawBlob.isNotEmpty;
+    Future<void> keepBlob(String id) async {
+      if (blobWritable) await _storeRawBlob(id, rawBlob);
     }
 
-    final sampleBlobs = SampleCodec.encode(converted.samples);
+    final sameId = await _storedKey(dive.id);
+    if (sameId != null) {
+      final outcome = await _refreshStored(sameId, converted, parserVersion,
+          fromDownload: true);
+      if (outcome == null) return ImportOutcome.unchanged;
+      await keepBlob(sameId.id);
+      return outcome;
+    }
+
+    String? candidatesJson;
+    if (matchSubsurfaceCopies) {
+      final matches = await _sameDiveCandidates(converted);
+      // A row that already passed the dive-number check (a download, or a
+      // refreshed copy) is decisive, even with unrefreshed copies in the
+      // window; this is the rule alreadyDownloadedAmong uses.
+      final decisive = matches.where((m) => m.parserVersion >= 0).toList();
+      final chosen = decisive.length == 1
+          ? decisive.single
+          : (decisive.isEmpty && matches.length == 1 ? matches.single : null);
+      if (chosen != null) {
+        final outcome = await _refreshStored(chosen, converted, parserVersion,
+            fromDownload: true);
+        if (outcome == null) return ImportOutcome.unchanged;
+        await keepBlob(chosen.id);
+        return outcome;
+      }
+      if (matches.isNotEmpty) {
+        candidatesJson = jsonEncode([for (final m in matches) m.id]);
+      }
+    }
+
+    await _insertDive(converted, parserVersion, candidatesJson);
+    await keepBlob(dive.id);
+    return candidatesJson == null
+        ? ImportOutcome.inserted
+        : ImportOutcome.insertedFlagged;
+  }
+
+  /// Step 1 for an id that is already stored: refresh from [converted] when
+  /// the version rule allows. It takes neither the download's serial nor its
+  /// dive number, and writes no raw blob (the caller re-parsed one it already
+  /// has). A missing dive is [ImportOutcome.unchanged].
+  Future<ImportOutcome> refreshFromRawBlob({
+    required String diveId,
+    required ConvertedDive converted,
+    required int parserVersion,
+  }) async {
+    final stored = await _storedKey(diveId);
+    if (stored == null) return ImportOutcome.unchanged;
+    return await _refreshStored(stored, converted, parserVersion,
+            fromDownload: false) ??
+        ImportOutcome.unchanged;
+  }
+
+  Future<void> _insertDive(ConvertedDive converted, int parserVersion,
+      String? matchCandidatesJson) async {
+    final dive = converted.dive;
     final gasMixesJson =
         jsonEncode(dive.gasMixes.map((g) => g.toJson()).toList());
     final tanksJson = dive.tanks.isEmpty
@@ -91,13 +195,15 @@ class DiveDao {
         'utc_offset_minutes, duration_seconds, max_depth_mm, dive_mode, '
         'deco_model, gf_low, gf_high, atmospheric_pressure_mbar, '
         'water_density, log_version, dc_model, dc_firmware, '
+        'dc_vendor, dc_product, dc_family, dc_model_code, '
         'sample_interval_ms, gas_mixes_json, tanks_json, '
         'sensor_calibration_json, '
         'configured_stack_seconds, stack_remaining_at_start_seconds, '
         'stack_remaining_at_end_seconds, parser_version, imported_at, '
-        'subsurface_uploaded_at, deleted_at, version, sync_status) '
+        'subsurface_uploaded_at, deleted_at, match_candidates_json, version, '
+        'sync_status) '
         'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-        '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           dive.id,
           _ownerId,
@@ -117,6 +223,10 @@ class DiveDao {
           dive.logVersion,
           dive.dcModel.index,
           null, // dc_firmware (not yet captured by the converter)
+          dive.dcVendor,
+          dive.dcProduct,
+          dive.dcFamily,
+          dive.dcModelCode,
           dive.sampleIntervalMs,
           gasMixesJson,
           tanksJson,
@@ -128,6 +238,7 @@ class DiveDao {
           nowSeconds,
           null, // subsurface_uploaded_at
           null, // deleted_at
+          matchCandidatesJson,
           1,
           0,
         ],
@@ -138,28 +249,16 @@ class DiveDao {
         'ppo2_blob, cell_mv0_blob, cell_mv1_blob, cell_mv2_blob, '
         'setpoint_blob, cns_blob, deco_depth_blob, deco_time_blob, tts_blob, '
         'gas_mix_idx_blob, status_blob, tank_pressures_blob, '
+        'cell_ppo2_blob, events_blob, parser_version, dc_family, '
         'created_at, updated_at, version, sync_status) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+        '?, ?, ?, ?, ?)',
         [
           dive.id, // PowerSync's implicit `id` PK doubles as dive_id here.
           _ownerId,
-          converted.samples.sampleCount,
-          base64Encode(sampleBlobs['depth']!),
-          base64Encode(sampleBlobs['temperature']!),
-          base64Encode(sampleBlobs['ppo2']!),
-          base64Encode(sampleBlobs['cellMv0']!),
-          base64Encode(sampleBlobs['cellMv1']!),
-          base64Encode(sampleBlobs['cellMv2']!),
-          base64Encode(sampleBlobs['setpoint']!),
-          base64Encode(sampleBlobs['cns']!),
-          base64Encode(sampleBlobs['decoDepth']!),
-          base64Encode(sampleBlobs['decoTime']!),
-          base64Encode(sampleBlobs['tts']!),
-          base64Encode(sampleBlobs['gasMixIdx']!),
-          base64Encode(sampleBlobs['status']!),
-          sampleBlobs['tankPressures'] == null
-              ? null
-              : base64Encode(sampleBlobs['tankPressures']!),
+          ..._encodedSamples(converted),
+          parserVersion,
+          dive.dcFamily,
           nowMs,
           nowMs,
           1,
@@ -167,12 +266,6 @@ class DiveDao {
         ],
       );
     });
-
-    await _drift.into(_drift.diveRawBlobs).insertOnConflictUpdate(
-          DiveRawBlobsCompanion.insert(diveId: dive.id, rawBlob: rawBlob),
-        );
-
-    return true;
   }
 
   // ── Queries ────────────────────────────────────────────────────────────
@@ -199,6 +292,97 @@ class DiveDao {
       ids,
     );
     return rows.map((r) => r['id'] as String).toSet();
+  }
+
+  /// The PowerSync side of the background re-parse's candidate query:
+  /// Shearwater dives (`dc_family IS NULL`, Subsurface copies at -1 included)
+  /// below [belowVersion] that are not deleted. Whether a dive has a local raw
+  /// blob, or a recorded failure, is Drift's to say; the reparser intersects.
+  Future<List<({String id, int? dcModel, int? dcSerial, int? dcDiveNumber})>>
+      reparseCandidates(int belowVersion) async {
+    final rows = await _ps.getAll(
+      'SELECT id, dc_model, dc_serial, dc_dive_number FROM dives '
+      'WHERE dc_family IS NULL AND parser_version < ? AND deleted_at IS NULL '
+      'ORDER BY start_time DESC',
+      [belowVersion],
+    );
+    return [
+      for (final r in rows)
+        (
+          id: r['id'] as String,
+          dcModel: r['dc_model'] as int?,
+          dcSerial: r['dc_serial'] as int?,
+          dcDiveNumber: r['dc_dive_number'] as int?,
+        ),
+    ];
+  }
+
+  /// Every stored dive's matching columns, soft-deleted rows included.
+  Future<List<StoredDiveKey>> storedDiveKeys() async {
+    final rows = await _ps.getAll(_storedKeySelect);
+    return [for (final r in rows) StoredDiveKey.fromRow(r)];
+  }
+
+  /// The listing ids to hide from "new dives" in a download manifest: the id
+  /// is stored, or exactly one stored dive with `parser_version >= 0` is the
+  /// same dive (a Subsurface copy refreshed by an earlier download). Ids whose
+  /// stored dive is marked `rawBlobMissing` are left out, so the next download
+  /// stores the raw blob again.
+  Future<Set<String>> alreadyDownloadedAmong(
+    List<({String diveId, int startTimeSeconds, int diveNumber})> listings, {
+    required String vendor,
+    required int serial,
+  }) async {
+    if (listings.isEmpty) return const <String>{};
+    final stored = await storedDiveKeys();
+    final storedIds = {for (final k in stored) k.id};
+    final missing = (await (_drift.select(_drift.diveImportMarks)
+              ..where((t) => t.rawBlobMissing.equals(true)))
+            .get())
+        .map((m) => m.diveId)
+        .toSet();
+    final hidden = <String>{};
+    for (final l in listings) {
+      if (storedIds.contains(l.diveId)) {
+        if (!missing.contains(l.diveId)) hidden.add(l.diveId);
+        continue;
+      }
+      final matches = findSameDive(
+        vendor: vendor,
+        serial: serial,
+        startTimeSeconds: l.startTimeSeconds,
+        diveNumber: l.diveNumber,
+        excludeId: l.diveId,
+        stored: stored,
+      ).where((k) => k.parserVersion >= 0).toList();
+      if (matches.length == 1 && !missing.contains(matches.single.id)) {
+        hidden.add(l.diveId);
+      }
+    }
+    return hidden;
+  }
+
+  /// The ids of the live dives in merge group [groupId].
+  Future<List<String>> mergeGroupMemberIds(String groupId) async {
+    final rows = await _ps.getAll(
+        'SELECT id FROM dive_merge_links '
+        'WHERE group_id = ? AND deleted_at IS NULL',
+        [groupId]);
+    return [for (final r in rows) r['id'] as String];
+  }
+
+  /// The ids a flagged dive was imported alongside (see
+  /// [ImportOutcome.insertedFlagged]); empty when it has none.
+  Future<List<String>> matchCandidates(String diveId) async {
+    final row = await _ps.getOptional(
+        'SELECT match_candidates_json FROM dives WHERE id = ?', [diveId]);
+    final json = row?['match_candidates_json'] as String?;
+    if (json == null) return const [];
+    try {
+      return [for (final id in jsonDecode(json) as List) id as String];
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Get all live dives ordered by start time descending (most recent
@@ -320,9 +504,19 @@ class DiveDao {
     final intervalMs = (diveRow?['sample_interval_ms'] as int?) ?? 10000;
 
     final tankPressuresB64 = samplesRow['tank_pressures_blob'] as String?;
+    // NULL whenever the dive has no per-cell ppO2: every Shearwater dive,
+    // and rows written by older builds. A damaged value reads the same way.
+    final cellPpo2B64 = samplesRow['cell_ppo2_blob'] as String?;
+    Uint8List? cellPpo2Bytes;
+    if (cellPpo2B64 != null) {
+      try {
+        cellPpo2Bytes = base64Decode(cellPpo2B64);
+      } on FormatException {
+        cellPpo2Bytes = null;
+      }
+    }
 
-    return SampleCodec.decode(
-      blobs: {
+    Map<String, Uint8List> blobsWith(Uint8List? cellBytes) => {
         'depth': base64Decode(samplesRow['depth_blob'] as String),
         'temperature': base64Decode(samplesRow['temperature_blob'] as String),
         'ppo2': base64Decode(samplesRow['ppo2_blob'] as String),
@@ -338,11 +532,43 @@ class DiveDao {
         'status': base64Decode(samplesRow['status_blob'] as String),
         if (tankPressuresB64 != null)
           'tankPressures': base64Decode(tankPressuresB64),
-      },
-      diveId: diveId,
-      sampleCount: samplesRow['sample_count'] as int,
-      sampleIntervalMs: intervalMs,
-    );
+        'cellPpo2': ?cellBytes,
+      };
+
+    final sampleCount = samplesRow['sample_count'] as int;
+    try {
+      return SampleCodec.decode(
+        blobs: blobsWith(cellPpo2Bytes),
+        diveId: diveId,
+        sampleCount: sampleCount,
+        sampleIntervalMs: intervalMs,
+      );
+    } catch (_) {
+      // Only the optional cell column may be damaged; without it a failure
+      // is a real one and the call below rethrows it.
+      if (cellPpo2Bytes == null) rethrow;
+      return SampleCodec.decode(
+        blobs: blobsWith(null),
+        diveId: diveId,
+        sampleCount: sampleCount,
+        sampleIntervalMs: intervalMs,
+      );
+    }
+  }
+
+  /// Decoded events for a dive. Empty when the dive has no samples row, no
+  /// events blob (rows from older builds, or a dive without events), or a
+  /// blob in a format this build can't read.
+  Future<List<DiveEvent>> getEvents(String diveId) async {
+    final row = await _ps.getOptional(
+        'SELECT events_blob FROM dive_samples WHERE id = ?', [diveId]);
+    final b64 = row?['events_blob'] as String?;
+    if (b64 == null) return const [];
+    try {
+      return EventCodec.decode(base64Decode(b64));
+    } on FormatException {
+      return const [];
+    }
   }
 
   /// Get the raw binary blob for a dive (for re-parsing). Returns
@@ -424,6 +650,11 @@ class DiveDao {
         logVersion: r['log_version'] as int,
         dcModel: r['dc_model'] as int,
         dcFirmware: r['dc_firmware'] as int?,
+        dcVendor: r['dc_vendor'] as String?,
+        dcProduct: r['dc_product'] as String?,
+        dcFamily: r['dc_family'] as int?,
+        dcModelCode: r['dc_model_code'] as int?,
+        matchCandidatesJson: r['match_candidates_json'] as String?,
         sampleIntervalMs: r['sample_interval_ms'] as int,
         gasMixesJson: r['gas_mixes_json'] as String,
         tanksJson: r['tanks_json'] as String?,

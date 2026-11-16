@@ -8,7 +8,10 @@ library;
 
 import 'dart:typed_data';
 
+import '../../data/models/dive_event.dart';
 import 'constants.dart';
+
+export '../../data/models/dive_event.dart' show DiveEvent, DiveEventType;
 
 /// Complete parsed dive — the top-level output of [ShearwaterDiveParser].
 class ParsedDive {
@@ -35,6 +38,12 @@ class ParsedDive {
 class DiveHeader {
   /// Unix timestamp (seconds since epoch) from opening[0] offset 12.
   final int startTimestamp;
+
+  /// The device's dive number, uint16 BE at opening[0] offset 2. The legacy
+  /// header block and PNF opening record 0 share this layout (PNF puts the
+  /// record type where legacy has its first 0xFF), and the device manifest
+  /// lists the same number. Null only for a header built by hand.
+  final int? diveNumber;
 
   /// Dive mode detected from samples/header.
   final DiveMode diveMode;
@@ -91,6 +100,7 @@ class DiveHeader {
 
   DiveHeader({
     required this.startTimestamp,
+    this.diveNumber,
     required this.diveMode,
     required this.decoModel,
     required this.gfLow,
@@ -260,23 +270,6 @@ class TankPressureReading {
     required this.batteryLevel,
   });
 }
-
-/// Dive event (bookmark, compass heading).
-class DiveEvent {
-  final int timeMs;
-  final DiveEventType type;
-  final int? bearing;
-  final int? value;
-
-  DiveEvent({
-    required this.timeMs,
-    required this.type,
-    this.bearing,
-    this.value,
-  });
-}
-
-enum DiveEventType { bookmark, gasSwitch }
 
 /// Data from the final record (if present in PNF format).
 class FinalRecord {

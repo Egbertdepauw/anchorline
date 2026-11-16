@@ -57,6 +57,7 @@ import 'notifiers/settings_notifier.dart';
 import 'screens/gas_screen.dart';
 import 'screens/buddies_list_screen.dart';
 import 'screens/dive_list_screen.dart';
+import 'util/pop_to_root.dart';
 import 'screens/dive_plan_screen.dart';
 import 'screens/equipment/equipment_landing_screen.dart';
 import 'screens/import_screen.dart';
@@ -320,7 +321,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       wipeLocal: () async {
         try {
           await LocalDataWiper(db: widget.db, powerSyncDb: widget.powerSyncDb)
-              .wipe();
+              .wipeDeletedAccount();
         } finally {
           // Runs even when the wipe throws: the account is already gone, so
           // clear what can be cleared. The pending-upload paths are best
@@ -423,6 +424,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   void _onViewDives() {
+    // A refresh can move a dive's cylinder rows. A detail screen opened in
+    // the Dives tab before the download would still hold the old rows, so
+    // drop back to the list, through the screens' unsaved-changes guards.
+    final nav = _divesNavigatorKey.currentState;
+    if (_importNotifier.refreshedCount > 0 && nav != null) {
+      popToRootRespectingGuards(nav);
+    }
     setState(() => _currentIndex = 0);
     _diveListNotifier.loadDives();
   }

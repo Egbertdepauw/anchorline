@@ -21,6 +21,7 @@ part 'database.g.dart';
     DiveCylinders,
     DivePlans,
     DiveBailoutCarry,
+    DiveImportMarks,
     ImportStates,
     DiveMergeLinks,
     SyncQuarantine,
@@ -31,7 +32,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 21;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -168,6 +169,29 @@ class AppDatabase extends _$AppDatabase {
               await m.addColumn(
                   diveAnnotations, diveAnnotations.userDiveNumber);
             }
+          }
+          if (from < 21) {
+            // Same sqlite_master probe as v20: sparse test fixtures may lack
+            // dives / dive_computers.
+            Future<bool> has(String t) async => (await customSelect(
+                  "SELECT 1 FROM sqlite_master "
+                  "WHERE type = 'table' AND name = '$t'",
+                ).get())
+                    .isNotEmpty;
+            if (await has('dives')) {
+              await m.addColumn(dives, dives.dcVendor);
+              await m.addColumn(dives, dives.dcProduct);
+              await m.addColumn(dives, dives.dcFamily);
+              await m.addColumn(dives, dives.dcModelCode);
+              await m.addColumn(dives, dives.matchCandidatesJson);
+            }
+            if (await has('dive_computers')) {
+              await m.addColumn(diveComputers, diveComputers.dcVendor);
+              await m.addColumn(diveComputers, diveComputers.dcProduct);
+              await m.addColumn(diveComputers, diveComputers.dcFamily);
+              await m.addColumn(diveComputers, diveComputers.dcModelCode);
+            }
+            await m.createTable(diveImportMarks);
           }
         },
       );

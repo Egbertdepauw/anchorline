@@ -23,6 +23,8 @@ import '../../analysis/cell_health.dart';
 import '../../sync/cloud/ccrlogger_backend_connector.dart' show SessionSource;
 import '../models/equipment.dart' show CylinderRole, SlotInUseException;
 import 'package:subsurface_core/data/sample_codec/column_packer.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart'
+    show kShearwaterVendor;
 import 'database.dart';
 import 'dive_dao.dart' show DiveDao;
 
@@ -86,6 +88,24 @@ class EquipmentDao {
     });
   }
 
+  /// Soft-deletes the cylinder row for [gasMixIndex]. A later
+  /// [setDiveCylinder] at the same index revives it.
+  Future<void> removeDiveCylinder(String diveId, int gasMixIndex) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _ps.writeTransaction((tx) async {
+      final id = '$diveId:$gasMixIndex';
+      final existing = await tx
+          .getOptional('SELECT version FROM dive_cylinders WHERE id = ?', [id]);
+      if (existing == null) return;
+      final newVersion = (existing['version'] as int? ?? 0) + 1;
+      await tx.execute(
+        'UPDATE dive_cylinders SET owner_id = COALESCE(owner_id, ?), '
+        'deleted_at = ?, updated_at = ?, version = ? WHERE id = ?',
+        [_ownerId, now, now, newVersion, id],
+      );
+    });
+  }
+
   Future<void> setDiveCylinders(
     String diveId,
     List<({int gasMixIndex, String? cylinderId})> mappings,
@@ -121,8 +141,8 @@ class EquipmentDao {
       final newVersion = (existing['version'] as int? ?? 0) + 1;
       await tx.execute(
         'UPDATE dive_cylinders SET '
-        'owner_id = ?, cylinder_id = ?, updated_at = ?, version = ? '
-        'WHERE id = ?',
+        'owner_id = ?, cylinder_id = ?, deleted_at = NULL, '
+        'updated_at = ?, version = ? WHERE id = ?',
         [_ownerId, cylinderId, now, newVersion, id],
       );
     }
@@ -130,27 +150,47 @@ class EquipmentDao {
 
   // ── DiveComputers ────────────────────────────────────────────────────────
 
-  /// Insert or update by `serial`. Preserves user-set `nickname` on update.
-  /// Returns the resulting computer's primary-key id.
+  /// Primary-key id for a computer. Shearwater keeps the original
+  /// `dc_<hex serial>` form so existing rows and references stay valid; any
+  /// other vendor gets its lower-cased alphanumeric slug in the id.
+  static String diveComputerId(String vendor, int serial) {
+    final hex = serial.toRadixString(16);
+    if (vendor == kShearwaterVendor) return 'dc_$hex';
+    final slug = vendor.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    return 'dc_${slug}_$hex';
+  }
+
+  /// Insert or update by `(vendor, serial)`. Preserves user-set `nickname`
+  /// on update. Rows written by older builds have a NULL `dc_vendor`, which
+  /// is treated as Shearwater. `dc_vendor` is always written non-null: a
+  /// NULL would be rejected by Postgres (23502) and quarantined as a poison
+  /// op. Returns the resulting computer's primary-key id.
   Future<String> upsertDiveComputer({
+    required String vendor,
+    String? product,
     required int serial,
     required int model,
     int? firmwareVersion,
+    int? family,
+    int? modelCode,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     return await _ps.writeTransaction<String>((tx) async {
       final existing = await tx.getOptional(
-        'SELECT id, version FROM dive_computers WHERE serial = ?',
-        [serial],
+        'SELECT id, version FROM dive_computers '
+        "WHERE serial = ? AND COALESCE(dc_vendor, 'Shearwater') = ?",
+        [serial, vendor],
       );
       if (existing == null) {
-        final id = 'dc_${serial.toRadixString(16)}';
+        final id = diveComputerId(vendor, serial);
         await tx.execute(
           'INSERT INTO dive_computers '
           '(id, owner_id, serial, model, firmware_version, nickname, '
+          'dc_vendor, dc_product, dc_family, dc_model_code, '
           'created_at, updated_at, deleted_at, version, sync_status) '
-          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [id, _ownerId, serial, model, firmwareVersion, null,
+            vendor, product, family, modelCode,
             now, now, null, 1, 0],
         );
         return id;
@@ -160,9 +200,11 @@ class EquipmentDao {
       await tx.execute(
         'UPDATE dive_computers SET '
         'owner_id = ?, model = ?, firmware_version = ?, '
+        'dc_vendor = ?, dc_product = ?, dc_family = ?, dc_model_code = ?, '
         'updated_at = ?, version = ? '
         'WHERE id = ?',
-        [_ownerId, model, firmwareVersion, now, newVersion, id],
+        [_ownerId, model, firmwareVersion, vendor, product, family,
+          modelCode, now, newVersion, id],
       );
       return id;
     });
@@ -177,10 +219,12 @@ class EquipmentDao {
     return rows.map(_rowToDiveComputer).toList();
   }
 
-  Future<DiveComputer?> getDiveComputerBySerial(int serial) async {
+  Future<DiveComputer?> getDiveComputer(
+      {required String vendor, required int serial}) async {
     final row = await _ps.getOptional(
-      'SELECT * FROM dive_computers WHERE serial = ?',
-      [serial],
+      'SELECT * FROM dive_computers '
+      "WHERE serial = ? AND COALESCE(dc_vendor, 'Shearwater') = ?",
+      [serial, vendor],
     );
     return row == null ? null : _rowToDiveComputer(row);
   }
@@ -203,17 +247,22 @@ class EquipmentDao {
     });
   }
 
-  /// Most recent dives imported from this computer (by `dcSerial`).
+  /// Most recent dives imported from this computer (by vendor and
+  /// `dcSerial`). Dives written before phase 1 have a NULL `dc_vendor` and
+  /// count as Shearwater.
   /// Reads from PowerSync — dives live there since Phase 2.5, NOT in the
   /// Drift `dives` table (which is empty at runtime). Reuses
   /// [DiveDao.rowToDive] for the row→`Dive` mapping. Excludes soft-deleted
   /// rows.
-  Future<List<Dive>> recentImportsForComputer(int serial,
-      {int limit = 10}) async {
+  Future<List<Dive>> recentImportsForComputer(
+      {required String vendor, required int serial, int limit = 10}) async {
+    final vendorClause = vendor == kShearwaterVendor
+        ? '(dc_vendor = ? OR dc_vendor IS NULL)'
+        : 'dc_vendor = ?';
     final rows = await _ps.getAll(
-      'SELECT * FROM dives WHERE dc_serial = ? AND deleted_at IS NULL '
-      'ORDER BY start_time DESC LIMIT ?',
-      [serial, limit],
+      'SELECT * FROM dives WHERE dc_serial = ? AND $vendorClause '
+      'AND deleted_at IS NULL ORDER BY start_time DESC LIMIT ?',
+      [serial, vendor, limit],
     );
     return rows.map(DiveDao.rowToDive).toList();
   }
@@ -1036,10 +1085,13 @@ class EquipmentDao {
         'INSERT INTO dive_bailout_carry '
         '(id, owner_id, dive_id, cylinder_id, gas_mix, fill_pressure_bar, '
         ' bailout_order, created_at, updated_at, deleted_at, version, '
-        ' sync_status) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, 0)',
+        ' sync_status, dc_family) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, 0, '
+        // A bailout row shares its dive's sync stream (dc_family gates
+        // libdivecomputer rows away from older builds).
+        '(SELECT dc_family FROM dives WHERE id = ?))',
         [id, _ownerId, diveId, cylinderId, gasMix, fillPressureBar,
-          bailoutOrder, now, now],
+          bailoutOrder, now, now, diveId],
       );
     }
     return id;
@@ -1146,6 +1198,10 @@ class EquipmentDao {
         model: r['model'] as int,
         firmwareVersion: r['firmware_version'] as int?,
         nickname: r['nickname'] as String?,
+        dcVendor: r['dc_vendor'] as String?,
+        dcProduct: r['dc_product'] as String?,
+        dcFamily: r['dc_family'] as int?,
+        dcModelCode: r['dc_model_code'] as int?,
         createdAt: r['created_at'] as int,
         updatedAt: r['updated_at'] as int,
         deletedAt: r['deleted_at'] as int?,

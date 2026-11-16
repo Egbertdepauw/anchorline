@@ -115,3 +115,25 @@ ShearwaterModel modelFromHardware(int hardwareId) {
     _ => ShearwaterModel.unknown,
   };
 }
+
+/// Brand name stored in `dc_vendor` for Shearwater computers.
+const String kShearwaterVendor = 'Shearwater';
+
+/// Product name for [m], as Subsurface writes it after "Shearwater ".
+/// Null for [ShearwaterModel.unknown].
+String? shearwaterProductName(ShearwaterModel m) => switch (m) {
+      ShearwaterModel.predator => 'Predator',
+      ShearwaterModel.petrel => 'Petrel',
+      ShearwaterModel.petrel2 => 'Petrel 2',
+      ShearwaterModel.petrel3 => 'Petrel 3',
+      ShearwaterModel.nerd => 'NERD',
+      ShearwaterModel.nerd2 => 'NERD 2',
+      ShearwaterModel.perdix => 'Perdix',
+      ShearwaterModel.perdixAi => 'Perdix AI',
+      ShearwaterModel.perdix2 => 'Perdix 2',
+      ShearwaterModel.teric => 'Teric',
+      ShearwaterModel.peregrine => 'Peregrine',
+      ShearwaterModel.peregrineTx => 'Peregrine TX',
+      ShearwaterModel.tern => 'Tern',
+      ShearwaterModel.unknown => null,
+    };

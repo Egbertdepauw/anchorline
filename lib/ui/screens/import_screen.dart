@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:intl/intl.dart';
 
-import '../../shearwater/parser/manifest_parser.dart';
+import '../../devices/dive_download_source.dart';
 import '../notifiers/import_notifier.dart';
 
 class ImportScreen extends StatefulWidget {
@@ -35,7 +35,7 @@ class _ImportScreenState extends State<ImportScreen> {
 
   void _onChanged() => setState(() {});
 
-  List<ManifestEntry> _selectedEntries() => widget.notifier.newDives
+  List<DiveListing> _selectedEntries() => widget.notifier.newDives
       .where((e) => !_excludedDiveNumbers.contains(e.diveNumber))
       .toList(growable: false);
 
@@ -154,14 +154,14 @@ class _ImportScreenState extends State<ImportScreen> {
       children: [
         const SizedBox(width: 48, height: 48, child: CircularProgressIndicator()),
         const SizedBox(height: 24),
-        Text('Connecting to ${n.deviceInfo?.model.name ?? 'dive computer'}...',
+        Text('Connecting to ${n.identity?.modelLabel ?? 'dive computer'}...',
             style: const TextStyle(fontSize: 16)),
       ],
     ));
   }
 
   Widget _buildManifest(ImportNotifier n, ThemeData theme) {
-    if (n.newDives.isEmpty && n.deviceInfo != null) {
+    if (n.newDives.isEmpty && n.identity != null) {
       return Center(child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -180,15 +180,15 @@ class _ImportScreenState extends State<ImportScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (n.deviceInfo != null)
+        if (n.identity != null)
           Card(child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(children: [
               Icon(Icons.bluetooth_connected, color: theme.colorScheme.primary),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(n.deviceInfo!.model.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text('S/N ${n.deviceInfo!.serial} · ${n.deviceInfo!.firmware}',
+                Text(n.identity!.modelLabel, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text('S/N ${n.identity!.serialLabel} · ${n.identity!.firmwareLabel}',
                     style: TextStyle(fontSize: 12, color: fade)),
               ])),
             ]),
@@ -261,7 +261,7 @@ class _ImportScreenState extends State<ImportScreen> {
     );
   }
 
-  String _formatManifestSubtitle(ManifestEntry entry) {
+  String _formatManifestSubtitle(DiveListing entry) {
     final dt = DateTime.fromMillisecondsSinceEpoch(
             entry.startTimestamp * 1000,
             isUtc: true)

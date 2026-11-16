@@ -14,6 +14,7 @@ import '../../data/db/database.dart';
 import '../../data/db/equipment_dao.dart';
 import 'package:subsurface_core/data/models/dive.dart';
 import '../notifiers/dive_annotations_notifier.dart';
+import '../theme/tokens.dart';
 import 'dive_annotations_section.dart' show GasMixRow;
 
 class DiveCylindersSection extends StatefulWidget {
@@ -63,13 +64,17 @@ class _DiveCylindersSectionState extends State<DiveCylindersSection> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.gasMixes.isEmpty) return const SizedBox.shrink();
+    final unassigned = _n.unassignedCylinders;
+    if (widget.gasMixes.isEmpty && unassigned.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Gas mixes', style: Theme.of(context).textTheme.titleSmall),
+          if (widget.gasMixes.isNotEmpty)
+            Text('Gas mixes', style: Theme.of(context).textTheme.titleSmall),
           for (var i = 0; i < widget.gasMixes.length; i++)
             GasMixRow(
               index: i,
@@ -79,6 +84,56 @@ class _DiveCylindersSectionState extends State<DiveCylindersSection> {
               selectedCylinderId: _n.cylinderByMix[i],
               onChanged: (cylinderId) => _n.setCylinderForMix(i, cylinderId),
             ),
+          for (final e in unassigned.entries)
+            _UnassignedCylinderRow(
+              label: _labelFor(e.value),
+              onRemove: () => _n.removeUnassignedCylinder(e.key),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _labelFor(String? cylinderId) {
+    for (final c in _cylinders) {
+      if (c.id == cylinderId) return '${c.label} (${c.role})';
+    }
+    return 'Cylinder';
+  }
+}
+
+/// A cylinder assigned to a gas mix the dive no longer has.
+class _UnassignedCylinderRow extends StatelessWidget {
+  final String label;
+  final VoidCallback onRemove;
+
+  const _UnassignedCylinderRow({required this.label, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: theme.textTheme.bodyMedium),
+                Text(
+                  'No longer matches a gas on this dive',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: context.palette.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Remove cylinder',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: onRemove,
+          ),
         ],
       ),
     );

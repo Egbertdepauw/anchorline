@@ -168,7 +168,7 @@ OUTPUT — BAILOUT   (existing BailoutSection widget)
 
 **Drift migration.** New schema version adding `dive_plans` with the columns above plus the two indexes. No data backfill — table starts empty.
 
-**PowerSync.** Append to `infra/powersync-sync-rules.yaml`:
+**PowerSync.** Append to `infra/powersync-sync-streams.yaml`:
 
 ```yaml
 - name: dive_plans

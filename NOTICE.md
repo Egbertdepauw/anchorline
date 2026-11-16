@@ -31,6 +31,12 @@ Shearwater code. Without libdivecomputer it would not exist.
   the same licence, and improvements that would help libdivecomputer are
   shared back with its community. See
   [`CONTRIBUTING.md`](CONTRIBUTING.md#code-derived-from-libdivecomputer).
+- **Findings for libdivecomputer:** what Anchorline has found that
+  libdivecomputer could use, with the evidence, is in
+  [`docs/upstream/libdivecomputer-findings.md`](docs/upstream/libdivecomputer-findings.md).
+  The patches in `docs/upstream/patches/` change libdivecomputer itself
+  and are under its licence. The tools in `docs/upstream/tools/` are
+  under the LGPL version 2.1 or later as well.
 
 The Bluetooth download code in `lib/shearwater/ble/` and
 `lib/shearwater/parser/slip_decoder.dart` is Anchorline's own
