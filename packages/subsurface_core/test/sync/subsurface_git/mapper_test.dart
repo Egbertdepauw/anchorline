@@ -556,6 +556,37 @@ void main() {
       expect(text, contains('weightsystem weight=1.5kg description="belt"'));
     });
 
+    // Subsurface stores weights in grams and writes them as `put_milli`
+    // does. Rounding to 0.1 kg turned a pushed 2.376kg into 2.4kg.
+    test('mapDive writes weights to the gram, as Subsurface does', () {
+      final mapper = CcrlogToSubsurfaceMapper();
+      final ann = DiveAnnotation(
+        diveId: 'd1',
+        weights: const [
+          Weight(weightKg: 2.376, description: 'a'),
+          Weight(weightKg: 2.37, description: 'b'),
+          Weight(weightKg: 0, description: 'c'),
+          Weight(weightKg: 12.0004, description: 'd'),
+        ],
+        createdAt: DateTime.utc(2026, 5, 1),
+        updatedAt: DateTime.utc(2026, 5, 1),
+      );
+      final mapped = mapper.mapDive(
+        dive: _ccrPetrelDive(),
+        samples: _threeMinSampleSet(diveId: _ccrPetrelDive().id),
+        annotation: ann,
+        gasMixes: const [],
+        tanks: const [],
+        cylindersByMixIndex: const {},
+        nextSubsurfaceDiveNumber: 1,
+      );
+      final text = serializeSubsurfaceFile(SubsurfaceFile(lines: mapped.diveLines));
+      expect(text, contains('weightsystem weight=2.376kg description="a"'));
+      expect(text, contains('weightsystem weight=2.37kg description="b"'));
+      expect(text, contains('weightsystem weight=0.0kg description="c"'));
+      expect(text, contains('weightsystem weight=12.0kg description="d"'));
+    });
+
     test('mapDive escapes double quotes in weight descriptions', () {
       final mapper = CcrlogToSubsurfaceMapper();
       final ann = DiveAnnotation(

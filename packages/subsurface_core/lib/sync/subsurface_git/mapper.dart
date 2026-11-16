@@ -257,7 +257,7 @@ class CcrlogToSubsurfaceMapper {
       final desc = w.description;
       lines.add(WeightsystemLine(
         fields: [
-          MapEntry('weight', '${_formatDecimal(w.weightKg, 1)}kg'),
+          MapEntry('weight', '${_formatMilli(w.weightKg)}kg'),
           MapEntry('description', quoteString(desc)),
         ],
       ));
@@ -759,6 +759,20 @@ class CcrlogToSubsurfaceMapper {
 
   String _formatDecimal(double value, int decimals) =>
       value.toStringAsFixed(decimals);
+
+  /// [value] the way Subsurface's `put_milli` writes a weight in kg: three
+  /// decimals with trailing zeros dropped, at least one kept (`2.376`,
+  /// `2.37`, `2.0`). Subsurface stores weights in grams, so this keeps all
+  /// the precision a weight read from a Subsurface file has.
+  String _formatMilli(double value) {
+    final milli = (value * 1000).round();
+    final sign = milli < 0 ? '-' : '';
+    var fraction = (milli.abs() % 1000).toString().padLeft(3, '0');
+    while (fraction.length > 1 && fraction.endsWith('0')) {
+      fraction = fraction.substring(0, fraction.length - 1);
+    }
+    return '$sign${milli.abs() ~/ 1000}.$fraction';
+  }
 
   String _formatMmSs(int totalSeconds) {
     final s = totalSeconds < 0 ? 0 : totalSeconds;
