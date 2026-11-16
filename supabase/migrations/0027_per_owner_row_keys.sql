@@ -28,6 +28,10 @@
 -- changes nothing. Constraints are found in pg_constraint, never by a
 -- hard-coded name. Creates no table; the grants are restated below.
 
+-- A busy table makes this fail cleanly instead of queueing app traffic behind
+-- the ACCESS EXCLUSIVE locks below; rerun at a quieter moment.
+set local lock_timeout = '10s';
+
 -- 1. Guard ---------------------------------------------------------------------
 do $$
 declare
@@ -53,6 +57,29 @@ begin
     raise exception
       '0027 refused: child rows without a parent of the same owner (dive_samples -> dives: %, dive_bailout_carry -> dives: %, dive_bailout_carry -> cylinders: %, dive_merge_links -> dives: %); see supabase/README.md, Before deploying 0027',
       samples, carry_dive, carry_cylinder, merge_links;
+  end if;
+end $$;
+
+-- Guard 2: PowerSync replicates these tables by REPLICA IDENTITY. A table set
+-- to USING INDEX on its old id-only key would fall back to NOTHING when that
+-- index is dropped below, and replication of updates and deletes would break.
+do $$
+declare bad text;
+begin
+  select string_agg(c.relname || ' (' || c.relreplident::text || ')', ', ' order by c.relname)
+    into bad
+  from pg_class c
+  where c.relnamespace = 'public'::regnamespace
+    and c.relname in (
+      'dive_annotations', 'cylinders', 'oxygen_cells', 'scrubber_sessions',
+      'pressure_mappings', 'dive_cylinders', 'dive_computers', 'dives',
+      'dive_samples', 'dive_attachments', 'dive_bailout_carry', 'dive_plans',
+      'dive_merge_links', 'gas_analyses', 'user_acknowledgements', 'open_blends')
+    and c.relreplident <> 'd';
+  if bad is not null then
+    raise exception
+      '0027 refused: REPLICA IDENTITY is not DEFAULT on: %; see supabase/README.md, Before deploying 0027',
+      bad;
   end if;
 end $$;
 

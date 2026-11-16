@@ -419,6 +419,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
               report.writeln('  → cannot replay (missing table/id)');
             } else {
               try {
+                final updateType = switch (opType) {
+                  'PUT' => UpdateType.put,
+                  'PATCH' => UpdateType.patch,
+                  'DELETE' => UpdateType.delete,
+                  _ => null,
+                };
+                // Same attribution check as the regular upload and the drain.
+                if (updateType != null &&
+                    await CcrloggerBackendConnector.isQueuedByAnotherAccount(
+                      op: updateType,
+                      table: table,
+                      id: rowId,
+                      data: rowData,
+                      signedInUserId:
+                          Supabase.instance.client.auth.currentSession?.user.id,
+                      // The table is validated against the synced tables by
+                      // the check before this runs, so the interpolation is
+                      // safe.
+                      fetchLocalRow: (t, i) => psDb
+                          .getOptional('SELECT * FROM $t WHERE id = ?', [i]),
+                    )) {
+                  report.writeln('  → belongs to another account; not sent, '
+                      'left in the queue');
+                  throw const _ReplaySkipped();
+                }
                 final client = Supabase.instance.client;
                 switch (opType) {
                   case 'PUT':
@@ -440,6 +465,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   default:
                     report.writeln('  → unknown op type');
                 }
+              } on _ReplaySkipped {
+                // Already reported above.
               } catch (e) {
                 report.writeln('  → ERROR: $e');
               }
@@ -827,4 +854,10 @@ class _SettingsTab extends StatelessWidget {
   Widget build(BuildContext context) => Tab(
         child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
       );
+}
+
+/// Thrown inside the "Replay oldest ps_crud op" diagnostic to skip the send
+/// after the op was found to belong to another account.
+class _ReplaySkipped implements Exception {
+  const _ReplaySkipped();
 }

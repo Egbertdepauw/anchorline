@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ccrlogger/sync/cloud/ccrlogger_backend_connector.dart';
@@ -774,6 +775,60 @@ void main() {
       expect(reporter.reports, [('dives', UpdateType.patch)]);
     });
 
+    test('self-heal never uploads a parent that names another account: the '
+        'child is set aside', () async {
+      final uploader = _FkPoisonUploader(
+          failTable: 'dive_merge_links', failTimes: 99);
+      final connector = connectorFor(uploader);
+      await connector.replayCrud([
+        CrudEntry(1, UpdateType.put, 'dive_merge_links', 'd1', null,
+            {'owner_id': 'uid-b', 'group_id': 'g'}),
+        CrudEntry(2, UpdateType.put, 'dives', 'd2', null,
+            {'owner_id': 'uid-b', 'x': 1}),
+      ],
+          fetchLocalRow: (table, id) async =>
+              table == 'dives' && id == 'd1' ? {'owner_id': 'uid-a'} : null);
+
+      expect(quarantine.records.map((e) => e.id), ['d1']);
+      expect(quarantine.causes.single, isA<OtherAccountOpException>());
+      expect((quarantine.causes.single as OtherAccountOpException).ownerId,
+          'uid-a');
+      // No parent upsert; only the next op's own upsert went out.
+      expect(uploader.upserted, ['dives']);
+      expect(reporter.reports, isEmpty);
+    });
+
+    test('a reporter that never completes does not hold up the upload',
+        () async {
+      final connector = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions()..session = _sessionFor('uid-b'),
+        uploader:
+            _CodePoisonUploader(failTable: 'dive_computers', code: '42501'),
+        quarantine: quarantine,
+        onPermissionDenied: (t, o, e, s) => Completer<void>().future,
+      );
+      await expectLater(
+        connector.replayCrud([ownedPut('dive_computers', 'dc_1')]).timeout(
+            const Duration(seconds: 2)),
+        throwsA(isA<CrudUploadException>()),
+      );
+    });
+
+    test('a reporter that throws synchronously does not change the outcome',
+        () async {
+      final connector = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions()..session = _sessionFor('uid-b'),
+        uploader:
+            _CodePoisonUploader(failTable: 'dive_computers', code: '42501'),
+        quarantine: quarantine,
+        onPermissionDenied: (t, o, e, s) => throw StateError('boom'),
+      );
+      await expectLater(
+        connector.replayCrud([ownedPut('dive_computers', 'dc_1')]),
+        throwsA(isA<CrudUploadException>()),
+      );
+    });
+
     test('a 42501 from the self-heal parent upsert is reported under the '
         "parent's table", () async {
       final connector = connectorFor(_HealDeniedUploader());
@@ -826,6 +881,41 @@ void main() {
             .having((e) => isPermissionDenied(e), 'denied', isTrue)),
       );
       expect(quarantine.records, isEmpty);
+    });
+  });
+
+  group('isServerPermissionBlock', () {
+    CrudUploadException denied(UpdateType type, Map<String, dynamic>? data) =>
+        CrudUploadException(
+            CrudEntry(1, type, 'dives', 'd1', null, data),
+            PostgrestException(message: 'm', code: '42501'));
+
+    test('true for a 42501 on an owned PUT or on a PATCH', () {
+      expect(isServerPermissionBlock(denied(UpdateType.put, {'owner_id': 'u'})),
+          isTrue);
+      expect(isServerPermissionBlock(denied(UpdateType.patch, {'x': 1})),
+          isTrue);
+    });
+    test('false for a 42501 on an ownerless PUT', () {
+      expect(isServerPermissionBlock(denied(UpdateType.put, {'x': 1})),
+          isFalse);
+      expect(isServerPermissionBlock(denied(UpdateType.put, null)), isFalse);
+    });
+    test('false for other errors and null', () {
+      expect(
+          isServerPermissionBlock(CrudUploadException(
+              CrudEntry(1, UpdateType.put, 'dives', 'd1', null,
+                  {'owner_id': 'u'}),
+              PostgrestException(message: 'm', code: '23503'))),
+          isFalse);
+      expect(isServerPermissionBlock('42501'), isFalse);
+      expect(isServerPermissionBlock(null), isFalse);
+    });
+    test('a bare 42501 (no op to inspect) counts as a block', () {
+      expect(
+          isServerPermissionBlock(
+              PostgrestException(message: 'm', code: '42501')),
+          isTrue);
     });
   });
 

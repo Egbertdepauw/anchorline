@@ -148,6 +148,18 @@ end $$;
 do $$
 declare bad text;
 begin
+  select string_agg(t.tablename || ' (' || c.relreplident::text || ')', ', ') into bad
+  from pg_publication_tables t
+  join pg_class c on c.oid = format('public.%I', t.tablename)::regclass
+  where t.pubname = 'powersync' and c.relreplident <> 'd';
+  if bad is not null then
+    raise exception 'check 1: REPLICA IDENTITY is not DEFAULT on: %', bad;
+  end if;
+end $$;
+
+do $$
+declare bad text;
+begin
   select string_agg(c.relname || '.' || i.relname, ', ') into bad
   from pg_index x
   join pg_class c on c.oid = x.indrelid

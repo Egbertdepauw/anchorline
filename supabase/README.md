@@ -73,14 +73,21 @@ and makes the four child foreign keys composite, so two accounts can hold the
 same ids (same dive computer, same dive). Spec:
 `docs/superpowers/specs/2026-11-16-per-owner-row-keys-design.md`.
 
-**Deploy order.** Do not apply it until a build with #233 (an account switch
-must not apply the other account's queued changes) and this PR's app changes
-has shipped. Until then the blocked test account stays blocked.
+**Deploy order.**
+
+1. Hand-build the TestFlight or internal build from the PR branch's head (it
+   contains #233's commit) and ship it.
+2. Merge #233, then this PR.
+3. Right after merging, deploy 0027 (`./supabase/apply_migrations.sh`).
+
+Until step 3 the blocked test account stays blocked.
 
 `apply_migrations.sh` re-runs every file, so once this PR is merged ANY run of
-it, including one for an unrelated later migration, deploys 0027. Until that
-build has shipped, do not run `apply_migrations.sh` at all, or temporarily move
+it, including one for an unrelated later migration, deploys 0027. Do not run
+`apply_migrations.sh` before step 3, or temporarily move
 `0027_per_owner_row_keys.sql` aside if another migration has to go out first.
+Moving 0027 aside still deploys the edited 0022 and 0024 in that run, which is
+safe on its own.
 
 **Pre-flight query.** 0027 refuses to run (and rolls back completely) if a
 child row has no parent of the same owner. Check first, in the SQL Editor:
@@ -128,6 +135,23 @@ other row is an index made outside the migrations, would survive 0027 and keep
 collisions alive as 23505, and needs a decision. After 0027 the result must be
 empty.
 
+0027 also refuses to run if any of the 16 tables has a REPLICA IDENTITY other
+than DEFAULT (for example `USING INDEX` on the old id-only key, which would fall
+to NOTHING once that index is dropped and break PowerSync). Check first:
+
+```sql
+select c.relname, c.relreplident
+from pg_class c
+where c.relnamespace = 'public'::regnamespace
+  and c.relname in ('dive_annotations', 'cylinders', 'oxygen_cells', 'scrubber_sessions',
+    'pressure_mappings', 'dive_cylinders', 'dive_computers', 'dives', 'dive_samples',
+    'dive_attachments', 'dive_bailout_carry', 'dive_plans', 'dive_merge_links',
+    'gas_analyses', 'user_acknowledgements', 'open_blends')
+  and c.relreplident <> 'd';
+```
+
+It must list no rows. If it does, stop and go back to Egbert.
+
 **What to expect.** Changing a primary key makes PowerSync re-replicate each
 table once, and clients download those rows again. Deploy at a quiet moment
 and watch the PowerSync dashboard until replication catches up.
@@ -141,7 +165,9 @@ and watch the PowerSync dashboard until replication catches up.
 pass) starts a throwaway `postgres:17-alpine` on port 55433 with the
 Supabase-only objects stubbed, applies every migration twice, and then runs
 every `supabase/dry_run/checks/*_check.sql`. It also runs the 0027 guard
-scenario in a second database. It never touches a real Supabase project. A
+scenarios in further databases: the cross-owner refusal, 0027 applied to
+populated data that passes the guard (row counts must not change), and the
+REPLICA IDENTITY refusal. It never touches a real Supabase project. A
 new migration that needs a behavioural check adds a `checks/NNNN_*_check.sql`
 that owns its own `begin; ... rollback;`.
 

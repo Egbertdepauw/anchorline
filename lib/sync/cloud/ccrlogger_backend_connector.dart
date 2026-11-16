@@ -11,6 +11,7 @@
 /// `supabase.from(...)` query-builder chain.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -30,6 +31,22 @@ typedef UploadPermissionReporter = Future<void> Function(
 bool isPermissionDenied(Object? error) {
   if (error is CrudUploadException) return isPermissionDenied(error.cause);
   return error is PostgrestException && error.code == '42501';
+}
+
+/// Whether [error] is a 42501 the SERVER is to blame for, so the Sync tab
+/// may say "Upload blocked by the server". Not an ownerless PUT's 42501:
+/// that is the sign-in backfill racing the connect, which resolves on the
+/// client (and [CcrloggerBackendConnector.replayCrud] does not report it
+/// either).
+bool isServerPermissionBlock(Object? error) {
+  if (!isPermissionDenied(error)) return false;
+  if (error is CrudUploadException) {
+    final op = error.op;
+    if (op.op == UpdateType.put && op.opData?['owner_id'] == null) {
+      return false;
+    }
+  }
+  return true;
 }
 
 abstract class SupabaseRestUploader {
@@ -175,9 +192,9 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
         batch.crud,
         // Self-heal lookup: fetch a parent row from the LOCAL PowerSync DB so a
         // child op whose parent never reached the cloud can re-upload it. The
-        // table comes only from the hard-coded [_fkParents] map (never user
-        // input) — and, for the PATCH owner check, from an op's table, which
-        // [_patchOfAnotherAccount] validates against [kSyncedTableNames]
+        // table comes from the hard-coded [_fkParents] map (never user input)
+        // or, for the PATCH owner check, from an op's table, which
+        // [isQueuedByAnotherAccount] validates against [kSyncedTableNames]
         // before calling — so the interpolation is safe.
         fetchLocalRow: (table, id) =>
             database.getOptional('SELECT * FROM $table WHERE id = ?', [id]),
@@ -249,15 +266,16 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   }) async {
     final signedInUserId = _sessions.currentSession?.user.id;
     for (final op in entries) {
-      if (await isQueuedByAnotherAccount(
+      final otherOwner = await otherAccountOwnerOf(
         op: op.op,
         table: op.table,
         id: op.id,
         data: op.opData,
         signedInUserId: signedInUserId,
         fetchLocalRow: fetchLocalRow,
-      )) {
-        await _quarantine?.record(op, OtherAccountOpException());
+      );
+      if (otherOwner != null) {
+        await _quarantine?.record(op, OtherAccountOpException(otherOwner));
         debugPrint('replayCrud: quarantined ${op.op.name} ${op.table} '
             'id=${op.id} — queued by another account');
         continue;
@@ -271,13 +289,25 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
         // claims, so it is expected and not reported.
         if (e.code == '42501' &&
             !(op.op == UpdateType.put && op.opData?['owner_id'] == null)) {
-          await _reportPermissionDenied(op.table, op.op, e, st);
+          _reportPermissionDenied(op.table, op.op, e, st);
         }
         if (e.code == '23503' &&
             fetchLocalRow != null &&
             _fkParents.containsKey(op.table)) {
           try {
-            final heal = await _healMissingParents(op, fetchLocalRow);
+            final heal =
+                await _healMissingParents(op, fetchLocalRow, signedInUserId);
+            if (heal.otherAccountOwner != null) {
+              // The parent is still local and names another account (an
+              // account switch before its queue drained). Uploading it would
+              // 42501 forever; set the child aside like any other op of that
+              // account.
+              await _quarantine?.record(
+                  op, OtherAccountOpException(heal.otherAccountOwner!));
+              debugPrint('replayCrud: quarantined ${op.op.name} ${op.table} '
+                  'id=${op.id} — its parent belongs to another account');
+              continue;
+            }
             if (heal.missingLocally) {
               // A required parent doesn't exist locally either — this child is
               // orphaned referential garbage that can never upload. Drop it so
@@ -339,20 +369,41 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
     required String? signedInUserId,
     Future<Map<String, dynamic>?> Function(String table, String id)?
         fetchLocalRow,
+  }) async =>
+      await otherAccountOwnerOf(
+        op: op,
+        table: table,
+        id: id,
+        data: data,
+        signedInUserId: signedInUserId,
+        fetchLocalRow: fetchLocalRow,
+      ) !=
+      null;
+
+  /// Same decision as [isQueuedByAnotherAccount], returning the account the
+  /// op belongs to, or null when it is not another account's.
+  static Future<String?> otherAccountOwnerOf({
+    required UpdateType op,
+    required String table,
+    required String id,
+    Map<String, dynamic>? data,
+    required String? signedInUserId,
+    Future<Map<String, dynamic>?> Function(String table, String id)?
+        fetchLocalRow,
   }) async {
-    if (signedInUserId == null) return false;
+    if (signedInUserId == null) return null;
     switch (op) {
       case UpdateType.put:
         final owner = data?['owner_id'];
-        return owner != null && owner != signedInUserId;
+        return owner is String && owner != signedInUserId ? owner : null;
       case UpdateType.patch:
         if (fetchLocalRow == null || !kSyncedTableNames.contains(table)) {
-          return false;
+          return null;
         }
         final owner = (await fetchLocalRow(table, id))?['owner_id'];
-        return owner != null && owner != signedInUserId;
+        return owner is String && owner != signedInUserId ? owner : null;
       case UpdateType.delete:
-        return false;
+        return null;
     }
   }
 
@@ -390,13 +441,15 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
 
   /// Reports a 42501 once per (table, op type) for this connector. A failing
   /// reporter must never change the upload outcome.
-  Future<void> _reportPermissionDenied(
-      String table, UpdateType opType, Object error, StackTrace stack) async {
+  /// Fire-and-forget: the upload never waits on the reporter, and neither a
+  /// synchronous throw nor an async error from it escapes.
+  void _reportPermissionDenied(
+      String table, UpdateType opType, Object error, StackTrace stack) {
     final reporter = _onPermissionDenied;
     if (reporter == null) return;
     if (!_reportedPermissionDenied.add('$table/${opType.name}')) return;
     try {
-      await reporter(table, opType, error, stack);
+      unawaited(reporter(table, opType, error, stack).catchError((_) {}));
     } catch (_) {}
   }
 
@@ -423,15 +476,24 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   /// - `missingLocally` — at least one required parent row is absent from the
   ///   local DB too, so the child can never satisfy its FK and must be dropped.
   ///
+  /// - `otherAccountOwner` — a parent exists locally but names an account other
+  ///   than [signedInUserId]; nothing is uploaded then, because the upsert
+  ///   would be refused (42501) forever. An ownerless parent is uploaded.
+  ///
   /// A `null` parent id (e.g. a PATCH whose opData doesn't carry the FK column)
   /// is neither uploaded nor counted missing — such ops don't FK-fault anyway
   /// (an UPDATE matching no cloud row is a harmless no-op).
-  Future<({bool uploadedAny, bool missingLocally})> _healMissingParents(
+  Future<({bool uploadedAny, bool missingLocally, String? otherAccountOwner})>
+      _healMissingParents(
     CrudEntry op,
     Future<Map<String, dynamic>?> Function(String, String) fetchLocalRow,
+    String? signedInUserId,
   ) async {
     var uploadedAny = false;
     var missingLocally = false;
+    // Look every parent up first, so nothing is uploaded when one of them
+    // turns out to belong to another account.
+    final parents = <(String, String, Map<String, dynamic>)>[];
     for (final (column, parentTable) in _fkParents[op.table]!) {
       final parentId =
           column == 'id' ? op.id : op.opData?[column] as String?;
@@ -441,18 +503,33 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
         missingLocally = true;
         continue;
       }
+      final owner = row['owner_id'];
+      if (signedInUserId != null && owner is String && owner != signedInUserId) {
+        return (
+          uploadedAny: false,
+          missingLocally: false,
+          otherAccountOwner: owner,
+        );
+      }
+      parents.add((parentTable, parentId, row));
+    }
+    for (final (parentTable, parentId, row) in parents) {
       try {
         await _uploader.upsert(parentTable,
             {..._decodeJsonColumns(parentTable, row), 'id': parentId});
       } on PostgrestException catch (e, st) {
         if (e.code == '42501' && row['owner_id'] != null) {
-          await _reportPermissionDenied(parentTable, UpdateType.put, e, st);
+          _reportPermissionDenied(parentTable, UpdateType.put, e, st);
         }
         rethrow;
       }
       uploadedAny = true;
     }
-    return (uploadedAny: uploadedAny, missingLocally: missingLocally);
+    return (
+      uploadedAny: uploadedAny,
+      missingLocally: missingLocally,
+      otherAccountOwner: null,
+    );
   }
 }
 
@@ -490,14 +567,19 @@ class CrudUploadException implements Exception {
       'CRUD upload failed on ${op.op.name} ${op.table} id=${op.id}: $cause';
 }
 
-/// The quarantine cause for a PUT the previous account queued before
-/// signing out ([CcrloggerBackendConnector.replayCrud]). A future re-drive
-/// must replay it only while that account is signed in.
+/// The quarantine cause for an op the previous account queued before
+/// signing out ([CcrloggerBackendConnector.replayCrud]): a PUT naming that
+/// account, a PATCH of its local row, or a child op whose self-heal parent
+/// names it. [ownerId] is that account; a future re-drive must replay the op
+/// only while it is signed in.
 class OtherAccountOpException implements Exception {
+  final String ownerId;
+  OtherAccountOpException(this.ownerId);
+
   @override
   String toString() =>
-      'Queued while another account was signed in; not uploaded to this '
-      'account';
+      'Queued by account $ownerId while another account was signed in; not '
+      'uploaded to this account';
 }
 
 /// Per-table set of columns that hold JSON-encoded text in PowerSync's

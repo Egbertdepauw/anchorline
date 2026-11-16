@@ -356,6 +356,11 @@ against the known synced tables before it goes into the SQL.
 they won't upload") then holds for every kind of change, not only new
 rows.
 
+The self-heal path follows the same rule: when a child op fails with 23503
+and its local parent row names another account, the parent is not uploaded
+(the upsert would be refused with 42501 and retried forever); the child is
+set aside like any other op of that account.
+
 Installed builds don't have this. Their backfiller also rewrites another
 account's queued PUTs to the new account, and 42501 used to stop such a
 PUT for an id the old account already had on the server. After 0027 that
@@ -424,14 +429,18 @@ follow-up outside this PR:
 
 ### 5.9 Deploy order
 
-1. #233 merges, then this PR.
-2. A build containing both ships. A hand-built TestFlight or internal
-   build is enough; it doesn't have to wait for a release train.
-3. Then Egbert deploys 0027 (6.3). The edited 0022 and 0024 go live in
-   the same `apply_migrations.sh` run, since it re-runs every file.
+1. Hand-build the TestFlight or internal build from this branch's head
+   (it contains #233's commit) and ship it. It doesn't have to wait for
+   a release train.
+2. Merge #233, then this PR.
+3. Right after merging, deploy 0027 (6.3). The edited 0022 and 0024 go
+   live in the same `apply_migrations.sh` run, since it re-runs every
+   file.
 
 Until step 3, nothing on the server changes, and the test account stays
-blocked.
+blocked. `apply_migrations.sh` re-runs every file, so don't run it before
+step 3, or move 0027 aside first. Moving 0027 aside still deploys the
+edited 0022 and 0024 in that run, which is safe on its own.
 
 ## 6. Verification
 
@@ -516,8 +525,8 @@ or stay in the workspace as for 0026.
 5. In the SQL Editor, the shared ids appear once per owner, and each
    account's app shows only its own dives.
 6. Account switch: on the main account, edit the shared dive's notes
-   with the phone offline, sign out, sign in to the test account and go
-   back online. In the SQL Editor, the test account's copy keeps its own
+   with the phone offline, sign out, go back online, and sign in to the
+   test account. In the SQL Editor, the test account's copy keeps its own
    notes, and the test account's queue drains (its Sync tab ends on
    "🟢 Synced"). The main
    account's edit does not reach the server later either: with no
