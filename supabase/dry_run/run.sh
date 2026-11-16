@@ -89,6 +89,12 @@ if [ -f "$setup" ]; then
     rm -f "$here/.guard_err"
     exit 1
   fi
+  if ! grep -q '0027 refused' "$here/.guard_err"; then
+    echo "FAIL: 0027 failed, but not on its guard:" >&2
+    sed 's/^/    /' "$here/.guard_err" >&2
+    rm -f "$here/.guard_err"
+    exit 1
+  fi
   echo "  0027 refused, as it should:"
   sed 's/^/    /' "$here/.guard_err"
   rm -f "$here/.guard_err"

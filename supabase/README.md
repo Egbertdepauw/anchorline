@@ -77,6 +77,11 @@ same ids (same dive computer, same dive). Spec:
 must not apply the other account's queued changes) and this PR's app changes
 has shipped. Until then the blocked test account stays blocked.
 
+`apply_migrations.sh` re-runs every file, so once this PR is merged ANY run of
+it, including one for an unrelated later migration, deploys 0027. Until that
+build has shipped, do not run `apply_migrations.sh` at all, or temporarily move
+`0027_per_owner_row_keys.sql` aside if another migration has to go out first.
+
 **Pre-flight query.** 0027 refuses to run (and rolls back completely) if a
 child row has no parent of the same owner. Check first, in the SQL Editor:
 
@@ -99,6 +104,29 @@ where not exists (select 1 from public.dives d where d.owner_id = m.owner_id and
 ```
 
 If it lists rows, do not apply: those rows need a decision from Egbert.
+
+Also list every unique index on the 16 synced tables whose only column is `id`:
+
+```sql
+select c.relname as "table", i.relname as "index"
+from pg_index x
+join pg_class c on c.oid = x.indrelid
+join pg_class i on i.oid = x.indexrelid
+where x.indisunique and x.indnatts = 1
+  and c.relnamespace = 'public'::regnamespace
+  and c.relname in ('dive_annotations', 'cylinders', 'oxygen_cells', 'scrubber_sessions',
+    'pressure_mappings', 'dive_cylinders', 'dive_computers', 'dives', 'dive_samples',
+    'dive_attachments', 'dive_bailout_carry', 'dive_plans', 'dive_merge_links',
+    'gas_analyses', 'user_acknowledgements', 'open_blends')
+  and (select a.attname from pg_attribute a
+       where a.attrelid = c.oid and a.attnum = x.indkey[0]) = 'id'
+order by 1, 2;
+```
+
+Before deploying, only the 16 `<table>_pkey` primary keys should appear; any
+other row is an index made outside the migrations, would survive 0027 and keep
+collisions alive as 23505, and needs a decision. After 0027 the result must be
+empty.
 
 **What to expect.** Changing a primary key makes PowerSync re-replicate each
 table once, and clients download those rows again. Deploy at a quiet moment

@@ -146,6 +146,22 @@ begin
 end $$;
 
 do $$
+declare bad text;
+begin
+  select string_agg(c.relname || '.' || i.relname, ', ') into bad
+  from pg_index x
+  join pg_class c on c.oid = x.indrelid
+  join pg_class i on i.oid = x.indexrelid
+  join pg_publication_tables t on t.tablename = c.relname and t.schemaname = 'public'
+  where t.pubname = 'powersync' and x.indisunique and x.indnatts = 1
+    and (select a.attname from pg_attribute a
+         where a.attrelid = c.oid and a.attnum = x.indkey[0]) = 'id';
+  if bad is not null then
+    raise exception 'check 1: unique index on id alone: %', bad;
+  end if;
+end $$;
+
+do $$
 declare n text;
 begin
   foreach n in array array['dive_samples_owner_dive_fkey',
