@@ -59,6 +59,7 @@ class ImportNotifier extends ChangeNotifier {
   int? _currentDiveNumber;
   String? _errorMessage;
   int _failedCount = 0;
+  int _refreshedCount = 0;
   bool _forceFullReimport = false;
 
   // Per-dive download progress, surfaced live during the bulk BLE
@@ -107,6 +108,10 @@ class ImportNotifier extends ChangeNotifier {
   int? get currentDiveNumber => _currentDiveNumber;
   String? get errorMessage => _errorMessage;
   int get failedCount => _failedCount;
+
+  /// Dives of the current download whose stored data was refreshed in place.
+  /// A detail screen opened before the download may show stale cylinder rows.
+  int get refreshedCount => _refreshedCount;
 
   /// 0-based index into the download subset of the dive currently
   /// streaming bytes from the device. Null until the first progress
@@ -396,6 +401,7 @@ class ImportNotifier extends ChangeNotifier {
     _state = ImportFlowState.downloading;
     _downloadedCount = 0;
     _failedCount = 0;
+    _refreshedCount = 0;
     _currentDiveIndex = null;
     _totalDives = toDownload.length;
     _diveBytes = null;
@@ -443,9 +449,12 @@ class ImportNotifier extends ChangeNotifier {
                 parserVersion: event.parserVersion,
               );
               switch (outcome) {
+                case ImportOutcome.refreshed:
+                  _refreshedCount++;
+                  _downloadedCount++;
+                  lastSuccessfulFingerprint = event.fingerprint;
                 case ImportOutcome.inserted:
                 case ImportOutcome.insertedFlagged:
-                case ImportOutcome.refreshed:
                   _downloadedCount++;
                   lastSuccessfulFingerprint = event.fingerprint;
                 case ImportOutcome.unchanged:
@@ -453,7 +462,7 @@ class ImportNotifier extends ChangeNotifier {
                 case ImportOutcome.rejected:
                   _failedCount++;
                   _report(
-                    StateError('The dive was rejected as unusable'),
+                    const UnusableParse(),
                     null,
                     'download',
                   );
@@ -619,6 +628,7 @@ class ImportNotifier extends ChangeNotifier {
     _currentDiveNumber = null;
     _errorMessage = null;
     _failedCount = 0;
+    _refreshedCount = 0;
     _mockDeviceAvailable = false;
     _discoveredDevices.clear();
     _forceFullReimport = false;

@@ -3,6 +3,7 @@
 // place: no duplicates, the copy's own id and start time, the download's
 // data, and every piece of user data untouched.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:ccrlogger/data/db/database.dart';
@@ -249,6 +250,52 @@ void main() {
         bailoutBefore);
     final cylAfter = await equipment.listCylindersForDive(userIdBefore);
     expect([for (final c in cylAfter) c.cylinderId], ['cylA']);
+    // It followed its mix: the copy's 21/41 diluent at index 0 is index 4 of
+    // the download's gas list.
+    final oldMixes = jsonDecode(before.first['gas_mixes_json'] as String) as List;
+    expect(oldMixes[0], {'o2': 21, 'he': 41, 'dil': true});
+    final newMixes = jsonDecode(
+        (await diveRows()).first['gas_mixes_json'] as String) as List;
+    expect(cylAfter.single.gasMixIndex, 4);
+    expect(newMixes[4], {'o2': 21, 'he': 41, 'dil': true});
+  });
+
+  test('a cylinder follows its mix; one whose mix is gone becomes unassigned',
+      () async {
+    expect(await bootstrap(), 8);
+    for (final r in await diveRows()) {
+      final n = (jsonDecode(r['gas_mixes_json'] as String) as List).length;
+      await equipment.setDiveCylinders(r['id'] as String,
+          [for (var i = 0; i < n; i++) (gasMixIndex: i, cylinderId: 'cyl$i')]);
+    }
+    for (final d in await _downloadAll()) {
+      await dao.importDive(
+          converted: d.converted,
+          rawBlob: d.rawBlob,
+          parserVersion: d.parserVersion);
+    }
+    Future<(List<Map<String, dynamic>>, Map<int, String?>)> read(int n) async {
+      final row = (await diveRows()).singleWhere((r) => r['dc_dive_number'] == n);
+      final mixes = [
+        for (final m in jsonDecode(row['gas_mixes_json'] as String) as List)
+          Map<String, dynamic>.from(m as Map),
+      ];
+      final cyl = await equipment.listCylindersForDive(row['id'] as String);
+      return (mixes, {for (final c in cyl) c.gasMixIndex: c.cylinderId});
+    }
+
+    // Dive 718: the 21/41 diluent (cyl0) moves to its new index; the 100%
+    // and 21% mixes are gone.
+    final (m718, c718) = await read(718);
+    expect(m718[4], {'o2': 21, 'he': 41, 'dil': true});
+    expect(c718, {-2: 'cyl2', -1: 'cyl1', 4: 'cyl0'});
+
+    // Dive 717: its 22/41 diluent (cyl0) is not on the refreshed dive and
+    // becomes unassigned; its 99% oxygen (cyl1) follows its mix to index 0.
+    final (m717, c717) = await read(717);
+    expect(m717.any((m) => m['o2'] == 22), isFalse);
+    expect(m717[0], {'o2': 99, 'he': 0, 'dil': false});
+    expect(c717, {-2: 'cyl2', -1: 'cyl0', 0: 'cyl1'});
   });
 
   test('refreshed copies are not offered as new on the next scan', () async {

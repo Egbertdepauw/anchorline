@@ -419,13 +419,13 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-                  DivePossibleDuplicatesBanner(
-                    // A merged dive is flagged if any member is.
-                    diveId: widget.dive.id,
-                    merged: widget.annotationsDiveId != null,
-                    dao: widget.dao,
-                    onOpen: _openCandidate,
-                  ),
+          DivePossibleDuplicatesBanner(
+            // A merged dive is flagged if any member is.
+            diveId: widget.dive.id,
+            merged: widget.annotationsDiveId != null,
+            dao: widget.dao,
+            onOpen: _openCandidate,
+          ),
                   // Header — dive summary readout
                   Builder(builder: (context) {
                     final palette = context.palette;

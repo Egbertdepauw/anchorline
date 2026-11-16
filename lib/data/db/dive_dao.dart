@@ -31,6 +31,7 @@ import 'package:subsurface_core/data/sample_codec/sample_codec.dart';
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
 import 'package:subsurface_core/subsurface_core.dart'
     show kShearwaterVendor, kSubsurfaceImportedParserVersion;
+import '../../analysis/merge/merged_gas_mixes.dart';
 import '../import/cylinder_remap.dart';
 import '../import/refresh_policy.dart';
 import '../import/same_dive_matcher.dart';
@@ -120,6 +121,7 @@ class DiveDao {
     if (sameId != null) {
       final outcome = await _refreshStored(sameId, converted, parserVersion,
           fromDownload: true);
+      if (outcome == null) return ImportOutcome.unchanged;
       await keepBlob(sameId.id);
       return outcome;
     }
@@ -137,6 +139,7 @@ class DiveDao {
       if (chosen != null) {
         final outcome = await _refreshStored(chosen, converted, parserVersion,
             fromDownload: true);
+        if (outcome == null) return ImportOutcome.unchanged;
         await keepBlob(chosen.id);
         return outcome;
       }
@@ -163,8 +166,9 @@ class DiveDao {
   }) async {
     final stored = await _storedKey(diveId);
     if (stored == null) return ImportOutcome.unchanged;
-    return _refreshStored(stored, converted, parserVersion,
-        fromDownload: false);
+    return await _refreshStored(stored, converted, parserVersion,
+            fromDownload: false) ??
+        ImportOutcome.unchanged;
   }
 
   Future<void> _insertDive(ConvertedDive converted, int parserVersion,

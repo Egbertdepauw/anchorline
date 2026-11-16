@@ -6,6 +6,16 @@ import 'package:sqlite3/common.dart' show SqliteException;
 typedef ImportProblemReporter = void Function(
     Object error, StackTrace? stack, String where);
 
+/// A parse the import refused to write (no samples or no duration). Its own
+/// type so the redacted Sentry event, which carries only the type name, says
+/// what happened.
+class UnusableParse implements Exception {
+  const UnusableParse();
+
+  @override
+  String toString() => 'UnusableParse';
+}
+
 /// What Sentry gets in place of an import error: the error's type and, for a
 /// SQLite error, its result code. Never its message: a database error's text
 /// carries the statement and its parameters (serials, ids, the user id).

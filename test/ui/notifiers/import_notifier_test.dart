@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
+import 'package:ccrlogger/data/import/import_problem_reporter.dart' show UnusableParse;
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/data/db/import_state_dao.dart';
 import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
@@ -398,6 +399,7 @@ void main() {
       final all = await listAll(reporting, _ScriptedLink());
       await reporting.downloadAll(pick(all, [711]));
       expect(reporting.downloadedCount, 1);
+      expect(reporting.refreshedCount, 1);
       expect(reporting.failedCount, 0);
       expect(await importStateDao.getLastFingerprint('B89641E4'), fpOf(711));
       expect(reports, isEmpty);
@@ -411,6 +413,7 @@ void main() {
       final all2 = await listAll(reporting, _ScriptedLink());
       await reporting.downloadAll(pick(all2, [711]));
       expect(reporting.downloadedCount, 0);
+      expect(reporting.refreshedCount, 0);
       expect(reporting.failedCount, 0);
       expect(await importStateDao.getLastFingerprint('B89641E4'), fpOf(712));
       expect(reports, isEmpty);
@@ -426,6 +429,7 @@ void main() {
       expect(rejecting.downloadedCount, 0);
       expect(reports, hasLength(1));
       expect(reports.single.$2, 'download');
+      expect(reports.single.$1, isA<UnusableParse>());
       expect(await importStateDao.getLastFingerprint('B89641E4'), isNull);
     });
 

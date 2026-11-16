@@ -77,7 +77,8 @@ extension _DiveDaoRefresh on DiveDao {
   }
 
   /// Step 1 of the import order for [stored]: the version rule decides.
-  Future<ImportOutcome> _refreshStored(
+  /// Null when the dive vanished before the write (nothing was written).
+  Future<ImportOutcome?> _refreshStored(
     StoredDiveKey stored,
     ConvertedDive converted,
     int parserVersion, {
@@ -93,9 +94,9 @@ extension _DiveDaoRefresh on DiveDao {
         );
     if (!mayWrite) return ImportOutcome.unchanged;
     if (!isUsableParse(converted)) return ImportOutcome.rejected;
-    await _writeRefresh(stored.id, converted, parserVersion,
+    final wrote = await _writeRefresh(stored.id, converted, parserVersion,
         fromDownload: fromDownload);
-    return ImportOutcome.refreshed;
+    return wrote ? ImportOutcome.refreshed : null;
   }
 
   /// Replaces the imported data of [diveId] in one PowerSync transaction.
@@ -106,10 +107,14 @@ extension _DiveDaoRefresh on DiveDao {
   /// `start_time` is never changed either: the Subsurface writer finds a
   /// pushed dive on Subsurface Cloud by the exact `(serial, startTime)` key,
   /// so moving it would push the dive again as a new Dive-NNN. `end_time`
-  /// becomes the stored start plus the incoming dive's length. The Postgres triggers refuse a lowered
-  /// `parser_version` and a same-version change to the sample blobs; the
-  /// caller only gets here with a higher version, so neither fires.
-  Future<void> _writeRefresh(
+  /// becomes the stored start plus the incoming dive's length.
+  ///
+  /// The Postgres triggers refuse a lowered `parser_version` and a
+  /// same-version change to the sample blobs; the caller only gets here with
+  /// a higher version, so neither fires.
+  ///
+  /// Returns false, having written nothing, when the dives row is gone.
+  Future<bool> _writeRefresh(
     String diveId,
     ConvertedDive converted,
     int parserVersion, {
@@ -127,11 +132,11 @@ extension _DiveDaoRefresh on DiveDao {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final samples = _encodedSamples(converted);
 
-    await _ps.writeTransaction((tx) async {
+    return await _ps.writeTransaction<bool>((tx) async {
       final old = await tx.getOptional(
           'SELECT gas_mixes_json FROM dives WHERE id = ?', [diveId]);
       // The dive vanished since the check: write nothing (no orphan samples).
-      if (old == null) return;
+      if (old == null) return false;
       final oldMixes = _decodeMixes(old['gas_mixes_json'] as String?);
 
       await tx.execute(
@@ -142,7 +147,8 @@ extension _DiveDaoRefresh on DiveDao {
         'deco_model = ?, gf_low = ?, gf_high = ?, '
         'atmospheric_pressure_mbar = ?, water_density = ?, log_version = ?, '
         'dc_model = ?, dc_firmware = COALESCE(?, dc_firmware), '
-        'dc_vendor = COALESCE(?, dc_vendor), dc_product = ?, '
+        'dc_vendor = COALESCE(?, dc_vendor), '
+        'dc_product = COALESCE(?, dc_product), '
         'dc_family = ?, dc_model_code = ?, sample_interval_ms = ?, '
         'gas_mixes_json = ?, tanks_json = ?, sensor_calibration_json = ?, '
         'configured_stack_seconds = ?, stack_remaining_at_start_seconds = ?, '
@@ -221,8 +227,54 @@ extension _DiveDaoRefresh on DiveDao {
         'WHERE dive_id = ? AND dc_family IS NOT ?',
         [dive.dcFamily, nowMs, diveId, dive.dcFamily],
       );
-      await _remapDiveCylindersTx(tx, diveId, oldMixes, dive.gasMixes, nowMs);
+      await _remapCylindersForRefreshTx(
+          tx, diveId, oldMixes, dive.gasMixes, nowMs);
+      return true;
     });
+  }
+
+  /// Remaps the cylinder rows a refresh of [diveId] can affect. A merged
+  /// dive's rows live under the group's annotations dive (its earliest
+  /// member) and are keyed by the merged gas list, so they are remapped
+  /// against the group's old and new merged lists; the refreshed dive's own
+  /// rows, when it is another member, follow its own lists.
+  Future<void> _remapCylindersForRefreshTx(
+    dynamic tx,
+    String diveId,
+    List<DiveGasMix> oldMixes,
+    List<DiveGasMix> newMixes,
+    int nowMs,
+  ) async {
+    final link = await tx.getOptional(
+        'SELECT group_id FROM dive_merge_links '
+        'WHERE id = ? AND deleted_at IS NULL',
+        [diveId]);
+    if (link != null) {
+      final rows = await tx.getAll(
+        'SELECT d.id AS id, d.gas_mixes_json AS gas_mixes_json '
+        'FROM dive_merge_links l JOIN dives d ON d.id = l.id '
+        'WHERE l.group_id = ? AND l.deleted_at IS NULL '
+        'AND d.deleted_at IS NULL '
+        'ORDER BY d.start_time ASC, d.id ASC',
+        [link['group_id']],
+      );
+      final ids = [for (final r in rows) r['id'] as String];
+      if (ids.contains(diveId)) {
+        // The dives row already holds the new list; the old one is [oldMixes].
+        final others = [
+          for (final r in rows) _decodeMixes(r['gas_mixes_json'] as String?),
+        ];
+        List<List<DiveGasMix>> listsWith(List<DiveGasMix> mine) => [
+              for (var i = 0; i < ids.length; i++)
+                ids[i] == diveId ? mine : others[i],
+            ];
+        final oldMerged = mergeGasMixLists(listsWith(oldMixes)).mixes;
+        final newMerged = mergeGasMixLists(listsWith(newMixes)).mixes;
+        await _remapDiveCylindersTx(tx, ids.first, oldMerged, newMerged, nowMs);
+        if (ids.first == diveId) return;
+      }
+    }
+    await _remapDiveCylindersTx(tx, diveId, oldMixes, newMixes, nowMs);
   }
 
   List<DiveGasMix> _decodeMixes(String? json) {
@@ -274,6 +326,10 @@ extension _DiveDaoRefresh on DiveDao {
     }
     for (final e in newRows.entries) {
       if (oldRows.containsKey(e.key) && oldRows[e.key] == e.value) continue;
+      // An empty row whose mix is gone says nothing worth keeping.
+      if (e.key < 0 && e.value == null && !oldRows.containsKey(e.key)) {
+        continue;
+      }
       final id = '$diveId:${e.key}';
       final existing = await tx
           .getOptional('SELECT version FROM dive_cylinders WHERE id = ?', [id]);

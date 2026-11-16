@@ -2,6 +2,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart';
+import 'package:ccrlogger/data/db/dive_annotations_dao.dart';
+import 'package:ccrlogger/ui/notifiers/dive_annotations_notifier.dart';
+import 'package:ccrlogger/analysis/merge/merged_gas_mixes.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/data/import/same_dive_matcher.dart'
@@ -93,12 +96,14 @@ void main() {
   late DiveDao dao;
   late EquipmentDao equipment;
   late PowerSyncDatabase ps;
+  late FakeSessionSource session;
 
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
     final rig = await openDiveDaoForTest(db);
     dao = rig.dao;
     ps = rig.ps;
+    session = rig.session;
     equipment = EquipmentDao(db, ps, rig.session);
   });
   tearDown(() => db.close());
@@ -618,6 +623,136 @@ void main() {
       final rows = await equipment.listCylindersForDive(id);
       expect({for (final r in rows) r.gasMixIndex: r.cylinderId},
           {-1: 'cTx', 0: 'cAir'});
+    });
+  });
+
+  group('cylinder rows after a refresh', () {
+    Future<Map<int, String?>> cylinders(String id) async => {
+          for (final r in await equipment.listCylindersForDive(id))
+            r.gasMixIndex: r.cylinderId,
+        };
+
+    test('an empty row whose mix is gone is dropped, not kept as unassigned',
+        () async {
+      final c = _rebuild(_fx(718), mixes: [_air, _tx]);
+      final id = c.dive.id;
+      await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 1);
+      await equipment.setDiveCylinders(id, [
+        (gasMixIndex: 0, cylinderId: 'cAir'),
+        (gasMixIndex: 1, cylinderId: null),
+      ]);
+      await dao.importDive(
+          converted: _rebuild(c, mixes: [_air]),
+          rawBlob: _raw(718),
+          parserVersion: 2);
+      expect(await cylinders(id), {0: 'cAir'});
+    });
+
+    test('a stale cylinder save does not undo a refresh', () async {
+      final c = _rebuild(_fx(718), mixes: [_air, _tx, _o2]);
+      final id = c.dive.id;
+      await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 1);
+      await equipment.setDiveCylinders(id, [
+        (gasMixIndex: 0, cylinderId: 'cAir'),
+        (gasMixIndex: 1, cylinderId: 'cTx'),
+        (gasMixIndex: 2, cylinderId: 'cO2'),
+      ]);
+      final notifier = DiveAnnotationsNotifier(
+          DiveAnnotationsDao(ps, session), equipment);
+      await notifier.load(id); // the screen opens
+
+      await dao.importDive(
+          converted: _rebuild(c, mixes: [_o2, _air]),
+          rawBlob: _raw(718),
+          parserVersion: 2);
+      notifier.setNotes('edited on the old screen');
+      await notifier.save();
+
+      // cTx lost its mix: unassigned; the others followed theirs.
+      expect(await cylinders(id), {-1: 'cTx', 0: 'cO2', 1: 'cAir'});
+      final soft = await ps.getAll(
+          'SELECT id FROM dive_cylinders WHERE dive_id = ? AND deleted_at IS NOT NULL',
+          [id]);
+      expect(soft, isNotEmpty);
+    });
+
+    test('a save still writes the cylinder the user changed', () async {
+      final c = _rebuild(_fx(718), mixes: [_air, _tx]);
+      final id = c.dive.id;
+      await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 1);
+      await equipment.setDiveCylinders(id, [
+        (gasMixIndex: 0, cylinderId: 'cAir'),
+        (gasMixIndex: 1, cylinderId: 'cTx'),
+      ]);
+      final notifier = DiveAnnotationsNotifier(
+          DiveAnnotationsDao(ps, session), equipment);
+      await notifier.load(id);
+      notifier.setCylinderForMix(1, 'cOther');
+      await notifier.save();
+      expect(await cylinders(id), {0: 'cAir', 1: 'cOther'});
+    });
+
+    // Two members; the merged gas list is the de-duplicated union in start
+    // order, and the rows live under the earliest member.
+    Future<({String first, String second, ConvertedDive a, ConvertedDive b})>
+        mergedPair(List<model.DiveGasMix> aMixes,
+            List<model.DiveGasMix> bMixes) async {
+      final a = _rebuild(_fx(711), mixes: aMixes);
+      final b = _rebuild(_fx(712), mixes: bMixes);
+      expect(a.dive.startTime.isBefore(b.dive.startTime), isTrue);
+      await dao.importDive(converted: a, rawBlob: _raw(718), parserVersion: 1);
+      await dao.importDive(converted: b, rawBlob: _raw(718), parserVersion: 1);
+      for (final id in [a.dive.id, b.dive.id]) {
+        await ps.execute(
+            'INSERT INTO dive_merge_links (id, owner_id, group_id, version) '
+            "VALUES (?, 'test-user', 'grp', 1)",
+            [id]);
+      }
+      return (first: a.dive.id, second: b.dive.id, a: a, b: b);
+    }
+
+    test("a refresh of the earliest member remaps the merged dive's cylinders",
+        () async {
+      final m = await mergedPair([_air, _tx], [_tx, _o2]);
+      await equipment.setDiveCylinders(m.first, [
+        (gasMixIndex: 0, cylinderId: 'cAir'),
+        (gasMixIndex: 1, cylinderId: 'cTx'),
+        (gasMixIndex: 2, cylinderId: 'cO2'),
+      ]);
+      await dao.importDive(
+          converted: _rebuild(m.a, mixes: [_tx, _air]),
+          rawBlob: _raw(718),
+          parserVersion: 2);
+      final merged = mergeGasMixLists([
+        [_tx, _air],
+        [_tx, _o2]
+      ]).mixes;
+      expect(merged, hasLength(3));
+      final rows = await cylinders(m.first);
+      expect({for (final e in rows.entries) merged[e.key].oxygenPercent: e.value},
+          {18: 'cTx', 21: 'cAir', 100: 'cO2'});
+    });
+
+    test("a refresh of a later member remaps the merged dive's cylinders",
+        () async {
+      final m = await mergedPair([_air], [_tx, _o2]);
+      await equipment.setDiveCylinders(m.first, [
+        (gasMixIndex: 0, cylinderId: 'cAir'),
+        (gasMixIndex: 1, cylinderId: 'cTx'),
+        (gasMixIndex: 2, cylinderId: 'cO2'),
+      ]);
+      await dao.importDive(
+          converted: _rebuild(m.b, mixes: [_o2, _tx]),
+          rawBlob: _raw(718),
+          parserVersion: 2);
+      final merged = mergeGasMixLists([
+        [_air],
+        [_o2, _tx]
+      ]).mixes;
+      final rows = await cylinders(m.first);
+      expect({for (final e in rows.entries) merged[e.key].oxygenPercent: e.value},
+          {21: 'cAir', 100: 'cO2', 18: 'cTx'});
+      expect(rows, {0: 'cAir', 1: 'cO2', 2: 'cTx'});
     });
   });
 }

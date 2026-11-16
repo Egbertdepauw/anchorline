@@ -23,4 +23,9 @@ void main() {
     expect(redactImportError(const FormatException('x at offset 3')).toString(),
         'FormatException');
   });
+
+  test('an unusable parse is identifiable by its type', () {
+    expect(redactImportError(const UnusableParse()).toString(),
+        'UnusableParse');
+  });
 }

@@ -13,6 +13,11 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   String? _diveId;
   DiveAnnotation? _annotation;
   Map<int, String?> _cylinderByMix = {};
+
+  /// Mix indexes the user changed since the last load or save. A save writes
+  /// only these: the rest of the map was read when the screen opened and may
+  /// be stale (a refresh can move cylinder rows meanwhile).
+  final Set<int> _dirtyMixes = {};
   bool _dirty = false;
 
   // ── Read accessors ────────────────────────────────────────────────────
@@ -69,6 +74,7 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
     }
     final cylinders = await _equipmentDao.listCylindersForDive(diveId);
     _cylinderByMix = {for (final c in cylinders) c.gasMixIndex: c.cylinderId};
+    _dirtyMixes.clear();
     _dirty = false;
     notifyListeners();
   }
@@ -193,6 +199,7 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
 
   void setCylinderForMix(int gasMixIndex, String? cylinderId) {
     _cylinderByMix = {..._cylinderByMix, gasMixIndex: cylinderId};
+    _dirtyMixes.add(gasMixIndex);
     _markDirty();
   }
 
@@ -207,6 +214,7 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
       for (final e in _cylinderByMix.entries)
         if (e.key != index) e.key: e.value,
     };
+    _dirtyMixes.remove(index);
     notifyListeners();
     await _equipmentDao.removeDiveCylinder(diveId, index);
   }
@@ -226,10 +234,15 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   Future<void> save() async {
     if (_annotation == null || _diveId == null) return;
     await _annotationsDao.upsert(_annotation!);
-    final mappings = _cylinderByMix.entries
-        .map((e) => (gasMixIndex: e.key, cylinderId: e.value))
-        .toList();
-    await _equipmentDao.setDiveCylinders(_annotation!.diveId, mappings);
+    final mappings = [
+      for (final i in _dirtyMixes)
+        if (_cylinderByMix.containsKey(i))
+          (gasMixIndex: i, cylinderId: _cylinderByMix[i]),
+    ];
+    if (mappings.isNotEmpty) {
+      await _equipmentDao.setDiveCylinders(_annotation!.diveId, mappings);
+    }
+    _dirtyMixes.clear();
     _dirty = false;
     notifyListeners();
   }

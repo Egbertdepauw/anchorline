@@ -416,6 +416,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   void _onViewDives() {
+    // A refresh can move a dive's cylinder rows. A detail screen opened in
+    // the Dives tab before the download would still hold the old rows, so
+    // drop back to the list.
+    if (_importNotifier.refreshedCount > 0) {
+      _divesNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+    }
     setState(() => _currentIndex = 0);
     _diveListNotifier.loadDives();
   }

@@ -529,7 +529,7 @@ class SubsurfaceBootstrapImporter {
             skipped++;
           case ImportOutcome.rejected:
             unmappable++;
-            _report(StateError('The dive was rejected as unusable'), null,
+            _report(const UnusableParse(), null,
                 'bootstrap');
         }
       } catch (e, st) {
