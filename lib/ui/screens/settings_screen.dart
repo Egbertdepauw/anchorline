@@ -656,6 +656,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _shareBleDebugLog() async {
     final messenger = ScaffoldMessenger.of(context);
+    // share_plus on iOS rejects a null/zero `sharePositionOrigin` (the share
+    // sheet failed with a PlatformException on iPhone); anchor it to the
+    // screen's bounds, as the other share buttons do.
+    final box = context.findRenderObject() as RenderBox?;
+    final origin =
+        box != null ? box.localToGlobal(Offset.zero) & box.size : null;
     try {
       // Force-flush any buffered writes before exporting.
       await BleDebugLogger.instance.flush();
@@ -674,6 +680,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         text:
             'Bluetooth import trace from Anchorline. No dive content — only '
             'protocol events and timings.',
+        sharePositionOrigin: origin,
       );
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Share failed: $e')));
