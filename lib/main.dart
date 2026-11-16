@@ -139,6 +139,12 @@ void main() async {
         // tracesSampleRate: 0 keeps overhead minimal and stays inside
         // the free-tier quota for a small beta cohort.
         options.tracesSampleRate = 0;
+        // No debugPrint/print breadcrumbs. Sentry would attach the last 100
+        // console lines to every event, and many of them interpolate raw
+        // errors, ids and serials. Sentry gets no user data
+        // (diagnostics/sentry_redaction.dart). It also leaves debugPrint
+        // writing to the console, which the integration would replace.
+        options.enablePrintBreadcrumbs = false;
         // CI builds report the channel as the environment and a release
         // name that carries the build number. Builds made without those
         // defines (hand-built store builds, until CI ships them) keep
