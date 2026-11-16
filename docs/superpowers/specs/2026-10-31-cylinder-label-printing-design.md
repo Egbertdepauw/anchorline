@@ -112,7 +112,7 @@ This is layout A from `.superpowers/brainstorm/…/label-diluent.html`:
   - Storing the role on the analysis means a reprint looks the same even if the cylinder's role in Equipment changes later.
 - **Supabase:** new migration `0020_…sql` with `alter table gas_analyses add column if not exists …`. `lint_migrations.sh` rejects a bare `add column`. The table already exists, so no new grants are needed.
 - **Deploy 0020 to production before any build that writes these columns ships.** Uploads send the whole row (`ccrlogger_backend_connector.dart`), so Supabase rejects analysis uploads from a newer build until the columns exist.
-- **PowerSync:** add the three columns to `gas_analyses` in `lib/sync/cloud/powersync_schema.dart`. The sync rule is `SELECT *`, so `infra/powersync-sync-rules.yaml` needs no change. If the Sync Streams migration (#126) has landed by then, check that its stream also selects every column.
+- **PowerSync:** add the three columns to `gas_analyses` in `lib/sync/cloud/powersync_schema.dart`. The sync rule is `SELECT *`, so `infra/powersync-sync-streams.yaml` needs no change. If the Sync Streams migration (#126) has landed by then, check that its stream also selects every column.
 - **Code:** update `GasAnalysis`/`NewGasAnalysis` in `lib/data/models/gas_analysis.dart`, `gas_analyses_dao.dart`, and the CSV export (`gas_analysis_csv.dart`) with the new columns.
 - **Cylinder choices:** `CylinderChoice` and `listCylinderChoices()` also return the cylinder's `role` (`cylinders.role`, values in `CylinderRole` in `lib/data/models/equipment.dart`).
 - **Analysis log screen:** show the desired mix name next to the analysed mix, with the analysed numbers coloured by match level, plus a "DIL" marker on diluent entries.

@@ -244,7 +244,7 @@ reading is compared with the target:
 - **CLAUDE.md principle 7, sync:**
   - The open-blends table needs a Supabase migration with RLS and the explicit
     `grant ... to authenticated, service_role` (`lint_migrations.sh`), the
-    PowerSync client schema, a line in `infra/powersync-sync-rules.yaml`, the
+    PowerSync client schema, a line in `infra/powersync-sync-streams.yaml`, the
     cloud wipe list and the sign-in `owner_id` backfill. Follow what #186 did
     for `user_acknowledgements`.
   - Egbert deploys the migration and the sync rules before a build with this
