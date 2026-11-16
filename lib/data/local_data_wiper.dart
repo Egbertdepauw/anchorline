@@ -6,9 +6,9 @@ import '../sync/cloud/powersync_schema.dart';
 import 'db/database.dart';
 
 /// Wipes this device's local databases (Drift + PowerSync) and blocks
-/// fixture re-seeding. Shared by Settings → Reset local data and account
-/// deletion. Cloud and R2 cleanup are NOT part of this; callers do those
-/// first, when they want them.
+/// fixture re-seeding. Settings → Reset local data and Reset everything use
+/// [wipe]; account deletion uses [wipeDeletedAccount]. Cloud and R2 cleanup
+/// are NOT part of this; callers do those first, when they want them.
 class LocalDataWiper {
   LocalDataWiper({
     required AppDatabase db,
@@ -23,7 +23,38 @@ class LocalDataWiper {
   final PowerSyncDatabase _psDb;
   final Future<void> Function() _markFixturesBlocked;
 
-  Future<void> wipe() async {
+  /// The two Settings resets. They keep `dive_raw_blobs`: the raw dive
+  /// computer bytes live only on the device that downloaded them, and a dive
+  /// that comes back (by sync, a new download or a Subsurface import) has the
+  /// same id, so its blob is there again for a re-parse.
+  Future<void> wipe() => _wipe(everyDriftTable: false);
+
+  /// Account deletion: as [wipe], but every Drift table is emptied, the raw
+  /// blobs among them. Nothing of the account stays on the device.
+  Future<void> wipeDeletedAccount() => _wipe(everyDriftTable: true);
+
+  Future<void> _wipe({required bool everyDriftTable}) async {
+    if (everyDriftTable) {
+      await _clearEveryDriftTable();
+    } else {
+      await _clearDriftForReset();
+    }
+    await _clearPowerSync();
+    // Stop fixture re-seeding from re-populating the empty DB on next
+    // launch. Reinstalling the app clears this flag.
+    await _markFixturesBlocked();
+  }
+
+  /// Every table the Drift database declares, so a table added later is
+  /// covered too. Reversed, because the list declares parents before their
+  /// children.
+  Future<void> _clearEveryDriftTable() => _db.transaction(() async {
+        for (final table in _db.allTables.toList().reversed) {
+          await _db.delete(table).go();
+        }
+      });
+
+  Future<void> _clearDriftForReset() async {
     // Drift: clear all imported-dive related rows. Equipment / annotation
     // tables in Drift are no longer used (PowerSync owns them), but
     // we still wipe them to keep the local file fully fresh.
@@ -39,6 +70,9 @@ class LocalDataWiper {
       await _db.customStatement('DELETE FROM pressure_mappings');
       await _db.customStatement('DELETE FROM dive_cylinders');
     });
+  }
+
+  Future<void> _clearPowerSync() async {
     // PowerSync: disconnect + clear local SQLite. Re-sync on next start.
     //
     // `disconnectAndClear()` is supposed to remove every `ps_data__*`
@@ -65,8 +99,5 @@ class LocalDataWiper {
     } catch (e) {
       debugPrint('Belt-and-braces PowerSync wipe partial: $e');
     }
-    // Stop fixture re-seeding from re-populating the empty DB on next
-    // launch. Reinstalling the app clears this flag.
-    await _markFixturesBlocked();
   }
 }
