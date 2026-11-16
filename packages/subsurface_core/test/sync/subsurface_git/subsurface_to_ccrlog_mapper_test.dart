@@ -319,8 +319,8 @@ void main() {
       expect(r.converted.dive.dcSerial, 0xb89641e4);
     });
 
-    test('a Divesoft Divecomputer keeps vendor and product, decimal '
-        'dcSerial, and today\'s id', () {
+    test('a Divesoft Divecomputer keeps vendor and product, legacy '
+        'dcSerial, decimal brandSerial, and today\'s id', () {
       final mapper = SubsurfaceToCcrlogMapper();
       final fx = _loadDive('2026/04/04-Sat-13=30=15');
       final dcLines = <SsLine>[
@@ -343,7 +343,14 @@ void main() {
       expect(dive.dcVendor, 'Divesoft');
       expect(dive.dcProduct, 'Liberty');
       expect(dive.dcModel, ShearwaterModel.unknown);
-      expect(dive.dcSerial, 1234567);
+      // Phase 1 stores the legacy hex reading, the same value as the id
+      // serial: installed builds key copies by it. The per-brand decimal
+      // reading is exposed separately for matching.
+      expect(dive.dcSerial, 0x1234567);
+      expect(r.brandSerial, 1234567);
+      // An installed build's snapshot keys the copy by hex(Serial text)
+      // alone; the stored dcSerial must equal that key.
+      expect(dive.dcSerial, int.tryParse('1234567', radix: 16));
       expect(
         dive.id,
         generateDiveId(0x1234567, 705, t.millisecondsSinceEpoch ~/ 1000),

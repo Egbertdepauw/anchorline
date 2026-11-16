@@ -70,9 +70,16 @@ class ImportedSubsurfaceDive {
     required this.converted,
     required this.annotation,
     required this.cylindersByMixIndex,
+    required this.brandSerial,
   });
 
   final ConvertedDive converted;
+
+  /// The Serial read per brand ([parseSubsurfaceSerial]): decimal for most
+  /// non-Shearwater vendors. Not stored; it is for matching, together with
+  /// [subsurfaceSerialForms]. `converted.dive.dcSerial` keeps the legacy hex
+  /// reading.
+  final int brandSerial;
   final DiveAnnotation? annotation;
   final Map<int, ProposedCylinder> cylindersByMixIndex;
 }
@@ -205,13 +212,20 @@ class SubsurfaceToCcrlogMapper {
     //
     // The id keeps the legacy hex reading of the Serial text whatever the
     // vendor, so copies imported before brands were read keep their id and
-    // are not duplicated on a re-run. Only the stored dcSerial uses the
-    // per-brand reading.
-    final dcSerial =
+    // are not duplicated on a re-run.
+    //
+    // The stored dcSerial is that same legacy hex reading, not the per-brand
+    // one: installed builds (1.1.0 and older) key Subsurface copies by it,
+    // both in RemoteSnapshot and in their bootstrap key. A decimal dcSerial
+    // would make them miss the copy and overwrite its Divecomputer file. The
+    // per-brand value goes out as `brandSerial`; the decimal dcSerial only
+    // arrives later, through a download refresh whose row is gated.
+    final brandSerial =
         parseSubsurfaceSerial(split?.vendor, dcMeta.serialText ?? '');
-    final idSerial = int.tryParse(dcMeta.serialText ?? '', radix: 16) ?? 0;
+    final dcSerial =
+        int.tryParse((dcMeta.serialText ?? '').trim(), radix: 16) ?? 0;
     final diveId = generateDiveId(
-      idSerial,
+      dcSerial,
       subsurfaceDiveNumber,
       startTime.millisecondsSinceEpoch ~/ 1000,
     );
@@ -301,6 +315,7 @@ class SubsurfaceToCcrlogMapper {
       converted: converted,
       annotation: annotation,
       cylindersByMixIndex: cylindersByMixIndex,
+      brandSerial: brandSerial,
     );
   }
 

@@ -88,7 +88,8 @@ class ExistingRemoteDive {
   /// `Dive-NNN` integer found inside the folder.
   final int diveNumber;
 
-  /// Decoded from the `Divecomputer` keyvalue `Serial` (hex-encoded).
+  /// Decoded from the `Divecomputer` keyvalue `Serial`, read per brand (hex
+  /// for Shearwater, decimal for most others).
   /// Null when the remote dive's `Divecomputer` had no `Serial` line
   /// (very old / manual entries) — those won't ever match a CCRLog dive
   /// because CCRLog dives always carry `dcSerial`.

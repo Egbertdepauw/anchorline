@@ -91,8 +91,9 @@ class SubsurfaceBootstrapResult {
   /// bootstrap run.
   final int divesSkipped;
 
-  /// Subsurface dive folders the read mapper rejected (manual entries,
-  /// non-Shearwater computers, broken records). Surfaced in the final
+  /// Subsurface dive folders the read mapper rejected or whose import
+  /// failed (broken records; manual and non-Shearwater dives do import).
+  /// Surfaced in the final
   /// status line so the user knows their "I had 700 dives but only 645
   /// imported" gap is intentional.
   final int divesUnmappable;
@@ -478,11 +479,11 @@ class SubsurfaceBootstrapImporter {
         startTime:
             converted.dive.startTime.millisecondsSinceEpoch ~/ 1000,
       );
-      // Copies stored before brands were read carry the hex reading of a
-      // decimal serial, so match under every reading.
+      // Match under every reading: copies stored by this or older builds
+      // carry the legacy hex reading, later downloads the decimal one.
       final alreadyStored = subsurfaceSerialForms(
         converted.dive.dcVendor,
-        converted.dive.dcSerial,
+        imported0.brandSerial,
       ).any((s) => existing.contains((dcSerial: s, startTime: key.startTime)));
       if (alreadyStored) {
         skipped++;

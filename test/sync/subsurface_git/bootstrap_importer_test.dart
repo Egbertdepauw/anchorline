@@ -383,12 +383,9 @@ void main() {
       final repoDir = _bootstrapClone(cloneRoot, 'tester@example.com');
       _copyDivesoftDive(repoDir);
       final start = DateTime.utc(2026, 4, 4, 13, 30, 15);
-      // What an earlier build stored: the decimal text read as hex.
+      // Only the id is seeded, so the key path cannot catch it and
+      // importDive has to answer false.
       final ds = _IdCheckingDataSource()
-        ..existing.add((
-          dcSerial: 0x1234567,
-          startTime: start.millisecondsSinceEpoch ~/ 1000,
-        ))
         ..existingIds.add(generateDiveId(
             0x1234567, 705, start.millisecondsSinceEpoch ~/ 1000));
 

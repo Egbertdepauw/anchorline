@@ -7,7 +7,9 @@
 /// - `existingSites`        — `{ hexId: parsed lines of Site-<hexId> }`
 /// - `existingDivesBySerialAndStart` — keys `(serial, startTime)` so the
 ///   planner can match a CCRLog dive against an existing remote entry
-///   and reuse its folder + Dive-NNN.
+///   and reuse its folder + Dive-NNN. The serial is read per brand and each
+///   dive is indexed under every serial form (`subsurfaceSerialForms`), so a
+///   local dive matches whichever reading it was stored with.
 /// - `existingMaxDiveNumber` — highest Dive-NNN seen, so newly emitted
 ///   dives can allocate `existingMaxDiveNumber + 1`, +2, ...
 ///
@@ -228,16 +230,17 @@ class RemoteSnapshot {
     );
   }
 
-  /// Pull the integer serial out of `keyvalue "Serial" "<hex>"`. Returns
-  /// null when the line is missing, the value isn't valid hex, or the
-  /// parse fails outright.
+  /// Pull the integer serial out of `keyvalue "Serial" "<text>"`, read per
+  /// brand: hex for Shearwater or an unknown vendor (null when invalid),
+  /// decimal-first for other vendors. Returns null when the line is missing
+  /// or a Shearwater value isn't valid hex.
   static int? _serialFromDivecomputer(List<SsLine> lines, String? vendor) {
     for (final line in lines) {
       if (line is KeyvaluePairLine && line.key == 'Serial') {
         final s = line.value;
         // Shearwater / unknown vendor: hex, null when invalid (unchanged).
         if (vendor == null || vendor == kShearwaterVendor) {
-          return int.tryParse(s, radix: 16);
+          return int.tryParse(s.trim(), radix: 16);
         }
         return parseSubsurfaceSerial(vendor, s);
       }
