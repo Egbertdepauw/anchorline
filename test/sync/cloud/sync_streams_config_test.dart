@@ -10,7 +10,7 @@ void main() {
   final config =
       File('infra/powersync-sync-rules.yaml').readAsStringSync();
   final query = RegExp(
-    r'^\s*-\s*SELECT \* FROM ([a-z_]+) WHERE owner_id = auth\.user_id\(\)(\s.*)?$',
+    r'^\s*-\s*SELECT \* FROM ([a-z_]+) WHERE owner_id = auth\.user_id\(\)([ \t].*)?$',
     multiLine: true,
   );
   final streamTables = [
