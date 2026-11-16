@@ -221,6 +221,7 @@ void main() {
           "UPDATE dives SET tanks_json = ? WHERE id = ?",
           [tanksJson, s.dive.id]);
       final dcId = await s.equipmentDao.upsertDiveComputer(
+        vendor: kShearwaterVendor,
         serial: 0xB89641E4,
         model: 0,
       );

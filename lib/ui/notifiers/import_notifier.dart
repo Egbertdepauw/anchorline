@@ -18,6 +18,8 @@ import '../../shearwater/ble/ble_io_impl.dart';
 import '../../shearwater/ble/mock_ble_transport.dart';
 import '../../shearwater/ble/shearwater_ble_transport.dart';
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart'
+    show kShearwaterVendor, modelFromHardware, shearwaterProductName;
 import '../../shearwater/parser/dive_parser.dart';
 import '../../shearwater/parser/manifest_parser.dart';
 import '../../sync/cloud/usage_tracker.dart';
@@ -263,6 +265,9 @@ class ImportNotifier extends ChangeNotifier {
       _deviceInfo = await _realTransport!.readDeviceInfo();
       try {
         await _equipmentDao.upsertDiveComputer(
+          vendor: kShearwaterVendor,
+          product: shearwaterProductName(
+              modelFromHardware(_deviceInfo!.hardwareId)),
           serial: int.parse(_deviceInfo!.serial, radix: 16),
           model: _deviceInfo!.hardwareId,
           firmwareVersion: _parseFirmwareVersion(_deviceInfo!.firmware),

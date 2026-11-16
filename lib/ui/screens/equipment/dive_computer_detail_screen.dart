@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart'
+    show kShearwaterVendor;
 
 import '../../../data/db/database.dart';
 import '../../../data/db/equipment_dao.dart';
@@ -37,7 +39,8 @@ class _DiveComputerDetailScreenState extends State<DiveComputerDetailScreen> {
     final list = await widget.dao.listDiveComputers();
     final dc = list.where((d) => d.id == widget.id).firstOrNull;
     if (dc == null) return;
-    final recent = await widget.dao.recentImportsForComputer(dc.serial);
+    final recent = await widget.dao.recentImportsForComputer(
+        vendor: dc.dcVendor ?? kShearwaterVendor, serial: dc.serial);
     if (!mounted) return;
     setState(() {
       _dc = dc;
