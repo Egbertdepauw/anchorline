@@ -26,11 +26,14 @@ the app gets from Supabase auth.
 
 ## 4. Apply the Sync Streams
 
-Paste the contents of `powersync-sync-rules.yaml` into the PowerSync
+Paste the contents of `powersync-sync-streams.yaml` into the PowerSync
 instance's sync configuration and deploy it. It is Sync Streams
-(`config: edition: 3`): one auto-subscribed stream, `user_data`, with one
-query per table, scoped on `owner_id = auth.user_id()`. The file name is
-kept from the Sync Rules days so the many references to it stay valid.
+(`config: edition: 3`): two auto-subscribed streams. `user_data` has one
+query per table, scoped on `owner_id = auth.user_id()`; `dives`,
+`dive_samples`, `dive_computers` and `dive_bailout_carry` also carry
+`AND dc_family IS NULL` there. `libdc_dives` carries the rows with
+`dc_family` set, only to builds that connect with `dc_engines >= 2`
+(`lib/sync/cloud/sync_params.dart`).
 
 The app needs no subscribe call: `auto_subscribe: true` makes every client
 sync the stream on connect. That needs the Dart SDK at 1.16.0 or later;
@@ -62,6 +65,35 @@ they can no longer be deployed. Switching:
    more download traffic than usual for a day.
 4. Check one device: sync goes green, the dive count matches, and an edit
    made after the switch reaches a second device.
+
+Deploy checklist for the `libdc_dives` gate (libdivecomputer phase 1), in
+this order:
+
+1. Migration 0026 (PR 1, the `dc_family` columns) is live first, before
+   anything else.
+2. Paste the file into the dashboard editor and run **Validate**: no errors
+   or warnings on the `libdc_dives` queries. The Streams docs show
+   `connection.parameter()` compared with a column, not with a constant.
+3. Let every device finish syncing first (see the switch steps above),
+   then deploy. The switch from Sync Rules (#208) is already live, so this
+   is a config change of its own: expect one more full re-sync per device.
+4. Fake-row check. In the SQL editor insert a `dives` row for your account
+   with `dc_family = 999`. It must **not** appear on an installed store
+   build (it sends no params; this is the only live test that old builds are
+   excluded) and **not** on a build of this PR (`dc_engines: 1`). It
+   **must** appear on a debug build with `kSyncConnectionParams` set to
+   `{'dc_engines': 2}`. Then delete the row in SQL and check that it
+   disappears on that debug build. While the row exists, don't push to
+   Subsurface or open the fake dive on that build: phase-1 builds don't skip
+   libdivecomputer dives in the writer.
+5. Sync goes green and the dive count matches on one device.
+6. This must be live before any phase-2 build exists.
+
+If Validate rejects `connection.parameter('dc_engines') >= 2`, the fallback
+is `libdc_dives` with `auto_subscribe: false` and no `connection.parameter`
+clauses; phase 2 then subscribes explicitly. It is a repo change: this file
+plus `test/sync/cloud/sync_streams_config_test.dart`. Never make it as a
+dashboard-only edit.
 
 Edition 3 also turns on PowerSync's edition 2 fixes: ISO 8601 timestamps
 and custom Postgres type handling. Neither changes our data. The synced

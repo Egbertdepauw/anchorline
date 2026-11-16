@@ -92,7 +92,7 @@ Every transport only produces text lines. The parser, stability logic and UI do 
 
 ### 8. Save analysis / cylinder log
 - [ ] Save the current reading with cylinder (link to the Equipment → cylinders entity), diver, fill pressure (bar), O2, He, mix, the MOD set, temp, timestamp and the `stable` flag. Warn when saving a non-stable reading, but do not block it.
-- [ ] New user-editable entity: include sync metadata and owner_id, add it to `infra/powersync-sync-rules.yaml`, and add the grant in the migration (see CLAUDE.md principles 6 and 7).
+- [ ] New user-editable entity: include sync metadata and owner_id, add it to `infra/powersync-sync-streams.yaml`, and add the grant in the migration (see CLAUDE.md principles 6 and 7).
 - [ ] Offer analysed gases in the blender and planner, and when assigning gases to a dive.
 - [ ] CSV export: time, cylinder, diver, mix, o2, he, mod_1_1, mod_1_4, mod_1_6, pressure_bar, temp_c, stable.
 

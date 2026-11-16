@@ -80,7 +80,7 @@ NOTIFY pgrst, 'reload schema';
 
 ### PowerSync sync rules
 
-Add a line to [infra/powersync-sync-rules.yaml](infra/powersync-sync-rules.yaml):
+Add a line to [infra/powersync-sync-streams.yaml](infra/powersync-sync-streams.yaml):
 
 ```yaml
 - SELECT * FROM dive_bailout_carry WHERE owner_id = bucket.user_id
