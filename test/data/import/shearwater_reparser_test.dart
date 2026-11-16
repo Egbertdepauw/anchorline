@@ -143,7 +143,7 @@ void main() {
 
     final r = await reparser().run();
 
-    expect((r.refreshed, r.failed), (0, 0));
+    expect((r.refreshed, r.failed, r.skipped), (0, 0, 1));
     expect((await row(noBlob.dive.id))['parser_version'], 1);
     expect((await row(deleted))['parser_version'], 1);
     expect((await row(libdc))['parser_version'], 1);
@@ -261,7 +261,9 @@ void main() {
         return defaultParseRunner(bytes, modelIndex, serial, number);
       },
     ).run());
+    final deadline = DateTime.now().add(const Duration(seconds: 20));
     while (true) {
+      if (DateTime.now().isAfter(deadline)) fail('first dive never refreshed');
       final n = (await ps.get('SELECT COUNT(*) AS n FROM dives '
               'WHERE parser_version = ?', [kShearwaterParserVersion]))['n']
           as int;
@@ -276,6 +278,42 @@ void main() {
       expect((await row(id))['parser_version'], kShearwaterParserVersion);
     }
     expect(report.calls, isEmpty);
+  });
+
+  test('a write error is reported once, stops the run, is not marked and '
+      'is retried next run', () async {
+    final a = await storeOld(718);
+    final b = await storeOld(717);
+    await ps.execute('CREATE TRIGGER boom INSTEAD OF UPDATE ON dives '
+        "BEGIN SELECT RAISE(ABORT, 'boom'); END");
+
+    final first = await reparser().run();
+
+    expect((first.refreshed, first.failed), (0, 0));
+    expect(report.calls.length, 1);
+    expect(report.calls.single.$2, 'reparse');
+    expect(await failedMark(a), isNull);
+    expect(await failedMark(b), isNull);
+
+    await ps.execute('DROP TRIGGER boom');
+    final second = await reparser().run();
+    expect(second.refreshed, 2);
+    expect(report.calls.length, 1);
+    for (final id in [a, b]) {
+      expect((await row(id))['parser_version'], kShearwaterParserVersion);
+    }
+  });
+
+  test('a candidate with a NULL serial is marked and reported, not thrown',
+      () async {
+    final id = await storeOld(718);
+    await ps.execute('UPDATE dives SET dc_serial = NULL WHERE id = ?', [id]);
+
+    final r = await reparser().run();
+
+    expect(r.failed, 1);
+    expect(report.calls.single.$2, 'reparse');
+    expect(await failedMark(id), kShearwaterParserVersion);
   });
 
   test('nothing runs when waitUntilSynced returns false', () async {
@@ -349,6 +387,24 @@ void main() {
           connected: true,
           lastSyncedAt: clock.add(const Duration(seconds: 3))));
       expect(await w, isTrue);
+    });
+
+    test('a lastSyncedAt truncated to the second, in the start second, counts',
+        () async {
+      clock = DateTime.utc(2026, 11, 16, 12, 0, 0, 700, 300);
+      final w = wait()();
+      controller.add(SyncStatusSnapshot(
+          connected: true, lastSyncedAt: DateTime.utc(2026, 11, 16, 12)));
+      expect(await w, isTrue);
+    });
+
+    test('the value present at the start never counts', () async {
+      clock = DateTime.utc(2026, 11, 16, 12, 0, 0, 700);
+      final previous = DateTime.utc(2026, 11, 16, 12);
+      current = SyncStatusSnapshot(connected: true, lastSyncedAt: previous);
+      final w = wait()();
+      controller.add(SyncStatusSnapshot(connected: true, lastSyncedAt: previous));
+      expect(await w, isFalse);
     });
 
     test('completes false after the timeout', () async {

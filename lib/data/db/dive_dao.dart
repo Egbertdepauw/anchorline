@@ -298,7 +298,7 @@ class DiveDao {
   /// Shearwater dives (`dc_family IS NULL`, Subsurface copies at -1 included)
   /// below [belowVersion] that are not deleted. Whether a dive has a local raw
   /// blob, or a recorded failure, is Drift's to say; the reparser intersects.
-  Future<List<({String id, int dcModel, int dcSerial, int dcDiveNumber})>>
+  Future<List<({String id, int? dcModel, int? dcSerial, int? dcDiveNumber})>>
       reparseCandidates(int belowVersion) async {
     final rows = await _ps.getAll(
       'SELECT id, dc_model, dc_serial, dc_dive_number FROM dives '
@@ -310,9 +310,9 @@ class DiveDao {
       for (final r in rows)
         (
           id: r['id'] as String,
-          dcModel: r['dc_model'] as int,
-          dcSerial: r['dc_serial'] as int,
-          dcDiveNumber: r['dc_dive_number'] as int,
+          dcModel: r['dc_model'] as int?,
+          dcSerial: r['dc_serial'] as int?,
+          dcDiveNumber: r['dc_dive_number'] as int?,
         ),
     ];
   }

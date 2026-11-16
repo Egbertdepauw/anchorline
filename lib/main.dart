@@ -109,12 +109,13 @@ void main() async {
     authService: authService,
   )..start();
 
-  // After a reader update, re-parse stored dives from their local raw blobs
-  // in the background. Never awaited and never throws: it must not block
-  // launch, and its errors go to the import reporter (type only) instead.
-  unawaited(_startReparse(db, powerSyncDb, session, authService));
-
   final usageTracker = UsageTracker(Supabase.instance.client);
+
+  // After a reader update, re-parse stored dives from their local raw blobs
+  // in the background. Started once Sentry is initialised (before that its
+  // reports go nowhere), never awaited, and never throws.
+  void startReparse() =>
+      unawaited(_startReparse(db, powerSyncDb, session, authService));
 
   final app = CCRLogApp(
     db: db,
@@ -179,10 +180,12 @@ void main() async {
       appRunner: () {
         _reportAppDataMoveProblems(appData);
         runApp(app);
+        startReparse();
       },
     );
   } else {
     runApp(app);
+    startReparse();
   }
 }
 
@@ -201,7 +204,9 @@ Future<void> _startReparse(AppDatabase db, PowerSyncDatabase powerSyncDb,
       ),
     ).run();
   } catch (e, st) {
-    debugPrint('reparse failed: $e\n$st');
+    // Type only: inside Sentry's zone a printed message becomes a breadcrumb,
+    // and a database error's text carries SQL and parameters.
+    debugPrint('reparse failed: ${e.runtimeType}');
     try {
       reportImportProblemToSentry(e, st, 'reparse');
     } catch (_) {}

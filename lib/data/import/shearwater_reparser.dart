@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show Value, Variable;
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
 import 'package:subsurface_core/shearwater/parser/hardware.dart';
 
@@ -72,44 +72,75 @@ class ShearwaterReparser {
     if (!await _waitUntilSynced()) return (refreshed: 0, failed: 0, skipped: 0);
 
     final candidates = await _dao.reparseCandidates(kShearwaterParserVersion);
+    final failedIds = {
+      for (final r in await _drift.customSelect(
+        'SELECT dive_id FROM dive_import_marks WHERE reparse_failed_version = ?',
+        variables: [Variable.withInt(kShearwaterParserVersion)],
+      ).get())
+        r.read<String>('dive_id'),
+    };
+    // An empty row is what Subsurface copies carry; it is not a raw blob.
+    final blobIds = {
+      for (final r in await _drift
+          .customSelect('SELECT dive_id FROM dive_raw_blobs '
+              'WHERE length(raw_blob) > 0')
+          .get())
+        r.read<String>('dive_id'),
+    };
     var refreshed = 0, failed = 0, skipped = 0;
     for (final c in candidates) {
-      final marks = await (_drift.select(_drift.diveImportMarks)
-            ..where((t) => t.diveId.equals(c.id)))
-          .getSingleOrNull();
-      if (marks?.reparseFailedVersion == kShearwaterParserVersion) {
+      if (failedIds.contains(c.id) || !blobIds.contains(c.id)) {
         skipped++;
         continue;
       }
-      // An empty row is what Subsurface copies carry; it is not a raw blob.
       final blob = await _dao.getRawBlob(c.id);
       if (blob == null || blob.isEmpty) {
         skipped++;
         continue;
       }
+      // Only these failures say the blob itself is bad, so only they mark
+      // the dive: a parse that throws, a model index or identity this build
+      // cannot use, and a parse the refresh rejects.
+      ConvertedDive? converted;
       try {
-        if (c.dcModel < 0 || c.dcModel >= ShearwaterModel.values.length) {
-          throw RangeError.index(c.dcModel, ShearwaterModel.values, 'dc_model');
+        final model = c.dcModel, serial = c.dcSerial, number = c.dcDiveNumber;
+        if (model == null || serial == null || number == null) {
+          throw ArgumentError('dive row without model, serial or number');
         }
-        final converted =
-            await _parse(blob, c.dcModel, c.dcSerial, c.dcDiveNumber);
-        final outcome = await _dao.refreshFromRawBlob(
-          diveId: c.id,
-          converted: converted,
-          parserVersion: kShearwaterParserVersion,
-        );
-        switch (outcome) {
-          case ImportOutcome.refreshed:
-            refreshed++;
-          case ImportOutcome.rejected:
-            throw const UnusableParse();
-          default:
-            skipped++;
+        if (model < 0 || model >= ShearwaterModel.values.length) {
+          throw RangeError.index(model, ShearwaterModel.values, 'dc_model');
         }
+        converted = await _parse(blob, model, serial, number);
       } catch (e, st) {
         failed++;
         await _markFailed(c.id);
         _report(e, st, 'reparse');
+        continue;
+      }
+      final ImportOutcome outcome;
+      try {
+        outcome = await _dao.refreshFromRawBlob(
+          diveId: c.id,
+          converted: converted,
+          parserVersion: kShearwaterParserVersion,
+        );
+      } catch (e, st) {
+        // A write error or a closed database says nothing about the blob:
+        // report once, stop, and let the next launch retry unmarked.
+        _report(e, st, 'reparse');
+        return (refreshed: refreshed, failed: failed, skipped: skipped);
+      }
+      switch (outcome) {
+        case ImportOutcome.refreshed:
+          refreshed++;
+        case ImportOutcome.rejected:
+          failed++;
+          await _markFailed(c.id);
+          _report(const UnusableParse(), StackTrace.current, 'reparse');
+        case ImportOutcome.unchanged:
+          skipped++;
+        default:
+          skipped++;
       }
     }
     return (refreshed: refreshed, failed: failed, skipped: skipped);
@@ -145,12 +176,21 @@ Future<bool> Function() waitUntilSyncedFor({
 }) {
   return () async {
     if (!isSignedIn()) return true;
-    final started = now();
+    // PowerSync builds lastSyncedAt from whole seconds, so compare against
+    // the start rounded down to the second. The value present at the start
+    // belongs to an earlier session (even one under a second ago) and never
+    // counts.
+    final startedAt = now();
+    final startedSecond = DateTime.fromMillisecondsSinceEpoch(
+        startedAt.millisecondsSinceEpoch ~/ 1000 * 1000,
+        isUtc: startedAt.isUtc);
+    final previous = status.currentStatus.lastSyncedAt;
     bool synced(SyncStatusSnapshot s) =>
         s.connected &&
         !s.downloading &&
         s.lastSyncedAt != null &&
-        s.lastSyncedAt!.isAfter(started);
+        !s.lastSyncedAt!.isBefore(startedSecond) &&
+        s.lastSyncedAt != previous;
     if (synced(status.currentStatus)) return true;
     final done = Completer<bool>();
     final sub = status.statusStream.listen((s) {
