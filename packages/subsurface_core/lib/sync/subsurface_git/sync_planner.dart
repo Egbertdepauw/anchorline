@@ -90,9 +90,11 @@ class ExistingRemoteDive {
 
   /// Decoded from the `Divecomputer` keyvalue `Serial`, read per brand (hex
   /// for Shearwater, decimal for most others).
-  /// Null when the remote dive's `Divecomputer` had no `Serial` line
-  /// (very old / manual entries) — those won't ever match a CCRLog dive
-  /// because CCRLog dives always carry `dcSerial`.
+  /// 0 when the `Divecomputer` parsed but had no usable `Serial` line
+  /// (manually added dives, computers Subsurface logged no serial for):
+  /// the bootstrap stores those dives with `dcSerial` 0, so they match.
+  /// Null when the `Divecomputer` was missing, unreadable or failed to
+  /// parse; such a dive never matches a CCRLog dive.
   final int? serial;
 
   /// Decoded from the folder name's UTC components, mirroring how the
@@ -230,8 +232,10 @@ class SyncPlanner {
     // 273 dives flagged as "updated" purely due to this mismatch).
     // Preserving existing's hash keeps Dive-NNN ↔ Site-XXX pointers
     // stable across CCRLog→Subsurface pushes. The site-mapping step
-    // below also reuses existing hexes when coords match an existing
-    // Site file, so we don't create orphan Site-CCRLOGHASH duplicates.
+    // below writes an existing dive's site into the Site file its
+    // divesiteid points to, and points a new dive at an existing Site
+    // file with the same coords and name, so we don't create orphan
+    // Site-CCRLOGHASH duplicates (see _resolveSiteHex).
   };
 
   /// Build a plan from CCRLog state + the parsed remote-repo snapshot.
@@ -300,17 +304,17 @@ class SyncPlanner {
     final sortedDives = [...ccrlogDives]
       ..sort((a, b) => a.dive.startTime.compareTo(b.dive.startTime));
 
-    // Build coords → existing hexId map from Subsurface's Site files.
+    // Build coords → existing hexIds map from Subsurface's Site files.
     // Subsurface's UUIDs are random-at-creation; CCRLog's _siteIdFor is
     // SHA-256(lat,lon). They never agree, so when we map a CCRLog site
-    // we must look up Subsurface's hex by coords instead of trusting
-    // the mapper's hash — otherwise every site becomes an orphan
-    // duplicate under CCRLog's hash.
-    final existingHexByCoords = _indexSitesByCoords(existingSites);
+    // we must look up Subsurface's hex instead of trusting the mapper's
+    // hash — otherwise every site becomes an orphan duplicate under
+    // CCRLog's hash. Distinct sites can share the exact same coords.
+    final existingHexesByCoords = _indexSitesByCoords(existingSites);
 
     // Mapped sites accumulate keyed by hexId so two CCRLog dives at the
-    // same lat/lon collapse to one Site write. Last writer wins on
-    // collision (they're equivalent — same hexId implies same coords).
+    // same site collapse to one Site write. Last writer wins on
+    // collision.
     final mappedSitesByHexId = <String, MappedSite>{};
 
     // Track the userDiveComputers we encountered (for the top-level
@@ -322,6 +326,13 @@ class SyncPlanner {
       final dive = bundle.dive;
       final key = (serial: dive.dcSerial, startTime: dive.startTime);
       final existing = existingDivesBySerialAndStart[key];
+
+      // The dive's site as CCRLog would write it, and the Site file it
+      // goes into (set in the branches below).
+      final mappedSite = bundle.annotation == null
+          ? null
+          : _mapper.mapSite(bundle.annotation!);
+      String? siteHex;
 
       final int diveNumber;
       final List<String> folderSegments;
@@ -344,6 +355,15 @@ class SyncPlanner {
             conflictingLines: const ['<unreadable Dive-NNN>'],
           ));
           continue;
+        }
+
+        if (mappedSite != null) {
+          siteHex = _resolveSiteHex(
+            mappedSite,
+            pointedHex: _divesiteIdOf(existing.diveLines),
+            existingSites: existingSites,
+            existingHexesByCoords: existingHexesByCoords,
+          );
         }
 
         final ours = _mapper.mapDive(
@@ -392,9 +412,17 @@ class SyncPlanner {
         // mapper output. This is the only path that breaks the "never
         // rewrite Divecomputer on update" rule, and only for files we
         // ourselves wrote incorrectly.
-        final ccrlogOriginSignature = existing.divecomputerLines
-            .whereType<EventLine>()
-            .any(_looksLikeSpChangeEvent);
+        //
+        // CCRLog always writes a hex `Serial` keyvalue, so a file without
+        // one is not ours whatever its events say. Subsurface does write
+        // SP-change events on such files: a serial-less `model "Perdix 2"`
+        // CCR dive in a real repository carries
+        // `event 0:00 type=20 value=1100 name="SP change"`.
+        final ccrlogOriginSignature =
+            _hasHexSerial(existing.divecomputerLines) &&
+                existing.divecomputerLines
+                    .whereType<EventLine>()
+                    .any(_looksLikeSpChangeEvent);
         if (ccrlogOriginSignature) {
           final folderPath = folderSegments.join('/');
           filesToWrite['$folderPath/Divecomputer'] = serializeSubsurfaceFile(
@@ -444,9 +472,23 @@ class SyncPlanner {
           nextSubsurfaceDiveNumber: diveNumber,
         );
 
+        // The mapper points the dive at CCRLog's hash; point it at the
+        // Site file its site is written into instead.
+        if (mappedSite != null) {
+          siteHex = _resolveSiteHex(
+            mappedSite,
+            pointedHex: null,
+            existingSites: existingSites,
+            existingHexesByCoords: existingHexesByCoords,
+          );
+        }
+        final diveLines = siteHex == null || siteHex == mapped.siteHexId
+            ? mapped.diveLines
+            : _withDivesiteId(mapped.diveLines, siteHex);
+
         final folderPath = folderSegments.join('/');
         filesToWrite['$folderPath/Dive-$diveNumber'] = serializeSubsurfaceFile(
-          SubsurfaceFile(lines: mapped.diveLines),
+          SubsurfaceFile(lines: diveLines),
         );
         filesToWrite['$folderPath/Divecomputer'] = serializeSubsurfaceFile(
           SubsurfaceFile(lines: mapped.divecomputerLines),
@@ -455,23 +497,11 @@ class SyncPlanner {
         newDives.add(dive);
       }
 
-      // Site: map → merge with existing → stage write.
-      if (bundle.annotation != null) {
-        final mappedSite = _mapper.mapSite(bundle.annotation!);
-        if (mappedSite != null) {
-          // If Subsurface already has a Site file at the same coords
-          // (under its own random UUID), reuse that hex instead of
-          // writing a duplicate under CCRLog's SHA-256 hash.
-          final resolvedHex =
-              _resolveSiteHex(mappedSite, existingHexByCoords);
-          final keyed = resolvedHex == mappedSite.hexId
-              ? mappedSite
-              : MappedSite(
-                  hexId: resolvedHex,
-                  lines: mappedSite.lines,
-                );
-          mappedSitesByHexId[resolvedHex] = keyed;
-        }
+      // Site: stage it under the resolved hex; merged with the existing
+      // file below.
+      if (mappedSite != null && siteHex != null) {
+        mappedSitesByHexId[siteHex] =
+            MappedSite(hexId: siteHex, lines: mappedSite.lines);
       }
 
       for (final dc in bundle.userDiveComputers) {
@@ -493,6 +523,12 @@ class SyncPlanner {
       final text = serializeSubsurfaceFile(
         SubsurfaceFile(lines: mergedLines),
       );
+      // A Site file the merge leaves as it is is not written.
+      if (existingLines != null &&
+          text ==
+              serializeSubsurfaceFile(SubsurfaceFile(lines: existingLines))) {
+        continue;
+      }
       filesToWrite['01-Divesites/Site-$hexId'] = text;
     }
 
@@ -533,6 +569,15 @@ class SyncPlanner {
   /// Merge our CCRLog-emitted Dive-NNN lines into [existing], replacing
   /// only lines whose key is in [_ownedDiveLineKeys]. Non-owned lines
   /// are preserved verbatim — that's the data-loss protection.
+  ///
+  /// An owned line is only replaced when CCRLog holds a different value
+  /// for it. A line that reads the same as ours ([_ownedReading]) stays
+  /// as it is, so a dive the bootstrap imported from this repository is
+  /// not rewritten just because the mapper formats a value differently
+  /// (buddy spacing, weight decimals, a missing weight description). The
+  /// same goes for a `weightsystem` group as a whole. An empty owned line
+  /// the file lacks (`divemaster ""`, `suit ""`, `buddy ""`) is not
+  /// appended.
   List<SsLine> _mergeDiveLines({
     required List<SsLine> existing,
     required List<SsLine> ours,
@@ -560,12 +605,25 @@ class SyncPlanner {
     // every non-owned line verbatim, so a foreign edit on a non-owned key
     // can never be overwritten by our write. The byte-compare was extra
     // belt-and-suspenders that we don't need.
-    //
+
+    // Owned repeating groups that read the same as the existing file's.
+    // Those keep their existing lines, in place.
+    final keptRepeating = <String>{
+      for (final entry in ourRepeatingByKey.entries)
+        if (_ownedDiveLineKeys.contains(entry.key) &&
+            _sameGroupReading(
+              entry.key,
+              existing.where((l) => _lineKey(l) == entry.key),
+              entry.value,
+            ))
+          entry.key,
+    };
+
     // Build merged output. Walk existing lines, swap owned ones for
     // ours when we have something. Track placement so we can append the
     // rest at the end (preserves insertion order from the mapper).
     final placedSingles = <String>{};
-    final placedRepeating = <String>{};
+    final placedRepeating = <String>{...keptRepeating};
     final merged = <SsLine>[];
     for (final line in existing) {
       final key = _lineKey(line);
@@ -578,6 +636,10 @@ class SyncPlanner {
         continue;
       }
       // Owned key.
+      if (keptRepeating.contains(key)) {
+        merged.add(line);
+        continue;
+      }
       if (ourRepeatingByKey.containsKey(key)) {
         if (!placedRepeating.contains(key)) {
           merged.addAll(ourRepeatingByKey[key]!);
@@ -586,8 +648,12 @@ class SyncPlanner {
         // Drop the existing line — the whole group is replaced by ours.
         continue;
       }
-      if (ourSingleByKey.containsKey(key)) {
-        merged.add(ourSingleByKey[key]!);
+      final ourLine = ourSingleByKey[key];
+      if (ourLine != null) {
+        // Keep the existing line when it holds the value we would write.
+        merged.add(_ownedReading(key, line) == _ownedReading(key, ourLine)
+            ? line
+            : ourLine);
         placedSingles.add(key);
         continue;
       }
@@ -597,10 +663,12 @@ class SyncPlanner {
     // 3) Append owned lines we have but the existing file didn't.
     // CRITICAL: only owned keys, otherwise non-owned keys we happen to
     // also emit (e.g. `duration`) get duplicated on top of the line
-    // we already preserved verbatim from `existing`.
+    // we already preserved verbatim from `existing`. An empty one adds
+    // nothing a reader would see, so it is left out.
     for (final entry in ourSingleByKey.entries) {
       if (!_ownedDiveLineKeys.contains(entry.key)) continue;
       if (placedSingles.contains(entry.key)) continue;
+      if (_isEmptyOwned(entry.key, entry.value)) continue;
       merged.add(entry.value);
     }
     for (final entry in ourRepeatingByKey.entries) {
@@ -609,6 +677,114 @@ class SyncPlanner {
       merged.addAll(entry.value);
     }
     return merged;
+  }
+
+  /// What the bootstrap's read mapper (`SubsurfaceToCcrlogMapper`) takes
+  /// from the owned Dive-NNN line [line], as a string. Two lines with the
+  /// same reading give CCRLog the same value, so the merge treats them as
+  /// equal:
+  /// - `buddy` is the list of names split on `,` and trimmed, so
+  ///   `"Adri , Bjorn Hack"` reads as `"Adri, Bjorn Hack"`;
+  /// - the 1–5 ratings read as the clamped integer;
+  /// - `airtemp` / `watertemp` read as °C to the 0.1 the mapper writes;
+  /// - a `weightsystem` reads as its grams and description, so
+  ///   `weight=0.0kg` equals `weight=0.0kg description=""`.
+  /// Other quoted and scalar lines read as their value, and any other
+  /// line as its rendered text.
+  static String _ownedReading(String key, SsLine line) {
+    switch (line) {
+      case TagsLine():
+        return line.renderFromFields();
+      case WeightsystemLine():
+        return _weightReading(line) ?? line.render();
+      case QuotedLine(:final value) || ScalarLine(:final value):
+        switch (key) {
+          case 'buddy':
+            return value
+                .split(',')
+                .map((name) => name.trim())
+                .where((name) => name.isNotEmpty)
+                .join(', ');
+          case 'rating' ||
+                'visibility' ||
+                'wavesize' ||
+                'current' ||
+                'surge' ||
+                'chill':
+            final r = int.tryParse(value);
+            if (r == null) return value;
+            return (r > 0 ? r.clamp(1, 5) : 0).toString();
+          case 'airtemp' || 'watertemp':
+            return _celsius(value)?.toStringAsFixed(1) ?? value;
+          default:
+            return value;
+        }
+      default:
+        return line.render();
+    }
+  }
+
+  /// `<grams> "<description>"` for a `weightsystem` line, or null when it
+  /// has no readable weight (the read mapper skips such lines). A missing
+  /// description reads as an empty one, as the read mapper takes it.
+  static String? _weightReading(WeightsystemLine line) {
+    int? grams;
+    var description = '';
+    for (final field in line.fields) {
+      if (field.key == 'weight' && field.value.endsWith('kg')) {
+        final kg = double.tryParse(
+            field.value.substring(0, field.value.length - 'kg'.length));
+        if (kg != null) grams = (kg * 1000).round();
+      } else if (field.key == 'description') {
+        final v = field.value;
+        description = v.length >= 2 && v.startsWith('"') && v.endsWith('"')
+            ? v.substring(1, v.length - 1)
+            : v;
+      }
+    }
+    return grams == null ? null : '$grams "$description"';
+  }
+
+  /// True when the existing [existing] group and [ours] read the same,
+  /// line by line, leaving out lines the read mapper skips.
+  static bool _sameGroupReading(
+    String key,
+    Iterable<SsLine> existing,
+    List<SsLine> ours,
+  ) {
+    List<String> readings(Iterable<SsLine> lines) => [
+          for (final l in lines)
+            if (l is! WeightsystemLine || _weightReading(l) != null)
+              _ownedReading(key, l),
+        ];
+    final a = readings(existing);
+    final b = readings(ours);
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  /// True for an owned line that holds no value, such as the
+  /// `divemaster ""`, `buddy ""` and `suit ""` the mapper always emits.
+  /// The read mapper takes nothing from one.
+  static bool _isEmptyOwned(String key, SsLine line) => switch (line) {
+        QuotedLine() => _ownedReading(key, line).isEmpty,
+        TagsLine(:final tags) => tags.isEmpty,
+        _ => false,
+      };
+
+  /// `24.0°C` / `24.0 C` / `24.0` → 24.0, as the read mapper parses an
+  /// environment temperature. Null when it is not a number.
+  static double? _celsius(String value) {
+    var v = value.trim();
+    if (v.endsWith('°C')) {
+      v = v.substring(0, v.length - 2);
+    } else if (v.endsWith('C')) {
+      v = v.substring(0, v.length - 1);
+    }
+    return double.tryParse(v.trim());
   }
 
   /// True when the line is an SP-change-named event. Subsurface's own
@@ -622,6 +798,19 @@ class SyncPlanner {
       if (field.key == 'name') {
         final v = field.value;
         return v == '"SP change"' || v == '"setpoint change"';
+      }
+    }
+    return false;
+  }
+
+  /// True when the first `keyvalue "Serial"` line holds a hex value, as
+  /// every Divecomputer file CCRLog writes does. Same reading as
+  /// `RemoteSnapshot`, which indexed only such files before serial-less
+  /// ones were indexed under serial 0.
+  static bool _hasHexSerial(List<SsLine> divecomputerLines) {
+    for (final line in divecomputerLines) {
+      if (line is KeyvaluePairLine && line.key == 'Serial') {
+        return int.tryParse(line.value, radix: 16) != null;
       }
     }
     return false;
@@ -650,54 +839,99 @@ class SyncPlanner {
 
   // ── Site merge ─────────────────────────────────────────────────────
 
-  /// Build a coords → existing-hex index from Subsurface's Site files.
+  /// Build a coords → existing-hexes index from Subsurface's Site files.
   /// Used to reuse Subsurface's site UUIDs when CCRLog's SHA-256 hash
   /// would otherwise create a duplicate under a different filename.
-  /// Coordinates are quantized to the same lat-e5/lon-e5 precision the
-  /// mapper uses, so float-to-string round-trip doesn't cause misses.
-  Map<({int latE5, int lonE5}), String> _indexSitesByCoords(
+  /// Distinct sites can share the exact same coords, so each key holds
+  /// every hex at those coords, sorted so the pick is stable.
+  Map<({int latE5, int lonE5}), List<String>> _indexSitesByCoords(
     Map<String, List<SsLine>> existingSites,
   ) {
-    final out = <({int latE5, int lonE5}), String>{};
+    final out = <({int latE5, int lonE5}), List<String>>{};
     for (final entry in existingSites.entries) {
-      final hex = entry.key;
-      for (final line in entry.value) {
-        if (line is GpsLine) {
-          final lat = double.tryParse(line.lat);
-          final lon = double.tryParse(line.lon);
-          if (lat == null || lon == null) break;
-          final latE5 = (lat * 1e5).round();
-          final lonE5 = (lon * 1e5).round();
-          out[(latE5: latE5, lonE5: lonE5)] = hex;
-          break;
-        }
-      }
+      final coords = _coordsOf(entry.value);
+      if (coords != null) out.putIfAbsent(coords, () => []).add(entry.key);
+    }
+    for (final hexes in out.values) {
+      hexes.sort();
     }
     return out;
   }
 
-  /// Resolve the hex CCRLog should write a site under. Subsurface uses
-  /// random UUIDs at site creation; if the existing repo already has a
-  /// Site file at the same coordinates, we reuse that hex instead of
-  /// CCRLog's SHA-256 hash to avoid orphan duplicates.
+  /// Resolve the hex of the Site file CCRLog writes [mapped] into.
+  /// [pointedHex] is the `divesiteid` of the dive's existing Dive-NNN,
+  /// null for a new dive. In order:
+  /// 1. An existing Site at the same coords with the same name, the one
+  ///    the dive points to first. Distinct Subsurface sites can share the
+  ///    exact same GPS, so the coords alone do not say which site it is.
+  /// 2. The Site the dive points to, when it is at the same coords: the
+  ///    user renamed the site.
+  /// 3. Otherwise a Site of its own under CCRLog's hash.
+  /// The merge never rewrites an existing dive's `divesiteid`, so writing
+  /// into its Site when CCRLog's site is elsewhere, or is another site at
+  /// the same GPS, would rename or move a site other dives share.
   String _resolveSiteHex(
-    MappedSite mapped,
-    Map<({int latE5, int lonE5}), String> existingHexByCoords,
-  ) {
-    for (final line in mapped.lines) {
+    MappedSite mapped, {
+    required String? pointedHex,
+    required Map<String, List<SsLine>> existingSites,
+    required Map<({int latE5, int lonE5}), List<String>>
+        existingHexesByCoords,
+  }) {
+    final coords = _coordsOf(mapped.lines);
+    if (coords == null) return mapped.hexId;
+    final name = _siteNameOf(mapped.lines);
+    final pointed = pointedHex == null ? null : existingSites[pointedHex];
+    final pointedHere = pointed != null && _coordsOf(pointed) == coords;
+    if (pointedHere && _siteNameOf(pointed) == name) return pointedHex!;
+    for (final hex in existingHexesByCoords[coords] ?? const <String>[]) {
+      if (_siteNameOf(existingSites[hex]!) == name) return hex;
+    }
+    if (pointedHere) return pointedHex!;
+    return mapped.hexId;
+  }
+
+  /// The first `gps` line of a Site file, quantized to the lat-e5/lon-e5
+  /// precision the mapper uses so a float-to-string round trip doesn't
+  /// cause misses. Null when there is none or it does not parse.
+  static ({int latE5, int lonE5})? _coordsOf(List<SsLine> siteLines) {
+    for (final line in siteLines) {
       if (line is GpsLine) {
         final lat = double.tryParse(line.lat);
         final lon = double.tryParse(line.lon);
-        if (lat == null || lon == null) break;
-        final latE5 = (lat * 1e5).round();
-        final lonE5 = (lon * 1e5).round();
-        final existing = existingHexByCoords[(latE5: latE5, lonE5: lonE5)];
-        if (existing != null) return existing;
-        break;
+        if (lat == null || lon == null) return null;
+        return (latE5: (lat * 1e5).round(), lonE5: (lon * 1e5).round());
       }
     }
-    return mapped.hexId;
+    return null;
   }
+
+  /// The `name` of a Site file; a missing one reads as empty, as the
+  /// mapper writes an annotation without a site name.
+  static String _siteNameOf(List<SsLine> siteLines) {
+    for (final line in siteLines) {
+      if (line is QuotedLine && line.key == 'name') return line.value;
+    }
+    return '';
+  }
+
+  /// The `divesiteid` of a Dive-NNN file, or null.
+  static String? _divesiteIdOf(List<SsLine> diveLines) {
+    for (final line in diveLines) {
+      if (line is ScalarLine && line.key == 'divesiteid') {
+        return line.value.trim();
+      }
+    }
+    return null;
+  }
+
+  /// [diveLines] with the `divesiteid` line pointing at [hex].
+  static List<SsLine> _withDivesiteId(List<SsLine> diveLines, String hex) => [
+        for (final line in diveLines)
+          if (line is ScalarLine && line.key == 'divesiteid')
+            ScalarLine(key: 'divesiteid', value: hex)
+          else
+            line,
+      ];
 
   /// Replace the `name` and `gps` lines from [existing] with the values
   /// from [ours]. Everything else (description, notes, geo, anything we

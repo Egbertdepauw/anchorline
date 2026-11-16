@@ -27,6 +27,7 @@ import '../../_helpers/fake_elapsed.dart';
 import '../../_helpers/fake_gas_analyses_dao.dart';
 import '../../_helpers/fake_label_printer.dart';
 import '../../_helpers/fake_open_blends_dao.dart';
+import '../../_helpers/sentry_capture.dart';
 
 Finder _key(String k) => find.byKey(ValueKey(k));
 
@@ -1801,8 +1802,10 @@ void main() {
 
   group('what is reported', () {
     /// One OK press on a logger built like the screen's, with [printing];
-    /// returns what reached the reporter.
-    Future<List<Object>> reportedFor(LabelPrintService printing) async {
+    /// returns what reached the reporter. With [toSentry] the logger gets
+    /// no reporter, so it uses the session's own (Sentry).
+    Future<List<Object>> reportedFor(LabelPrintService printing,
+        {bool toSentry = false}) async {
       var clock = Duration.zero;
       final errors = <Object>[];
       final logger = buildOkLogger(
@@ -1810,7 +1813,7 @@ void main() {
         printing: printing,
         elapsed: () => clock,
         tickInterval: null,
-        report: (e, s) => errors.add(e),
+        report: toSentry ? null : (e, s) => errors.add(e),
       );
       final solo = _FakeSolo();
       logger.attach(solo);
@@ -1860,6 +1863,20 @@ void main() {
         service(render: (_) async => throw boom),
       );
       expect(errors, [boom]);
+    });
+
+    test('by default the error goes to Sentry without its text', () async {
+      final sentry = await startSentryCapture();
+      const secret = 'analysed by EdP, cylinder S-118';
+      await reportedFor(
+        service(render: (_) async => throw StateError('render $secret')),
+        toSentry: true,
+      );
+
+      final event = (await sentry.waitFor(1)).single;
+      expect(event.exceptions!.single.value, 'StateError');
+      expect(event.exceptions!.single.stackTrace?.frames, isNotEmpty);
+      expect(event.toJson().toString(), isNot(contains(secret)));
     });
   });
 
