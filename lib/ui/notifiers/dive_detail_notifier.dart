@@ -9,6 +9,8 @@ import '../../data/db/database.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart'
+    show kShearwaterVendor;
 
 /// ChangeNotifier backing the dive detail screen.
 ///
@@ -62,15 +64,16 @@ class DiveDetailNotifier extends ChangeNotifier {
       _activeCells = await _equipmentDao.activeCellsAt(
         DateTime.fromMillisecondsSinceEpoch(dive.startTime * 1000),
       );
-      _mappedCylinders = await _loadMappedCylinders(_equipmentDao, dive.dcSerial);
+      _mappedCylinders = await _loadMappedCylinders(
+          _equipmentDao, dive.dcVendor ?? kShearwaterVendor, dive.dcSerial);
     }
     _loading = false;
     notifyListeners();
   }
 
   static Future<Map<int, Cylinder>> _loadMappedCylinders(
-      EquipmentDao dao, int dcSerial) async {
-    final dc = await dao.getDiveComputerBySerial(dcSerial);
+      EquipmentDao dao, String dcVendor, int dcSerial) async {
+    final dc = await dao.getDiveComputer(vendor: dcVendor, serial: dcSerial);
     if (dc == null) return const {};
     final mappings = await dao.listPressureMappings(dc.id);
     final out = <int, Cylinder>{};

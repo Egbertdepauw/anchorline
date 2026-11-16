@@ -302,6 +302,61 @@ void main() {
       expect(ann.siteLongitude, closeTo(34.457473, 1e-6));
     });
 
+    test('the Petrel fixture maps to vendor Shearwater, product from the '
+        'model line, dcModel unchanged', () {
+      final mapper = SubsurfaceToCcrlogMapper();
+      final fx = _loadDive('2026/04/04-Sat-13=30=15');
+      final r = mapper.mapDive(
+        diveLines: fx.diveLines,
+        divecomputerLines: fx.divecomputerLines,
+        siteLines: null,
+        startTime: DateTime.utc(2026, 4, 4, 13, 30, 15),
+        subsurfaceDiveNumber: 705,
+      )!;
+      expect(r.converted.dive.dcVendor, 'Shearwater');
+      expect(r.converted.dive.dcProduct, 'Petrel 3');
+      expect(r.converted.dive.dcModel, ShearwaterModel.petrel3);
+      expect(r.converted.dive.dcSerial, 0xb89641e4);
+    });
+
+    test('a Divesoft Divecomputer keeps vendor and product, legacy '
+        'dcSerial, decimal brandSerial, and today\'s id', () {
+      final mapper = SubsurfaceToCcrlogMapper();
+      final fx = _loadDive('2026/04/04-Sat-13=30=15');
+      final dcLines = <SsLine>[
+        for (final l in fx.divecomputerLines)
+          if (!(l is QuotedLine && l.key == 'model') &&
+              !(l is KeyvaluePairLine && l.key == 'Serial'))
+            l,
+        QuotedLine(key: 'model', value: 'Divesoft Liberty'),
+        KeyvaluePairLine(key: 'Serial', value: '1234567'),
+      ];
+      final t = DateTime.utc(2026, 4, 4, 13, 30, 15);
+      final r = mapper.mapDive(
+        diveLines: fx.diveLines,
+        divecomputerLines: dcLines,
+        siteLines: null,
+        startTime: t,
+        subsurfaceDiveNumber: 705,
+      )!;
+      final dive = r.converted.dive;
+      expect(dive.dcVendor, 'Divesoft');
+      expect(dive.dcProduct, 'Liberty');
+      expect(dive.dcModel, ShearwaterModel.unknown);
+      // Phase 1 stores the legacy hex reading, the same value as the id
+      // serial: installed builds key copies by it. The per-brand decimal
+      // reading is exposed separately for matching.
+      expect(dive.dcSerial, 0x1234567);
+      expect(r.brandSerial, 1234567);
+      // An installed build's snapshot keys the copy by hex(Serial text)
+      // alone; the stored dcSerial must equal that key.
+      expect(dive.dcSerial, int.tryParse('1234567', radix: 16));
+      expect(
+        dive.id,
+        generateDiveId(0x1234567, 705, t.millisecondsSinceEpoch ~/ 1000),
+      );
+    });
+
     test('manual-only dive without model imports with synthesised DC '
         '(2004/06/19)', () {
       final mapper = SubsurfaceToCcrlogMapper();

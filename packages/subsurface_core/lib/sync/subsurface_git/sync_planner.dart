@@ -88,7 +88,8 @@ class ExistingRemoteDive {
   /// `Dive-NNN` integer found inside the folder.
   final int diveNumber;
 
-  /// Decoded from the `Divecomputer` keyvalue `Serial` (hex-encoded).
+  /// Decoded from the `Divecomputer` keyvalue `Serial`, read per brand (hex
+  /// for Shearwater, decimal for most others).
   /// 0 when the `Divecomputer` parsed but had no usable `Serial` line
   /// (manually added dives, computers Subsurface logged no serial for):
   /// the bootstrap stores those dives with `dcSerial` 0, so they match.

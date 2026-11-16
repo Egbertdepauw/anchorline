@@ -5,6 +5,8 @@ import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/data/models/equipment.dart';
 import 'package:subsurface_core/data/sample_codec/column_packer.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart'
+    show kShearwaterVendor;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:powersync/powersync.dart' show PowerSyncDatabase;
@@ -54,15 +56,17 @@ Future<void> _insertBareDive(
   required String id,
   required int dcSerial,
   required DateTime startTime,
+  String? dcVendor,
 }) async {
   final startSec = startTime.millisecondsSinceEpoch ~/ 1000;
   await ps.execute(
     'INSERT INTO dives (id, dc_serial, dc_dive_number, start_time, end_time, '
     'duration_seconds, max_depth_mm, dive_mode, deco_model, '
     'atmospheric_pressure_mbar, water_density, log_version, dc_model, '
-    'sample_interval_ms, gas_mixes_json, parser_version, imported_at) '
-    'VALUES (?, ?, 1, ?, ?, 60, 0, 0, 0, 1013, 1030, 1, ?, 10000, ?, 1, 0)',
-    [id, dcSerial, startSec, startSec + 3600, 0xB407, '[]'],
+    'sample_interval_ms, gas_mixes_json, parser_version, imported_at, '
+    'dc_vendor) '
+    'VALUES (?, ?, 1, ?, ?, 60, 0, 0, 0, 1013, 1030, 1, ?, 10000, ?, 1, 0, ?)',
+    [id, dcSerial, startSec, startSec + 3600, 0xB407, '[]', dcVendor],
   );
 }
 
@@ -85,6 +89,7 @@ void main() {
   group('DiveComputers', () {
     test('upsertDiveComputer inserts a new row', () async {
       await dao.upsertDiveComputer(
+        vendor: kShearwaterVendor,
         serial: 0xB89641E4,
         model: 0xB407,
         firmwareVersion: 103,
@@ -98,6 +103,7 @@ void main() {
     test('upsertDiveComputer is idempotent on serial and preserves nickname',
         () async {
       await dao.upsertDiveComputer(
+        vendor: kShearwaterVendor,
         serial: 1,
         model: 0xB407,
         firmwareVersion: 103,
@@ -107,6 +113,7 @@ void main() {
 
       // Second upsert with same serial should not clobber nickname.
       await dao.upsertDiveComputer(
+        vendor: kShearwaterVendor,
         serial: 1,
         model: 0xB407,
         firmwareVersion: 104,
@@ -119,7 +126,7 @@ void main() {
     });
 
     test('recentImportsForComputer returns recent dives sorted desc', () async {
-      await dao.upsertDiveComputer(serial: 0xAA, model: 0xB407);
+      await dao.upsertDiveComputer(vendor: kShearwaterVendor, serial: 0xAA, model: 0xB407);
 
       // Dives live in PowerSync since Phase 2.5 (the Drift `dives` table is
       // empty at runtime), so seed them there via the shared helper.
@@ -132,8 +139,120 @@ void main() {
           dcSerial: 0xAA,
           startTime: DateTime.fromMillisecondsSinceEpoch(5000 * 1000));
 
-      final recent = await dao.recentImportsForComputer(0xAA, limit: 10);
+      final recent = await dao.recentImportsForComputer(
+          vendor: kShearwaterVendor, serial: 0xAA, limit: 10);
       expect(recent.map((d) => d.id).toList(), ['d2', 'd1']);
+    });
+
+    test('same serial under two vendors gives two rows', () async {
+      final a = await dao.upsertDiveComputer(
+          vendor: kShearwaterVendor, serial: 0x2a, model: 0xB407);
+      final b = await dao.upsertDiveComputer(
+          vendor: 'Divesoft', serial: 0x2a, model: 13);
+      expect(a, isNot(b));
+      expect(await dao.listDiveComputers(), hasLength(2));
+      expect(
+          (await dao.getDiveComputer(vendor: 'Divesoft', serial: 0x2a))!.id, b);
+      expect(
+          (await dao.getDiveComputer(vendor: kShearwaterVendor, serial: 0x2a))!
+              .id,
+          a);
+    });
+
+    test('a Shearwater computer keeps its dc_<hex> id', () async {
+      final id = await dao.upsertDiveComputer(
+          vendor: kShearwaterVendor, serial: 0xB89641E4, model: 0xB407);
+      expect(id, 'dc_b89641e4');
+      expect(EquipmentDao.diveComputerId(kShearwaterVendor, 0xB89641E4),
+          'dc_b89641e4');
+    });
+
+    test('a non-Shearwater id carries the vendor slug', () async {
+      expect(EquipmentDao.diveComputerId('Heinrichs Weikamp', 0x2a),
+          'dc_heinrichsweikamp_2a');
+      final id = await dao.upsertDiveComputer(
+          vendor: 'Heinrichs Weikamp', serial: 0x2a, model: 13);
+      expect(id, 'dc_heinrichsweikamp_2a');
+    });
+
+    test(
+        'a row written by an old build (dc_vendor NULL) is found by a '
+        'Shearwater upsert', () async {
+      await ps.execute(
+        'INSERT INTO dive_computers (id, owner_id, serial, model, '
+        'created_at, updated_at, version, sync_status) '
+        "VALUES ('dc_77', 'u', 119, 46087, 1, 1, 1, 0)",
+      );
+      final id = await dao.upsertDiveComputer(
+          vendor: kShearwaterVendor,
+          product: 'Petrel 3',
+          serial: 119,
+          model: 46087,
+          family: 1,
+          modelCode: 5);
+      expect(id, 'dc_77');
+      expect(await dao.listDiveComputers(), hasLength(1));
+      final row =
+          await ps.get("SELECT dc_vendor FROM dive_computers WHERE id = 'dc_77'");
+      expect(row['dc_vendor'], kShearwaterVendor);
+      expect(
+          (await dao.getDiveComputer(vendor: kShearwaterVendor, serial: 119))!
+              .dcProduct,
+          'Petrel 3');
+    });
+
+    test('getDiveComputer maps NULL brand columns from an old build',
+        () async {
+      await ps.execute(
+        'INSERT INTO dive_computers (id, owner_id, serial, model, '
+        'created_at, updated_at, version, sync_status) '
+        "VALUES ('dc_1', 'u', 1, 46087, 1, 1, 1, 0)",
+      );
+      final dc =
+          (await dao.getDiveComputer(vendor: kShearwaterVendor, serial: 1))!;
+      expect(dc.dcVendor, isNull);
+      expect(dc.dcProduct, isNull);
+      expect(dc.dcFamily, isNull);
+      expect(dc.dcModelCode, isNull);
+    });
+
+    test('getDiveComputer maps all four brand columns when set', () async {
+      await dao.upsertDiveComputer(
+          vendor: 'Divesoft',
+          product: 'Freedom',
+          serial: 5,
+          model: 13,
+          family: 7,
+          modelCode: 9);
+      final dc = (await dao.getDiveComputer(vendor: 'Divesoft', serial: 5))!;
+      expect(dc.dcVendor, 'Divesoft');
+      expect(dc.dcProduct, 'Freedom');
+      expect(dc.dcFamily, 7);
+      expect(dc.dcModelCode, 9);
+    });
+
+    test('recentImportsForComputer for Shearwater includes NULL dc_vendor',
+        () async {
+      await _insertBareDive(ps,
+          id: 'old',
+          dcSerial: 0xAA,
+          startTime: DateTime.fromMillisecondsSinceEpoch(1000 * 1000));
+      await _insertBareDive(ps,
+          id: 'sw',
+          dcSerial: 0xAA,
+          dcVendor: kShearwaterVendor,
+          startTime: DateTime.fromMillisecondsSinceEpoch(2000 * 1000));
+      await _insertBareDive(ps,
+          id: 'other',
+          dcSerial: 0xAA,
+          dcVendor: 'Divesoft',
+          startTime: DateTime.fromMillisecondsSinceEpoch(3000 * 1000));
+      final sw = await dao.recentImportsForComputer(
+          vendor: kShearwaterVendor, serial: 0xAA);
+      expect(sw.map((d) => d.id).toList(), ['sw', 'old']);
+      final ds =
+          await dao.recentImportsForComputer(vendor: 'Divesoft', serial: 0xAA);
+      expect(ds.map((d) => d.id).toList(), ['other']);
     });
   });
 
@@ -165,7 +284,7 @@ void main() {
 
     test('deleteCellIfUnused refuses when a dive falls in the cell window',
         () async {
-      await dao.upsertDiveComputer(serial: 0xAA, model: 0xB407);
+      await dao.upsertDiveComputer(vendor: kShearwaterVendor, serial: 0xAA, model: 0xB407);
       await _insertBareDive(ps,
           id: 'd1', dcSerial: 0xAA, startTime: DateTime(2025, 6, 1));
       final id = await dao.addCell(slot: 1, installedDate: DateTime(2025, 1, 1));
@@ -218,7 +337,7 @@ void main() {
 
     test('deleteCellIfUnused allows delete when both dates are null (no window)',
         () async {
-      await dao.upsertDiveComputer(serial: 0xAA, model: 0xB407);
+      await dao.upsertDiveComputer(vendor: kShearwaterVendor, serial: 0xAA, model: 0xB407);
       await db.into(db.dives).insert(DivesCompanion.insert(
         id: 'd2',
         dcSerial: 0xAA,

@@ -57,6 +57,7 @@ import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:subsurface_core/shearwater/parser/parsed_dive.dart' show TankUsage;
 import 'format/subsurface_format.dart';
 import 'format/subsurface_unit_parsing.dart';
+import 'subsurface_model.dart';
 
 /// One Subsurface dive folder mapped into the CCRLog domain bundle.
 ///
@@ -69,9 +70,16 @@ class ImportedSubsurfaceDive {
     required this.converted,
     required this.annotation,
     required this.cylindersByMixIndex,
+    required this.brandSerial,
   });
 
   final ConvertedDive converted;
+
+  /// The Serial read per brand ([parseSubsurfaceSerial]): decimal for most
+  /// non-Shearwater vendors. Not stored; it is for matching, together with
+  /// [subsurfaceSerialForms]. `converted.dive.dcSerial` keeps the legacy hex
+  /// reading.
+  final int brandSerial;
   final DiveAnnotation? annotation;
   final Map<int, ProposedCylinder> cylindersByMixIndex;
 }
@@ -149,9 +157,12 @@ class SubsurfaceToCcrlogMapper {
     // exact same Subsurface counter + start second — unique by
     // construction in a Subsurface repo.
     final dcMeta = _DivecomputerMetadata.from(divecomputerLines);
-    final dcModel = dcMeta.modelName == null
-        ? ShearwaterModel.unknown
-        : _shearwaterModelFromName(dcMeta.modelName!);
+    final split = dcMeta.modelName == null
+        ? null
+        : splitSubsurfaceModel(dcMeta.modelName!);
+    final dcModel = split != null && split.vendor == kShearwaterVendor
+        ? shearwaterModelFromProduct(split.product)
+        : ShearwaterModel.unknown;
 
     // ── Sample lines (zero is allowed — manual dives have none) ───────
     final sampleLines = divecomputerLines.whereType<SampleLine>().toList();
@@ -198,7 +209,21 @@ class SubsurfaceToCcrlogMapper {
     // (subsurfaceDiveNumber) is what's hashed into the id below — two
     // manual dives at the same instant are impossible in a single
     // Subsurface repo.
-    final dcSerial = dcMeta.serial ?? 0;
+    //
+    // The id keeps the legacy hex reading of the Serial text whatever the
+    // vendor, so copies imported before brands were read keep their id and
+    // are not duplicated on a re-run.
+    //
+    // The stored dcSerial is that same legacy hex reading, not the per-brand
+    // one: installed builds (1.1.0 and older) key Subsurface copies by it,
+    // both in RemoteSnapshot and in their bootstrap key. A decimal dcSerial
+    // would make them miss the copy and overwrite its Divecomputer file. The
+    // per-brand value goes out as `brandSerial`; the decimal dcSerial only
+    // arrives later, through a download refresh whose row is gated.
+    final brandSerial =
+        parseSubsurfaceSerial(split?.vendor, dcMeta.serialText ?? '');
+    final dcSerial =
+        int.tryParse((dcMeta.serialText ?? '').trim(), radix: 16) ?? 0;
     final diveId = generateDiveId(
       dcSerial,
       subsurfaceDiveNumber,
@@ -224,6 +249,8 @@ class SubsurfaceToCcrlogMapper {
     final dive = Dive(
       id: diveId,
       dcSerial: dcSerial,
+      dcVendor: split?.vendor,
+      dcProduct: split?.product,
       dcDiveNumber: subsurfaceDiveNumber,
       startTime: startTime,
       endTime: endTime,
@@ -288,6 +315,7 @@ class SubsurfaceToCcrlogMapper {
       converted: converted,
       annotation: annotation,
       cylindersByMixIndex: cylindersByMixIndex,
+      brandSerial: brandSerial,
     );
   }
 
@@ -889,26 +917,6 @@ class SubsurfaceToCcrlogMapper {
 
   // ── Helpers ─────────────────────────────────────────────────────────
 
-  ShearwaterModel _shearwaterModelFromName(String displayName) {
-    return switch (displayName) {
-      'Shearwater Predator' => ShearwaterModel.predator,
-      'Shearwater Petrel' => ShearwaterModel.petrel,
-      'Shearwater Petrel 2' => ShearwaterModel.petrel2,
-      'Shearwater Petrel 3' => ShearwaterModel.petrel3,
-      'Shearwater NERD' => ShearwaterModel.nerd,
-      'Shearwater NERD 2' => ShearwaterModel.nerd2,
-      'Shearwater Perdix' => ShearwaterModel.perdix,
-      'Shearwater Perdix AI' => ShearwaterModel.perdixAi,
-      'Shearwater Perdix 2' => ShearwaterModel.perdix2,
-      'Shearwater Teric' => ShearwaterModel.teric,
-      'Shearwater Peregrine' => ShearwaterModel.peregrine,
-      'Shearwater Peregrine TX' => ShearwaterModel.peregrineTx,
-      'Shearwater Tern' => ShearwaterModel.tern,
-      'Shearwater' => ShearwaterModel.unknown,
-      _ => ShearwaterModel.unknown,
-    };
-  }
-
   double? _parseBar(String value) {
     final p = parsePressureBar(value);
     return p?.bar;
@@ -981,7 +989,7 @@ class SubsurfaceToCcrlogMapper {
 class _DivecomputerMetadata {
   _DivecomputerMetadata({
     required this.modelName,
-    required this.serial,
+    required this.serialText,
     required this.diveMode,
     required this.gfLow,
     required this.gfHigh,
@@ -996,7 +1004,8 @@ class _DivecomputerMetadata {
   });
 
   final String? modelName;
-  final int? serial;
+  /// Raw `Serial` keyvalue text; parsed per brand by the mapper.
+  final String? serialText;
   final DiveMode diveMode;
   final int? gfLow;
   final int? gfHigh;
@@ -1015,7 +1024,7 @@ class _DivecomputerMetadata {
 
   factory _DivecomputerMetadata.from(List<SsLine> lines) {
     String? modelName;
-    int? serial;
+    String? serialText;
     DiveMode diveMode = DiveMode.ocTec;
     int? gfLow;
     int? gfHigh;
@@ -1057,7 +1066,7 @@ class _DivecomputerMetadata {
       } else if (l is KeyvaluePairLine) {
         switch (l.key) {
           case 'Serial':
-            serial = int.tryParse(l.value, radix: 16);
+            serialText = l.value;
             break;
           case 'FW Version':
             firmwareVersion = int.tryParse(l.value, radix: 16);
@@ -1119,7 +1128,7 @@ class _DivecomputerMetadata {
 
     return _DivecomputerMetadata(
       modelName: modelName,
-      serial: serial,
+      serialText: serialText,
       diveMode: diveMode,
       gfLow: gfLow,
       gfHigh: gfHigh,

@@ -2,6 +2,8 @@ import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/ui/notifiers/equipment_notifiers.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart'
+    show kShearwaterVendor;
 
 import '../../_helpers/powersync_test_helper.dart';
 
@@ -10,7 +12,7 @@ void main() {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
     final dao = (await openEquipmentDaoForTest(db)).dao;
-    await dao.upsertDiveComputer(serial: 1, model: 0xB407);
+    await dao.upsertDiveComputer(vendor: kShearwaterVendor, serial: 1, model: 0xB407);
 
     final n = DiveComputersNotifier(dao);
     var notified = 0;
@@ -25,7 +27,7 @@ void main() {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
     final dao = (await openEquipmentDaoForTest(db)).dao;
-    await dao.upsertDiveComputer(serial: 1, model: 0xB407);
+    await dao.upsertDiveComputer(vendor: kShearwaterVendor, serial: 1, model: 0xB407);
     final dcs = await dao.listDiveComputers();
     final dcId = dcs.single.id;
 

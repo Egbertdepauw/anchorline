@@ -22,7 +22,7 @@ import 'package:subsurface_core/data/models/dive.dart';
 import 'package:subsurface_core/data/models/sample_set.dart';
 import 'package:subsurface_core/shearwater/parser/constants.dart' show DiveMode, DecoModel;
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
-import 'package:subsurface_core/shearwater/parser/hardware.dart' show ShearwaterModel;
+import 'package:subsurface_core/shearwater/parser/hardware.dart' show ShearwaterModel, kShearwaterVendor;
 import 'package:ccrlogger/sync/subsurface_git/dao_subsurface_sync_data_source.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -200,11 +200,13 @@ void main() {
   test('listAllDiveComputers returns every registered computer', () async {
     final r = await _buildRig();
     await r.equipmentDao.upsertDiveComputer(
+      vendor: kShearwaterVendor,
       serial: 0xb89641e4,
       model: 3,
       firmwareVersion: 0xa3,
     );
     await r.equipmentDao.upsertDiveComputer(
+      vendor: kShearwaterVendor,
       serial: 0x12345678,
       model: 2,
     );

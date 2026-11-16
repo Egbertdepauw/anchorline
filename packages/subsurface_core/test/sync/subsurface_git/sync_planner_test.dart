@@ -19,6 +19,7 @@ import 'package:subsurface_core/data/models/sample_set.dart';
 import 'package:subsurface_core/sync/subsurface_git/format/subsurface_format.dart';
 import 'package:subsurface_core/sync/subsurface_git/format/subsurface_parser.dart';
 import 'package:subsurface_core/sync/subsurface_git/mapper.dart';
+import 'package:subsurface_core/sync/subsurface_git/remote_snapshot.dart';
 import 'package:subsurface_core/sync/subsurface_git/sync_inputs.dart';
 import 'package:subsurface_core/sync/subsurface_git/sync_planner.dart';
 import 'package:test/test.dart';
@@ -122,6 +123,44 @@ void main() {
       );
       expect(plan.stats.newDives, 0);
       expect(plan.stats.updatedDives, 1);
+    });
+
+    test('a remote Divesoft dive (decimal Serial) is matched by a local dive '
+        'stored with either serial reading', () {
+      final files = <String, String?>{
+        '2026/04/19-Sun-15=18=45/Dive-705': 'duration 57:30 min\n'
+            'rating 2\n'
+            'divemaster ""\n'
+            'buddy ""\n'
+            'suit ""\n',
+        '2026/04/19-Sun-15=18=45/Divecomputer':
+            'model "Divesoft Liberty"\nkeyvalue "Serial" "1234567"\n',
+      };
+      final snap = RemoteSnapshot.fromFiles(files);
+      for (final serial in [1234567, 0x1234567]) {
+        final plan = SyncPlanner().plan(
+          ccrlogDives: [
+            _bundle(
+              diveId: _diveIdA,
+              gasMixes: const [],
+              annotation: _testAnnotation(rating: 5),
+              dcSerial: serial,
+            ),
+          ],
+          existingDivesBySerialAndStart: snap.existingDivesBySerialAndStart,
+          existingMaxDiveNumber: snap.existingMaxDiveNumber,
+          existingTopLevel: const [],
+          existingSites: const {},
+        );
+        expect(plan.stats.newDives, 0, reason: 'serial $serial');
+        expect(
+          plan.filesToWrite.keys.where((k) => k.endsWith('/Divecomputer')),
+          isEmpty,
+          reason: 'serial $serial',
+        );
+        expect(plan.filesToWrite.keys.where((k) => k.contains('Dive-705')),
+            hasLength(1));
+      }
     });
 
     test('existing dive with empty (unreadable) Dive-NNN aborts rather '
@@ -1122,8 +1161,10 @@ CcrlogDiveBundle _bundle({
   DiveAnnotation? annotation,
   List<SubsurfaceDiveComputerInput>? userDiveComputers,
   List<DiveGasMix>? gasMixes,
+  int dcSerial = 0xb89641e4,
 }) {
-  final dive = _ccrPetrelDive(diveId: diveId, startTime: startTime);
+  final dive = _ccrPetrelDive(
+      diveId: diveId, startTime: startTime, dcSerial: dcSerial);
   return CcrlogDiveBundle(
     dive: dive,
     samples: _smallSampleSet(diveId: diveId),
@@ -1138,10 +1179,11 @@ CcrlogDiveBundle _bundle({
 SubsurfaceDiveInput _ccrPetrelDive({
   required String diveId,
   int startTime = 1776611925,
+  int dcSerial = 0xb89641e4,
 }) {
   return SubsurfaceDiveInput(
     id: diveId,
-    dcSerial: 0xb89641e4,
+    dcSerial: dcSerial,
     dcDiveNumber: 705,
     startTime: startTime,
     durationSeconds: 3450,
