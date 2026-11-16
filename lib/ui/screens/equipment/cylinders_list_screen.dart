@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../data/db/database.dart';
 import '../../../data/db/equipment_dao.dart';
 import '../../../data/db/gas_analyses_dao.dart';
+import '../../../data/db/open_blends_dao.dart';
 import '../../../data/models/equipment.dart';
 import '../../../labels/label_print_service.dart';
 import '../../notifiers/equipment_notifiers.dart';
@@ -17,8 +18,11 @@ class CylindersListScreen extends StatefulWidget {
   /// Cylinder label printing (#114), passed through to the log.
   final LabelPrintService? labelPrinting;
 
+  /// Passed on to the cylinder's log (#112).
+  final OpenBlendsDaoLike? openBlends;
+
   const CylindersListScreen(
-      {super.key, required this.dao, this.analysesDao, this.labelPrinting});
+      {super.key, required this.dao, this.analysesDao, this.labelPrinting, this.openBlends});
 
   @override
   State<CylindersListScreen> createState() => _CylindersListScreenState();
@@ -113,6 +117,7 @@ class _CylindersListScreenState extends State<CylindersListScreen> {
                 id: c.id,
                 analysesDao: widget.analysesDao,
                 labelPrinting: widget.labelPrinting,
+                openBlends: widget.openBlends,
               ),
             ));
             await _n.load();

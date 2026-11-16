@@ -5,6 +5,7 @@ import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
 import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
 import 'package:ccrlogger/sync/cloud/sync_health_service.dart';
 import 'package:ccrlogger/label_printer/label_bitmap.dart';
+import 'package:ccrlogger/data/db/open_blends_dao.dart';
 import 'package:ccrlogger/labels/label_print_service.dart';
 import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
@@ -26,6 +27,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../_helpers/fake_elapsed.dart';
 import '../../_helpers/fake_gas_analyses_dao.dart';
 import '../../_helpers/fake_label_printer.dart';
+import '../../_helpers/fake_open_blends_dao.dart';
 
 Finder _key(String k) => find.byKey(ValueKey(k));
 
@@ -99,6 +101,7 @@ class _Rig {
       ThemeData? theme,
       Size size = const Size(600, 3200),
       LabelPrintService? labelPrinting,
+      OpenBlendsDaoLike? openBlendsDao,
       Widget Function(Widget gas)? around}) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -111,7 +114,6 @@ class _Rig {
       settings: settings,
       analysesDao: dao,
       labelPrinting: labelPrinting,
-      blend: blend,
       controller: controller = AnalyzerController(elapsed: fakeElapsed(tester)),
       keepAwake: (_) async {},
       transportOptions: [
@@ -129,6 +131,7 @@ class _Rig {
       settings: settings,
       session: session,
       analysesDao: dao,
+      openBlendsDao: openBlendsDao,
       labelPrinting: labelPrinting,
       onHome: () => homeTaps++,
     );
@@ -187,6 +190,20 @@ void _test(String description,
 }
 
 Widget _navItemIcon(BottomNavigationBarItem item) => item.icon;
+
+/// A gas blended to [target] and not analysed yet.
+Future<void> _addOpenBlend(FakeOpenBlendsDao dao, DesiredMix target) =>
+    dao.add(NewOpenBlend(
+      target: target,
+      targetPressureBar: 200,
+      residual: const DesiredMix(21, 0),
+      residualPressureBar: 0,
+      topoff: const DesiredMix(21, 0),
+      waterCapacityL: 3,
+      role: GasRole.bailout,
+      blendedBy: null,
+      blendedAt: DateTime(2026, 11, 13),
+    ));
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -289,6 +306,29 @@ void main() {
     expect(_key('gas-tab-analyse-dot'), findsNothing);
   });
 
+  _test('gas tab shows the open count', (tester, rig) async {
+    OpenBlend b(String id) => OpenBlend(
+          id: id,
+          target: const DesiredMix(18, 45),
+          targetPressureBar: 230,
+          residual: const DesiredMix(21, 0),
+          residualPressureBar: 0,
+          topoff: const DesiredMix(21, 0),
+          waterCapacityL: 12,
+          role: GasRole.bailout,
+          blendedBy: null,
+          blendedAt: DateTime(2026, 11, 13),
+        );
+    final blends = FakeOpenBlendsDao(blends: [b('x'), b('y')]);
+    await rig.pump(tester, openBlendsDao: blends);
+    expect(find.descendant(of: _key('gas-tab-blend-count'),
+        matching: find.text('2')), findsOneWidget);
+    await blends.dismiss('x');
+    await blends.dismiss('y');
+    await tester.pump();
+    expect(_key('gas-tab-blend-count'), findsNothing);
+  });
+
   _test('the Analyse dot is green while connected without logging',
       (tester, rig) async {
     await rig.pump(tester);
@@ -320,14 +360,15 @@ void main() {
     expect(paragraph.size.width, greaterThanOrEqualTo(58));
   });
 
-  _test('the Analyse tab follows the Blend target set after it was built',
+  _test('the Analyse tab follows the open blends added after it was built',
       (tester, rig) async {
-    await rig.pump(tester);
+    final blends = FakeOpenBlendsDao();
+    await rig.pump(tester, openBlendsDao: blends);
     await _tab(tester, 'gas-tab-analyse');
     expect(_key('desired-mix-32-0'), findsNothing);
 
     await _tab(tester, 'gas-tab-blend');
-    rig.blend.setTargetMix(32, 0);
+    await _addOpenBlend(blends, const DesiredMix(32, 0));
     await tester.pump();
     await _tab(tester, 'gas-tab-analyse');
 
@@ -366,9 +407,11 @@ void main() {
     // A Mac at the bench, or an iPhone in landscape: the save card is the
     // right-hand column.
     const size = Size(1200, 800);
+    final blends = FakeOpenBlendsDao();
     await rig.pump(
       tester,
       size: size,
+      openBlendsDao: blends,
       labelPrinting: LabelPrintService(
         render: (label) async => LabelBitmap.blank(384, 240),
         printerFor: (_) => FakeLabelPrinter(),
@@ -377,7 +420,7 @@ void main() {
         use14ForDeeperMixes: () => false,
       ),
     );
-    rig.blend.setTargetMix(50, 0);
+    await _addOpenBlend(blends, const DesiredMix(50, 0));
     await tester.pump();
     await _tab(tester, 'gas-tab-analyse');
     await rig.connect(tester);
