@@ -108,6 +108,60 @@ void main() {
       expect(writtenDiveFiles, isEmpty);
     });
 
+    // Distinct Subsurface sites can share the exact same GPS: a real
+    // repository has several such pairs. Each bootstrapped dive carries
+    // its own site's name, and pushing them back must leave both Site
+    // files as they are. The planner used to look the site up by
+    // coordinates only, so one site's name was written into the other.
+    test('two sites with the same GPS are not renamed on a round trip', () {
+      // Dive-705 and Dive-656 point at these two sites.
+      const siteA = '01-Divesites/Site-456b7d53';
+      const siteB = '01-Divesites/Site-d13686a9';
+      final files = {
+        ..._fixtureFiles(),
+        siteA: 'name "Quarry North - Shore entry"\n'
+            'description ""\n'
+            'notes ""\n'
+            'gps 52.123450 4.567890\n'
+            'geo cat 2 origin 2 "Nederland"\n',
+        siteB: 'name "Quarry North - Platform"\n'
+            'description "Second entry point"\n'
+            'notes ""\n'
+            'gps 52.123450 4.567890\n'
+            'geo cat 2 origin 2 "Nederland"\n',
+      };
+      final snapshot = RemoteSnapshot.fromFiles(files);
+      final folders = _diveFolders(files);
+      final bundles = [
+        for (final folder in folders) _bootstrapBundle(files, folder),
+      ];
+      // Both dives were bootstrapped with their own site.
+      final siteNames = {
+        for (final b in bundles)
+          if (b.annotation?.siteName != null) b.annotation!.siteName!,
+      };
+      expect(siteNames, {
+        'Quarry North - Shore entry',
+        'Quarry North - Platform',
+      });
+
+      final plan = _plan(snapshot, bundles);
+
+      final changedSites = [
+        for (final path in plan.filesToWrite.keys)
+          if (path.startsWith('01-Divesites/') &&
+              plan.filesToWrite[path] != files[path])
+            '$path:\n${_lineDiff(files[path], plan.filesToWrite[path]!)}',
+      ];
+      expect(changedSites, isEmpty);
+      // A Site file that would be written back unchanged is not staged.
+      expect(
+        plan.filesToWrite.keys.where((k) => k.startsWith('01-Divesites/')),
+        isEmpty,
+      );
+      expect(plan.stats.updatedDives, 0);
+    });
+
     // Subsurface itself writes `SP change` events too: the real repository
     // has a serial-less `model "Perdix 2"` CCR dive with
     // `event 0:00 type=20 value=1100 name="SP change"`. The planner's
