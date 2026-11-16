@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../_helpers/fake_label_printer.dart';
+import '../../_helpers/sentry_capture.dart';
 
 Finder _key(String k) => find.byKey(ValueKey(k));
 
@@ -663,6 +664,24 @@ void main() {
       await tester.pumpAndSettle();
       expect(working.printed, hasLength(1));
       expect(find.text('Label printed.'), findsOneWidget);
+    });
+  });
+
+  group('reportLabelPrintError', () {
+    test('sends Sentry the type of the error and its stack, not its text',
+        () async {
+      final sentry = await startSentryCapture();
+      const secret = 'O2 32 % He 0 analysed by EdP';
+
+      await _captureDebugPrint(() async {
+        reportLabelPrintError(
+            'print', StateError('render $secret'), StackTrace.current);
+      });
+
+      final event = (await sentry.waitFor(1)).single;
+      expect(event.exceptions!.single.value, 'StateError');
+      expect(event.exceptions!.single.stackTrace?.frames, isNotEmpty);
+      expect(event.toJson().toString(), isNot(contains(secret)));
     });
   });
 }
