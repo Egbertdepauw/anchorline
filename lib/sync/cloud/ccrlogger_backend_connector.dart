@@ -18,6 +18,7 @@ import 'package:powersync/powersync.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'cloud_config.dart';
+import 'powersync_schema.dart' show kSyncedTableNames;
 
 /// Told once per (table, op type) when the server refuses an upload with
 /// 42501. See [CcrloggerBackendConnector.replayCrud].
@@ -175,7 +176,9 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
         // Self-heal lookup: fetch a parent row from the LOCAL PowerSync DB so a
         // child op whose parent never reached the cloud can re-upload it. The
         // table comes only from the hard-coded [_fkParents] map (never user
-        // input), so the interpolation is safe.
+        // input) — and, for the PATCH owner check, from an op's table, which
+        // [_patchOfAnotherAccount] validates against [kSyncedTableNames]
+        // before calling — so the interpolation is safe.
         fetchLocalRow: (table, id) =>
             database.getOptional('SELECT * FROM $table WHERE id = ?', [id]),
       );
@@ -217,8 +220,24 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   /// the previous account can reach this one. It names that account as
   /// `owner_id`; RLS rejects it with 42501, which is retried, so sent as-is
   /// it would block the queue forever. It is quarantined unsent instead.
-  /// PATCH and DELETE ops carry no owner; RLS makes them no-ops for rows of
-  /// another account, so they need no check.
+  ///
+  /// Since 0027 the server keys every row by (owner_id, id), so two accounts
+  /// can own the same id and a PATCH queued by account A would update B's
+  /// same-id row under B's session. A PATCH carries only the changed columns,
+  /// but its row is still local, and the local row names A: PowerSync does not
+  /// publish downloaded data while the upload queue holds anything, so while
+  /// A's ops wait the local row keeps A as `owner_id`, even after B signs in.
+  /// A PATCH whose local row names another account is quarantined unsent. An
+  /// ownerless row (a signed-out import, claimed by the sign-in backfill) or a
+  /// row that no longer exists uploads as before.
+  ///
+  /// A DELETE carries no data and its local row is gone, so it has no owner
+  /// to read and uploads as before. The only hard deletes are on `dive_plans`
+  /// (random ids), `oxygen_cells` (`cell_<ms>_<slot>`) and
+  /// `dive_bailout_carry` (`<diveId>:<cylinderId>`, the cylinder id being per
+  /// account), whose ids do not repeat across accounts in practice, so a
+  /// DELETE can only reach the signed-in account's own row. Revisit this if a
+  /// table with repeating ids ever gets hard deletes.
   Future<void> replayCrud(
     List<CrudEntry> entries, {
     Future<Map<String, dynamic>?> Function(String table, String id)?
@@ -227,6 +246,12 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
     final signedInUserId = _sessions.currentSession?.user.id;
     for (final op in entries) {
       if (_queuedByAnotherAccount(op, signedInUserId)) {
+        await _quarantine?.record(op, OtherAccountOpException());
+        debugPrint('replayCrud: quarantined ${op.op.name} ${op.table} '
+            'id=${op.id} — queued by another account');
+        continue;
+      }
+      if (await _patchOfAnotherAccount(op, signedInUserId, fetchLocalRow)) {
         await _quarantine?.record(op, OtherAccountOpException());
         debugPrint('replayCrud: quarantined ${op.op.name} ${op.table} '
             'id=${op.id} — queued by another account');
@@ -294,6 +319,27 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   static bool _queuedByAnotherAccount(CrudEntry op, String? signedInUserId) {
     if (op.op != UpdateType.put || signedInUserId == null) return false;
     final owner = op.opData?['owner_id'];
+    return owner != null && owner != signedInUserId;
+  }
+
+  /// Whether [op] is a PATCH of a local row that names an owner other than
+  /// [signedInUserId]. Without a session or a [fetchLocalRow] there is
+  /// nothing to compare, and a table outside [kSyncedTableNames] is never
+  /// looked up, since the name goes into SQL. A missing or ownerless row is
+  /// not another account's.
+  Future<bool> _patchOfAnotherAccount(
+    CrudEntry op,
+    String? signedInUserId,
+    Future<Map<String, dynamic>?> Function(String table, String id)?
+        fetchLocalRow,
+  ) async {
+    if (op.op != UpdateType.patch ||
+        signedInUserId == null ||
+        fetchLocalRow == null ||
+        !kSyncedTableNames.contains(op.table)) {
+      return false;
+    }
+    final owner = (await fetchLocalRow(op.table, op.id))?['owner_id'];
     return owner != null && owner != signedInUserId;
   }
 

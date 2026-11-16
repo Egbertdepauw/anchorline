@@ -524,6 +524,114 @@ void main() {
       expect(up.calls.whereType<_Upsert>().map((u) => u.data['id']),
           ['dive-c']);
     });
+
+    // A PATCH carries no owner; the owner is on its local row, which still
+    // names the previous account while that account's ops wait in the queue.
+
+    group('PATCH of another account\'s row', () {
+      late _RecordingQuarantine q;
+      late _RecordingUploader up;
+      late List<(String, String)> lookups;
+
+      CcrloggerBackendConnector connector({
+        String? signedIn = 'uid-b',
+      }) {
+        final sessions = _FakeSessions();
+        if (signedIn != null) sessions.session = _sessionFor(signedIn);
+        return CcrloggerBackendConnector.forTesting(
+          sessions: sessions,
+          uploader: up,
+          quarantine: q,
+        );
+      }
+
+      Future<Map<String, dynamic>?> Function(String, String) localRows(
+          Map<(String, String), Map<String, dynamic>> rows) {
+        return (table, id) async {
+          lookups.add((table, id));
+          return rows[(table, id)];
+        };
+      }
+
+      setUp(() {
+        q = _RecordingQuarantine();
+        up = _RecordingUploader();
+        lookups = [];
+      });
+
+      test('a PATCH whose local row names another account is quarantined '
+          'unsent', () async {
+        await connector().replayCrud([
+          CrudEntry(60, UpdateType.patch, 'dive_annotations', 'd1', null,
+              {'notes': 'x'}),
+          CrudEntry(61, UpdateType.put, 'dives', 'd2', null,
+              {'owner_id': 'uid-b', 'x': 1}),
+        ],
+            fetchLocalRow: localRows({
+              ('dive_annotations', 'd1'): {'owner_id': 'uid-a'},
+            }));
+
+        expect(q.records.map((e) => e.id), ['d1']);
+        expect(q.causes.single, isA<OtherAccountOpException>());
+        expect(up.calls.whereType<_Update>(), isEmpty);
+        expect(up.calls.whereType<_Upsert>().map((u) => u.data['id']), ['d2']);
+      });
+
+      test('a PATCH whose local row is ownerless, the signed-in account\'s, '
+          'or missing is uploaded', () async {
+        await connector().replayCrud([
+          CrudEntry(62, UpdateType.patch, 'dive_annotations', 'p1', null,
+              {'notes': 'a'}),
+          CrudEntry(63, UpdateType.patch, 'dive_annotations', 'p2', null,
+              {'notes': 'b'}),
+          CrudEntry(64, UpdateType.patch, 'dive_annotations', 'p3', null,
+              {'notes': 'c'}),
+        ],
+            fetchLocalRow: localRows({
+              ('dive_annotations', 'p1'): {'owner_id': null},
+              ('dive_annotations', 'p2'): {'owner_id': 'uid-b'},
+            }));
+
+        expect(up.calls.whereType<_Update>().map((u) => u.id),
+            ['p1', 'p2', 'p3']);
+        expect(q.records, isEmpty);
+      });
+
+      test('a DELETE is uploaded and never looks up the local row', () async {
+        await connector().replayCrud([
+          CrudEntry(65, UpdateType.delete, 'oxygen_cells', 'c1', null, null),
+        ], fetchLocalRow: localRows({}));
+
+        expect(up.calls.whereType<_Delete>().map((d) => d.id), ['c1']);
+        expect(lookups, isEmpty);
+      });
+
+      test('a PATCH on a table outside the synced tables never reaches the '
+          'local-row lookup', () async {
+        await connector().replayCrud([
+          CrudEntry(66, UpdateType.patch, 'ps_untyped', 'u1', null, {'x': 1}),
+        ], fetchLocalRow: localRows({}));
+
+        expect(lookups, isEmpty);
+        expect(up.calls.whereType<_Update>().map((u) => u.table),
+            ['ps_untyped']);
+      });
+
+      test('with no session, a PATCH uploads without a local lookup',
+          () async {
+        await connector(signedIn: null).replayCrud([
+          CrudEntry(67, UpdateType.patch, 'dive_annotations', 'n1', null,
+              {'notes': 'x'}),
+        ],
+            fetchLocalRow: localRows({
+              ('dive_annotations', 'n1'): {'owner_id': 'uid-a'},
+            }));
+
+        expect(lookups, isEmpty);
+        expect(up.calls.whereType<_Update>().map((u) => u.id), ['n1']);
+        expect(q.records, isEmpty);
+      });
+    });
   });
 
   group('permission-denied reporting', () {
@@ -711,9 +819,13 @@ Session _sessionFor(String userId) =>
 
 class _RecordingQuarantine implements CrudQuarantine {
   final List<CrudEntry> records = [];
+  final List<Object> causes = [];
 
   @override
-  Future<void> record(CrudEntry op, Object cause) async => records.add(op);
+  Future<void> record(CrudEntry op, Object cause) async {
+    records.add(op);
+    causes.add(cause);
+  }
 }
 
 /// Uploader that rejects [failTable] with a PostgrestException carrying a
