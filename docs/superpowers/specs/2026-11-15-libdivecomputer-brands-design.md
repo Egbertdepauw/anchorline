@@ -405,7 +405,7 @@ Shearwater rows get vendor and product filled in from their enum, and keep
 being unique on its own; the key becomes (vendor, serial). The bootstrap
 importer keeps the model name from Subsurface instead of reducing it to
 `unknown`. Each change needs a Supabase migration with explicit grants, the
-PowerSync schema update and a check of `infra/powersync-sync-rules.yaml`.
+PowerSync schema update and a check of `infra/powersync-sync-streams.yaml`.
 
 **Older app versions.** Builds already installed read `dc_model` as a
 Shearwater model and would push a Divesoft dive to Subsurface Cloud as a

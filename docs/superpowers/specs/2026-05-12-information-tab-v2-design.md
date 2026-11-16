@@ -137,7 +137,7 @@ The tab controller is created/disposed only when coords are present — when the
 - `lib/ui/widgets/dive_information_section.dart` — DC section appended.
 - `lib/sync/subsurface_git/mapper.dart` — emit real divemaster value.
 - `lib/sync/subsurface_git/subsurface_to_ccrlog_mapper.dart` — read divemaster from imported Dive-NNN.
-- `infra/powersync-sync-rules.yaml` — include `divemaster` in `dive_annotations` rules.
+- `infra/powersync-sync-streams.yaml` — include `divemaster` in `dive_annotations` rules.
 - `lib/ui/screens/dive_detail_screen.dart` — site block → conditional tab-group.
 - `lib/ui/widgets/site_form_view.dart` (extracted from screen, new file) — the existing form.
 - `lib/ui/widgets/site_map_view.dart` (new) — the Map-tab content.

@@ -603,6 +603,9 @@ class _CacheResult {
 
     final header = DiveHeader(
       startTimestamp: uint32BE(data, opening[0] + (pnf ? 12 : 12)),
+      // Legacy: libdivecomputer's shearwater_predator.c reads this as the
+      // "internal dive number" and checks it against the footer's.
+      diveNumber: uint16BE(data, opening[0] + 2),
       diveMode: diveMode,
       decoModel: decoModel,
       gfLow: data[gfIdx],

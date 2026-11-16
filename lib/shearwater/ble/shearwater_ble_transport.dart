@@ -422,6 +422,10 @@ class ShearwaterBleTransport implements ShearwaterLink {
                 entry.compressedSize > 0 ? entry.compressedSize : diveBytes.length,
             currentEntry: entry,
           ));
+          // Paired by request only: these are the bytes at the entry's
+          // address, which a stale manifest can make another dive's.
+          // ShearwaterDownloadSource checks the blob's header against the
+          // entry before it uses either.
           controller.add(DownloadedDive(manifest: entry, data: diveBytes));
         }
       }

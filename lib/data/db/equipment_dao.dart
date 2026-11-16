@@ -1085,10 +1085,13 @@ class EquipmentDao {
         'INSERT INTO dive_bailout_carry '
         '(id, owner_id, dive_id, cylinder_id, gas_mix, fill_pressure_bar, '
         ' bailout_order, created_at, updated_at, deleted_at, version, '
-        ' sync_status) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, 0)',
+        ' sync_status, dc_family) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, 0, '
+        // A bailout row shares its dive's sync stream (dc_family gates
+        // libdivecomputer rows away from older builds).
+        '(SELECT dc_family FROM dives WHERE id = ?))',
         [id, _ownerId, diveId, cylinderId, gasMix, fillPressureBar,
-          bailoutOrder, now, now],
+          bailoutOrder, now, now, diveId],
       );
     }
     return id;
