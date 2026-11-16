@@ -863,7 +863,121 @@ void main() {
       // CCRLog's three default cylinders were NOT injected.
       expect(out, isNot(contains('"3L tank"')));
     });
+
+    // Older Subsurface files often lack the divemaster / buddy / suit
+    // lines the mapper always emits. On the real repository the merge
+    // appended `divemaster ""` to 523 dives and `suit ""` to 436.
+    test('empty owned lines the file lacks are not appended', () {
+      final plan = _planAgainst(
+        'duration 57:30 min\n'
+        'rating 3\n',
+        DiveAnnotation(
+          diveId: _diveIdA,
+          rating: 3,
+          createdAt: DateTime.utc(2026, 5, 1),
+          updatedAt: DateTime.utc(2026, 5, 1),
+        ),
+      );
+      expect(plan.filesToWrite, isEmpty);
+      expect(plan.stats.skippedDives, 1);
+    });
+
+    test('an owned line that reads the same is not rewritten for '
+        'formatting', () {
+      final plan = _planAgainst(
+        'duration 57:30 min\n'
+        'rating 7\n'
+        'buddy "Adri , Bjorn Hack"\n'
+        'airtemp 25°C\n'
+        'weightsystem weight=2.376kg description="p-weight"\n'
+        'weightsystem weight=0.0kg\n',
+        DiveAnnotation(
+          diveId: _diveIdA,
+          // The read mapper clamps ratings to 1..5.
+          rating: 5,
+          buddies: const ['Adri', 'Bjorn Hack'],
+          airTempC: 25,
+          weights: const [
+            Weight(weightKg: 2.376, description: 'p-weight'),
+            Weight(weightKg: 0, description: ''),
+          ],
+          createdAt: DateTime.utc(2026, 5, 1),
+          updatedAt: DateTime.utc(2026, 5, 1),
+        ),
+      );
+      expect(plan.filesToWrite, isEmpty);
+      expect(plan.stats.skippedDives, 1);
+    });
+
+    test('a real owned edit made in CCRLog is still pushed', () {
+      final plan = _planAgainst(
+        'duration 57:30 min\n'
+        'divemaster ""\n'
+        'buddy "Adri , Bjorn Hack"\n'
+        'suit "Wetsuit"\n'
+        'weightsystem weight=2.376kg description="p-weight"\n'
+        'weightsystem weight=1.0kg description="belt"\n',
+        DiveAnnotation(
+          diveId: _diveIdA,
+          divemaster: 'Robin',
+          buddies: const ['Adri', 'Kim'],
+          // suit cleared in CCRLog
+          chill: 4,
+          weights: const [
+            Weight(weightKg: 2.376, description: 'p-weight'),
+            Weight(weightKg: 1.5, description: 'belt'),
+          ],
+          createdAt: DateTime.utc(2026, 5, 1),
+          updatedAt: DateTime.utc(2026, 5, 1),
+        ),
+      );
+      const divePath = '2026/04/19-Sun-15=18=45/Dive-42';
+      expect(plan.stats.updatedDives, 1);
+      expect(plan.diveIdsPlanned, [_diveIdA]);
+      expect(plan.filesToWrite.keys.where((k) => k.contains('Divecomputer')),
+          isEmpty);
+      expect(
+        plan.filesToWrite[divePath],
+        'duration 57:30 min\n'
+        'divemaster "Robin"\n'
+        'buddy "Adri, Kim"\n'
+        'suit ""\n'
+        // The group is replaced as a whole, at gram precision.
+        'weightsystem weight=2.376kg description="p-weight"\n'
+        'weightsystem weight=1.5kg description="belt"\n'
+        'chill 4\n',
+      );
+    });
   });
+}
+
+/// Plan one existing dive whose Dive-NNN on the remote is [existingText],
+/// with [annotation] as CCRLog's annotation and no cylinders.
+SyncPlan _planAgainst(String existingText, DiveAnnotation annotation) {
+  final bundle = _bundle(
+    diveId: _diveIdA,
+    annotation: annotation,
+    gasMixes: const [],
+  );
+  return SyncPlanner().plan(
+    ccrlogDives: [bundle],
+    existingDivesBySerialAndStart: {
+      (serial: bundle.dive.dcSerial, startTime: bundle.dive.startTime):
+          ExistingRemoteDive(
+        folderSegments: ['2026', '04', '19-Sun-15=18=45'],
+        diveNumber: 42,
+        serial: bundle.dive.dcSerial,
+        startTime: bundle.dive.startTime,
+        diveLines: parseSubsurfaceFile(
+          existingText,
+          kind: SubsurfaceFileKind.dive,
+        ).lines,
+      ),
+    },
+    existingMaxDiveNumber: 42,
+    existingTopLevel: const [],
+    existingSites: const {},
+  );
 }
 
 // ── helpers ──────────────────────────────────────────────────────────

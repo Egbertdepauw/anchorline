@@ -542,6 +542,15 @@ class SyncPlanner {
   /// Merge our CCRLog-emitted Dive-NNN lines into [existing], replacing
   /// only lines whose key is in [_ownedDiveLineKeys]. Non-owned lines
   /// are preserved verbatim — that's the data-loss protection.
+  ///
+  /// An owned line is only replaced when CCRLog holds a different value
+  /// for it. A line that reads the same as ours ([_ownedReading]) stays
+  /// as it is, so a dive the bootstrap imported from this repository is
+  /// not rewritten just because the mapper formats a value differently
+  /// (buddy spacing, weight decimals, a missing weight description). The
+  /// same goes for a `weightsystem` group as a whole. An empty owned line
+  /// the file lacks (`divemaster ""`, `suit ""`, `buddy ""`) is not
+  /// appended.
   List<SsLine> _mergeDiveLines({
     required List<SsLine> existing,
     required List<SsLine> ours,
@@ -569,12 +578,25 @@ class SyncPlanner {
     // every non-owned line verbatim, so a foreign edit on a non-owned key
     // can never be overwritten by our write. The byte-compare was extra
     // belt-and-suspenders that we don't need.
-    //
+
+    // Owned repeating groups that read the same as the existing file's.
+    // Those keep their existing lines, in place.
+    final keptRepeating = <String>{
+      for (final entry in ourRepeatingByKey.entries)
+        if (_ownedDiveLineKeys.contains(entry.key) &&
+            _sameGroupReading(
+              entry.key,
+              existing.where((l) => _lineKey(l) == entry.key),
+              entry.value,
+            ))
+          entry.key,
+    };
+
     // Build merged output. Walk existing lines, swap owned ones for
     // ours when we have something. Track placement so we can append the
     // rest at the end (preserves insertion order from the mapper).
     final placedSingles = <String>{};
-    final placedRepeating = <String>{};
+    final placedRepeating = <String>{...keptRepeating};
     final merged = <SsLine>[];
     for (final line in existing) {
       final key = _lineKey(line);
@@ -587,6 +609,10 @@ class SyncPlanner {
         continue;
       }
       // Owned key.
+      if (keptRepeating.contains(key)) {
+        merged.add(line);
+        continue;
+      }
       if (ourRepeatingByKey.containsKey(key)) {
         if (!placedRepeating.contains(key)) {
           merged.addAll(ourRepeatingByKey[key]!);
@@ -595,8 +621,12 @@ class SyncPlanner {
         // Drop the existing line — the whole group is replaced by ours.
         continue;
       }
-      if (ourSingleByKey.containsKey(key)) {
-        merged.add(ourSingleByKey[key]!);
+      final ourLine = ourSingleByKey[key];
+      if (ourLine != null) {
+        // Keep the existing line when it holds the value we would write.
+        merged.add(_ownedReading(key, line) == _ownedReading(key, ourLine)
+            ? line
+            : ourLine);
         placedSingles.add(key);
         continue;
       }
@@ -606,10 +636,12 @@ class SyncPlanner {
     // 3) Append owned lines we have but the existing file didn't.
     // CRITICAL: only owned keys, otherwise non-owned keys we happen to
     // also emit (e.g. `duration`) get duplicated on top of the line
-    // we already preserved verbatim from `existing`.
+    // we already preserved verbatim from `existing`. An empty one adds
+    // nothing a reader would see, so it is left out.
     for (final entry in ourSingleByKey.entries) {
       if (!_ownedDiveLineKeys.contains(entry.key)) continue;
       if (placedSingles.contains(entry.key)) continue;
+      if (_isEmptyOwned(entry.key, entry.value)) continue;
       merged.add(entry.value);
     }
     for (final entry in ourRepeatingByKey.entries) {
@@ -618,6 +650,114 @@ class SyncPlanner {
       merged.addAll(entry.value);
     }
     return merged;
+  }
+
+  /// What the bootstrap's read mapper (`SubsurfaceToCcrlogMapper`) takes
+  /// from the owned Dive-NNN line [line], as a string. Two lines with the
+  /// same reading give CCRLog the same value, so the merge treats them as
+  /// equal:
+  /// - `buddy` is the list of names split on `,` and trimmed, so
+  ///   `"Adri , Bjorn Hack"` reads as `"Adri, Bjorn Hack"`;
+  /// - the 1–5 ratings read as the clamped integer;
+  /// - `airtemp` / `watertemp` read as °C to the 0.1 the mapper writes;
+  /// - a `weightsystem` reads as its grams and description, so
+  ///   `weight=0.0kg` equals `weight=0.0kg description=""`.
+  /// Other quoted and scalar lines read as their value, and any other
+  /// line as its rendered text.
+  static String _ownedReading(String key, SsLine line) {
+    switch (line) {
+      case TagsLine():
+        return line.renderFromFields();
+      case WeightsystemLine():
+        return _weightReading(line) ?? line.render();
+      case QuotedLine(:final value) || ScalarLine(:final value):
+        switch (key) {
+          case 'buddy':
+            return value
+                .split(',')
+                .map((name) => name.trim())
+                .where((name) => name.isNotEmpty)
+                .join(', ');
+          case 'rating' ||
+                'visibility' ||
+                'wavesize' ||
+                'current' ||
+                'surge' ||
+                'chill':
+            final r = int.tryParse(value);
+            if (r == null) return value;
+            return (r > 0 ? r.clamp(1, 5) : 0).toString();
+          case 'airtemp' || 'watertemp':
+            return _celsius(value)?.toStringAsFixed(1) ?? value;
+          default:
+            return value;
+        }
+      default:
+        return line.render();
+    }
+  }
+
+  /// `<grams> "<description>"` for a `weightsystem` line, or null when it
+  /// has no readable weight (the read mapper skips such lines). A missing
+  /// description reads as an empty one, as the read mapper takes it.
+  static String? _weightReading(WeightsystemLine line) {
+    int? grams;
+    var description = '';
+    for (final field in line.fields) {
+      if (field.key == 'weight' && field.value.endsWith('kg')) {
+        final kg = double.tryParse(
+            field.value.substring(0, field.value.length - 'kg'.length));
+        if (kg != null) grams = (kg * 1000).round();
+      } else if (field.key == 'description') {
+        final v = field.value;
+        description = v.length >= 2 && v.startsWith('"') && v.endsWith('"')
+            ? v.substring(1, v.length - 1)
+            : v;
+      }
+    }
+    return grams == null ? null : '$grams "$description"';
+  }
+
+  /// True when the existing [existing] group and [ours] read the same,
+  /// line by line, leaving out lines the read mapper skips.
+  static bool _sameGroupReading(
+    String key,
+    Iterable<SsLine> existing,
+    List<SsLine> ours,
+  ) {
+    List<String> readings(Iterable<SsLine> lines) => [
+          for (final l in lines)
+            if (l is! WeightsystemLine || _weightReading(l) != null)
+              _ownedReading(key, l),
+        ];
+    final a = readings(existing);
+    final b = readings(ours);
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  /// True for an owned line that holds no value, such as the
+  /// `divemaster ""`, `buddy ""` and `suit ""` the mapper always emits.
+  /// The read mapper takes nothing from one.
+  static bool _isEmptyOwned(String key, SsLine line) => switch (line) {
+        QuotedLine() => _ownedReading(key, line).isEmpty,
+        TagsLine(:final tags) => tags.isEmpty,
+        _ => false,
+      };
+
+  /// `24.0°C` / `24.0 C` / `24.0` → 24.0, as the read mapper parses an
+  /// environment temperature. Null when it is not a number.
+  static double? _celsius(String value) {
+    var v = value.trim();
+    if (v.endsWith('°C')) {
+      v = v.substring(0, v.length - 2);
+    } else if (v.endsWith('C')) {
+      v = v.substring(0, v.length - 1);
+    }
+    return double.tryParse(v.trim());
   }
 
   /// True when the line is an SP-change-named event. Subsurface's own
