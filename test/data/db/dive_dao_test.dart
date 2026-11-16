@@ -339,6 +339,25 @@ void main() {
       expect(await dao.getEvents('nope'), isEmpty);
     });
 
+    test('a corrupt events_blob reads as no events', () async {
+      final c = await importWith();
+      await openPs.execute(
+          'UPDATE dive_samples SET events_blob = ? WHERE id = ?',
+          ['not base64!', c.dive.id]);
+      expect(await dao.getEvents(c.dive.id), isEmpty);
+    });
+
+    test('a corrupt cell_ppo2_blob leaves the rest of the profile', () async {
+      final c = await importWith();
+      await openPs.execute(
+          'UPDATE dive_samples SET cell_ppo2_blob = ? WHERE id = ?',
+          ['not base64!', c.dive.id]);
+      final s = await dao.getSamples(c.dive.id);
+      expect(s, isNotNull);
+      expect(s!.depthMeters.length, s.sampleCount);
+      expect(s.cellPpo2Bar, isEmpty);
+    });
+
     test('getSamples and getEvents read a samples row written by an old build',
         () async {
       final c = _convertFixture(718);

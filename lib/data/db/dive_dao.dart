@@ -336,11 +336,19 @@ class DiveDao {
     final intervalMs = (diveRow?['sample_interval_ms'] as int?) ?? 10000;
 
     final tankPressuresB64 = samplesRow['tank_pressures_blob'] as String?;
-    // Absent on rows written by a build from before per-cell ppO2.
+    // NULL whenever the dive has no per-cell ppO2: every Shearwater dive,
+    // and rows written by older builds. A damaged value reads the same way.
     final cellPpo2B64 = samplesRow['cell_ppo2_blob'] as String?;
+    Uint8List? cellPpo2Bytes;
+    if (cellPpo2B64 != null) {
+      try {
+        cellPpo2Bytes = base64Decode(cellPpo2B64);
+      } on FormatException {
+        cellPpo2Bytes = null;
+      }
+    }
 
-    return SampleCodec.decode(
-      blobs: {
+    Map<String, Uint8List> blobsWith(Uint8List? cellBytes) => {
         'depth': base64Decode(samplesRow['depth_blob'] as String),
         'temperature': base64Decode(samplesRow['temperature_blob'] as String),
         'ppo2': base64Decode(samplesRow['ppo2_blob'] as String),
@@ -356,12 +364,28 @@ class DiveDao {
         'status': base64Decode(samplesRow['status_blob'] as String),
         if (tankPressuresB64 != null)
           'tankPressures': base64Decode(tankPressuresB64),
-        if (cellPpo2B64 != null) 'cellPpo2': base64Decode(cellPpo2B64),
-      },
-      diveId: diveId,
-      sampleCount: samplesRow['sample_count'] as int,
-      sampleIntervalMs: intervalMs,
-    );
+        'cellPpo2': ?cellBytes,
+      };
+
+    final sampleCount = samplesRow['sample_count'] as int;
+    try {
+      return SampleCodec.decode(
+        blobs: blobsWith(cellPpo2Bytes),
+        diveId: diveId,
+        sampleCount: sampleCount,
+        sampleIntervalMs: intervalMs,
+      );
+    } catch (_) {
+      // Only the optional cell column may be damaged; without it a failure
+      // is a real one and the call below rethrows it.
+      if (cellPpo2Bytes == null) rethrow;
+      return SampleCodec.decode(
+        blobs: blobsWith(null),
+        diveId: diveId,
+        sampleCount: sampleCount,
+        sampleIntervalMs: intervalMs,
+      );
+    }
   }
 
   /// Decoded events for a dive. Empty when the dive has no samples row, no
@@ -372,7 +396,11 @@ class DiveDao {
         'SELECT events_blob FROM dive_samples WHERE id = ?', [diveId]);
     final b64 = row?['events_blob'] as String?;
     if (b64 == null) return const [];
-    return EventCodec.decode(base64Decode(b64));
+    try {
+      return EventCodec.decode(base64Decode(b64));
+    } on FormatException {
+      return const [];
+    }
   }
 
   /// Get the raw binary blob for a dive (for re-parsing). Returns

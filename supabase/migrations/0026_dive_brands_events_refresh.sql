@@ -18,10 +18,13 @@
 -- dive_bailout_carry: `dc_family`, a copy of the dive's, so the sync gate can
 -- filter carry rows without joining dives.
 --
--- keep_newer_parse(): a before-update trigger on dives and dive_samples. An
--- older build (1.1.0+47 and earlier) or a device that has not synced yet must
--- never lower a refreshed row's parser_version or replace its data with an
--- older parse.
+-- Two before-update guard triggers keep an older build (1.1.0+47 and earlier)
+-- or a device that has not synced yet from undoing a refreshed row:
+--   * dives uses keep_newer_parse(): it never lowers parser_version or
+--     replaces the data with an older parse.
+--   * dive_samples uses keep_newer_samples(): the same rule, and when the
+--     stored parser_version is >= 0 it also refuses a same-version change of
+--     any blob or of sample_count.
 
 -- dives ----------------------------------------------------------------------
 ALTER TABLE public.dives ADD COLUMN IF NOT EXISTS dc_vendor text;
