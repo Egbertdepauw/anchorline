@@ -57,13 +57,65 @@ export DATABASE_URL='postgresql://postgres:<pwd>@db.<ref>.supabase.co:5432/postg
 ## Acceptance test (the real verification)
 
 These migrations reference Supabase-only objects (`auth.users`, the `powersync`
-publication), so they can't be run on a vanilla local Postgres. Verify against
-the live (or a Supabase branch) DB:
+publication, `pg_cron`). `supabase/dry_run/run.sh` stubs them on a throwaway
+Postgres in Docker (see "Dry run" below), which proves the SQL and idempotency
+but not the live project. Verify against the live (or a Supabase branch) DB:
 
 1. `./supabase/apply_migrations.sh` — applies anything missing (e.g. 0009/0010).
 2. Run it **again** — must complete with zero errors (all no-ops). This proves
    idempotency/convergence.
 3. `./supabase/check_migrations.sh` — must print `✓ in sync`.
+
+## Before deploying 0027
+
+`0027_per_owner_row_keys.sql` keys all 16 synced tables by `(owner_id, id)`
+and makes the four child foreign keys composite, so two accounts can hold the
+same ids (same dive computer, same dive). Spec:
+`docs/superpowers/specs/2026-11-16-per-owner-row-keys-design.md`.
+
+**Deploy order.** Do not apply it until a build with #233 (an account switch
+must not apply the other account's queued changes) and this PR's app changes
+has shipped. Until then the blocked test account stays blocked.
+
+**Pre-flight query.** 0027 refuses to run (and rolls back completely) if a
+child row has no parent of the same owner. Check first, in the SQL Editor:
+
+```sql
+select 'dive_samples -> dives' as problem, s.owner_id, s.id
+from public.dive_samples s
+where not exists (select 1 from public.dives d where d.owner_id = s.owner_id and d.id = s.id)
+union all
+select 'dive_bailout_carry -> dives', c.owner_id, c.id
+from public.dive_bailout_carry c
+where not exists (select 1 from public.dives d where d.owner_id = c.owner_id and d.id = c.dive_id)
+union all
+select 'dive_bailout_carry -> cylinders', c.owner_id, c.id
+from public.dive_bailout_carry c
+where not exists (select 1 from public.cylinders y where y.owner_id = c.owner_id and y.id = c.cylinder_id)
+union all
+select 'dive_merge_links -> dives', m.owner_id, m.id
+from public.dive_merge_links m
+where not exists (select 1 from public.dives d where d.owner_id = m.owner_id and d.id = m.id);
+```
+
+If it lists rows, do not apply: those rows need a decision from Egbert.
+
+**What to expect.** Changing a primary key makes PowerSync re-replicate each
+table once, and clients download those rows again. Deploy at a quiet moment
+and watch the PowerSync dashboard until replication catches up.
+
+**Checks after deploying.** Run `./supabase/apply_migrations.sh` a second time
+(it must finish with zero errors), then `./supabase/check_migrations.sh`.
+
+## Dry run
+
+`supabase/dry_run/run.sh` (Docker and `psql` required, no arguments, exit 0 =
+pass) starts a throwaway `postgres:17-alpine` on port 55433 with the
+Supabase-only objects stubbed, applies every migration twice, and then runs
+every `supabase/dry_run/checks/*_check.sql`. It also runs the 0027 guard
+scenario in a second database. It never touches a real Supabase project. A
+new migration that needs a behavioural check adds a `checks/NNNN_*_check.sql`
+that owns its own `begin; ... rollback;`.
 
 ## Before deploying 0022
 
@@ -117,11 +169,8 @@ For people who no longer have the app and email `support@anchorline.eu`
    the audit-log entries that hold the email and IP address):
 
    ```sql
-   delete from public.dive_bailout_carry
-   where dive_id in (select id from public.dives where owner_id = '<uid>')
-      or cylinder_id in (select id from public.cylinders where owner_id = '<uid>');
-   delete from public.dive_merge_links
-   where id in (select id from public.dives where owner_id = '<uid>');
+   delete from public.dive_bailout_carry where owner_id = '<uid>';
+   delete from public.dive_merge_links where owner_id = '<uid>';
    delete from auth.audit_log_entries where payload->>'actor_id' = '<uid>';
    ```
 

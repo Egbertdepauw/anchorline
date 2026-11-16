@@ -8,7 +8,7 @@
 -- everything is removed or nothing is. PowerSync replicates the deletes.
 --
 -- Three other foreign keys into the user's data are NO ACTION, not cascade:
--- dive_bailout_carry.dive_id and .cylinder_id, and dive_merge_links.id.
+-- dive_bailout_carry (dive and cylinder) and dive_merge_links (dive).
 -- The function deletes the rows behind them first, then the audit-log
 -- entries that carry the user's email and IP (they have no foreign key to
 -- auth.users, so nothing cascades to them), then the auth.users row.
@@ -31,6 +31,9 @@
 -- deletion moves there and this function can be dropped.
 --
 -- Creates no table, so no table grants are needed.
+--
+-- Amended for 0027 (per-owner keys): edited in place because apply_migrations.sh
+-- re-runs every file.
 
 create or replace function public.delete_my_account()
 returns void
@@ -46,16 +49,14 @@ begin
     raise exception 'not signed in' using errcode = '28000';
   end if;
 
-  -- These three foreign keys are NO ACTION, not cascade. Deleting the
-  -- referencing rows explicitly means the auth delete never depends on the
-  -- order the cascades run in. It also removes rows of another owner that
-  -- point at this user's dives or cylinders; those could not survive the
-  -- delete anyway.
-  delete from public.dive_bailout_carry
-  where dive_id in (select id from public.dives where owner_id = uid)
-     or cylinder_id in (select id from public.cylinders where owner_id = uid);
-  delete from public.dive_merge_links
-  where id in (select id from public.dives where owner_id = uid);
+  -- The three composite foreign keys into dives and cylinders (bailout carry
+  -- and merge links) are NO ACTION, not cascade. Deleting the referencing
+  -- rows explicitly means the auth delete never depends on the order the
+  -- cascades run in. They are matched by owner, not by dive or cylinder id:
+  -- since 0027 ids repeat across accounts, and the composite foreign keys
+  -- keep a child row's owner equal to its parent's.
+  delete from public.dive_bailout_carry where owner_id = uid;
+  delete from public.dive_merge_links where owner_id = uid;
 
   -- The audit-log entries hold the email and IP address. Guarded, so a
   -- missing privilege (or a table Supabase has removed) cannot block the
