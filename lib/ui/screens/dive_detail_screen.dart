@@ -32,6 +32,7 @@ import '../widgets/crosshair_tooltip.dart';
 import '../widgets/dive_annotations_section.dart';
 import '../widgets/dive_bailout_carry_section.dart';
 import '../widgets/dive_cylinders_section.dart';
+import '../widgets/dive_possible_duplicates_banner.dart';
 import '../widgets/dive_information_section.dart';
 import '../widgets/dive_media_tab.dart';
 import '../widgets/dive_equipment_section.dart';
@@ -232,6 +233,19 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
 
   void _onChanged() => setState(() {});
 
+  /// Opens a dive the banner links to, as its own screen.
+  void _openCandidate(Dive dive) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => DiveDetailScreen(
+        dive: dive,
+        dao: widget.dao,
+        annotationsDao: widget.annotationsDao,
+        equipmentDao: widget.equipmentDao,
+        settingsNotifier: widget.settingsNotifier,
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final dive = widget.dive;
@@ -405,6 +419,12 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+                  DivePossibleDuplicatesBanner(
+                    // A merged dive's flag lives on its earliest member.
+                    diveId: widget.annotationsDiveId ?? widget.dive.id,
+                    dao: widget.dao,
+                    onOpen: _openCandidate,
+                  ),
                   // Header — dive summary readout
                   Builder(builder: (context) {
                     final palette = context.palette;

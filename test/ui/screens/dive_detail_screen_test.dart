@@ -12,6 +12,7 @@ import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:ccrlogger/ui/screens/dive_detail_screen.dart';
 import 'package:ccrlogger/ui/screens/sites_map_screen.dart';
+import 'package:ccrlogger/ui/util/format.dart' show formatDateShort;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -106,6 +107,58 @@ Future<void> _pumpScreen(
 }
 
 void main() {
+  testWidgets('a flagged dive shows the banner with links to its candidates',
+      (tester) async {
+    final s = await _seedDive(tester);
+    late final Dive dive;
+    late final Dive other;
+    await tester.runAsync(() async {
+      // A second, live dive for the banner to link to.
+      final data = File('test/fixtures/dives/dive_717.bin').readAsBytesSync();
+      final parsed =
+          ShearwaterDiveParser(model: ShearwaterModel.petrel3).parse(data);
+      await s.dao.importDive(
+          converted: DiveConverter.convert(
+              parsed: parsed,
+              dcSerial: 0xB89641E4,
+              dcDiveNumber: 717,
+              dcModel: ShearwaterModel.petrel3),
+          rawBlob: data,
+          parserVersion: 1);
+      other = (await s.dao.getAllDives())
+          .firstWhere((d) => d.id != s.dive.id);
+      await s.psDb.execute(
+          'UPDATE dives SET match_candidates_json = ? WHERE id = ?',
+          ['["${other.id}","gone"]', s.dive.id]);
+      dive = (await s.dao.getAllDives()).firstWhere((d) => d.id == s.dive.id);
+    });
+
+    await _pumpScreen(
+        tester, s.db, s.equipmentDao, s.annotationsDao, dive, s.dao);
+    // The banner chains two reads; each continuation needs a pump.
+    for (var i = 0; i < 6; i++) {
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await tester.pump();
+      });
+    }
+    await tester.pump();
+
+    expect(find.text('This dive may be the same as 1 other dive in your log.'),
+        findsOneWidget);
+    expect(find.text('${formatDateShort(other.startTime)} · #717'),
+        findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('an unflagged dive shows no banner', (tester) async {
+    final s = await _seedDive(tester);
+    await _pumpScreen(
+        tester, s.db, s.equipmentDao, s.annotationsDao, s.dive, s.dao);
+    expect(find.textContaining('may be the same as'), findsNothing);
+  });
+
   testWidgets('shows formatted STACK end-of-dive remaining', (tester) async {
     // 23777s start, 20293s end, 25200s configured (real dive_718 numbers).
     final s = await _seedDive(tester,

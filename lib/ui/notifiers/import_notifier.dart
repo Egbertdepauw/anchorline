@@ -13,6 +13,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../data/db/import_state_dao.dart';
+import '../../data/import/import_problem_reporter.dart';
 import '../../devices/dive_download_source.dart';
 import '../../devices/shearwater/shearwater_download_source.dart';
 import '../../shearwater/ble/ble_io_impl.dart';
@@ -45,6 +46,7 @@ class ImportNotifier extends ChangeNotifier {
   final ImportStateDao _importStateDao;
   final EquipmentDao _equipmentDao;
   final UsageTracker? _usageTracker;
+  final ImportProblemReporter _report;
   final bool useMock;
 
   bool _disposed = false;
@@ -88,10 +90,12 @@ class ImportNotifier extends ChangeNotifier {
     required EquipmentDao equipmentDao,
     UsageTracker? usageTracker,
     this.useMock = false,
+    ImportProblemReporter? reporter,
   })  : _dao = dao,
         _importStateDao = importStateDao,
         _equipmentDao = equipmentDao,
-        _usageTracker = usageTracker;
+        _usageTracker = usageTracker,
+        _report = reporter ?? reportImportProblemToSentry;
 
   // ── Accessors ──────────────────────────────────────────────────────────────
 
@@ -341,12 +345,19 @@ class ImportNotifier extends ChangeNotifier {
       var entries = await _source!.listDives(sinceFingerprint: lastFp);
 
       if (!_forceFullReimport && entries.isNotEmpty) {
-        final ids = entries.map((e) => e.diveId).toList(growable: false);
-        final existing = await _dao.existingDiveIdsAmong(ids);
+        final existing = await _dao.alreadyDownloadedAmong(
+          entries.map((l) => (
+                diveId: l.diveId,
+                startTimeSeconds: l.startTimestamp,
+                diveNumber: l.diveNumber,
+              )).toList(growable: false),
+          vendor: _identity!.vendor,
+          serial: _identity!.serial,
+        );
         if (existing.isNotEmpty) {
           entries = [
-            for (var i = 0; i < entries.length; i++)
-              if (!existing.contains(ids[i])) entries[i],
+            for (final e in entries)
+              if (!existing.contains(e.diveId)) e,
           ];
         }
       }
@@ -431,17 +442,27 @@ class ImportNotifier extends ChangeNotifier {
                 rawBlob: event.rawBlob,
                 parserVersion: event.parserVersion,
               );
-              // Task 12 reports each outcome properly.
-              if (outcome == ImportOutcome.inserted ||
-                  outcome == ImportOutcome.insertedFlagged ||
-                  outcome == ImportOutcome.refreshed) {
-                _downloadedCount++;
-                lastSuccessfulFingerprint = event.fingerprint;
+              switch (outcome) {
+                case ImportOutcome.inserted:
+                case ImportOutcome.insertedFlagged:
+                case ImportOutcome.refreshed:
+                  _downloadedCount++;
+                  lastSuccessfulFingerprint = event.fingerprint;
+                case ImportOutcome.unchanged:
+                  break;
+                case ImportOutcome.rejected:
+                  _failedCount++;
+                  _report(
+                    StateError('The dive was rejected as unusable'),
+                    null,
+                    'download',
+                  );
               }
-            } catch (e) {
+            } catch (e, st) {
               debugPrint(
                   'Failed to import dive ${event.listing?.diveNumber}: $e');
               _failedCount++;
+              _report(e, st, 'download');
             }
             await _applyScrubberEvents(serial);
             // After a dive lands, force a non-throttled rebuild so
@@ -454,6 +475,7 @@ class ImportNotifier extends ChangeNotifier {
             debugPrint(
                 'Failed to import dive ${event.listing?.diveNumber}: ${event.error}');
             _failedCount++;
+            _report(event.error, event.stack, 'download');
             await _applyScrubberEvents(serial);
             _flushNotify();
         }

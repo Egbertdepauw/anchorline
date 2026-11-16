@@ -42,6 +42,13 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   double? get waterTempC => _annotation?.waterTempC;
   List<Weight> get weights => _annotation?.weights ?? const [];
   Map<int, String?> get cylinderByMix => Map.unmodifiable(_cylinderByMix);
+
+  /// Cylinder assignments whose gas mix no longer exists on the dive (a
+  /// refresh keeps them under a negative index). Keyed by that index.
+  Map<int, String?> get unassignedCylinders => {
+        for (final e in _cylinderByMix.entries)
+          if (e.key < 0) e.key: e.value,
+      };
   bool get dirty => _dirty;
   bool get loaded => _annotation != null;
 
@@ -187,6 +194,19 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   void setCylinderForMix(int gasMixIndex, String? cylinderId) {
     _cylinderByMix = {..._cylinderByMix, gasMixIndex: cylinderId};
     _markDirty();
+  }
+
+  /// Removes an unassigned cylinder's row now (it is not part of the
+  /// annotation save) and drops it from the list.
+  Future<void> removeUnassignedCylinder(int index) async {
+    final diveId = _diveId;
+    if (diveId == null || index >= 0) return;
+    await _equipmentDao.removeDiveCylinder(diveId, index);
+    _cylinderByMix = {
+      for (final e in _cylinderByMix.entries)
+        if (e.key != index) e.key: e.value,
+    };
+    notifyListeners();
   }
 
   void _markDirty() {

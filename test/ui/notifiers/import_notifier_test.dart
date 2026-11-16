@@ -1,9 +1,16 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/data/db/import_state_dao.dart';
+import 'package:ccrlogger/shearwater/parser/dive_parser.dart';
+import 'package:subsurface_core/data/models/dive.dart' as model;
+import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart';
+import 'package:subsurface_core/subsurface_core.dart'
+    show kSubsurfaceImportedParserVersion;
 import 'package:ccrlogger/devices/dive_download_source.dart';
 import 'package:ccrlogger/shearwater/ble/mock_ble_transport.dart';
 import 'package:ccrlogger/shearwater/ble/shearwater_ble_transport.dart';
@@ -92,6 +99,70 @@ class _CorruptSecondDiveLink implements ShearwaterLink {
 
   @override
   Future<void> disconnect() => _inner.disconnect();
+}
+
+/// A [DiveDao] whose every import is rejected.
+class _RejectingDao extends DiveDao {
+  _RejectingDao(super.db, super.ps, super.session);
+
+  @override
+  Future<ImportOutcome> importDive({
+    required ConvertedDive converted,
+    required Uint8List rawBlob,
+    required int parserVersion,
+    bool matchSubsurfaceCopies = true,
+  }) async =>
+      ImportOutcome.rejected;
+}
+
+/// The mock dive [n] as a Subsurface copy: Subsurface's own id and logbook
+/// number, a start time [shiftSeconds] away, legacy-free Shearwater vendor.
+ConvertedDive _copyOfMockDive(int n,
+    {int shiftSeconds = 3, int logbookNumber = 5}) {
+  final parsed = ShearwaterDiveParser(model: ShearwaterModel.petrel3)
+      .parse(File('test/fixtures/dives/dive_$n.bin').readAsBytesSync());
+  final c = DiveConverter.convert(
+    parsed: parsed,
+    dcSerial: 0xB89641E4,
+    dcDiveNumber: n,
+    dcModel: ShearwaterModel.petrel3,
+  );
+  final d = c.dive;
+  final shift = Duration(seconds: shiftSeconds);
+  return ConvertedDive(
+    dive: model.Dive(
+      id: model.generateDiveId(0xB89641E4, logbookNumber,
+          d.startTime.add(shift).millisecondsSinceEpoch ~/ 1000),
+      dcSerial: d.dcSerial,
+      dcDiveNumber: logbookNumber,
+      startTime: d.startTime.add(shift),
+      endTime: d.endTime.add(shift),
+      utcOffsetMinutes: d.utcOffsetMinutes,
+      duration: d.duration,
+      maxDepthMeters: d.maxDepthMeters,
+      diveMode: d.diveMode,
+      decoModel: d.decoModel,
+      gfLow: d.gfLow,
+      gfHigh: d.gfHigh,
+      atmosphericPressureMbar: d.atmosphericPressureMbar,
+      waterDensityKgM3: d.waterDensityKgM3,
+      logVersion: d.logVersion,
+      dcModel: d.dcModel,
+      gasMixes: d.gasMixes,
+      tanks: d.tanks,
+      sampleIntervalMs: d.sampleIntervalMs,
+      sensorCalibration: d.sensorCalibration,
+      configuredStackSeconds: d.configuredStackSeconds,
+      stackRemainingAtStartSeconds: d.stackRemainingAtStartSeconds,
+      stackRemainingAtEndSeconds: d.stackRemainingAtEndSeconds,
+      dcVendor: d.dcVendor,
+      dcProduct: d.dcProduct,
+      dcFamily: d.dcFamily,
+      dcModelCode: d.dcModelCode,
+    ),
+    samples: c.samples,
+    events: c.events,
+  );
 }
 
 void main() {
@@ -286,5 +357,112 @@ void main() {
     expect(row['model'], 0xB407);
     expect(row['dc_model_code'], isNull);
     expect(row['dc_family'], isNull);
+  });
+
+  group('import outcomes', () {
+    final reports = <(Object, String)>[];
+    late ImportNotifier reporting;
+
+    ImportNotifier withReporter({DiveDao? useDao}) {
+      final n = ImportNotifier(
+        dao: useDao ?? dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        useMock: true,
+        reporter: (e, st, where) => reports.add((e, where)),
+      );
+      extra.add(n);
+      return n;
+    }
+
+    setUp(() {
+      reports.clear();
+      reporting = withReporter();
+    });
+
+    Future<void> storeCopy(ConvertedDive c) async {
+      final out = await dao.importDive(
+        converted: c,
+        rawBlob: Uint8List(0),
+        parserVersion: kSubsurfaceImportedParserVersion,
+        matchSubsurfaceCopies: false,
+      );
+      expect(out, ImportOutcome.inserted);
+    }
+
+    test('a refreshed dive counts as downloaded and moves the fingerprint',
+        () async {
+      await storeCopy(_copyOfMockDive(711));
+      final all = await listAll(reporting, _ScriptedLink());
+      await reporting.downloadAll(pick(all, [711]));
+      expect(reporting.downloadedCount, 1);
+      expect(reporting.failedCount, 0);
+      expect(await importStateDao.getLastFingerprint('B89641E4'), fpOf(711));
+      expect(reports, isEmpty);
+    });
+
+    test('an unchanged dive is not counted', () async {
+      final all = await listAll(notifier, _ScriptedLink());
+      await notifier.downloadAll(pick(all, [711, 712]));
+      expect(await importStateDao.getLastFingerprint('B89641E4'), fpOf(712));
+
+      final all2 = await listAll(reporting, _ScriptedLink());
+      await reporting.downloadAll(pick(all2, [711]));
+      expect(reporting.downloadedCount, 0);
+      expect(reporting.failedCount, 0);
+      expect(await importStateDao.getLastFingerprint('B89641E4'), fpOf(712));
+      expect(reports, isEmpty);
+    });
+
+    test('a rejected dive counts as failed and is reported once', () async {
+      final rig = await openEquipmentDaoForTest(db);
+      final rejecting = withReporter(
+          useDao: _RejectingDao(db, rig.ps, rig.session));
+      final all = await listAll(rejecting, _ScriptedLink());
+      await rejecting.downloadAll(pick(all, [711]));
+      expect(rejecting.failedCount, 1);
+      expect(rejecting.downloadedCount, 0);
+      expect(reports, hasLength(1));
+      expect(reports.single.$2, 'download');
+      expect(await importStateDao.getLastFingerprint('B89641E4'), isNull);
+    });
+
+    test('a dive that fails to parse is reported once', () async {
+      final all = await listAll(reporting, _ScriptedLink(corrupt: {712}));
+      await reporting.downloadAll(pick(all, [711, 712]));
+      expect(reporting.failedCount, 1);
+      expect(reports, hasLength(1));
+      expect(reports.single.$2, 'download');
+    });
+
+    test('the manifest hides a copy refreshed by an earlier download',
+        () async {
+      // A refresh keeps the copy's id and takes the download's dive number
+      // and version. The mock's manifest times are not those of its dive
+      // files, so the stored row is placed at the manifest's start time.
+      final probe = await listAll(reporting, _ScriptedLink());
+      final listing = probe.firstWhere((l) => l.diveNumber == 711);
+      final base = _copyOfMockDive(711, shiftSeconds: 0);
+      final shift = listing.startTimestamp -
+              base.dive.startTime.millisecondsSinceEpoch ~/ 1000 +
+          3;
+      final refreshed = _copyOfMockDive(711,
+          shiftSeconds: shift, logbookNumber: 711);
+      final out = await dao.importDive(
+        converted: refreshed,
+        rawBlob: Uint8List.fromList([1]),
+        parserVersion: 1,
+        matchSubsurfaceCopies: false,
+      );
+      expect(out, ImportOutcome.inserted);
+      expect(refreshed.dive.id, isNot(listing.diveId));
+
+      final n2 = withReporter();
+      await n2.connectLinkForTest(_ScriptedLink());
+      await n2.readManifestAndFilterNew();
+      final numbers = n2.newDives.map((l) => l.diveNumber);
+      expect(numbers, isNot(contains(711)));
+      expect(numbers, contains(712));
+    });
   });
 }
