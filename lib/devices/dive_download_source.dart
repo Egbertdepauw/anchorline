@@ -132,17 +132,23 @@ abstract class DiveDownloadSource {
 
   bool get canListDives;
 
+  /// Throws [UnsupportedError] when [canListDives] is false.
   Future<List<DiveListing>> listDives({Uint8List? sinceFingerprint});
 
   /// Downloads [selection] (every dive when null, or when the engine cannot
   /// list), newer than [sinceFingerprint] when given.
   ///
-  /// A [selection] must come from this source's own [listDives]; an entry
-  /// the source does not know makes the stream throw a [StateError].
+  /// A [selection] entry must have been returned by this source's latest
+  /// [listDives]; any other entry makes the stream throw a [StateError].
+  ///
+  /// Cancelling the subscription stops delivery but does not disconnect;
+  /// only [close] does.
   Stream<DiveSourceEvent> download({
     List<DiveListing>? selection,
     Uint8List? sinceFingerprint,
   });
 
+  /// Disconnects. Idempotent and time-bounded: safe to call twice, and it
+  /// returns even when the device never acknowledges the shutdown.
   Future<void> close();
 }

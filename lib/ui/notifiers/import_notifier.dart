@@ -249,6 +249,8 @@ class ImportNotifier extends ChangeNotifier {
       if (link is MockBleTransport) await link.connectMock();
       _source = await ShearwaterDownloadSource.open(link);
       _identity = _source!.identity;
+      // The mock device has never been registered as a dive computer.
+      if (link is! MockBleTransport) await _registerComputer(_identity!);
       _state = ImportFlowState.readingManifest;
     } catch (e) {
       _errorMessage = 'Connection failed: $e';
@@ -279,19 +281,7 @@ class ImportNotifier extends ChangeNotifier {
       _source = source;
       final identity = source.identity;
       _identity = identity;
-      try {
-        await _equipmentDao.upsertDiveComputer(
-          vendor: identity.vendor,
-          product: identity.product,
-          serial: identity.serial,
-          model: identity.computerModel,
-          firmwareVersion: identity.firmware,
-          family: identity.family,
-          modelCode: identity.modelCode,
-        );
-      } catch (e) {
-        debugPrint('Failed to upsert DiveComputer row: $e');
-      }
+      await _registerComputer(identity);
       _state = ImportFlowState.readingManifest;
     } catch (e) {
       _errorMessage = 'Connection failed: $e';
@@ -301,6 +291,24 @@ class ImportNotifier extends ChangeNotifier {
       _source = null;
     }
     notifyListeners();
+  }
+
+  /// Records the connected computer in `dive_computers`. Failures are local
+  /// and non-fatal.
+  Future<void> _registerComputer(DcIdentity identity) async {
+    try {
+      await _equipmentDao.upsertDiveComputer(
+        vendor: identity.vendor,
+        product: identity.product,
+        serial: identity.serial,
+        model: identity.computerModel,
+        firmwareVersion: identity.firmware,
+        family: identity.family,
+        modelCode: identity.modelCode,
+      );
+    } catch (e) {
+      debugPrint('Failed to upsert DiveComputer row: $e');
+    }
   }
 
   /// Disconnects a link whose source never opened (a failed connect or
@@ -413,19 +421,7 @@ class ImportNotifier extends ChangeNotifier {
             // during the download announce it here.
             final id = event.identity;
             _identity = id;
-            try {
-              await _equipmentDao.upsertDiveComputer(
-                vendor: id.vendor,
-                product: id.product,
-                serial: id.serial,
-                model: id.computerModel,
-                firmwareVersion: id.firmware,
-                family: id.family,
-                modelCode: id.modelCode,
-              );
-            } catch (e) {
-              debugPrint('Failed to upsert DiveComputer row: $e');
-            }
+            await _registerComputer(id);
 
           case DiveSourceDive():
             _currentDiveNumber = event.listing?.diveNumber;

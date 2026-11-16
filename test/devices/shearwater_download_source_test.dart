@@ -136,6 +136,12 @@ void main() {
       expect(a.diveMode, b.diveMode);
       expect(a.gfLow, b.gfLow);
       expect(a.gfHigh, b.gfHigh);
+      expect(a.dcModel, b.dcModel);
+      expect(a.sampleIntervalMs, b.sampleIntervalMs);
+      expect([for (final g in a.gasMixes) g.toJson()],
+          [for (final g in b.gasMixes) g.toJson()]);
+      expect([for (final t in a.tanks) t.toJson()],
+          [for (final t in b.tanks) t.toJson()]);
       final ea = SampleCodec.encode(got.converted.samples);
       final eb = SampleCodec.encode(expected.samples);
       expect(ea.keys, eb.keys);
@@ -180,7 +186,7 @@ void main() {
       fingerprint: Uint8List.fromList([9, 9, 9, 9]),
       diveId: 'not-in-the-manifest',
     );
-    expect(
+    await expectLater(
       source.download(selection: [listings.first, stranger]).toList(),
       throwsStateError,
     );
