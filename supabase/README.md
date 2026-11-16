@@ -78,16 +78,16 @@ same ids (same dive computer, same dive). Spec:
 1. Hand-build the TestFlight or internal build from the PR branch's head (it
    contains #233's commit) and ship it.
 2. Merge #233, then this PR.
-3. Right after merging, deploy 0027 (`./supabase/apply_migrations.sh`).
+3. Right after merging, run the pre-flight queries below, then deploy 0027 in
+   the SQL Editor (see "Deploying 0027 in the SQL Editor").
 
 Until step 3 the blocked test account stays blocked.
 
-`apply_migrations.sh` re-runs every file, so once this PR is merged ANY run of
-it, including one for an unrelated later migration, deploys 0027. Do not run
-`apply_migrations.sh` before step 3, or temporarily move
-`0027_per_owner_row_keys.sql` aside if another migration has to go out first.
-Moving 0027 aside still deploys the edited 0022 and 0024 in that run, which is
-safe on its own.
+Every whole-set deploy (`apply_migrations.sh`, or pasting every migration into
+the SQL Editor) includes 0027 once this PR is merged, even one made for an
+unrelated later migration. Don't make one before step 3. If another migration
+has to go out first, leave `0027_per_owner_row_keys.sql` out of it. That run
+still deploys the edited 0022 and 0024, which is safe on its own.
 
 **Pre-flight query.** 0027 refuses to run (and rolls back completely) if a
 child row has no parent of the same owner. Check first, in the SQL Editor:
@@ -156,8 +156,44 @@ It must list no rows. If it does, stop and go back to Egbert.
 table once, and clients download those rows again. Deploy at a quiet moment
 and watch the PowerSync dashboard until replication catches up.
 
-**Checks after deploying.** Run `./supabase/apply_migrations.sh` a second time
-(it must finish with zero errors), then `./supabase/check_migrations.sh`.
+**Deploying 0027 in the SQL Editor.** The database password isn't available
+(it is masked everywhere), so deploy from the dashboard's SQL Editor, which runs
+as the dashboard session. 0026 and everything before it are already live, so
+only the three changed files go in, in this order, with the version record
+`apply_migrations.sh` would write. Copy them from the repo root:
+
+```bash
+{ cat supabase/migrations/0022_delete_my_account.sql supabase/migrations/0024_purge_unconfirmed_users.sql supabase/migrations/0027_per_owner_row_keys.sql; echo "insert into public._ccrl_migrations(version) values ('0027') on conflict (version) do nothing;"; } | pbcopy
+```
+
+Paste into a new SQL Editor query and press Run. The editor sends the paste as
+one query, which Postgres runs as one transaction, so if 0027's guard refuses,
+nothing in the paste is applied. In that case the error names the reason; stop
+and go back to Egbert. Then press Run a second time: it must finish with no
+errors (everything is idempotent). Both behaviours were checked against the
+dry-run database with the paste sent as one query.
+
+With `DATABASE_URL` set (Session pooler), `./supabase/apply_migrations.sh` twice
+does the same.
+
+**Checks after deploying.** The id-only index query above must return no rows,
+and this must return the 16 tables, each with `owner_id,id`:
+
+```sql
+select c.relname as "table", string_agg(a.attname, ',' order by k.ord) as pk
+from pg_index x
+join pg_class c on c.oid = x.indrelid
+cross join unnest(x.indkey) with ordinality as k(attnum, ord)
+join pg_attribute a on a.attrelid = c.oid and a.attnum = k.attnum
+where x.indisprimary
+  and c.relnamespace = 'public'::regnamespace
+  and c.relname in ('dive_annotations', 'cylinders', 'oxygen_cells', 'scrubber_sessions',
+    'pressure_mappings', 'dive_cylinders', 'dive_computers', 'dives', 'dive_samples',
+    'dive_attachments', 'dive_bailout_carry', 'dive_plans', 'dive_merge_links',
+    'gas_analyses', 'user_acknowledgements', 'open_blends')
+group by c.relname
+order by 1;
+```
 
 ## Dry run
 
