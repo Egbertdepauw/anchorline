@@ -1,0 +1,53 @@
+# PowerSync Sync Streams for Anchorline (issue #126).
+#
+# Every signed-in user syncs every row they own, on connect, with no
+# client-side subscribe call: both streams are auto-subscribed. Together
+# they carry the same data as the old Sync Rules `user_data` bucket (one
+# query per table, filtered on owner_id).
+#
+# `dives`, `dive_samples`, `dive_computers` and `dive_bailout_carry` are
+# gated on `dc_family`. A row with `dc_family` set is a libdivecomputer dive
+# and goes only through `libdc_dives`, to builds that connect with
+# `dc_engines >= 2` (lib/sync/cloud/sync_params.dart). Every other row, and
+# every build that sends no parameter or 1, stays on `user_data`. The
+# bailout table is gated because older builds hard-delete bailout rows whose
+# dive they cannot see (purgeOrphanedBailoutCarry), and that delete uploads.
+#
+# A new PowerSync-backed table needs a query line here, and the file has to
+# be deployed to the PowerSync dashboard before that table syncs (CLAUDE.md
+# principle 7). test/sync/cloud/sync_streams_config_test.dart checks that
+# every table in lib/sync/cloud/powersync_schema.dart has a line here. It
+# reads each query as one line starting
+# `- SELECT * FROM <table> WHERE owner_id = auth.user_id()`; extra filters
+# after that (`AND deleted_at IS NULL`) are fine, other forms are not.
+config:
+  edition: 3
+
+streams:
+  user_data:
+    auto_subscribe: true
+    queries:
+      - SELECT * FROM dive_annotations WHERE owner_id = auth.user_id()
+      - SELECT * FROM cylinders WHERE owner_id = auth.user_id()
+      - SELECT * FROM oxygen_cells WHERE owner_id = auth.user_id()
+      - SELECT * FROM scrubber_sessions WHERE owner_id = auth.user_id()
+      - SELECT * FROM pressure_mappings WHERE owner_id = auth.user_id()
+      - SELECT * FROM dive_cylinders WHERE owner_id = auth.user_id()
+      - SELECT * FROM dive_plans WHERE owner_id = auth.user_id()
+      - SELECT * FROM dive_bailout_carry WHERE owner_id = auth.user_id() AND dc_family IS NULL
+      - SELECT * FROM dive_computers WHERE owner_id = auth.user_id() AND dc_family IS NULL
+      - SELECT * FROM dives WHERE owner_id = auth.user_id() AND dc_family IS NULL
+      - SELECT * FROM dive_samples WHERE owner_id = auth.user_id() AND dc_family IS NULL
+      - SELECT * FROM dive_attachments WHERE owner_id = auth.user_id()
+      - SELECT * FROM dive_merge_links WHERE owner_id = auth.user_id()
+      - SELECT * FROM gas_analyses WHERE owner_id = auth.user_id()
+      - SELECT * FROM open_blends WHERE owner_id = auth.user_id()
+      - SELECT * FROM user_acknowledgements WHERE owner_id = auth.user_id()
+
+  libdc_dives:
+    auto_subscribe: true
+    queries:
+      - SELECT * FROM dives WHERE owner_id = auth.user_id() AND dc_family IS NOT NULL AND connection.parameter('dc_engines') >= 2
+      - SELECT * FROM dive_samples WHERE owner_id = auth.user_id() AND dc_family IS NOT NULL AND connection.parameter('dc_engines') >= 2
+      - SELECT * FROM dive_computers WHERE owner_id = auth.user_id() AND dc_family IS NOT NULL AND connection.parameter('dc_engines') >= 2
+      - SELECT * FROM dive_bailout_carry WHERE owner_id = auth.user_id() AND dc_family IS NOT NULL AND connection.parameter('dc_engines') >= 2

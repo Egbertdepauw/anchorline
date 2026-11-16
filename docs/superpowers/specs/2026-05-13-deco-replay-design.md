@@ -262,7 +262,7 @@ Result cached + returned to UI for trace + stat + heatmap rendering
 | `lib/ui/screens/dive_detail_screen.dart` | Inline algorithm dropdown, Surface GF + Max GF stat tiles, heatmap collapsible section |
 | `lib/ui/screens/settings_screen.dart` | VPM-B conservatism segmented selector |
 | Tests | Six new test files + extensions to four existing |
-| `infra/powersync-sync-rules.yaml` | Add `display_deco_algorithm` to the synced column list |
+| `infra/powersync-sync-streams.yaml` | Add `display_deco_algorithm` to the synced column list |
 
 ## Validation strategy
 

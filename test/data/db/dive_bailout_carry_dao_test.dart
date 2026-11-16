@@ -10,10 +10,13 @@ import '../../_helpers/powersync_test_helper.dart';
 void main() {
   late AppDatabase db;
   late EquipmentDao dao;
+  late PowerSyncDatabase ps;
 
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
-    dao = (await openEquipmentDaoForTest(db)).dao;
+    final rig = await openEquipmentDaoForTest(db);
+    dao = rig.dao;
+    ps = rig.ps;
     await dao.addCylinder(
       label: 'AL40',
       role: CylinderRole.bailout,
@@ -44,6 +47,42 @@ void main() {
     expect(rows.single.gasMix, '21/35');
     expect(rows.single.fillPressureBar, 200);
     expect(rows.single.bailoutOrder, 1);
+  });
+
+  Future<void> insertDive(String id, {int? dcFamily}) => ps.execute(
+        'INSERT INTO dives (id, owner_id, dc_serial, dc_dive_number, '
+        'start_time, end_time, dc_family, version, sync_status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, 'test-user', 1, 1, 1000, 2000, dcFamily, 1, 0],
+      );
+
+  test('addBailoutCarry copies the dive\'s dc_family', () async {
+    final cylId = await cylinderId();
+    await insertDive('dive-lib', dcFamily: 17);
+    final id = await dao.addBailoutCarry(
+      diveId: 'dive-lib',
+      cylinderId: cylId,
+      gasMix: '21/35',
+      bailoutOrder: 1,
+    );
+    final row = await ps.get(
+        'SELECT dc_family FROM dive_bailout_carry WHERE id = ?', [id]);
+    expect(row['dc_family'], 17);
+  });
+
+  test('addBailoutCarry on a Shearwater dive leaves dc_family NULL',
+      () async {
+    final cylId = await cylinderId();
+    await insertDive('dive-sw');
+    final id = await dao.addBailoutCarry(
+      diveId: 'dive-sw',
+      cylinderId: cylId,
+      gasMix: '21/35',
+      bailoutOrder: 1,
+    );
+    final row = await ps.get(
+        'SELECT dc_family FROM dive_bailout_carry WHERE id = ?', [id]);
+    expect(row['dc_family'], isNull);
   });
 
   test('updateBailoutCarry mutates only specified fields', () async {
