@@ -38,7 +38,7 @@ class ShearwaterDownloadSource implements DiveDownloadSource {
       product: shearwaterProductName(model),
       serial: int.parse(info.serial, radix: 16),
       family: null,
-      modelCode: info.hardwareId,
+      modelCode: null,
       firmware: _parseFirmwareVersion(info.firmware),
       dcModel: model,
       computerModel: info.hardwareId,

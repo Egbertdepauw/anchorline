@@ -72,6 +72,8 @@ void main() {
     expect(id.firmwareLabel, 'V103 DiveCAN');
     expect(id.dcModel, ShearwaterModel.petrel3);
     expect(id.computerModel, 0xB407);
+    expect(id.modelCode, isNull);
+    expect(id.family, isNull);
     expect(id.firmware, 103);
     expect(source.canListDives, isTrue);
   });
