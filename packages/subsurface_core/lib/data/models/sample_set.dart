@@ -55,6 +55,11 @@ class SampleSet {
   /// that sample for that tank". Empty list when the dive has no tanks.
   final List<Float32List> tankPressuresBar;
 
+  /// Per-cell ppO2 in bar, one channel per cell; each inner list has
+  /// [sampleCount] entries. Empty for Shearwater, which keeps writing mV
+  /// in [cellMv0]..[cellMv2].
+  final List<Float32List> cellPpo2Bar;
+
   SampleSet({
     required this.diveId,
     required this.sampleCount,
@@ -73,5 +78,6 @@ class SampleSet {
     required this.gasMixIndex,
     required this.statusFlags,
     this.tankPressuresBar = const [],
+    this.cellPpo2Bar = const [],
   });
 }

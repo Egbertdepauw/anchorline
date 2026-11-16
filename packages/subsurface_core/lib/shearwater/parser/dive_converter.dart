@@ -25,7 +25,14 @@ class ConvertedDive {
   final Dive dive;
   final SampleSet samples;
 
-  ConvertedDive({required this.dive, required this.samples});
+  /// Events for the stored events blob. Empty until the converter fills it.
+  final List<DiveEvent> events;
+
+  ConvertedDive({
+    required this.dive,
+    required this.samples,
+    this.events = const [],
+  });
 }
 
 /// Converts parsed dive data to domain model.

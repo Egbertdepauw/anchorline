@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_attachments_dao.dart';
@@ -7,6 +8,7 @@ import 'package:ccrlogger/data/db/dive_dao.dart';
 import 'package:ccrlogger/data/db/dive_merge_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:subsurface_core/data/models/dive.dart' as model;
+import 'package:subsurface_core/data/models/sample_set.dart';
 import 'package:ccrlogger/data/models/dive_attachment.dart';
 import 'package:powersync/powersync.dart';
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
@@ -66,13 +68,83 @@ model.Dive _diveWithCalibration(
   );
 }
 
+/// Rebuilds [c] with the given brand fields, per-cell ppO2 channels and
+/// events substituted in.
+ConvertedDive _withPhase1Data(
+  ConvertedDive c, {
+  String? vendor,
+  String? product,
+  int? family,
+  int? modelCode,
+  List<Float32List> cells = const [],
+  List<DiveEvent> events = const [],
+}) {
+  final d = c.dive;
+  final s = c.samples;
+  return ConvertedDive(
+    dive: model.Dive(
+      id: d.id,
+      dcSerial: d.dcSerial,
+      dcDiveNumber: d.dcDiveNumber,
+      startTime: d.startTime,
+      endTime: d.endTime,
+      utcOffsetMinutes: d.utcOffsetMinutes,
+      duration: d.duration,
+      maxDepthMeters: d.maxDepthMeters,
+      diveMode: d.diveMode,
+      decoModel: d.decoModel,
+      gfLow: d.gfLow,
+      gfHigh: d.gfHigh,
+      atmosphericPressureMbar: d.atmosphericPressureMbar,
+      waterDensityKgM3: d.waterDensityKgM3,
+      logVersion: d.logVersion,
+      dcModel: d.dcModel,
+      gasMixes: d.gasMixes,
+      tanks: d.tanks,
+      sampleIntervalMs: d.sampleIntervalMs,
+      sensorCalibration: d.sensorCalibration,
+      configuredStackSeconds: d.configuredStackSeconds,
+      stackRemainingAtStartSeconds: d.stackRemainingAtStartSeconds,
+      stackRemainingAtEndSeconds: d.stackRemainingAtEndSeconds,
+      dcVendor: vendor,
+      dcProduct: product,
+      dcFamily: family,
+      dcModelCode: modelCode,
+    ),
+    samples: SampleSet(
+      diveId: s.diveId,
+      sampleCount: s.sampleCount,
+      sampleIntervalMs: s.sampleIntervalMs,
+      depthMeters: s.depthMeters,
+      temperatureCelsius: s.temperatureCelsius,
+      ppo2Bar: s.ppo2Bar,
+      cellMv0: s.cellMv0,
+      cellMv1: s.cellMv1,
+      cellMv2: s.cellMv2,
+      setpointBar: s.setpointBar,
+      cns: s.cns,
+      decoStopDepthMeters: s.decoStopDepthMeters,
+      decoTimeSeconds: s.decoTimeSeconds,
+      ttsSeconds: s.ttsSeconds,
+      gasMixIndex: s.gasMixIndex,
+      statusFlags: s.statusFlags,
+      tankPressuresBar: s.tankPressuresBar,
+      cellPpo2Bar: cells,
+    ),
+    events: events,
+  );
+}
+
 void main() {
   late AppDatabase db;
   late DiveDao dao;
+  late PowerSyncDatabase openPs;
 
   setUp(() async {
     db = _createInMemoryDb();
-    dao = (await openDiveDaoForTest(db)).dao;
+    final rig = await openDiveDaoForTest(db);
+    dao = rig.dao;
+    openPs = rig.ps;
   });
 
   tearDown(() async {
@@ -176,6 +248,129 @@ void main() {
       final stored = await dao.getDive(converted.dive.id);
       expect(stored, isNotNull);
       expect(stored!.sensorCalibrationJson, isNull);
+    });
+  });
+
+  group('phase 1 columns', () {
+    final raw = File('test/fixtures/dives/dive_718.bin').readAsBytesSync();
+
+    Future<ConvertedDive> importWith({
+      String? vendor,
+      String? product,
+      int? family,
+      int? modelCode,
+      List<Float32List> cells = const [],
+      List<DiveEvent> events = const [],
+    }) async {
+      final c = _withPhase1Data(_convertFixture(718),
+          vendor: vendor,
+          product: product,
+          family: family,
+          modelCode: modelCode,
+          cells: cells,
+          events: events);
+      await dao.importDive(converted: c, rawBlob: raw, parserVersion: 7);
+      return c;
+    }
+
+    test('importDive stores the brand fields', () async {
+      final c = await importWith(
+          vendor: 'Garmin', product: 'Descent Mk2', family: 12, modelCode: 3);
+      final d = await dao.getDive(c.dive.id);
+      expect(d!.dcVendor, 'Garmin');
+      expect(d.dcProduct, 'Descent Mk2');
+      expect(d.dcFamily, 12);
+      expect(d.dcModelCode, 3);
+      expect(d.matchCandidatesJson, isNull);
+    });
+
+    test('per-cell ppO2 survives importDive → getSamples', () async {
+      final n = _convertFixture(718).samples.sampleCount;
+      final cells = [
+        for (var c = 0; c < 3; c++)
+          Float32List.fromList(List.generate(n, (i) => 0.5 + c + i / 1000)),
+      ];
+      final c = await importWith(cells: cells);
+      final s = await dao.getSamples(c.dive.id);
+      expect(s!.cellPpo2Bar.length, 3);
+      for (var k = 0; k < 3; k++) {
+        expect(s.cellPpo2Bar[k], equals(cells[k]));
+      }
+    });
+
+    test('events survive importDive → getEvents', () async {
+      final c = await importWith(events: [
+        DiveEvent(timeMs: 1000, type: DiveEventType.bookmark, rawType: 5),
+        DiveEvent(
+            timeMs: 60000,
+            type: DiveEventType.gasSwitch,
+            rawType: 9,
+            value: 2),
+      ]);
+      final ev = await dao.getEvents(c.dive.id);
+      expect(ev.length, 2);
+      expect(ev[0].timeMs, 1000);
+      expect(ev[0].type, DiveEventType.bookmark);
+      expect(ev[1].type, DiveEventType.gasSwitch);
+      expect(ev[1].value, 2);
+    });
+
+    test('a dive without events or cells stores NULL blobs', () async {
+      final c = await importWith();
+      final row = await openPs.get(
+          'SELECT cell_ppo2_blob, events_blob FROM dive_samples WHERE id = ?',
+          [c.dive.id]);
+      expect(row['cell_ppo2_blob'], isNull);
+      expect(row['events_blob'], isNull);
+      expect(await dao.getEvents(c.dive.id), isEmpty);
+      expect((await dao.getSamples(c.dive.id))!.cellPpo2Bar, isEmpty);
+    });
+
+    test('the samples row carries parser_version and dc_family', () async {
+      final c = await importWith(family: 12);
+      final row = await openPs.get(
+          'SELECT parser_version, dc_family FROM dive_samples WHERE id = ?',
+          [c.dive.id]);
+      expect(row['parser_version'], 7);
+      expect(row['dc_family'], 12);
+    });
+
+    test('getEvents returns empty for an unknown dive', () async {
+      expect(await dao.getEvents('nope'), isEmpty);
+    });
+
+    test('a corrupt events_blob reads as no events', () async {
+      final c = await importWith();
+      await openPs.execute(
+          'UPDATE dive_samples SET events_blob = ? WHERE id = ?',
+          ['not base64!', c.dive.id]);
+      expect(await dao.getEvents(c.dive.id), isEmpty);
+    });
+
+    test('a corrupt cell_ppo2_blob leaves the rest of the profile', () async {
+      final c = await importWith();
+      await openPs.execute(
+          'UPDATE dive_samples SET cell_ppo2_blob = ? WHERE id = ?',
+          ['not base64!', c.dive.id]);
+      final s = await dao.getSamples(c.dive.id);
+      expect(s, isNotNull);
+      expect(s!.depthMeters.length, s.sampleCount);
+      expect(s.cellPpo2Bar, isEmpty);
+    });
+
+    test('getSamples and getEvents read a samples row written by an old build',
+        () async {
+      final c = _convertFixture(718);
+      await dao.importDive(converted: c, rawBlob: raw, parserVersion: 1);
+      // Rewrite the samples row the way a pre-phase-1 build wrote it.
+      await openPs.execute(
+          'UPDATE dive_samples SET cell_ppo2_blob = NULL, events_blob = NULL, '
+          'parser_version = NULL, dc_family = NULL WHERE id = ?',
+          [c.dive.id]);
+      final s = await dao.getSamples(c.dive.id);
+      expect(s, isNotNull);
+      expect(s!.cellPpo2Bar, isEmpty);
+      expect(await dao.getEvents(c.dive.id), isEmpty);
     });
   });
 
@@ -540,6 +735,64 @@ void main() {
       await diveDao.restoreDive(later);
       expect(await liveIds(diveId), ['f1', 'f2', 'l1']);
       expect(await liveIds(later), ['later-file']);
+    });
+  });
+
+  group('rowToDive brand fields (libdivecomputer phase 1)', () {
+    Map<String, dynamic> baseRow() => {
+          'id': 'd1',
+          'dc_serial': 7,
+          'dc_dive_number': 3,
+          'start_time': 1000,
+          'end_time': 2000,
+          'utc_offset_minutes': null,
+          'duration_seconds': 1000,
+          'max_depth_mm': 30000,
+          'dive_mode': 0,
+          'deco_model': 0,
+          'gf_low': 30,
+          'gf_high': 70,
+          'atmospheric_pressure_mbar': 1013,
+          'water_density': 1020,
+          'log_version': 1,
+          'dc_model': 13,
+          'dc_firmware': null,
+          'sample_interval_ms': 10000,
+          'gas_mixes_json': '[]',
+          'tanks_json': null,
+          'sensor_calibration_json': null,
+          'configured_stack_seconds': null,
+          'stack_remaining_at_start_seconds': null,
+          'stack_remaining_at_end_seconds': null,
+          'parser_version': 1,
+          'imported_at': 3000,
+          'subsurface_uploaded_at': null,
+          'deleted_at': null,
+        };
+
+    test('rowToDive reads a pre-phase-1 row (new columns NULL)', () {
+      final dive = DiveDao.rowToDive(baseRow());
+      expect(dive.dcVendor, isNull);
+      expect(dive.dcProduct, isNull);
+      expect(dive.dcFamily, isNull);
+      expect(dive.dcModelCode, isNull);
+      expect(dive.matchCandidatesJson, isNull);
+    });
+
+    test('rowToDive reads brand fields and match candidates when set', () {
+      final dive = DiveDao.rowToDive({
+        ...baseRow(),
+        'dc_vendor': 'Divesoft',
+        'dc_product': 'Liberty',
+        'dc_family': 0x00060000,
+        'dc_model_code': 10,
+        'match_candidates_json': '["a","b"]',
+      });
+      expect(dive.dcVendor, 'Divesoft');
+      expect(dive.dcProduct, 'Liberty');
+      expect(dive.dcFamily, 0x00060000);
+      expect(dive.dcModelCode, 10);
+      expect(dive.matchCandidatesJson, '["a","b"]');
     });
   });
 }

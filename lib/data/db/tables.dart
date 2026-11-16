@@ -43,6 +43,18 @@ class Dives extends Table {
   IntColumn get dcModel => integer()();
   IntColumn get dcFirmware => integer().nullable()();
 
+  /// Brand of the computer that produced the dive (libdivecomputer vendor and
+  /// product strings, family and model code). All null on dives imported
+  /// before phase 1: null vendor means Shearwater on a download and unknown
+  /// on a Subsurface copy.
+  TextColumn get dcVendor => text().nullable()();
+  TextColumn get dcProduct => text().nullable()();
+  IntColumn get dcFamily => integer().nullable()();
+  IntColumn get dcModelCode => integer().nullable()();
+
+  /// JSON array of dive ids a Subsurface copy may match. Null = none.
+  TextColumn get matchCandidatesJson => text().nullable()();
+
   IntColumn get sampleIntervalMs => integer()();
 
   /// Gas mixes as JSON array.
@@ -131,6 +143,24 @@ class DiveRawBlobs extends Table {
   Set<Column> get primaryKey => {diveId};
 }
 
+/// Device-local import bookkeeping per dive. Never synced: it records what this
+/// device's re-parse found, and it has no PowerSync counterpart.
+class DiveImportMarks extends Table {
+  TextColumn get diveId => text()();
+
+  /// The raw blob for this dive is not on this device (it was imported
+  /// elsewhere), so it cannot be re-parsed here.
+  BoolColumn get rawBlobMissing =>
+      boolean().withDefault(const Constant(false))();
+
+  /// Parser version whose re-parse of this dive failed, so the failure is
+  /// reported once per reader version. Null = no failure recorded.
+  IntColumn get reparseFailedVersion => integer().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {diveId};
+}
+
 /// User-editable dive annotations.
 class DiveAnnotations extends Table {
   TextColumn get diveId => text().references(Dives, #id)();
@@ -183,10 +213,17 @@ class DiveAnnotations extends Table {
 /// Known dive computers.
 class DiveComputers extends Table {
   TextColumn get id => text()();
+  // Legacy key: this Drift table hasn't been written since Phase 2.3. The
+  // live key is (dc_vendor, serial) in PowerSync and Postgres, so don't
+  // rely on this unique constraint.
   IntColumn get serial => integer().unique()();
   IntColumn get model => integer()();
   IntColumn get firmwareVersion => integer().nullable()();
   TextColumn get nickname => text().nullable()();
+  TextColumn get dcVendor => text().nullable()();
+  TextColumn get dcProduct => text().nullable()();
+  IntColumn get dcFamily => integer().nullable()();
+  IntColumn get dcModelCode => integer().nullable()();
 
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();

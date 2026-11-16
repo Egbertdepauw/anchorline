@@ -8,7 +8,10 @@ library;
 
 import 'dart:typed_data';
 
+import '../../data/models/dive_event.dart';
 import 'constants.dart';
+
+export '../../data/models/dive_event.dart' show DiveEvent, DiveEventType;
 
 /// Complete parsed dive — the top-level output of [ShearwaterDiveParser].
 class ParsedDive {
@@ -260,23 +263,6 @@ class TankPressureReading {
     required this.batteryLevel,
   });
 }
-
-/// Dive event (bookmark, compass heading).
-class DiveEvent {
-  final int timeMs;
-  final DiveEventType type;
-  final int? bearing;
-  final int? value;
-
-  DiveEvent({
-    required this.timeMs,
-    required this.type,
-    this.bearing,
-    this.value,
-  });
-}
-
-enum DiveEventType { bookmark, gasSwitch }
 
 /// Data from the final record (if present in PNF format).
 class FinalRecord {

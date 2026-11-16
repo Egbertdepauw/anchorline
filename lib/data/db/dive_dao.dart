@@ -22,7 +22,9 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 
+import 'package:subsurface_core/data/models/dive_event.dart';
 import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/data/sample_codec/event_codec.dart';
 import 'package:subsurface_core/data/sample_codec/sample_codec.dart';
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
 import '../models/dive_attachment.dart' show UploadState;
@@ -70,6 +72,7 @@ class DiveDao {
     }
 
     final sampleBlobs = SampleCodec.encode(converted.samples);
+    final eventsBlob = EventCodec.encode(converted.events);
     final gasMixesJson =
         jsonEncode(dive.gasMixes.map((g) => g.toJson()).toList());
     final tanksJson = dive.tanks.isEmpty
@@ -91,13 +94,14 @@ class DiveDao {
         'utc_offset_minutes, duration_seconds, max_depth_mm, dive_mode, '
         'deco_model, gf_low, gf_high, atmospheric_pressure_mbar, '
         'water_density, log_version, dc_model, dc_firmware, '
+        'dc_vendor, dc_product, dc_family, dc_model_code, '
         'sample_interval_ms, gas_mixes_json, tanks_json, '
         'sensor_calibration_json, '
         'configured_stack_seconds, stack_remaining_at_start_seconds, '
         'stack_remaining_at_end_seconds, parser_version, imported_at, '
         'subsurface_uploaded_at, deleted_at, version, sync_status) '
         'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-        '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           dive.id,
           _ownerId,
@@ -117,6 +121,10 @@ class DiveDao {
           dive.logVersion,
           dive.dcModel.index,
           null, // dc_firmware (not yet captured by the converter)
+          dive.dcVendor,
+          dive.dcProduct,
+          dive.dcFamily,
+          dive.dcModelCode,
           dive.sampleIntervalMs,
           gasMixesJson,
           tanksJson,
@@ -138,8 +146,10 @@ class DiveDao {
         'ppo2_blob, cell_mv0_blob, cell_mv1_blob, cell_mv2_blob, '
         'setpoint_blob, cns_blob, deco_depth_blob, deco_time_blob, tts_blob, '
         'gas_mix_idx_blob, status_blob, tank_pressures_blob, '
+        'cell_ppo2_blob, events_blob, parser_version, dc_family, '
         'created_at, updated_at, version, sync_status) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+        '?, ?, ?, ?, ?)',
         [
           dive.id, // PowerSync's implicit `id` PK doubles as dive_id here.
           _ownerId,
@@ -160,6 +170,12 @@ class DiveDao {
           sampleBlobs['tankPressures'] == null
               ? null
               : base64Encode(sampleBlobs['tankPressures']!),
+          sampleBlobs['cellPpo2'] == null
+              ? null
+              : base64Encode(sampleBlobs['cellPpo2']!),
+          eventsBlob == null ? null : base64Encode(eventsBlob),
+          parserVersion,
+          dive.dcFamily,
           nowMs,
           nowMs,
           1,
@@ -320,9 +336,19 @@ class DiveDao {
     final intervalMs = (diveRow?['sample_interval_ms'] as int?) ?? 10000;
 
     final tankPressuresB64 = samplesRow['tank_pressures_blob'] as String?;
+    // NULL whenever the dive has no per-cell ppO2: every Shearwater dive,
+    // and rows written by older builds. A damaged value reads the same way.
+    final cellPpo2B64 = samplesRow['cell_ppo2_blob'] as String?;
+    Uint8List? cellPpo2Bytes;
+    if (cellPpo2B64 != null) {
+      try {
+        cellPpo2Bytes = base64Decode(cellPpo2B64);
+      } on FormatException {
+        cellPpo2Bytes = null;
+      }
+    }
 
-    return SampleCodec.decode(
-      blobs: {
+    Map<String, Uint8List> blobsWith(Uint8List? cellBytes) => {
         'depth': base64Decode(samplesRow['depth_blob'] as String),
         'temperature': base64Decode(samplesRow['temperature_blob'] as String),
         'ppo2': base64Decode(samplesRow['ppo2_blob'] as String),
@@ -338,11 +364,43 @@ class DiveDao {
         'status': base64Decode(samplesRow['status_blob'] as String),
         if (tankPressuresB64 != null)
           'tankPressures': base64Decode(tankPressuresB64),
-      },
-      diveId: diveId,
-      sampleCount: samplesRow['sample_count'] as int,
-      sampleIntervalMs: intervalMs,
-    );
+        'cellPpo2': ?cellBytes,
+      };
+
+    final sampleCount = samplesRow['sample_count'] as int;
+    try {
+      return SampleCodec.decode(
+        blobs: blobsWith(cellPpo2Bytes),
+        diveId: diveId,
+        sampleCount: sampleCount,
+        sampleIntervalMs: intervalMs,
+      );
+    } catch (_) {
+      // Only the optional cell column may be damaged; without it a failure
+      // is a real one and the call below rethrows it.
+      if (cellPpo2Bytes == null) rethrow;
+      return SampleCodec.decode(
+        blobs: blobsWith(null),
+        diveId: diveId,
+        sampleCount: sampleCount,
+        sampleIntervalMs: intervalMs,
+      );
+    }
+  }
+
+  /// Decoded events for a dive. Empty when the dive has no samples row, no
+  /// events blob (rows from older builds, or a dive without events), or a
+  /// blob in a format this build can't read.
+  Future<List<DiveEvent>> getEvents(String diveId) async {
+    final row = await _ps.getOptional(
+        'SELECT events_blob FROM dive_samples WHERE id = ?', [diveId]);
+    final b64 = row?['events_blob'] as String?;
+    if (b64 == null) return const [];
+    try {
+      return EventCodec.decode(base64Decode(b64));
+    } on FormatException {
+      return const [];
+    }
   }
 
   /// Get the raw binary blob for a dive (for re-parsing). Returns
@@ -424,6 +482,11 @@ class DiveDao {
         logVersion: r['log_version'] as int,
         dcModel: r['dc_model'] as int,
         dcFirmware: r['dc_firmware'] as int?,
+        dcVendor: r['dc_vendor'] as String?,
+        dcProduct: r['dc_product'] as String?,
+        dcFamily: r['dc_family'] as int?,
+        dcModelCode: r['dc_model_code'] as int?,
+        matchCandidatesJson: r['match_candidates_json'] as String?,
         sampleIntervalMs: r['sample_interval_ms'] as int,
         gasMixesJson: r['gas_mixes_json'] as String,
         tanksJson: r['tanks_json'] as String?,
