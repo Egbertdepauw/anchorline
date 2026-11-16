@@ -83,6 +83,30 @@ void main() {
       expect(col('gas_analyses', 'target_o2_percent').type, ColumnType.integer);
       expect(col('gas_analyses', 'target_he_percent').type, ColumnType.integer);
       expect(col('gas_analyses', 'gas_role').type, ColumnType.text);
+      // libdivecomputer phase 1 (migration 0026).
+      for (final c in ['dc_vendor', 'dc_product', 'match_candidates_json']) {
+        expect(col('dives', c).type, ColumnType.text, reason: 'dives.$c');
+      }
+      for (final c in ['dc_family', 'dc_model_code']) {
+        expect(col('dives', c).type, ColumnType.integer, reason: 'dives.$c');
+      }
+      for (final c in ['cell_ppo2_blob', 'events_blob']) {
+        expect(col('dive_samples', c).type, ColumnType.text,
+            reason: 'dive_samples.$c');
+      }
+      for (final c in ['parser_version', 'dc_family']) {
+        expect(col('dive_samples', c).type, ColumnType.integer,
+            reason: 'dive_samples.$c');
+      }
+      for (final c in ['dc_vendor', 'dc_product']) {
+        expect(col('dive_computers', c).type, ColumnType.text,
+            reason: 'dive_computers.$c');
+      }
+      for (final c in ['dc_family', 'dc_model_code']) {
+        expect(col('dive_computers', c).type, ColumnType.integer,
+            reason: 'dive_computers.$c');
+      }
+      expect(col('dive_bailout_carry', 'dc_family').type, ColumnType.integer);
     });
 
     test('no raw tables (everything is PowerSync-managed)', () {

@@ -189,6 +189,61 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _dcVendorMeta = const VerificationMeta(
+    'dcVendor',
+  );
+  @override
+  late final GeneratedColumn<String> dcVendor = GeneratedColumn<String>(
+    'dc_vendor',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dcProductMeta = const VerificationMeta(
+    'dcProduct',
+  );
+  @override
+  late final GeneratedColumn<String> dcProduct = GeneratedColumn<String>(
+    'dc_product',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dcFamilyMeta = const VerificationMeta(
+    'dcFamily',
+  );
+  @override
+  late final GeneratedColumn<int> dcFamily = GeneratedColumn<int>(
+    'dc_family',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dcModelCodeMeta = const VerificationMeta(
+    'dcModelCode',
+  );
+  @override
+  late final GeneratedColumn<int> dcModelCode = GeneratedColumn<int>(
+    'dc_model_code',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _matchCandidatesJsonMeta =
+      const VerificationMeta('matchCandidatesJson');
+  @override
+  late final GeneratedColumn<String> matchCandidatesJson =
+      GeneratedColumn<String>(
+        'match_candidates_json',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _sampleIntervalMsMeta = const VerificationMeta(
     'sampleIntervalMs',
   );
@@ -338,6 +393,11 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
     logVersion,
     dcModel,
     dcFirmware,
+    dcVendor,
+    dcProduct,
+    dcFamily,
+    dcModelCode,
+    matchCandidatesJson,
     sampleIntervalMs,
     gasMixesJson,
     tanksJson,
@@ -504,6 +564,42 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
       context.handle(
         _dcFirmwareMeta,
         dcFirmware.isAcceptableOrUnknown(data['dc_firmware']!, _dcFirmwareMeta),
+      );
+    }
+    if (data.containsKey('dc_vendor')) {
+      context.handle(
+        _dcVendorMeta,
+        dcVendor.isAcceptableOrUnknown(data['dc_vendor']!, _dcVendorMeta),
+      );
+    }
+    if (data.containsKey('dc_product')) {
+      context.handle(
+        _dcProductMeta,
+        dcProduct.isAcceptableOrUnknown(data['dc_product']!, _dcProductMeta),
+      );
+    }
+    if (data.containsKey('dc_family')) {
+      context.handle(
+        _dcFamilyMeta,
+        dcFamily.isAcceptableOrUnknown(data['dc_family']!, _dcFamilyMeta),
+      );
+    }
+    if (data.containsKey('dc_model_code')) {
+      context.handle(
+        _dcModelCodeMeta,
+        dcModelCode.isAcceptableOrUnknown(
+          data['dc_model_code']!,
+          _dcModelCodeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('match_candidates_json')) {
+      context.handle(
+        _matchCandidatesJsonMeta,
+        matchCandidatesJson.isAcceptableOrUnknown(
+          data['match_candidates_json']!,
+          _matchCandidatesJsonMeta,
+        ),
       );
     }
     if (data.containsKey('sample_interval_ms')) {
@@ -689,6 +785,26 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
         DriftSqlType.int,
         data['${effectivePrefix}dc_firmware'],
       ),
+      dcVendor: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dc_vendor'],
+      ),
+      dcProduct: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dc_product'],
+      ),
+      dcFamily: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}dc_family'],
+      ),
+      dcModelCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}dc_model_code'],
+      ),
+      matchCandidatesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}match_candidates_json'],
+      ),
       sampleIntervalMs: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}sample_interval_ms'],
@@ -777,6 +893,18 @@ class Dive extends DataClass implements Insertable<Dive> {
   /// ShearwaterModel index.
   final int dcModel;
   final int? dcFirmware;
+
+  /// Brand of the computer that produced the dive (libdivecomputer vendor and
+  /// product strings, family and model code). All null on dives imported
+  /// before phase 1: null vendor means Shearwater on a download and unknown
+  /// on a Subsurface copy.
+  final String? dcVendor;
+  final String? dcProduct;
+  final int? dcFamily;
+  final int? dcModelCode;
+
+  /// JSON array of dive ids a Subsurface copy may match. Null = none.
+  final String? matchCandidatesJson;
   final int sampleIntervalMs;
 
   /// Gas mixes as JSON array.
@@ -835,6 +963,11 @@ class Dive extends DataClass implements Insertable<Dive> {
     required this.logVersion,
     required this.dcModel,
     this.dcFirmware,
+    this.dcVendor,
+    this.dcProduct,
+    this.dcFamily,
+    this.dcModelCode,
+    this.matchCandidatesJson,
     required this.sampleIntervalMs,
     required this.gasMixesJson,
     this.tanksJson,
@@ -875,6 +1008,21 @@ class Dive extends DataClass implements Insertable<Dive> {
     map['dc_model'] = Variable<int>(dcModel);
     if (!nullToAbsent || dcFirmware != null) {
       map['dc_firmware'] = Variable<int>(dcFirmware);
+    }
+    if (!nullToAbsent || dcVendor != null) {
+      map['dc_vendor'] = Variable<String>(dcVendor);
+    }
+    if (!nullToAbsent || dcProduct != null) {
+      map['dc_product'] = Variable<String>(dcProduct);
+    }
+    if (!nullToAbsent || dcFamily != null) {
+      map['dc_family'] = Variable<int>(dcFamily);
+    }
+    if (!nullToAbsent || dcModelCode != null) {
+      map['dc_model_code'] = Variable<int>(dcModelCode);
+    }
+    if (!nullToAbsent || matchCandidatesJson != null) {
+      map['match_candidates_json'] = Variable<String>(matchCandidatesJson);
     }
     map['sample_interval_ms'] = Variable<int>(sampleIntervalMs);
     map['gas_mixes_json'] = Variable<String>(gasMixesJson);
@@ -936,6 +1084,21 @@ class Dive extends DataClass implements Insertable<Dive> {
       dcFirmware: dcFirmware == null && nullToAbsent
           ? const Value.absent()
           : Value(dcFirmware),
+      dcVendor: dcVendor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dcVendor),
+      dcProduct: dcProduct == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dcProduct),
+      dcFamily: dcFamily == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dcFamily),
+      dcModelCode: dcModelCode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dcModelCode),
+      matchCandidatesJson: matchCandidatesJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(matchCandidatesJson),
       sampleIntervalMs: Value(sampleIntervalMs),
       gasMixesJson: Value(gasMixesJson),
       tanksJson: tanksJson == null && nullToAbsent
@@ -992,6 +1155,13 @@ class Dive extends DataClass implements Insertable<Dive> {
       logVersion: serializer.fromJson<int>(json['logVersion']),
       dcModel: serializer.fromJson<int>(json['dcModel']),
       dcFirmware: serializer.fromJson<int?>(json['dcFirmware']),
+      dcVendor: serializer.fromJson<String?>(json['dcVendor']),
+      dcProduct: serializer.fromJson<String?>(json['dcProduct']),
+      dcFamily: serializer.fromJson<int?>(json['dcFamily']),
+      dcModelCode: serializer.fromJson<int?>(json['dcModelCode']),
+      matchCandidatesJson: serializer.fromJson<String?>(
+        json['matchCandidatesJson'],
+      ),
       sampleIntervalMs: serializer.fromJson<int>(json['sampleIntervalMs']),
       gasMixesJson: serializer.fromJson<String>(json['gasMixesJson']),
       tanksJson: serializer.fromJson<String?>(json['tanksJson']),
@@ -1039,6 +1209,11 @@ class Dive extends DataClass implements Insertable<Dive> {
       'logVersion': serializer.toJson<int>(logVersion),
       'dcModel': serializer.toJson<int>(dcModel),
       'dcFirmware': serializer.toJson<int?>(dcFirmware),
+      'dcVendor': serializer.toJson<String?>(dcVendor),
+      'dcProduct': serializer.toJson<String?>(dcProduct),
+      'dcFamily': serializer.toJson<int?>(dcFamily),
+      'dcModelCode': serializer.toJson<int?>(dcModelCode),
+      'matchCandidatesJson': serializer.toJson<String?>(matchCandidatesJson),
       'sampleIntervalMs': serializer.toJson<int>(sampleIntervalMs),
       'gasMixesJson': serializer.toJson<String>(gasMixesJson),
       'tanksJson': serializer.toJson<String?>(tanksJson),
@@ -1078,6 +1253,11 @@ class Dive extends DataClass implements Insertable<Dive> {
     int? logVersion,
     int? dcModel,
     Value<int?> dcFirmware = const Value.absent(),
+    Value<String?> dcVendor = const Value.absent(),
+    Value<String?> dcProduct = const Value.absent(),
+    Value<int?> dcFamily = const Value.absent(),
+    Value<int?> dcModelCode = const Value.absent(),
+    Value<String?> matchCandidatesJson = const Value.absent(),
     int? sampleIntervalMs,
     String? gasMixesJson,
     Value<String?> tanksJson = const Value.absent(),
@@ -1111,6 +1291,13 @@ class Dive extends DataClass implements Insertable<Dive> {
     logVersion: logVersion ?? this.logVersion,
     dcModel: dcModel ?? this.dcModel,
     dcFirmware: dcFirmware.present ? dcFirmware.value : this.dcFirmware,
+    dcVendor: dcVendor.present ? dcVendor.value : this.dcVendor,
+    dcProduct: dcProduct.present ? dcProduct.value : this.dcProduct,
+    dcFamily: dcFamily.present ? dcFamily.value : this.dcFamily,
+    dcModelCode: dcModelCode.present ? dcModelCode.value : this.dcModelCode,
+    matchCandidatesJson: matchCandidatesJson.present
+        ? matchCandidatesJson.value
+        : this.matchCandidatesJson,
     sampleIntervalMs: sampleIntervalMs ?? this.sampleIntervalMs,
     gasMixesJson: gasMixesJson ?? this.gasMixesJson,
     tanksJson: tanksJson.present ? tanksJson.value : this.tanksJson,
@@ -1169,6 +1356,15 @@ class Dive extends DataClass implements Insertable<Dive> {
       dcFirmware: data.dcFirmware.present
           ? data.dcFirmware.value
           : this.dcFirmware,
+      dcVendor: data.dcVendor.present ? data.dcVendor.value : this.dcVendor,
+      dcProduct: data.dcProduct.present ? data.dcProduct.value : this.dcProduct,
+      dcFamily: data.dcFamily.present ? data.dcFamily.value : this.dcFamily,
+      dcModelCode: data.dcModelCode.present
+          ? data.dcModelCode.value
+          : this.dcModelCode,
+      matchCandidatesJson: data.matchCandidatesJson.present
+          ? data.matchCandidatesJson.value
+          : this.matchCandidatesJson,
       sampleIntervalMs: data.sampleIntervalMs.present
           ? data.sampleIntervalMs.value
           : this.sampleIntervalMs,
@@ -1222,6 +1418,11 @@ class Dive extends DataClass implements Insertable<Dive> {
           ..write('logVersion: $logVersion, ')
           ..write('dcModel: $dcModel, ')
           ..write('dcFirmware: $dcFirmware, ')
+          ..write('dcVendor: $dcVendor, ')
+          ..write('dcProduct: $dcProduct, ')
+          ..write('dcFamily: $dcFamily, ')
+          ..write('dcModelCode: $dcModelCode, ')
+          ..write('matchCandidatesJson: $matchCandidatesJson, ')
           ..write('sampleIntervalMs: $sampleIntervalMs, ')
           ..write('gasMixesJson: $gasMixesJson, ')
           ..write('tanksJson: $tanksJson, ')
@@ -1259,6 +1460,11 @@ class Dive extends DataClass implements Insertable<Dive> {
     logVersion,
     dcModel,
     dcFirmware,
+    dcVendor,
+    dcProduct,
+    dcFamily,
+    dcModelCode,
+    matchCandidatesJson,
     sampleIntervalMs,
     gasMixesJson,
     tanksJson,
@@ -1293,6 +1499,11 @@ class Dive extends DataClass implements Insertable<Dive> {
           other.logVersion == this.logVersion &&
           other.dcModel == this.dcModel &&
           other.dcFirmware == this.dcFirmware &&
+          other.dcVendor == this.dcVendor &&
+          other.dcProduct == this.dcProduct &&
+          other.dcFamily == this.dcFamily &&
+          other.dcModelCode == this.dcModelCode &&
+          other.matchCandidatesJson == this.matchCandidatesJson &&
           other.sampleIntervalMs == this.sampleIntervalMs &&
           other.gasMixesJson == this.gasMixesJson &&
           other.tanksJson == this.tanksJson &&
@@ -1326,6 +1537,11 @@ class DivesCompanion extends UpdateCompanion<Dive> {
   final Value<int> logVersion;
   final Value<int> dcModel;
   final Value<int?> dcFirmware;
+  final Value<String?> dcVendor;
+  final Value<String?> dcProduct;
+  final Value<int?> dcFamily;
+  final Value<int?> dcModelCode;
+  final Value<String?> matchCandidatesJson;
   final Value<int> sampleIntervalMs;
   final Value<String> gasMixesJson;
   final Value<String?> tanksJson;
@@ -1357,6 +1573,11 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     this.logVersion = const Value.absent(),
     this.dcModel = const Value.absent(),
     this.dcFirmware = const Value.absent(),
+    this.dcVendor = const Value.absent(),
+    this.dcProduct = const Value.absent(),
+    this.dcFamily = const Value.absent(),
+    this.dcModelCode = const Value.absent(),
+    this.matchCandidatesJson = const Value.absent(),
     this.sampleIntervalMs = const Value.absent(),
     this.gasMixesJson = const Value.absent(),
     this.tanksJson = const Value.absent(),
@@ -1389,6 +1610,11 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     required int logVersion,
     required int dcModel,
     this.dcFirmware = const Value.absent(),
+    this.dcVendor = const Value.absent(),
+    this.dcProduct = const Value.absent(),
+    this.dcFamily = const Value.absent(),
+    this.dcModelCode = const Value.absent(),
+    this.matchCandidatesJson = const Value.absent(),
     required int sampleIntervalMs,
     required String gasMixesJson,
     this.tanksJson = const Value.absent(),
@@ -1438,6 +1664,11 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     Expression<int>? logVersion,
     Expression<int>? dcModel,
     Expression<int>? dcFirmware,
+    Expression<String>? dcVendor,
+    Expression<String>? dcProduct,
+    Expression<int>? dcFamily,
+    Expression<int>? dcModelCode,
+    Expression<String>? matchCandidatesJson,
     Expression<int>? sampleIntervalMs,
     Expression<String>? gasMixesJson,
     Expression<String>? tanksJson,
@@ -1471,6 +1702,12 @@ class DivesCompanion extends UpdateCompanion<Dive> {
       if (logVersion != null) 'log_version': logVersion,
       if (dcModel != null) 'dc_model': dcModel,
       if (dcFirmware != null) 'dc_firmware': dcFirmware,
+      if (dcVendor != null) 'dc_vendor': dcVendor,
+      if (dcProduct != null) 'dc_product': dcProduct,
+      if (dcFamily != null) 'dc_family': dcFamily,
+      if (dcModelCode != null) 'dc_model_code': dcModelCode,
+      if (matchCandidatesJson != null)
+        'match_candidates_json': matchCandidatesJson,
       if (sampleIntervalMs != null) 'sample_interval_ms': sampleIntervalMs,
       if (gasMixesJson != null) 'gas_mixes_json': gasMixesJson,
       if (tanksJson != null) 'tanks_json': tanksJson,
@@ -1510,6 +1747,11 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     Value<int>? logVersion,
     Value<int>? dcModel,
     Value<int?>? dcFirmware,
+    Value<String?>? dcVendor,
+    Value<String?>? dcProduct,
+    Value<int?>? dcFamily,
+    Value<int?>? dcModelCode,
+    Value<String?>? matchCandidatesJson,
     Value<int>? sampleIntervalMs,
     Value<String>? gasMixesJson,
     Value<String?>? tanksJson,
@@ -1543,6 +1785,11 @@ class DivesCompanion extends UpdateCompanion<Dive> {
       logVersion: logVersion ?? this.logVersion,
       dcModel: dcModel ?? this.dcModel,
       dcFirmware: dcFirmware ?? this.dcFirmware,
+      dcVendor: dcVendor ?? this.dcVendor,
+      dcProduct: dcProduct ?? this.dcProduct,
+      dcFamily: dcFamily ?? this.dcFamily,
+      dcModelCode: dcModelCode ?? this.dcModelCode,
+      matchCandidatesJson: matchCandidatesJson ?? this.matchCandidatesJson,
       sampleIntervalMs: sampleIntervalMs ?? this.sampleIntervalMs,
       gasMixesJson: gasMixesJson ?? this.gasMixesJson,
       tanksJson: tanksJson ?? this.tanksJson,
@@ -1619,6 +1866,23 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     if (dcFirmware.present) {
       map['dc_firmware'] = Variable<int>(dcFirmware.value);
     }
+    if (dcVendor.present) {
+      map['dc_vendor'] = Variable<String>(dcVendor.value);
+    }
+    if (dcProduct.present) {
+      map['dc_product'] = Variable<String>(dcProduct.value);
+    }
+    if (dcFamily.present) {
+      map['dc_family'] = Variable<int>(dcFamily.value);
+    }
+    if (dcModelCode.present) {
+      map['dc_model_code'] = Variable<int>(dcModelCode.value);
+    }
+    if (matchCandidatesJson.present) {
+      map['match_candidates_json'] = Variable<String>(
+        matchCandidatesJson.value,
+      );
+    }
     if (sampleIntervalMs.present) {
       map['sample_interval_ms'] = Variable<int>(sampleIntervalMs.value);
     }
@@ -1689,6 +1953,11 @@ class DivesCompanion extends UpdateCompanion<Dive> {
           ..write('logVersion: $logVersion, ')
           ..write('dcModel: $dcModel, ')
           ..write('dcFirmware: $dcFirmware, ')
+          ..write('dcVendor: $dcVendor, ')
+          ..write('dcProduct: $dcProduct, ')
+          ..write('dcFamily: $dcFamily, ')
+          ..write('dcModelCode: $dcModelCode, ')
+          ..write('matchCandidatesJson: $matchCandidatesJson, ')
           ..write('sampleIntervalMs: $sampleIntervalMs, ')
           ..write('gasMixesJson: $gasMixesJson, ')
           ..write('tanksJson: $tanksJson, ')
@@ -4412,6 +4681,50 @@ class $DiveComputersTable extends DiveComputers
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _dcVendorMeta = const VerificationMeta(
+    'dcVendor',
+  );
+  @override
+  late final GeneratedColumn<String> dcVendor = GeneratedColumn<String>(
+    'dc_vendor',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dcProductMeta = const VerificationMeta(
+    'dcProduct',
+  );
+  @override
+  late final GeneratedColumn<String> dcProduct = GeneratedColumn<String>(
+    'dc_product',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dcFamilyMeta = const VerificationMeta(
+    'dcFamily',
+  );
+  @override
+  late final GeneratedColumn<int> dcFamily = GeneratedColumn<int>(
+    'dc_family',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dcModelCodeMeta = const VerificationMeta(
+    'dcModelCode',
+  );
+  @override
+  late final GeneratedColumn<int> dcModelCode = GeneratedColumn<int>(
+    'dc_model_code',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -4487,6 +4800,10 @@ class $DiveComputersTable extends DiveComputers
     model,
     firmwareVersion,
     nickname,
+    dcVendor,
+    dcProduct,
+    dcFamily,
+    dcModelCode,
     createdAt,
     updatedAt,
     deletedAt,
@@ -4540,6 +4857,33 @@ class $DiveComputersTable extends DiveComputers
       context.handle(
         _nicknameMeta,
         nickname.isAcceptableOrUnknown(data['nickname']!, _nicknameMeta),
+      );
+    }
+    if (data.containsKey('dc_vendor')) {
+      context.handle(
+        _dcVendorMeta,
+        dcVendor.isAcceptableOrUnknown(data['dc_vendor']!, _dcVendorMeta),
+      );
+    }
+    if (data.containsKey('dc_product')) {
+      context.handle(
+        _dcProductMeta,
+        dcProduct.isAcceptableOrUnknown(data['dc_product']!, _dcProductMeta),
+      );
+    }
+    if (data.containsKey('dc_family')) {
+      context.handle(
+        _dcFamilyMeta,
+        dcFamily.isAcceptableOrUnknown(data['dc_family']!, _dcFamilyMeta),
+      );
+    }
+    if (data.containsKey('dc_model_code')) {
+      context.handle(
+        _dcModelCodeMeta,
+        dcModelCode.isAcceptableOrUnknown(
+          data['dc_model_code']!,
+          _dcModelCodeMeta,
+        ),
       );
     }
     if (data.containsKey('created_at')) {
@@ -4611,6 +4955,22 @@ class $DiveComputersTable extends DiveComputers
         DriftSqlType.string,
         data['${effectivePrefix}nickname'],
       ),
+      dcVendor: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dc_vendor'],
+      ),
+      dcProduct: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dc_product'],
+      ),
+      dcFamily: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}dc_family'],
+      ),
+      dcModelCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}dc_model_code'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -4650,6 +5010,10 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
   final int model;
   final int? firmwareVersion;
   final String? nickname;
+  final String? dcVendor;
+  final String? dcProduct;
+  final int? dcFamily;
+  final int? dcModelCode;
   final int createdAt;
   final int updatedAt;
   final int? deletedAt;
@@ -4662,6 +5026,10 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
     required this.model,
     this.firmwareVersion,
     this.nickname,
+    this.dcVendor,
+    this.dcProduct,
+    this.dcFamily,
+    this.dcModelCode,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -4680,6 +5048,18 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
     }
     if (!nullToAbsent || nickname != null) {
       map['nickname'] = Variable<String>(nickname);
+    }
+    if (!nullToAbsent || dcVendor != null) {
+      map['dc_vendor'] = Variable<String>(dcVendor);
+    }
+    if (!nullToAbsent || dcProduct != null) {
+      map['dc_product'] = Variable<String>(dcProduct);
+    }
+    if (!nullToAbsent || dcFamily != null) {
+      map['dc_family'] = Variable<int>(dcFamily);
+    }
+    if (!nullToAbsent || dcModelCode != null) {
+      map['dc_model_code'] = Variable<int>(dcModelCode);
     }
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -4705,6 +5085,18 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
       nickname: nickname == null && nullToAbsent
           ? const Value.absent()
           : Value(nickname),
+      dcVendor: dcVendor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dcVendor),
+      dcProduct: dcProduct == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dcProduct),
+      dcFamily: dcFamily == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dcFamily),
+      dcModelCode: dcModelCode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dcModelCode),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -4729,6 +5121,10 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
       model: serializer.fromJson<int>(json['model']),
       firmwareVersion: serializer.fromJson<int?>(json['firmwareVersion']),
       nickname: serializer.fromJson<String?>(json['nickname']),
+      dcVendor: serializer.fromJson<String?>(json['dcVendor']),
+      dcProduct: serializer.fromJson<String?>(json['dcProduct']),
+      dcFamily: serializer.fromJson<int?>(json['dcFamily']),
+      dcModelCode: serializer.fromJson<int?>(json['dcModelCode']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
@@ -4746,6 +5142,10 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
       'model': serializer.toJson<int>(model),
       'firmwareVersion': serializer.toJson<int?>(firmwareVersion),
       'nickname': serializer.toJson<String?>(nickname),
+      'dcVendor': serializer.toJson<String?>(dcVendor),
+      'dcProduct': serializer.toJson<String?>(dcProduct),
+      'dcFamily': serializer.toJson<int?>(dcFamily),
+      'dcModelCode': serializer.toJson<int?>(dcModelCode),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'deletedAt': serializer.toJson<int?>(deletedAt),
@@ -4761,6 +5161,10 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
     int? model,
     Value<int?> firmwareVersion = const Value.absent(),
     Value<String?> nickname = const Value.absent(),
+    Value<String?> dcVendor = const Value.absent(),
+    Value<String?> dcProduct = const Value.absent(),
+    Value<int?> dcFamily = const Value.absent(),
+    Value<int?> dcModelCode = const Value.absent(),
     int? createdAt,
     int? updatedAt,
     Value<int?> deletedAt = const Value.absent(),
@@ -4775,6 +5179,10 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
         ? firmwareVersion.value
         : this.firmwareVersion,
     nickname: nickname.present ? nickname.value : this.nickname,
+    dcVendor: dcVendor.present ? dcVendor.value : this.dcVendor,
+    dcProduct: dcProduct.present ? dcProduct.value : this.dcProduct,
+    dcFamily: dcFamily.present ? dcFamily.value : this.dcFamily,
+    dcModelCode: dcModelCode.present ? dcModelCode.value : this.dcModelCode,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -4791,6 +5199,12 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
           ? data.firmwareVersion.value
           : this.firmwareVersion,
       nickname: data.nickname.present ? data.nickname.value : this.nickname,
+      dcVendor: data.dcVendor.present ? data.dcVendor.value : this.dcVendor,
+      dcProduct: data.dcProduct.present ? data.dcProduct.value : this.dcProduct,
+      dcFamily: data.dcFamily.present ? data.dcFamily.value : this.dcFamily,
+      dcModelCode: data.dcModelCode.present
+          ? data.dcModelCode.value
+          : this.dcModelCode,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -4810,6 +5224,10 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
           ..write('model: $model, ')
           ..write('firmwareVersion: $firmwareVersion, ')
           ..write('nickname: $nickname, ')
+          ..write('dcVendor: $dcVendor, ')
+          ..write('dcProduct: $dcProduct, ')
+          ..write('dcFamily: $dcFamily, ')
+          ..write('dcModelCode: $dcModelCode, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -4827,6 +5245,10 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
     model,
     firmwareVersion,
     nickname,
+    dcVendor,
+    dcProduct,
+    dcFamily,
+    dcModelCode,
     createdAt,
     updatedAt,
     deletedAt,
@@ -4843,6 +5265,10 @@ class DiveComputer extends DataClass implements Insertable<DiveComputer> {
           other.model == this.model &&
           other.firmwareVersion == this.firmwareVersion &&
           other.nickname == this.nickname &&
+          other.dcVendor == this.dcVendor &&
+          other.dcProduct == this.dcProduct &&
+          other.dcFamily == this.dcFamily &&
+          other.dcModelCode == this.dcModelCode &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
@@ -4857,6 +5283,10 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
   final Value<int> model;
   final Value<int?> firmwareVersion;
   final Value<String?> nickname;
+  final Value<String?> dcVendor;
+  final Value<String?> dcProduct;
+  final Value<int?> dcFamily;
+  final Value<int?> dcModelCode;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<int?> deletedAt;
@@ -4870,6 +5300,10 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
     this.model = const Value.absent(),
     this.firmwareVersion = const Value.absent(),
     this.nickname = const Value.absent(),
+    this.dcVendor = const Value.absent(),
+    this.dcProduct = const Value.absent(),
+    this.dcFamily = const Value.absent(),
+    this.dcModelCode = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -4884,6 +5318,10 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
     required int model,
     this.firmwareVersion = const Value.absent(),
     this.nickname = const Value.absent(),
+    this.dcVendor = const Value.absent(),
+    this.dcProduct = const Value.absent(),
+    this.dcFamily = const Value.absent(),
+    this.dcModelCode = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.deletedAt = const Value.absent(),
@@ -4902,6 +5340,10 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
     Expression<int>? model,
     Expression<int>? firmwareVersion,
     Expression<String>? nickname,
+    Expression<String>? dcVendor,
+    Expression<String>? dcProduct,
+    Expression<int>? dcFamily,
+    Expression<int>? dcModelCode,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<int>? deletedAt,
@@ -4916,6 +5358,10 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
       if (model != null) 'model': model,
       if (firmwareVersion != null) 'firmware_version': firmwareVersion,
       if (nickname != null) 'nickname': nickname,
+      if (dcVendor != null) 'dc_vendor': dcVendor,
+      if (dcProduct != null) 'dc_product': dcProduct,
+      if (dcFamily != null) 'dc_family': dcFamily,
+      if (dcModelCode != null) 'dc_model_code': dcModelCode,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -4932,6 +5378,10 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
     Value<int>? model,
     Value<int?>? firmwareVersion,
     Value<String?>? nickname,
+    Value<String?>? dcVendor,
+    Value<String?>? dcProduct,
+    Value<int?>? dcFamily,
+    Value<int?>? dcModelCode,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<int?>? deletedAt,
@@ -4946,6 +5396,10 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
       model: model ?? this.model,
       firmwareVersion: firmwareVersion ?? this.firmwareVersion,
       nickname: nickname ?? this.nickname,
+      dcVendor: dcVendor ?? this.dcVendor,
+      dcProduct: dcProduct ?? this.dcProduct,
+      dcFamily: dcFamily ?? this.dcFamily,
+      dcModelCode: dcModelCode ?? this.dcModelCode,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -4973,6 +5427,18 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
     }
     if (nickname.present) {
       map['nickname'] = Variable<String>(nickname.value);
+    }
+    if (dcVendor.present) {
+      map['dc_vendor'] = Variable<String>(dcVendor.value);
+    }
+    if (dcProduct.present) {
+      map['dc_product'] = Variable<String>(dcProduct.value);
+    }
+    if (dcFamily.present) {
+      map['dc_family'] = Variable<int>(dcFamily.value);
+    }
+    if (dcModelCode.present) {
+      map['dc_model_code'] = Variable<int>(dcModelCode.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
@@ -5006,6 +5472,10 @@ class DiveComputersCompanion extends UpdateCompanion<DiveComputer> {
           ..write('model: $model, ')
           ..write('firmwareVersion: $firmwareVersion, ')
           ..write('nickname: $nickname, ')
+          ..write('dcVendor: $dcVendor, ')
+          ..write('dcProduct: $dcProduct, ')
+          ..write('dcFamily: $dcFamily, ')
+          ..write('dcModelCode: $dcModelCode, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -9847,6 +10317,299 @@ class DiveBailoutCarryCompanion extends UpdateCompanion<DiveBailoutCarryData> {
   }
 }
 
+class $DiveImportMarksTable extends DiveImportMarks
+    with TableInfo<$DiveImportMarksTable, DiveImportMark> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DiveImportMarksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _diveIdMeta = const VerificationMeta('diveId');
+  @override
+  late final GeneratedColumn<String> diveId = GeneratedColumn<String>(
+    'dive_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _rawBlobMissingMeta = const VerificationMeta(
+    'rawBlobMissing',
+  );
+  @override
+  late final GeneratedColumn<bool> rawBlobMissing = GeneratedColumn<bool>(
+    'raw_blob_missing',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("raw_blob_missing" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _reparseFailedVersionMeta =
+      const VerificationMeta('reparseFailedVersion');
+  @override
+  late final GeneratedColumn<int> reparseFailedVersion = GeneratedColumn<int>(
+    'reparse_failed_version',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    diveId,
+    rawBlobMissing,
+    reparseFailedVersion,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'dive_import_marks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DiveImportMark> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('dive_id')) {
+      context.handle(
+        _diveIdMeta,
+        diveId.isAcceptableOrUnknown(data['dive_id']!, _diveIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_diveIdMeta);
+    }
+    if (data.containsKey('raw_blob_missing')) {
+      context.handle(
+        _rawBlobMissingMeta,
+        rawBlobMissing.isAcceptableOrUnknown(
+          data['raw_blob_missing']!,
+          _rawBlobMissingMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reparse_failed_version')) {
+      context.handle(
+        _reparseFailedVersionMeta,
+        reparseFailedVersion.isAcceptableOrUnknown(
+          data['reparse_failed_version']!,
+          _reparseFailedVersionMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {diveId};
+  @override
+  DiveImportMark map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DiveImportMark(
+      diveId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dive_id'],
+      )!,
+      rawBlobMissing: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}raw_blob_missing'],
+      )!,
+      reparseFailedVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}reparse_failed_version'],
+      ),
+    );
+  }
+
+  @override
+  $DiveImportMarksTable createAlias(String alias) {
+    return $DiveImportMarksTable(attachedDatabase, alias);
+  }
+}
+
+class DiveImportMark extends DataClass implements Insertable<DiveImportMark> {
+  final String diveId;
+
+  /// The raw blob for this dive is not on this device (it was imported
+  /// elsewhere), so it cannot be re-parsed here.
+  final bool rawBlobMissing;
+
+  /// Parser version whose re-parse of this dive failed, so the failure is
+  /// reported once per reader version. Null = no failure recorded.
+  final int? reparseFailedVersion;
+  const DiveImportMark({
+    required this.diveId,
+    required this.rawBlobMissing,
+    this.reparseFailedVersion,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['dive_id'] = Variable<String>(diveId);
+    map['raw_blob_missing'] = Variable<bool>(rawBlobMissing);
+    if (!nullToAbsent || reparseFailedVersion != null) {
+      map['reparse_failed_version'] = Variable<int>(reparseFailedVersion);
+    }
+    return map;
+  }
+
+  DiveImportMarksCompanion toCompanion(bool nullToAbsent) {
+    return DiveImportMarksCompanion(
+      diveId: Value(diveId),
+      rawBlobMissing: Value(rawBlobMissing),
+      reparseFailedVersion: reparseFailedVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reparseFailedVersion),
+    );
+  }
+
+  factory DiveImportMark.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DiveImportMark(
+      diveId: serializer.fromJson<String>(json['diveId']),
+      rawBlobMissing: serializer.fromJson<bool>(json['rawBlobMissing']),
+      reparseFailedVersion: serializer.fromJson<int?>(
+        json['reparseFailedVersion'],
+      ),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'diveId': serializer.toJson<String>(diveId),
+      'rawBlobMissing': serializer.toJson<bool>(rawBlobMissing),
+      'reparseFailedVersion': serializer.toJson<int?>(reparseFailedVersion),
+    };
+  }
+
+  DiveImportMark copyWith({
+    String? diveId,
+    bool? rawBlobMissing,
+    Value<int?> reparseFailedVersion = const Value.absent(),
+  }) => DiveImportMark(
+    diveId: diveId ?? this.diveId,
+    rawBlobMissing: rawBlobMissing ?? this.rawBlobMissing,
+    reparseFailedVersion: reparseFailedVersion.present
+        ? reparseFailedVersion.value
+        : this.reparseFailedVersion,
+  );
+  DiveImportMark copyWithCompanion(DiveImportMarksCompanion data) {
+    return DiveImportMark(
+      diveId: data.diveId.present ? data.diveId.value : this.diveId,
+      rawBlobMissing: data.rawBlobMissing.present
+          ? data.rawBlobMissing.value
+          : this.rawBlobMissing,
+      reparseFailedVersion: data.reparseFailedVersion.present
+          ? data.reparseFailedVersion.value
+          : this.reparseFailedVersion,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiveImportMark(')
+          ..write('diveId: $diveId, ')
+          ..write('rawBlobMissing: $rawBlobMissing, ')
+          ..write('reparseFailedVersion: $reparseFailedVersion')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(diveId, rawBlobMissing, reparseFailedVersion);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DiveImportMark &&
+          other.diveId == this.diveId &&
+          other.rawBlobMissing == this.rawBlobMissing &&
+          other.reparseFailedVersion == this.reparseFailedVersion);
+}
+
+class DiveImportMarksCompanion extends UpdateCompanion<DiveImportMark> {
+  final Value<String> diveId;
+  final Value<bool> rawBlobMissing;
+  final Value<int?> reparseFailedVersion;
+  final Value<int> rowid;
+  const DiveImportMarksCompanion({
+    this.diveId = const Value.absent(),
+    this.rawBlobMissing = const Value.absent(),
+    this.reparseFailedVersion = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DiveImportMarksCompanion.insert({
+    required String diveId,
+    this.rawBlobMissing = const Value.absent(),
+    this.reparseFailedVersion = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : diveId = Value(diveId);
+  static Insertable<DiveImportMark> custom({
+    Expression<String>? diveId,
+    Expression<bool>? rawBlobMissing,
+    Expression<int>? reparseFailedVersion,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (diveId != null) 'dive_id': diveId,
+      if (rawBlobMissing != null) 'raw_blob_missing': rawBlobMissing,
+      if (reparseFailedVersion != null)
+        'reparse_failed_version': reparseFailedVersion,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DiveImportMarksCompanion copyWith({
+    Value<String>? diveId,
+    Value<bool>? rawBlobMissing,
+    Value<int?>? reparseFailedVersion,
+    Value<int>? rowid,
+  }) {
+    return DiveImportMarksCompanion(
+      diveId: diveId ?? this.diveId,
+      rawBlobMissing: rawBlobMissing ?? this.rawBlobMissing,
+      reparseFailedVersion: reparseFailedVersion ?? this.reparseFailedVersion,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (diveId.present) {
+      map['dive_id'] = Variable<String>(diveId.value);
+    }
+    if (rawBlobMissing.present) {
+      map['raw_blob_missing'] = Variable<bool>(rawBlobMissing.value);
+    }
+    if (reparseFailedVersion.present) {
+      map['reparse_failed_version'] = Variable<int>(reparseFailedVersion.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiveImportMarksCompanion(')
+          ..write('diveId: $diveId, ')
+          ..write('rawBlobMissing: $rawBlobMissing, ')
+          ..write('reparseFailedVersion: $reparseFailedVersion, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $ImportStatesTable extends ImportStates
     with TableInfo<$ImportStatesTable, ImportState> {
   @override
@@ -11608,6 +12371,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $DiveBailoutCarryTable diveBailoutCarry = $DiveBailoutCarryTable(
     this,
   );
+  late final $DiveImportMarksTable diveImportMarks = $DiveImportMarksTable(
+    this,
+  );
   late final $ImportStatesTable importStates = $ImportStatesTable(this);
   late final $DiveMergeLinksTable diveMergeLinks = $DiveMergeLinksTable(this);
   late final $SyncQuarantineTable syncQuarantine = $SyncQuarantineTable(this);
@@ -11631,6 +12397,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     diveCylinders,
     divePlans,
     diveBailoutCarry,
+    diveImportMarks,
     importStates,
     diveMergeLinks,
     syncQuarantine,
@@ -11657,6 +12424,11 @@ typedef $$DivesTableCreateCompanionBuilder =
       required int logVersion,
       required int dcModel,
       Value<int?> dcFirmware,
+      Value<String?> dcVendor,
+      Value<String?> dcProduct,
+      Value<int?> dcFamily,
+      Value<int?> dcModelCode,
+      Value<String?> matchCandidatesJson,
       required int sampleIntervalMs,
       required String gasMixesJson,
       Value<String?> tanksJson,
@@ -11690,6 +12462,11 @@ typedef $$DivesTableUpdateCompanionBuilder =
       Value<int> logVersion,
       Value<int> dcModel,
       Value<int?> dcFirmware,
+      Value<String?> dcVendor,
+      Value<String?> dcProduct,
+      Value<int?> dcFamily,
+      Value<int?> dcModelCode,
+      Value<String?> matchCandidatesJson,
       Value<int> sampleIntervalMs,
       Value<String> gasMixesJson,
       Value<String?> tanksJson,
@@ -11894,6 +12671,31 @@ class $$DivesTableFilterComposer extends Composer<_$AppDatabase, $DivesTable> {
 
   ColumnFilters<int> get dcFirmware => $composableBuilder(
     column: $table.dcFirmware,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dcVendor => $composableBuilder(
+    column: $table.dcVendor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dcProduct => $composableBuilder(
+    column: $table.dcProduct,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dcFamily => $composableBuilder(
+    column: $table.dcFamily,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dcModelCode => $composableBuilder(
+    column: $table.dcModelCode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get matchCandidatesJson => $composableBuilder(
+    column: $table.matchCandidatesJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12177,6 +12979,31 @@ class $$DivesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get dcVendor => $composableBuilder(
+    column: $table.dcVendor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dcProduct => $composableBuilder(
+    column: $table.dcProduct,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get dcFamily => $composableBuilder(
+    column: $table.dcFamily,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get dcModelCode => $composableBuilder(
+    column: $table.dcModelCode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get matchCandidatesJson => $composableBuilder(
+    column: $table.matchCandidatesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get sampleIntervalMs => $composableBuilder(
     column: $table.sampleIntervalMs,
     builder: (column) => ColumnOrderings(column),
@@ -12311,6 +13138,25 @@ class $$DivesTableAnnotationComposer
 
   GeneratedColumn<int> get dcFirmware => $composableBuilder(
     column: $table.dcFirmware,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get dcVendor =>
+      $composableBuilder(column: $table.dcVendor, builder: (column) => column);
+
+  GeneratedColumn<String> get dcProduct =>
+      $composableBuilder(column: $table.dcProduct, builder: (column) => column);
+
+  GeneratedColumn<int> get dcFamily =>
+      $composableBuilder(column: $table.dcFamily, builder: (column) => column);
+
+  GeneratedColumn<int> get dcModelCode => $composableBuilder(
+    column: $table.dcModelCode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get matchCandidatesJson => $composableBuilder(
+    column: $table.matchCandidatesJson,
     builder: (column) => column,
   );
 
@@ -12545,6 +13391,11 @@ class $$DivesTableTableManager
                 Value<int> logVersion = const Value.absent(),
                 Value<int> dcModel = const Value.absent(),
                 Value<int?> dcFirmware = const Value.absent(),
+                Value<String?> dcVendor = const Value.absent(),
+                Value<String?> dcProduct = const Value.absent(),
+                Value<int?> dcFamily = const Value.absent(),
+                Value<int?> dcModelCode = const Value.absent(),
+                Value<String?> matchCandidatesJson = const Value.absent(),
                 Value<int> sampleIntervalMs = const Value.absent(),
                 Value<String> gasMixesJson = const Value.absent(),
                 Value<String?> tanksJson = const Value.absent(),
@@ -12576,6 +13427,11 @@ class $$DivesTableTableManager
                 logVersion: logVersion,
                 dcModel: dcModel,
                 dcFirmware: dcFirmware,
+                dcVendor: dcVendor,
+                dcProduct: dcProduct,
+                dcFamily: dcFamily,
+                dcModelCode: dcModelCode,
+                matchCandidatesJson: matchCandidatesJson,
                 sampleIntervalMs: sampleIntervalMs,
                 gasMixesJson: gasMixesJson,
                 tanksJson: tanksJson,
@@ -12609,6 +13465,11 @@ class $$DivesTableTableManager
                 required int logVersion,
                 required int dcModel,
                 Value<int?> dcFirmware = const Value.absent(),
+                Value<String?> dcVendor = const Value.absent(),
+                Value<String?> dcProduct = const Value.absent(),
+                Value<int?> dcFamily = const Value.absent(),
+                Value<int?> dcModelCode = const Value.absent(),
+                Value<String?> matchCandidatesJson = const Value.absent(),
                 required int sampleIntervalMs,
                 required String gasMixesJson,
                 Value<String?> tanksJson = const Value.absent(),
@@ -12640,6 +13501,11 @@ class $$DivesTableTableManager
                 logVersion: logVersion,
                 dcModel: dcModel,
                 dcFirmware: dcFirmware,
+                dcVendor: dcVendor,
+                dcProduct: dcProduct,
+                dcFamily: dcFamily,
+                dcModelCode: dcModelCode,
+                matchCandidatesJson: matchCandidatesJson,
                 sampleIntervalMs: sampleIntervalMs,
                 gasMixesJson: gasMixesJson,
                 tanksJson: tanksJson,
@@ -14260,6 +15126,10 @@ typedef $$DiveComputersTableCreateCompanionBuilder =
       required int model,
       Value<int?> firmwareVersion,
       Value<String?> nickname,
+      Value<String?> dcVendor,
+      Value<String?> dcProduct,
+      Value<int?> dcFamily,
+      Value<int?> dcModelCode,
       required int createdAt,
       required int updatedAt,
       Value<int?> deletedAt,
@@ -14275,6 +15145,10 @@ typedef $$DiveComputersTableUpdateCompanionBuilder =
       Value<int> model,
       Value<int?> firmwareVersion,
       Value<String?> nickname,
+      Value<String?> dcVendor,
+      Value<String?> dcProduct,
+      Value<int?> dcFamily,
+      Value<int?> dcModelCode,
       Value<int> createdAt,
       Value<int> updatedAt,
       Value<int?> deletedAt,
@@ -14315,6 +15189,26 @@ class $$DiveComputersTableFilterComposer
 
   ColumnFilters<String> get nickname => $composableBuilder(
     column: $table.nickname,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dcVendor => $composableBuilder(
+    column: $table.dcVendor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dcProduct => $composableBuilder(
+    column: $table.dcProduct,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dcFamily => $composableBuilder(
+    column: $table.dcFamily,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dcModelCode => $composableBuilder(
+    column: $table.dcModelCode,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -14383,6 +15277,26 @@ class $$DiveComputersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get dcVendor => $composableBuilder(
+    column: $table.dcVendor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dcProduct => $composableBuilder(
+    column: $table.dcProduct,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get dcFamily => $composableBuilder(
+    column: $table.dcFamily,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get dcModelCode => $composableBuilder(
+    column: $table.dcModelCode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -14439,6 +15353,20 @@ class $$DiveComputersTableAnnotationComposer
 
   GeneratedColumn<String> get nickname =>
       $composableBuilder(column: $table.nickname, builder: (column) => column);
+
+  GeneratedColumn<String> get dcVendor =>
+      $composableBuilder(column: $table.dcVendor, builder: (column) => column);
+
+  GeneratedColumn<String> get dcProduct =>
+      $composableBuilder(column: $table.dcProduct, builder: (column) => column);
+
+  GeneratedColumn<int> get dcFamily =>
+      $composableBuilder(column: $table.dcFamily, builder: (column) => column);
+
+  GeneratedColumn<int> get dcModelCode => $composableBuilder(
+    column: $table.dcModelCode,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -14497,6 +15425,10 @@ class $$DiveComputersTableTableManager
                 Value<int> model = const Value.absent(),
                 Value<int?> firmwareVersion = const Value.absent(),
                 Value<String?> nickname = const Value.absent(),
+                Value<String?> dcVendor = const Value.absent(),
+                Value<String?> dcProduct = const Value.absent(),
+                Value<int?> dcFamily = const Value.absent(),
+                Value<int?> dcModelCode = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
                 Value<int?> deletedAt = const Value.absent(),
@@ -14510,6 +15442,10 @@ class $$DiveComputersTableTableManager
                 model: model,
                 firmwareVersion: firmwareVersion,
                 nickname: nickname,
+                dcVendor: dcVendor,
+                dcProduct: dcProduct,
+                dcFamily: dcFamily,
+                dcModelCode: dcModelCode,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -14525,6 +15461,10 @@ class $$DiveComputersTableTableManager
                 required int model,
                 Value<int?> firmwareVersion = const Value.absent(),
                 Value<String?> nickname = const Value.absent(),
+                Value<String?> dcVendor = const Value.absent(),
+                Value<String?> dcProduct = const Value.absent(),
+                Value<int?> dcFamily = const Value.absent(),
+                Value<int?> dcModelCode = const Value.absent(),
                 required int createdAt,
                 required int updatedAt,
                 Value<int?> deletedAt = const Value.absent(),
@@ -14538,6 +15478,10 @@ class $$DiveComputersTableTableManager
                 model: model,
                 firmwareVersion: firmwareVersion,
                 nickname: nickname,
+                dcVendor: dcVendor,
+                dcProduct: dcProduct,
+                dcFamily: dcFamily,
+                dcModelCode: dcModelCode,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -17331,6 +18275,178 @@ typedef $$DiveBailoutCarryTableProcessedTableManager =
       DiveBailoutCarryData,
       PrefetchHooks Function({bool diveId, bool cylinderId})
     >;
+typedef $$DiveImportMarksTableCreateCompanionBuilder =
+    DiveImportMarksCompanion Function({
+      required String diveId,
+      Value<bool> rawBlobMissing,
+      Value<int?> reparseFailedVersion,
+      Value<int> rowid,
+    });
+typedef $$DiveImportMarksTableUpdateCompanionBuilder =
+    DiveImportMarksCompanion Function({
+      Value<String> diveId,
+      Value<bool> rawBlobMissing,
+      Value<int?> reparseFailedVersion,
+      Value<int> rowid,
+    });
+
+class $$DiveImportMarksTableFilterComposer
+    extends Composer<_$AppDatabase, $DiveImportMarksTable> {
+  $$DiveImportMarksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get diveId => $composableBuilder(
+    column: $table.diveId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get rawBlobMissing => $composableBuilder(
+    column: $table.rawBlobMissing,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get reparseFailedVersion => $composableBuilder(
+    column: $table.reparseFailedVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DiveImportMarksTableOrderingComposer
+    extends Composer<_$AppDatabase, $DiveImportMarksTable> {
+  $$DiveImportMarksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get diveId => $composableBuilder(
+    column: $table.diveId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get rawBlobMissing => $composableBuilder(
+    column: $table.rawBlobMissing,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get reparseFailedVersion => $composableBuilder(
+    column: $table.reparseFailedVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DiveImportMarksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DiveImportMarksTable> {
+  $$DiveImportMarksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get diveId =>
+      $composableBuilder(column: $table.diveId, builder: (column) => column);
+
+  GeneratedColumn<bool> get rawBlobMissing => $composableBuilder(
+    column: $table.rawBlobMissing,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get reparseFailedVersion => $composableBuilder(
+    column: $table.reparseFailedVersion,
+    builder: (column) => column,
+  );
+}
+
+class $$DiveImportMarksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DiveImportMarksTable,
+          DiveImportMark,
+          $$DiveImportMarksTableFilterComposer,
+          $$DiveImportMarksTableOrderingComposer,
+          $$DiveImportMarksTableAnnotationComposer,
+          $$DiveImportMarksTableCreateCompanionBuilder,
+          $$DiveImportMarksTableUpdateCompanionBuilder,
+          (
+            DiveImportMark,
+            BaseReferences<
+              _$AppDatabase,
+              $DiveImportMarksTable,
+              DiveImportMark
+            >,
+          ),
+          DiveImportMark,
+          PrefetchHooks Function()
+        > {
+  $$DiveImportMarksTableTableManager(
+    _$AppDatabase db,
+    $DiveImportMarksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DiveImportMarksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DiveImportMarksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DiveImportMarksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> diveId = const Value.absent(),
+                Value<bool> rawBlobMissing = const Value.absent(),
+                Value<int?> reparseFailedVersion = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DiveImportMarksCompanion(
+                diveId: diveId,
+                rawBlobMissing: rawBlobMissing,
+                reparseFailedVersion: reparseFailedVersion,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String diveId,
+                Value<bool> rawBlobMissing = const Value.absent(),
+                Value<int?> reparseFailedVersion = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DiveImportMarksCompanion.insert(
+                diveId: diveId,
+                rawBlobMissing: rawBlobMissing,
+                reparseFailedVersion: reparseFailedVersion,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DiveImportMarksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DiveImportMarksTable,
+      DiveImportMark,
+      $$DiveImportMarksTableFilterComposer,
+      $$DiveImportMarksTableOrderingComposer,
+      $$DiveImportMarksTableAnnotationComposer,
+      $$DiveImportMarksTableCreateCompanionBuilder,
+      $$DiveImportMarksTableUpdateCompanionBuilder,
+      (
+        DiveImportMark,
+        BaseReferences<_$AppDatabase, $DiveImportMarksTable, DiveImportMark>,
+      ),
+      DiveImportMark,
+      PrefetchHooks Function()
+    >;
 typedef $$ImportStatesTableCreateCompanionBuilder =
     ImportStatesCompanion Function({
       required String dcSerial,
@@ -18386,6 +19502,8 @@ class $AppDatabaseManager {
       $$DivePlansTableTableManager(_db, _db.divePlans);
   $$DiveBailoutCarryTableTableManager get diveBailoutCarry =>
       $$DiveBailoutCarryTableTableManager(_db, _db.diveBailoutCarry);
+  $$DiveImportMarksTableTableManager get diveImportMarks =>
+      $$DiveImportMarksTableTableManager(_db, _db.diveImportMarks);
   $$ImportStatesTableTableManager get importStates =>
       $$ImportStatesTableTableManager(_db, _db.importStates);
   $$DiveMergeLinksTableTableManager get diveMergeLinks =>

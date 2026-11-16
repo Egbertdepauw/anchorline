@@ -193,7 +193,7 @@ void main() {
   test('schema v2: has cylinders, pressure_mappings, oxygen_cells.label', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // Inserting a row exercises the full schema.
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -278,7 +278,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // Step 5: verify the seeded oxygen_cells row survived.
     final cells = await db.select(db.oxygenCells).get();
@@ -355,7 +355,7 @@ void main() {
     await db.customSelect('SELECT 1').get();
 
     // Step 4: confirm we're at v3.
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // Step 5: verify the seeded annotation row survived.
     final annotations = await db.select(db.diveAnnotations).get();
@@ -402,7 +402,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     final dives = await db.select(db.dives).get();
     expect(dives, hasLength(1));
@@ -446,7 +446,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // Migrated row: tanks_json is null on the existing v4 row.
     final migrated = await db.select(db.dives).get();
@@ -533,7 +533,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // The migrated row's tank_pressures_blob is null.
     final migrated = await db.select(db.diveSamples).get();
@@ -624,7 +624,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // The migrated row has a null subsurface_uploaded_at.
     final migrated = await db.select(db.dives).get();
@@ -832,7 +832,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // Pre-existing rows survive the migration with owner_id null.
     expect((await db.select(db.diveAnnotations).get()).single.ownerId, isNull);
@@ -939,7 +939,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // Pre-existing dive survives with deleted_at null (visible in queries).
     final migrated = await db.select(db.dives).get();
@@ -1046,7 +1046,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // Pre-existing v10 row survives with sensor_calibration_json null —
     // the mapper's fallback (Petrel default 0.021) is what handles legacy
@@ -1163,7 +1163,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // Pre-existing v11 row survives; new columns default to null/empty.
     final migrated = await db.select(db.diveAnnotations).get();
@@ -1296,7 +1296,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // Pre-existing v13 row survives; new column defaults to null.
     final migrated = await db.select(db.diveAnnotations).get();
@@ -1330,7 +1330,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // The new table exists and is writable.
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -1358,7 +1358,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // The new table exists and is writable.
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -1387,7 +1387,7 @@ void main() {
     addTearDown(db.close);
 
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     // The new table exists and is writable.
     await db.customStatement(
@@ -1412,7 +1412,7 @@ void main() {
     final db = AppDatabase(NativeDatabase.opened(raw));
     addTearDown(db.close);
     await db.customSelect('SELECT 1').get();
-    expect(db.schemaVersion, 20);
+    expect(db.schemaVersion, 21);
 
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.customStatement(
@@ -1424,5 +1424,61 @@ void main() {
         .customSelect('SELECT user_dive_number FROM dive_annotations')
         .get();
     expect(rows.single.data['user_dive_number'], 482);
+  });
+
+  test('v20 → v21 adds the brand columns and dive_import_marks', () async {
+    final raw = sqlite3.openInMemory();
+    addTearDown(raw.close);
+    raw.execute('PRAGMA user_version = 20;');
+    // Sparse v20 fixtures: only the tables the v21 step alters.
+    raw.execute('''
+      CREATE TABLE dives (
+        id TEXT NOT NULL PRIMARY KEY,
+        dc_serial INTEGER NOT NULL
+      );
+    ''');
+    raw.execute('''
+      CREATE TABLE dive_computers (
+        id TEXT NOT NULL PRIMARY KEY,
+        serial INTEGER NOT NULL UNIQUE,
+        model INTEGER NOT NULL
+      );
+    ''');
+    raw.execute("INSERT INTO dives (id, dc_serial) VALUES ('d1', 7);");
+    raw.execute(
+        "INSERT INTO dive_computers (id, serial, model) VALUES ('c1', 7, 1);");
+
+    final db = AppDatabase(NativeDatabase.opened(raw));
+    addTearDown(db.close);
+    await db.customSelect('SELECT 1').get();
+    expect(db.schemaVersion, 21);
+
+    // Existing rows survive with NULL brand fields.
+    final dive = (await db.customSelect(
+      'SELECT dc_vendor, dc_product, dc_family, dc_model_code, '
+      'match_candidates_json FROM dives',
+    ).get())
+        .single
+        .data;
+    expect(dive.values, everyElement(isNull));
+    final comp = (await db.customSelect(
+      'SELECT dc_vendor, dc_product, dc_family, dc_model_code '
+      'FROM dive_computers',
+    ).get())
+        .single
+        .data;
+    expect(comp.values, everyElement(isNull));
+
+    // The new device-local table exists, with defaults.
+    await db.customStatement(
+        "INSERT INTO dive_import_marks (dive_id) VALUES ('d1')");
+    final mark = (await db
+            .customSelect('SELECT raw_blob_missing, reparse_failed_version '
+                'FROM dive_import_marks')
+            .get())
+        .single
+        .data;
+    expect(mark['raw_blob_missing'], 0);
+    expect(mark['reparse_failed_version'], isNull);
   });
 }

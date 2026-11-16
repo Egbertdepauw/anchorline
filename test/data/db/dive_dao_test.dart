@@ -542,4 +542,62 @@ void main() {
       expect(await liveIds(later), ['later-file']);
     });
   });
+
+  group('rowToDive brand fields (libdivecomputer phase 1)', () {
+    Map<String, dynamic> baseRow() => {
+          'id': 'd1',
+          'dc_serial': 7,
+          'dc_dive_number': 3,
+          'start_time': 1000,
+          'end_time': 2000,
+          'utc_offset_minutes': null,
+          'duration_seconds': 1000,
+          'max_depth_mm': 30000,
+          'dive_mode': 0,
+          'deco_model': 0,
+          'gf_low': 30,
+          'gf_high': 70,
+          'atmospheric_pressure_mbar': 1013,
+          'water_density': 1020,
+          'log_version': 1,
+          'dc_model': 13,
+          'dc_firmware': null,
+          'sample_interval_ms': 10000,
+          'gas_mixes_json': '[]',
+          'tanks_json': null,
+          'sensor_calibration_json': null,
+          'configured_stack_seconds': null,
+          'stack_remaining_at_start_seconds': null,
+          'stack_remaining_at_end_seconds': null,
+          'parser_version': 1,
+          'imported_at': 3000,
+          'subsurface_uploaded_at': null,
+          'deleted_at': null,
+        };
+
+    test('rowToDive reads a pre-phase-1 row (new columns NULL)', () {
+      final dive = DiveDao.rowToDive(baseRow());
+      expect(dive.dcVendor, isNull);
+      expect(dive.dcProduct, isNull);
+      expect(dive.dcFamily, isNull);
+      expect(dive.dcModelCode, isNull);
+      expect(dive.matchCandidatesJson, isNull);
+    });
+
+    test('rowToDive reads brand fields and match candidates when set', () {
+      final dive = DiveDao.rowToDive({
+        ...baseRow(),
+        'dc_vendor': 'Divesoft',
+        'dc_product': 'Liberty',
+        'dc_family': 0x00060000,
+        'dc_model_code': 10,
+        'match_candidates_json': '["a","b"]',
+      });
+      expect(dive.dcVendor, 'Divesoft');
+      expect(dive.dcProduct, 'Liberty');
+      expect(dive.dcFamily, 0x00060000);
+      expect(dive.dcModelCode, 10);
+      expect(dive.matchCandidatesJson, '["a","b"]');
+    });
+  });
 }
