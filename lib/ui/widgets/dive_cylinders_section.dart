@@ -14,6 +14,7 @@ import '../../data/db/database.dart';
 import '../../data/db/equipment_dao.dart';
 import 'package:subsurface_core/data/models/dive.dart';
 import '../notifiers/dive_annotations_notifier.dart';
+import '../theme/tokens.dart';
 import 'dive_annotations_section.dart' show GasMixRow;
 
 class DiveCylindersSection extends StatefulWidget {
@@ -122,9 +123,8 @@ class _UnassignedCylinderRow extends StatelessWidget {
                 Text(label, style: theme.textTheme.bodyMedium),
                 Text(
                   'No longer matches a gas on this dive',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface
-                          .withValues(alpha: 0.5)),
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: context.palette.textSecondary),
                 ),
               ],
             ),

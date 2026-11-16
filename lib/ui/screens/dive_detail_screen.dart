@@ -420,8 +420,9 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
                   DivePossibleDuplicatesBanner(
-                    // A merged dive's flag lives on its earliest member.
-                    diveId: widget.annotationsDiveId ?? widget.dive.id,
+                    // A merged dive is flagged if any member is.
+                    diveId: widget.dive.id,
+                    merged: widget.annotationsDiveId != null,
                     dao: widget.dao,
                     onOpen: _openCandidate,
                   ),

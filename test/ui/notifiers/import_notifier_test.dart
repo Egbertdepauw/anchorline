@@ -191,6 +191,7 @@ void main() {
       importStateDao: importStateDao,
       equipmentDao: equipmentRig.dao,
       useMock: true,
+      reporter: (e, st, where) {},
     );
   });
 
@@ -265,6 +266,7 @@ void main() {
       importStateDao: importStateDao,
       equipmentDao: equipmentDao,
       useMock: true,
+      reporter: (e, st, where) {},
     );
     extra.add(n);
     return n;

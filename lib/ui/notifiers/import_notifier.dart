@@ -459,8 +459,7 @@ class ImportNotifier extends ChangeNotifier {
                   );
               }
             } catch (e, st) {
-              debugPrint(
-                  'Failed to import dive ${event.listing?.diveNumber}: $e');
+              debugPrint('Failed to import dive ${event.listing?.diveNumber}');
               _failedCount++;
               _report(e, st, 'download');
             }
@@ -472,8 +471,7 @@ class ImportNotifier extends ChangeNotifier {
 
           case DiveSourceDiveFailed():
             _currentDiveNumber = event.listing?.diveNumber;
-            debugPrint(
-                'Failed to import dive ${event.listing?.diveNumber}: ${event.error}');
+            debugPrint('Failed to import dive ${event.listing?.diveNumber}');
             _failedCount++;
             _report(event.error, event.stack, 'download');
             await _applyScrubberEvents(serial);

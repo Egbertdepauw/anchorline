@@ -335,6 +335,15 @@ class DiveDao {
     return hidden;
   }
 
+  /// The ids of the live dives in merge group [groupId].
+  Future<List<String>> mergeGroupMemberIds(String groupId) async {
+    final rows = await _ps.getAll(
+        'SELECT id FROM dive_merge_links '
+        'WHERE group_id = ? AND deleted_at IS NULL',
+        [groupId]);
+    return [for (final r in rows) r['id'] as String];
+  }
+
   /// The ids a flagged dive was imported alongside (see
   /// [ImportOutcome.insertedFlagged]); empty when it has none.
   Future<List<String>> matchCandidates(String diveId) async {

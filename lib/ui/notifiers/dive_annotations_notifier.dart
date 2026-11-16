@@ -201,12 +201,14 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   Future<void> removeUnassignedCylinder(int index) async {
     final diveId = _diveId;
     if (diveId == null || index >= 0) return;
-    await _equipmentDao.removeDiveCylinder(diveId, index);
+    // Drop it from the map first, so a save running meanwhile can't revive
+    // the row.
     _cylinderByMix = {
       for (final e in _cylinderByMix.entries)
         if (e.key != index) e.key: e.value,
     };
     notifyListeners();
+    await _equipmentDao.removeDiveCylinder(diveId, index);
   }
 
   void _markDirty() {

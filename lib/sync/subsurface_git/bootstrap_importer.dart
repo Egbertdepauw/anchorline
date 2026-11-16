@@ -504,12 +504,8 @@ class SubsurfaceBootstrapImporter {
         switch (outcome) {
           case ImportOutcome.inserted:
           case ImportOutcome.insertedFlagged:
-            // Only a dive that was just inserted gets Subsurface's
-            // annotation; the bootstrap never changes a stored dive.
-            if (imported0.annotation != null) {
-              await _data.upsertAnnotation(imported0.annotation!);
-            }
-            imported++;
+            // The dive is stored: remember it first, so a failing annotation
+            // doesn't let a near-duplicate folder in later.
             stored.add(StoredDiveKey(
               id: converted.dive.id,
               dcVendor: vendor,
@@ -519,6 +515,12 @@ class SubsurfaceBootstrapImporter {
               parserVersion: kSubsurfaceImportedParserVersion,
               dcFamily: converted.dive.dcFamily,
             ));
+            imported++;
+            // Only a dive that was just inserted gets Subsurface's
+            // annotation; the bootstrap never changes a stored dive.
+            if (imported0.annotation != null) {
+              await _data.upsertAnnotation(imported0.annotation!);
+            }
           case ImportOutcome.unchanged:
           case ImportOutcome.refreshed:
             // The DAO found the dive stored under a key our list didn't

@@ -8,10 +8,14 @@ import 'package:flutter/material.dart';
 
 import '../../data/db/database.dart';
 import '../../data/db/dive_dao.dart';
+import '../theme/tokens.dart';
 import '../util/format.dart';
 
 class DivePossibleDuplicatesBanner extends StatefulWidget {
+  /// The dive shown. For a merged dive ([merged]) this is the merge group's
+  /// id, and every member of the group is checked.
   final String diveId;
+  final bool merged;
   final DiveDao dao;
 
   /// Opens a candidate dive.
@@ -20,6 +24,7 @@ class DivePossibleDuplicatesBanner extends StatefulWidget {
   const DivePossibleDuplicatesBanner({
     super.key,
     required this.diveId,
+    this.merged = false,
     required this.dao,
     required this.onOpen,
   });
@@ -42,17 +47,28 @@ class _DivePossibleDuplicatesBannerState
   @override
   void didUpdateWidget(DivePossibleDuplicatesBanner old) {
     super.didUpdateWidget(old);
-    if (old.diveId != widget.diveId) _load();
+    if (old.diveId != widget.diveId || old.merged != widget.merged) _load();
   }
 
   Future<void> _load() async {
     final id = widget.diveId;
     final found = <Dive>[];
-    for (final c in await widget.dao.matchCandidates(id)) {
-      final dive = await widget.dao.getDive(c);
-      // A candidate that has since been deleted is no longer a duplicate
-      // the diver can open.
-      if (dive != null && dive.deletedAt == null) found.add(dive);
+    try {
+      final members =
+          widget.merged ? await widget.dao.mergeGroupMemberIds(id) : [id];
+      final seen = {...members};
+      for (final m in members) {
+        for (final c in await widget.dao.matchCandidates(m)) {
+          if (!seen.add(c)) continue;
+          final dive = await widget.dao.getDive(c);
+          // A candidate that has since been deleted is no longer a duplicate
+          // the diver can open.
+          if (dive != null && dive.deletedAt == null) found.add(dive);
+        }
+      }
+    } catch (_) {
+      // The banner is a hint; without it the screen works as before.
+      return;
     }
     if (!mounted || id != widget.diveId) return;
     setState(() => _candidates = found);
@@ -62,10 +78,13 @@ class _DivePossibleDuplicatesBannerState
   Widget build(BuildContext context) {
     if (_candidates.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final palette = context.palette;
     final n = _candidates.length;
     return Container(
-      color: scheme.secondaryContainer,
+      decoration: BoxDecoration(
+        color: palette.surfaceCard,
+        border: Border(left: BorderSide(color: palette.accentPrimary, width: 3)),
+      ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -73,14 +92,14 @@ class _DivePossibleDuplicatesBannerState
           Row(
             children: [
               Icon(Icons.info_outline,
-                  size: 18, color: scheme.onSecondaryContainer),
+                  size: 18, color: palette.accentPrimary),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'This dive may be the same as $n other '
                   '${n == 1 ? 'dive' : 'dives'} in your log.',
                   style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: scheme.onSecondaryContainer),
+                      ?.copyWith(color: palette.textPrimary),
                 ),
               ),
             ],
@@ -89,9 +108,10 @@ class _DivePossibleDuplicatesBannerState
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
+                style: TextButton.styleFrom(
+                    foregroundColor: palette.accentPrimary),
                 onPressed: () => widget.onOpen(d),
-                child: Text(
-                    '${formatDateShort(d.startTime)} · #${d.dcDiveNumber}'),
+                child: Text(formatDateTime(d.startTime)),
               ),
             ),
         ],

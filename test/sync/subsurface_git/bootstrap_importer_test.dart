@@ -591,6 +591,32 @@ void main() {
       expect(ds.matchFlags, [false]);
     });
 
+    test('a second folder for the same dive in one run is skipped',
+        () async {
+      final cloneRoot = _tempDir('clones');
+      final repoDir = _bootstrapClone(cloneRoot, 'tester@example.com');
+      _copyFixtureDive(repoDir, '2026/04/04-Sat-13=30=15');
+      // The same dive again, 30 s later, as a Subsurface multi-DC or
+      // hand-edited entry would be.
+      final dst = Directory(p.join(repoDir.path, '2026/04/04-Sat-13=30=45'))
+        ..createSync(recursive: true);
+      for (final f in Directory(p.join(repoDir.path, '2026/04/04-Sat-13=30=15'))
+          .listSync()
+          .whereType<File>()) {
+        f.copySync(p.join(dst.path, p.basename(f.path)));
+      }
+      final ds = _OutcomeDataSource(ImportOutcome.inserted);
+      final imp = _makeImporter(
+        credentials: _FakeCredentials(),
+        cloneRoot: cloneRoot,
+        dataSource: ds,
+      );
+      final done = (await imp.import().toList()).last as BootstrapDone;
+      expect(done.result.divesImported, 1);
+      expect(done.result.divesSkipped, 1);
+      expect(ds.importCalls, 1);
+    });
+
     test('only an inserted dive gets its annotation; refreshed and '
         'unchanged do not', () async {
       for (final entry in {
