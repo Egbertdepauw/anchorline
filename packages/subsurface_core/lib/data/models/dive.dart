@@ -90,6 +90,13 @@ class Dive {
   /// Scrubber stack remaining at dive end, in seconds.
   final int? stackRemainingAtEndSeconds;
 
+  /// Dive computer brand, product, engine family and model code, for dives
+  /// read through libdivecomputer. Null for Shearwater imports.
+  final String? dcVendor;
+  final String? dcProduct;
+  final int? dcFamily;
+  final int? dcModelCode;
+
   Dive({
     required this.id,
     required this.dcSerial,
@@ -114,6 +121,10 @@ class Dive {
     this.configuredStackSeconds,
     this.stackRemainingAtStartSeconds,
     this.stackRemainingAtEndSeconds,
+    this.dcVendor,
+    this.dcProduct,
+    this.dcFamily,
+    this.dcModelCode,
   });
 }
 

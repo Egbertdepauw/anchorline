@@ -39,6 +39,16 @@ class ColumnPacker {
     return bytes.buffer.asInt32List();
   }
 
+  // ── Bytes ──
+
+  static Uint8List packBytes(Uint8List data) {
+    return Uint8List.fromList(_encoder.convert(data));
+  }
+
+  static Uint8List unpackBytes(Uint8List blob) {
+    return Uint8List.fromList(_decoder.convert(blob));
+  }
+
   // ── Uint8 ──
 
   static Uint8List packUint8(Uint8List data) {
