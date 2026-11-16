@@ -70,6 +70,35 @@ begin
      and new.parser_version < old.parser_version then
     return old;
   end if;
+
+  -- dive_samples only: builds from before this migration upload with an
+  -- upsert (INSERT ... ON CONFLICT (id) DO UPDATE SET <payload columns>)
+  -- that never names dive_samples.parser_version, so NEW keeps OLD's value
+  -- and the rule above cannot fire. Without this, such a build replaces a
+  -- refreshed row's blobs with its older parse while dives stays current,
+  -- a mixed pair no later refresh repairs. So: at an equal (or omitted)
+  -- version, a change to any imported data column is refused. A change
+  -- that carries a higher version is a real refresh and goes through.
+  -- dives is deliberately not covered: same-version PATCHes of dives
+  -- (deleted_at, user fields) must still apply.
+  if tg_table_name = 'dive_samples'
+     and old.parser_version is not null and old.parser_version >= 0
+     and (new.parser_version is null or new.parser_version = old.parser_version)
+     and (new.sample_count, new.depth_blob, new.temperature_blob, new.ppo2_blob,
+          new.cell_mv0_blob, new.cell_mv1_blob, new.cell_mv2_blob,
+          new.setpoint_blob, new.cns_blob, new.deco_depth_blob,
+          new.deco_time_blob, new.tts_blob, new.gas_mix_idx_blob,
+          new.status_blob, new.tank_pressures_blob, new.cell_ppo2_blob,
+          new.events_blob)
+         is distinct from
+         (old.sample_count, old.depth_blob, old.temperature_blob, old.ppo2_blob,
+          old.cell_mv0_blob, old.cell_mv1_blob, old.cell_mv2_blob,
+          old.setpoint_blob, old.cns_blob, old.deco_depth_blob,
+          old.deco_time_blob, old.tts_blob, old.gas_mix_idx_blob,
+          old.status_blob, old.tank_pressures_blob, old.cell_ppo2_blob,
+          old.events_blob) then
+    return old;
+  end if;
   return new;
 end $$;
 
