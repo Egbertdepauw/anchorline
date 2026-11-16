@@ -89,9 +89,11 @@ class ExistingRemoteDive {
   final int diveNumber;
 
   /// Decoded from the `Divecomputer` keyvalue `Serial` (hex-encoded).
-  /// Null when the remote dive's `Divecomputer` had no `Serial` line
-  /// (very old / manual entries) — those won't ever match a CCRLog dive
-  /// because CCRLog dives always carry `dcSerial`.
+  /// 0 when the `Divecomputer` parsed but had no usable `Serial` line
+  /// (manually added dives, computers Subsurface logged no serial for):
+  /// the bootstrap stores those dives with `dcSerial` 0, so they match.
+  /// Null when the `Divecomputer` was missing, unreadable or failed to
+  /// parse; such a dive never matches a CCRLog dive.
   final int? serial;
 
   /// Decoded from the folder name's UTC components, mirroring how the
@@ -391,9 +393,17 @@ class SyncPlanner {
         // mapper output. This is the only path that breaks the "never
         // rewrite Divecomputer on update" rule, and only for files we
         // ourselves wrote incorrectly.
-        final ccrlogOriginSignature = existing.divecomputerLines
-            .whereType<EventLine>()
-            .any(_looksLikeSpChangeEvent);
+        //
+        // CCRLog always writes a hex `Serial` keyvalue, so a file without
+        // one is not ours whatever its events say. Subsurface does write
+        // SP-change events on such files: a serial-less `model "Perdix 2"`
+        // CCR dive in a real repository carries
+        // `event 0:00 type=20 value=1100 name="SP change"`.
+        final ccrlogOriginSignature =
+            _hasHexSerial(existing.divecomputerLines) &&
+                existing.divecomputerLines
+                    .whereType<EventLine>()
+                    .any(_looksLikeSpChangeEvent);
         if (ccrlogOriginSignature) {
           final folderPath = folderSegments.join('/');
           filesToWrite['$folderPath/Divecomputer'] = serializeSubsurfaceFile(
@@ -621,6 +631,19 @@ class SyncPlanner {
       if (field.key == 'name') {
         final v = field.value;
         return v == '"SP change"' || v == '"setpoint change"';
+      }
+    }
+    return false;
+  }
+
+  /// True when the first `keyvalue "Serial"` line holds a hex value, as
+  /// every Divecomputer file CCRLog writes does. Same reading as
+  /// `RemoteSnapshot`, which indexed only such files before serial-less
+  /// ones were indexed under serial 0.
+  static bool _hasHexSerial(List<SsLine> divecomputerLines) {
+    for (final line in divecomputerLines) {
+      if (line is KeyvaluePairLine && line.key == 'Serial') {
+        return int.tryParse(line.value, radix: 16) != null;
       }
     }
     return false;
