@@ -23,4 +23,5 @@ export 'sync/subsurface_git/sync_inputs.dart';
 export 'sync/subsurface_git/mapper.dart';
 export 'sync/subsurface_git/sync_planner.dart';
 export 'sync/subsurface_git/remote_snapshot.dart';
+export 'sync/subsurface_git/subsurface_model.dart';
 export 'sync/subsurface_git/subsurface_to_ccrlog_mapper.dart';

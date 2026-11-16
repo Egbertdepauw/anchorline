@@ -12,6 +12,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:subsurface_core/data/models/annotation.dart';
+import 'package:subsurface_core/data/models/dive.dart' show generateDiveId;
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart'
     show ConvertedDive;
 import 'package:ccrlogger/sync/subsurface_git/bootstrap_importer.dart';
@@ -77,6 +78,24 @@ class _FakeBootstrapDataSource implements BootstrapDataSource {
   @override
   Future<void> upsertAnnotation(DiveAnnotation annotation) async {
     annotations[annotation.diveId] = annotation;
+  }
+}
+
+/// Like the production DAO, `importDive` refuses a dive whose id is already
+/// stored, whatever its (dcSerial, startTime) key says.
+class _IdCheckingDataSource extends _FakeBootstrapDataSource {
+  final Set<String> existingIds = {};
+
+  @override
+  Future<bool> importDive({
+    required ConvertedDive converted,
+    required Uint8List rawBlob,
+    required int parserVersion,
+  }) async {
+    if (existingIds.contains(converted.dive.id)) return false;
+    existingIds.add(converted.dive.id);
+    imported.add(converted);
+    return true;
   }
 }
 
@@ -328,6 +347,43 @@ void main() {
             DateTime.utc(2026, 04, 04, 13, 30, 15),
       );
       expect(added2026Apr04, isEmpty);
+    });
+
+    test('a re-run over a copy stored with the old hex serial imports '
+        'nothing new', () async {
+      final cloneRoot = _tempDir('clones');
+      final repoDir = _bootstrapClone(cloneRoot, 'tester@example.com');
+      _copyFixtureDive(repoDir, '2026/04/04-Sat-13=30=15');
+      // Turn the Petrel copy into a Divesoft one with a decimal serial.
+      final dcFile = File(p.join(
+          repoDir.path, '2026/04/04-Sat-13=30=15', 'Divecomputer'));
+      dcFile.writeAsStringSync(dcFile
+          .readAsStringSync()
+          .replaceAll('model "Shearwater Petrel 3"', 'model "Divesoft Liberty"')
+          .replaceAll('"Serial" "b89641e4"', '"Serial" "1234567"'));
+
+      final start = DateTime.utc(2026, 4, 4, 13, 30, 15);
+      // What an earlier build stored: the decimal text read as hex.
+      final ds = _IdCheckingDataSource()
+        ..existing.add((
+          dcSerial: 0x1234567,
+          startTime: start.millisecondsSinceEpoch ~/ 1000,
+        ))
+        ..existingIds.add(generateDiveId(
+            0x1234567, 705, start.millisecondsSinceEpoch ~/ 1000));
+
+      final imp = _makeImporter(
+        credentials: _FakeCredentials(),
+        cloneRoot: cloneRoot,
+        dataSource: ds,
+      );
+
+      final events = await imp.import().toList();
+      final done = events.last as BootstrapDone;
+      expect(done.result.divesImported, 0);
+      expect(done.result.divesSkipped, 1);
+      expect(done.result.divesUnmappable, 0);
+      expect(ds.imported, isEmpty);
     });
 
     test('manual-only dives (no model line) import with synthesised DC',
