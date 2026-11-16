@@ -58,7 +58,7 @@ Success means:
 - `CcrloggerBackendConnector.fetchCredentials` hands PowerSync the
   ordinary Supabase session token. Any signed-in account can sync.
 - Sync is scoped per user by `infra/powersync-sync-rules.yaml`
-  (`request.user_id()`), and every synced table has an
+  (Sync Streams, `auth.user_id()`), and every synced table has an
   `owner_full_access` row-level policy.
 - Attachments go through the Cloudflare Worker (`worker/`), which
   verifies the Supabase JWT. Routes: `/sign-upload`, `/sign-download`,

@@ -28,10 +28,10 @@ import '../../analyzer/transport/analyzer_transport_options.dart';
 import '../../analyzer/transport/ble_bridge_transport.dart';
 import '../../analyzer/usb_ok_logger.dart';
 import '../../data/db/gas_analyses_dao.dart';
+import '../../data/db/open_blends_dao.dart';
 import '../../label_printer/label_printer.dart' show LabelPrinterException;
 import '../../labels/label_print_service.dart';
 import '../widgets/analyzer/bridge_transport_option.dart';
-import 'blend_notifier.dart';
 import 'settings_notifier.dart';
 
 class AnalyzerSession extends ChangeNotifier {
@@ -43,7 +43,7 @@ class AnalyzerSession extends ChangeNotifier {
     List<AnalyzerTransportOption>? transportOptions,
     UsbOkLogger Function()? okLoggerFactory,
     Future<void> Function(bool awake)? keepAwake,
-    BlendNotifier? blend,
+    OpenBlendsDaoLike? openBlends,
   })  : _settings = settings,
         _analysesDao = analysesDao,
         _labelPrinting = labelPrinting,
@@ -55,7 +55,7 @@ class AnalyzerSession extends ChangeNotifier {
             ),
         _okLoggerFactory = okLoggerFactory,
         _keepAwake = keepAwake,
-        _blend = blend {
+        _openBlends = openBlends {
     _controller.addListener(_onChanged);
     _settings.addListener(_onChanged);
   }
@@ -76,15 +76,9 @@ class AnalyzerSession extends ChangeNotifier {
   /// (true) and lets go (false). When null it uses the platform wakelock.
   final Future<void> Function(bool awake)? _keepAwake;
 
-  /// The Blend tab's notifier: an OK press that saves its target complete
-  /// uses the target up. Null leaves the target alone.
-  final BlendNotifier? _blend;
-
-  /// The results of every logger this session built, each until its stream
-  /// closes: a logger that is stopped (Stop, Disconnect) still finishes the
-  /// press it is handling and reports it, seconds later after a print, when
-  /// no save card listens any more.
-  final _okResultSubs = <StreamSubscription<OkLogResult>>{};
+  /// An OK press that saves complete closes the open blend it matched
+  /// (issue #112). Null closes none.
+  final OpenBlendsDaoLike? _openBlends;
 
   int _selected = 0;
 
@@ -223,10 +217,10 @@ class AnalyzerSession extends ChangeNotifier {
       dao: dao,
       printing: _labelPrinting,
       send: bridge.send,
+      openBlends: _openBlends,
       active: () =>
           identical(_controller.transport, bridge) && _controller.isConnected,
     );
-    _watchOkResults(handler);
     _bridgeOkHandler = handler;
     // The HELLO can be in before this runs (the transport is connected by
     // it); a second one only starts the handler over again.
@@ -307,8 +301,11 @@ class AnalyzerSession extends ChangeNotifier {
     }
     if (_okLogger != null) return;
     final logger = _okLoggerFactory?.call() ??
-        buildOkLogger(dao: _analysesDao!, printing: _labelPrinting);
-    _watchOkResults(logger);
+        buildOkLogger(
+          dao: _analysesDao!,
+          printing: _labelPrinting,
+          openBlends: _openBlends,
+        );
     logger.attach(transport);
     _okLogger = logger;
     _okTransport = transport;
@@ -326,44 +323,6 @@ class AnalyzerSession extends ChangeNotifier {
     unawaited((_keepAwake ?? _setWakelock)(false));
   }
 
-  /// Follows [logger]'s results for as long as it reports any, also after it
-  /// was stopped, to use up the Blend target ([_useTargetIfSaved]).
-  void _watchOkResults(OkLogger logger) {
-    if (_blend == null) return;
-    late final StreamSubscription<OkLogResult> sub;
-    sub = logger.results.listen(
-      (r) => unawaited(_useTargetIfSaved(r)),
-      onDone: () => _okResultSubs.remove(sub),
-    );
-    _okResultSubs.add(sub);
-  }
-
-  /// One blend is one cylinder (spec §4.3): an OK press that saved complete
-  /// with the recent Blend target as its desired mix, read back as stored,
-  /// marks the target used, so no later save or session offers it again.
-  /// A press that needs sign-off leaves it; its sign-off is the save card's.
-  Future<void> _useTargetIfSaved(OkLogResult r) async {
-    final blend = _blend;
-    final dao = _analysesDao;
-    final id = r.analysisId;
-    if (!r.complete || id == null || blend == null || dao == null) return;
-    // Already used (or no recent target): nothing to mark.
-    if (blend.unusedRecentTarget() == null) return;
-    final GasAnalysis? stored;
-    try {
-      stored = (await dao.list()).where((a) => a.id == id).firstOrNull;
-    } catch (e) {
-      debugPrint('Log on OK: reading the saved entry back failed: $e');
-      return;
-    }
-    if (_disposed) return;
-    final target = blend.unusedRecentTarget();
-    if (target == null || stored?.desiredMix != target) return;
-    await blend.markRecentTargetUsed();
-    // The save card takes the unused target from the screen's next build.
-    if (!_disposed) notifyListeners();
-  }
-
   @override
   void dispose() {
     _disposed = true;
@@ -371,12 +330,6 @@ class AnalyzerSession extends ChangeNotifier {
     _settings.removeListener(_onChanged);
     unawaited(_bridgeSub?.cancel());
     _bridgeSub = null;
-    // Not awaited: cancelling a broadcast subscription returns a root-zone
-    // future, which never completes under the fake clock of widget tests.
-    for (final sub in _okResultSubs) {
-      unawaited(sub.cancel());
-    }
-    _okResultSubs.clear();
     _stopOkLogger();
     _stopBridgeOk();
     if (_ownsController) _controller.dispose();
@@ -405,6 +358,7 @@ class AnalyzerSession extends ChangeNotifier {
 UsbOkLogger buildOkLogger({
   required GasAnalysesDaoLike dao,
   LabelPrintService? printing,
+  OpenBlendsDaoLike? openBlends,
   Duration Function()? elapsed,
   Duration? tickInterval = kOkTickInterval,
   void Function(Object error, StackTrace stack)? report,
@@ -415,6 +369,7 @@ UsbOkLogger buildOkLogger({
       printLabel: printing == null
           ? null
           : (a, copies) => printing.printAnalysis(a, copies: copies),
+      closeBlend: openBlends?.closeBlend,
       elapsed: elapsed,
       tickInterval: tickInterval,
       onError: (e, s) {
@@ -434,6 +389,7 @@ BridgeOkHandler buildBridgeOkHandler({
   LabelPrintService? printing,
   required Future<void> Function(String message) send,
   required bool Function() active,
+  OpenBlendsDaoLike? openBlends,
   Duration Function()? elapsed,
   void Function(Object error, StackTrace stack)? report,
 }) {
@@ -449,6 +405,7 @@ BridgeOkHandler buildBridgeOkHandler({
       printLabel: printing == null
           ? null
           : (a, copies) => printing.printAnalysis(a, copies: copies),
+      closeBlend: openBlends?.closeBlend,
       onError: onError,
     ),
     send: send,

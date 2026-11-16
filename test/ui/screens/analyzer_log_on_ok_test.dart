@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:ccrlogger/analysis/standard_mix_pick.dart' show gasRoleForMix;
 import 'package:ccrlogger/analyzer/analyzer_controller.dart';
+import 'package:ccrlogger/analyzer/blend_closer.dart';
 import 'package:ccrlogger/analyzer/bridge/record_to_analysis.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
 import 'package:ccrlogger/analyzer/transport/demo_transport.dart';
 import 'package:ccrlogger/analyzer/usb_ok_logger.dart';
 import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
+import 'package:ccrlogger/data/db/open_blends_dao.dart';
 import 'package:ccrlogger/data/models/equipment.dart';
 import 'package:ccrlogger/label_printer/label_bitmap.dart';
 import 'package:ccrlogger/label_printer/label_printer.dart';
@@ -23,6 +26,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../_helpers/fake_elapsed.dart';
 import '../../_helpers/fake_gas_analyses_dao.dart';
 import '../../_helpers/fake_label_printer.dart';
+import '../../_helpers/fake_open_blends_dao.dart';
 
 Finder _key(String k) => find.byKey(ValueKey(k));
 
@@ -120,6 +124,26 @@ class _Harness {
   /// The Blend tab's notifier; its target starts as EAN32.
   late BlendNotifier blend;
 
+  /// The open blends the card offers; one of EAN32 to start with.
+  late FakeOpenBlendsDao openBlends;
+
+  /// A gas blended to [target] and not analysed yet; it is also the Blend
+  /// tab's target, which the session still marks as used.
+  Future<void> blended(DesiredMix target) async {
+    blend.setTargetMix(target.o2Percent, target.hePercent);
+    await openBlends.add(NewOpenBlend(
+      target: target,
+      targetPressureBar: 200,
+      residual: const DesiredMix(21, 0),
+      residualPressureBar: 0,
+      topoff: const DesiredMix(21, 0),
+      waterCapacityL: 3,
+      role: gasRoleForMix(target.o2Percent.toDouble()),
+      blendedBy: null,
+      blendedAt: DateTime.now().subtract(const Duration(hours: 1)),
+    ));
+  }
+
   /// The transport of the latest session.
   _FakeSolo? solo;
 
@@ -152,11 +176,13 @@ class _Harness {
     blend = BlendNotifier(settings: settings)
       ..setTargetMix(32, 0)
       ..setTargetPressure(200);
+    openBlends = FakeOpenBlendsDao();
+    await blended(const DesiredMix(32, 0));
     session = AnalyzerSession(
       settings: settings,
       analysesDao: withDao ? dao : null,
       labelPrinting: printing,
-      blend: blend,
+      openBlends: openBlends,
       controller: controller = AnalyzerController(elapsed: fakeElapsed(tester)),
       keepAwake: (on) async => awake.add(on),
       transportOptions: [
@@ -176,6 +202,7 @@ class _Harness {
         final l = buildOkLogger(
           dao: dao,
           printing: printing,
+          openBlends: openBlends,
           elapsed: fakeElapsed(tester),
           tickInterval: null,
         );
@@ -187,7 +214,10 @@ class _Harness {
       theme: theme,
       home: Scaffold(
         body: AnalyzerScreen(
-            settings: settings, session: session, blend: blend),
+            settings: settings,
+            session: session,
+            blend: blend,
+            openBlends: openBlends),
       ),
     ));
     await tester.pumpAndSettle();
@@ -720,7 +750,9 @@ void main() {
 
       final a = h.dao.addedFromBridge.single.$2;
       expect(a.cylinderId, 'c-dil');
-      expect(a.gasRole, GasRole.diluent);
+      // The harness's open EAN32 blend matches and its role (bailout) beats
+      // the cylinder's (diluent): tapped, blend, cylinder, mix.
+      expect(a.gasRole, GasRole.bailout);
       expect(a.analysedFor, 'Anna');
       expect(a.fillPressureBar, 210.5);
       expect(a.notes, 'Topped up');
@@ -759,7 +791,8 @@ void main() {
       await h.pressOk(tester);
       expect(_resultText(tester), 'Saved EAN32');
 
-      expect(h.dao.addedFromBridge.single.$2.gasRole, GasRole.diluent);
+      // The open EAN32 blend's role beats the cylinder's.
+      expect(h.dao.addedFromBridge.single.$2.gasRole, GasRole.bailout);
       expect(find.text('200'), findsNothing);
       expect(find.text('Topped up'), findsNothing);
       // The notes fold away again.
@@ -842,7 +875,7 @@ void main() {
       await _start(tester);
       await tester.enterText(_key('analysis-diver'), 'EdP');
       await tester.pump();
-      await tester.tap(find.text('Bailout / deco'));
+      await tester.tap(find.text('Bailout'));
       await tester.pump();
 
       await h.feed(tester, 20.6, 33.8);
@@ -898,44 +931,48 @@ void main() {
       );
     });
 
-    _test('a complete OK save of the Blend target marks it used',
+    _test('a complete OK save closes the open blend it matched',
         (tester, h) async {
       await h.pump(tester);
       // Tx19/40 is no standard mix, so the target is told apart from the
       // nearest standard mix (none is within orange of 19.6/40.2).
-      h.blend.setTargetMix(19, 40);
+      await h.blended(const DesiredMix(19, 40));
       await h.connect(tester);
       await _start(tester);
       await tester.enterText(_key('analysis-diver'), 'EdP');
       await tester.pump();
 
       await h.feed(tester, 19.6, 40.2);
-      expect(find.textContaining('the Blend target'), findsOneWidget);
+      expect(find.textContaining('an open blend'), findsOneWidget);
       await h.pressOk(tester);
       await tester.pumpAndSettle();
       expect(_resultText(tester), 'Saved Tx20/40');
       expect(h.dao.addedFromBridge.single.$2.desiredMix,
           const DesiredMix(19, 40));
-      expect(h.blend.unusedRecentTarget(), isNull);
-      expect(h.blend.recentTarget(), const DesiredMix(19, 40));
+      final id = h.dao.addedFromBridge.single.$1;
+      expect(h.openBlends.closedBy.values, [id], reason: 'closed at capture');
+      expect((await h.openBlends.listOpen()).map((b) => b.target),
+          [const DesiredMix(32, 0)],
+          reason: 'only the EAN32 blend is left');
 
       // The next cylinder of the batch, the same gas: one blend is one
-      // cylinder, so this press does not get the target.
+      // cylinder, so now this press does not get the target.
       await h.feed(tester, 19.6, 40.2);
-      expect(find.textContaining('the Blend target'), findsNothing);
+      expect(find.textContaining('an open blend'), findsNothing);
       await h.pressOk(tester);
       await tester.pumpAndSettle();
       expect(h.dao.addedFromBridge, hasLength(2));
       expect(h.dao.addedFromBridge.last.$2.desiredMix,
           isNot(const DesiredMix(19, 40)));
+      expect(h.openBlends.closedBy, hasLength(1));
     });
 
-    _test('Stop while the Blend target\'s label prints still marks it used',
+    _test('Stop while the blend\'s label prints still closes it',
         (tester, h) async {
       final gate = Completer<void>();
       h.fakePrinter = FakeLabelPrinter(printGate: gate);
       await h.pump(tester);
-      h.blend.setTargetMix(19, 40);
+      await h.blended(const DesiredMix(19, 40));
       await h.connect(tester);
       await _start(tester);
       await tester.enterText(_key('analysis-diver'), 'EdP');
@@ -947,23 +984,21 @@ void main() {
       expect(h.fakePrinter!.printed, hasLength(1));
       await _stop(tester);
       expect(h.loggerClosed, isFalse, reason: 'its press still prints');
-      expect(h.blend.unusedRecentTarget(), const DesiredMix(19, 40));
+      expect(h.openBlends.closedBy, isEmpty, reason: 'not complete yet');
 
       gate.complete();
       await tester.pumpAndSettle();
       expect(h.dao.analyses.single.needsSignoff, isFalse);
       expect(h.dao.analyses.single.desiredMix, const DesiredMix(19, 40));
-      expect(h.blend.unusedRecentTarget(), isNull);
-      // A manual save of the same gas no longer gets the target's name.
-      expect(find.textContaining('the Blend target'), findsNothing);
-      expect(find.textContaining('the nearest standard mix'), findsNothing);
+      expect(h.openBlends.closedBy.values, [h.dao.analyses.single.id]);
+      expect(find.textContaining('an open blend'), findsNothing);
     }, printer: true);
 
-    _test('a press queued behind the Blend target\'s save does not get it',
+    _test('presses in a row: the blend closes once, both are saved',
         (tester, h) async {
       final slow = h.dao as _SlowDao;
       await h.pump(tester);
-      h.blend.setTargetMix(19, 40);
+      await h.blended(const DesiredMix(19, 40));
       await h.connect(tester);
       await _start(tester);
       await tester.enterText(_key('analysis-diver'), 'EdP');
@@ -978,18 +1013,19 @@ void main() {
       slow.gate!.complete();
       await tester.pumpAndSettle();
 
-      final saved = h.dao.addedFromBridge.map((e) => e.$2.desiredMix).toList();
-      expect(saved, [
-        const DesiredMix(19, 40),
-        isNot(const DesiredMix(19, 40)),
-      ]);
-      expect(h.blend.unusedRecentTarget(), isNull);
+      // Whatever the second press was offered, the blend closes once, by
+      // the first, and both analyses are saved.
+      expect(h.dao.addedFromBridge, hasLength(2));
+      expect(h.dao.addedFromBridge.first.$2.desiredMix,
+          const DesiredMix(19, 40));
+      expect(h.openBlends.closedBy.values, [h.dao.addedFromBridge.first.$1]);
+      expect(h.openBlends.closedBy.keys, hasLength(1));
     }, dao: _SlowDao(cylinders: const [_dil, _s80]));
 
-    _test('a press that needs sign-off leaves the Blend target unused',
+    _test('a press that needs sign-off leaves the blend open',
         (tester, h) async {
       await h.pump(tester);
-      h.blend.setTargetMix(19, 40);
+      await h.blended(const DesiredMix(19, 40));
       await h.connect(tester);
       await _start(tester);
       // No name: saved for sign-off.
@@ -999,17 +1035,41 @@ void main() {
       expect(h.dao.addedFromBridge.single.$2.desiredMix,
           const DesiredMix(19, 40));
       expect(h.dao.addedFromBridge.single.$2.needsSignoff, isTrue);
-      expect(h.blend.unusedRecentTarget(), const DesiredMix(19, 40));
+      expect(h.openBlends.closeBlendCalls, isEmpty);
 
-      // The next press still gets it.
+      // The next press still gets it, and closes it once it is complete.
       await tester.enterText(_key('analysis-diver'), 'EdP');
       await h.feed(tester, 19.6, 40.2);
       await h.pressOk(tester);
       await tester.pumpAndSettle();
       expect(h.dao.addedFromBridge.last.$2.desiredMix,
           const DesiredMix(19, 40));
-      expect(h.blend.unusedRecentTarget(), isNull);
+      expect(h.openBlends.closedBy.values, [h.dao.addedFromBridge.last.$1]);
     });
+
+    _test('a residual press fills the Blend tab and prints nothing',
+        (tester, h) async {
+      await h.pump(tester);
+      await h.connect(tester);
+      await _start(tester);
+      await tester.enterText(_key('analysis-diver'), 'EdP');
+      await tester.tap(_key('analysis-residual-toggle'));
+      await tester.pump();
+      expect(_printOnOk(tester), isTrue, reason: 'printing is on');
+
+      // 18.2/45.1 is no standard mix; the reading is the diver's residual.
+      await h.feed(tester, 18.2, 45.1);
+      await h.pressOk(tester);
+      await tester.pumpAndSettle();
+
+      final saved = h.dao.addedFromBridge.single.$2;
+      expect(saved.isResidual, isTrue);
+      expect(saved.desiredMix, isNull);
+      expect(h.fakePrinter!.printed, isEmpty);
+      expect(h.openBlends.closeBlendCalls, isEmpty);
+      expect(h.blend.currentOxygenPercent, 18);
+      expect(h.blend.currentHeliumPercent, 45);
+    }, printer: true);
 
     _test('a save that needs sign-off keeps the per-cylinder fields',
         (tester, h) async {
@@ -1154,6 +1214,61 @@ void main() {
 
       expect(h.dao.analyses.single.needsSignoff, isFalse);
       expect(_resultText(tester), 'Saved EAN28');
+    });
+
+    _test('Edit and Sign off closes the open blend of the desired mix',
+        (tester, h) async {
+      await h.pump(tester);
+      await h.blended(const DesiredMix(32, 0));
+      await h.connect(tester);
+      await _start(tester);
+      await _setUp(tester);
+
+      await h.feed(tester, 28.0, 0, seconds: 6);
+      await h.pressOk(tester);
+      expect(_resultText(tester), 'Needs sign-off: MISMATCH');
+      expect(h.openBlends.closedBy, isEmpty, reason: 'not signed off yet');
+
+      await tester.tap(_key('analysis-ok-edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(_key('analysis-edit-signoff'));
+      await tester.pumpAndSettle();
+
+      expect(h.openBlends.closedBy.values, [h.dao.analyses.single.id]);
+      expect(_resultText(tester), 'Saved EAN28');
+    });
+
+    _test('a sign-off on the log, then Edit and Save on the card, closes '
+        'one blend', (tester, h) async {
+      await h.pump(tester);
+      await h.blended(const DesiredMix(32, 0));
+      await h.blended(const DesiredMix(32, 0));
+      await h.connect(tester);
+      await _start(tester);
+      await _setUp(tester);
+
+      await h.feed(tester, 28.0, 0, seconds: 6);
+      await h.pressOk(tester);
+      expect(_resultText(tester), 'Needs sign-off: MISMATCH');
+      final id = h.dao.addedFromBridge.single.$1;
+
+      // The diver signs off on the Log tab: the entry is cleared and
+      // closes the older blend.
+      await h.dao.setNeedsSignoff(id, false);
+      await closeBlendOnSignOff(
+          signedOff: h.dao.analyses.single,
+          openBlends: h.openBlends,
+          analyses: h.dao);
+      expect(h.openBlends.closedBy, hasLength(1));
+      final first = h.openBlends.closedBy.keys.single;
+
+      await tester.tap(_key('analysis-ok-edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(_key('analysis-edit-save'));
+      await tester.pumpAndSettle();
+
+      expect(_resultText(tester), 'Saved EAN28');
+      expect(h.openBlends.closedBy, {first: id});
     });
 
     _test('Edit and Sign off uses up the per-cylinder fields',

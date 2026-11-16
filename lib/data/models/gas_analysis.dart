@@ -23,22 +23,50 @@ import '../../analysis/mod.dart';
 import 'equipment.dart';
 
 /// What a gas is for, which decides the label layout and the ppO2s its
-/// depths are worked out at. `bailout` also covers deco, stage and OC.
+/// depths are worked out at. `bailout`, `backgas` and `deco` all print as a
+/// bailout label; only `diluent` differs (issue #112).
 enum GasRole {
   bailout,
-  diluent;
+  diluent,
+  backgas,
+  deco;
 
   /// The `gas_role` column value.
   String get dbValue => switch (this) {
         GasRole.bailout => 'bailout',
         GasRole.diluent => 'diluent',
+        GasRole.backgas => 'backgas',
+        GasRole.deco => 'deco',
       };
 
+  /// Diver-facing name, for the role buttons.
+  String get label => switch (this) {
+        GasRole.bailout => 'Bailout',
+        GasRole.diluent => 'Diluent',
+        GasRole.backgas => 'Backgas',
+        GasRole.deco => 'Deco',
+      };
+
+  /// Whether this is the CCR diluent role.
+  bool get isDiluent => this == GasRole.diluent;
+
   /// Lenient on read: null, empty and unknown strings (a row from an older
-  /// build or another device) all mean bailout/deco.
-  static GasRole fromDb(String? v) =>
-      v == 'diluent' ? GasRole.diluent : GasRole.bailout;
+  /// build or another device) all mean bailout.
+  static GasRole fromDb(String? v) {
+    for (final r in GasRole.values) {
+      if (r.dbValue == v) return r;
+    }
+    return GasRole.bailout;
+  }
 }
+
+/// The order the role buttons show the roles in.
+const kGasRoleButtonOrder = [
+  GasRole.diluent,
+  GasRole.bailout,
+  GasRole.backgas,
+  GasRole.deco,
+];
 
 /// How an analysis got into the log (issue #113).
 enum CaptureSource {
@@ -123,6 +151,10 @@ class NewGasAnalysis {
 
   /// The entry waits in the log for the diver to sign it off.
   final bool needsSignoff;
+
+  /// An analysis of what was left in the cylinder before a fill (issue
+  /// #112): it closes no blend.
+  final bool isResidual;
   final CaptureSource captureSource;
 
   /// The bridge's id for the capture (`<bridge>/<rid>`); null for a screen
@@ -147,6 +179,7 @@ class NewGasAnalysis {
     this.desiredMix,
     this.gasRole = GasRole.bailout,
     this.needsSignoff = false,
+    this.isResidual = false,
     this.captureSource = CaptureSource.screen,
     this.bridgeRecordId,
     this.analysedFor,
@@ -181,6 +214,9 @@ class GasAnalysis {
 
   /// The entry waits in the log for the diver to sign it off (issue #113).
   final bool needsSignoff;
+
+  /// Measured what was left in the cylinder before a fill (issue #112).
+  final bool isResidual;
   final CaptureSource captureSource;
   final String? bridgeRecordId;
   final String? analysedFor;
@@ -204,6 +240,7 @@ class GasAnalysis {
     this.targetHePercent,
     this.gasRole = GasRole.bailout,
     this.needsSignoff = false,
+    this.isResidual = false,
     this.captureSource = CaptureSource.screen,
     this.bridgeRecordId,
     this.analysedFor,
@@ -231,6 +268,7 @@ class GasAnalysis {
         targetHePercent: n.desiredMix?.hePercent,
         gasRole: n.gasRole,
         needsSignoff: n.needsSignoff,
+        isResidual: n.isResidual,
         captureSource: n.captureSource,
         bridgeRecordId: n.bridgeRecordId,
         analysedFor: n.analysedFor,
@@ -262,6 +300,7 @@ class GasAnalysis {
       targetHePercent: e.desiredMix?.hePercent,
       gasRole: e.gasRole,
       needsSignoff: e.signOff ? false : needsSignoff,
+      isResidual: isResidual,
       captureSource: captureSource,
       bridgeRecordId: bridgeRecordId,
       analysedFor: e.analysedFor,
@@ -289,6 +328,7 @@ class GasAnalysis {
         targetHePercent: targetHePercent,
         gasRole: gasRole,
         needsSignoff: value,
+        isResidual: isResidual,
         captureSource: captureSource,
         bridgeRecordId: bridgeRecordId,
         analysedFor: analysedFor,
@@ -358,12 +398,13 @@ class GasAnalysisEdit {
 }
 
 /// The desired mixes to offer as quick picks when saving an analysis: the
-/// Blend tab's target first (when given), then the distinct desired mixes of
-/// the first [lookback] analyses of [newestFirst], in order, with no
-/// duplicates. Analyses without a desired mix use up a lookback slot but add
+/// target of an open blend first (when given, see [blendTarget]), then the
+/// distinct desired mixes of the first [lookback] analyses of [newestFirst],
+/// in order, with no duplicates. Analyses without a desired mix use up a lookback slot but add
 /// nothing.
 List<DesiredMix> recentDesiredMixes(
   List<GasAnalysis> newestFirst, {
+  // Named for the old single Blend target; now an open blend's target.
   DesiredMix? blendTarget,
   int lookback = 10,
 }) {
