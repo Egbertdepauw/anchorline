@@ -4,7 +4,8 @@ import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 ///
 /// [rowsByIndex] maps a stored gas-mix index to its cylinder id (null for a
 /// row with no cylinder yet). Returns the final rows, again index to cylinder
-/// id. A row at a valid old index follows its mix to the new index with the
+/// id. A row whose mix is unchanged at the same index stays there; any other
+/// row at a valid old index follows its mix to the new index with the
 /// same O2 and He, preferring the same `isDiluent` and then the lowest unused
 /// index. A row whose mix is gone, or whose old index is out of range, takes
 /// the next unused negative index (-1, -2, ...), meaning "unassigned". A row
@@ -49,6 +50,22 @@ Map<int, String?> remapCylinderRows({
     }
     return null;
   }
+
+  // An unchanged mix stays at its index, so an unchanged gas list is a no-op.
+  final stay = <int>[];
+  for (final i in pending) {
+    if (i < oldMixes.length && i < newMixes.length) {
+      final o = oldMixes[i], m = newMixes[i];
+      if (o.oxygenPercent == m.oxygenPercent &&
+          o.heliumPercent == m.heliumPercent &&
+          o.isDiluent == m.isDiluent) {
+        usedNew.add(i);
+        result[i] = rowsByIndex[i];
+        stay.add(i);
+      }
+    }
+  }
+  pending.removeWhere(stay.contains);
 
   // First pass claims exact matches (same diluent flag) so a later row cannot
   // lose its own mix to an earlier row of the same O2/He; the second pass

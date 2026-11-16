@@ -81,4 +81,24 @@ void main() {
     );
     expect(r, {1: null});
   });
+
+  test('an unchanged gas list is a no-op', () {
+    final r = remapCylinderRows(
+      oldMixes: [_mix(21, 35), _mix(21, 35)],
+      newMixes: [_mix(21, 35), _mix(21, 35)],
+      rowsByIndex: {1: 'b'},
+    );
+    expect(r, {1: 'b'});
+  });
+
+  test('a diluent row loses its mix to nobody: bailouts keep theirs', () {
+    // Old [dil, bo, bo] -> new [bo, bo]. b1 stays at 1 (unchanged index),
+    // b2 takes 0 (exact diluent match), the diluent cylinder is left over.
+    final r = remapCylinderRows(
+      oldMixes: [_mix(21, 35, dil: true), _mix(21, 35), _mix(21, 35)],
+      newMixes: [_mix(21, 35), _mix(21, 35)],
+      rowsByIndex: {0: 'dil', 1: 'b1', 2: 'b2'},
+    );
+    expect(r, {1: 'b1', 0: 'b2', -1: 'dil'});
+  });
 }

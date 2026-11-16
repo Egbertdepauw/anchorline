@@ -5,6 +5,7 @@ StoredDiveKey _key({
   String id = 'copy',
   String? vendor,
   int serial = 1234567,
+  int diveNumber = 1,
   int startTime = 1000000,
   int parserVersion = -1,
   int? family,
@@ -13,6 +14,7 @@ StoredDiveKey _key({
       id: id,
       dcVendor: vendor,
       dcSerial: serial,
+      dcDiveNumber: diveNumber,
       startTime: startTime,
       parserVersion: parserVersion,
       dcFamily: family,
@@ -24,12 +26,14 @@ List<StoredDiveKey> _find(
   int serial = 1234567,
   int start = 1000000,
   String excludeId = 'incoming',
+  int? diveNumber,
 }) =>
     findSameDive(
       vendor: vendor,
       serial: serial,
       startTimeSeconds: start,
       excludeId: excludeId,
+      diveNumber: diveNumber,
       stored: stored,
     );
 
@@ -47,12 +51,39 @@ void main() {
   });
 
   test('a download with NULL vendor counts as Shearwater', () {
-    expect(effectiveVendor(null, 1), isNull);
-    expect(effectiveVendor('Shearwater', 1), 'Shearwater');
-    // A row from another brand does not match a Shearwater download.
-    expect(_find([_key(vendor: 'Suunto', parserVersion: 3)]), isEmpty);
-    expect(
-        _find([_key(vendor: 'Shearwater', parserVersion: 1)]), hasLength(1));
+    expect(effectiveVendor(null, 1), 'Shearwater');
+    expect(effectiveVendor(null, -1), isNull);
+    expect(effectiveVendor('Suunto', 1), 'Suunto');
+    // A stored NULL-vendor download is Shearwater, not "any brand".
+    expect(_find([_key(parserVersion: 1)], vendor: 'Suunto'), isEmpty);
+    expect(_find([_key(parserVersion: 1)]), hasLength(1));
+    // A NULL-vendor copy is "any brand".
+    expect(_find([_key(parserVersion: -1)], vendor: 'Suunto'), hasLength(1));
+  });
+
+  test('the window at exactly 60 s matches', () {
+    expect(_find([_key(startTime: 1000060)]), hasLength(1));
+    expect(_find([_key(startTime: 999940)]), hasLength(1));
+  });
+
+  test('a second dive 30 s after a stored download is not matched', () {
+    final stored = _key(parserVersion: 1, diveNumber: 5, startTime: 1000000);
+    expect(_find([stored], start: 1000030, diveNumber: 6), isEmpty);
+  });
+
+  test('a refreshed copy (parser_version 1, same number) is matched', () {
+    final stored = _key(parserVersion: 1, diveNumber: 5);
+    expect(_find([stored], diveNumber: 5), hasLength(1));
+  });
+
+  test('a stored copy is matched whatever the dive number', () {
+    final stored = _key(parserVersion: -1, diveNumber: 99);
+    expect(_find([stored], diveNumber: 5), hasLength(1));
+  });
+
+  test('with diveNumber null a stored download in the window matches', () {
+    final stored = _key(parserVersion: 1, diveNumber: 5);
+    expect(_find([stored], diveNumber: null), hasLength(1));
   });
 
   test('a non-Shearwater copy stored with the old hex reading matches', () {
@@ -80,6 +111,7 @@ void main() {
       'id': 'x',
       'dc_vendor': 'Shearwater',
       'dc_serial': 5,
+      'dc_dive_number': 9,
       'start_time': 100,
       'parser_version': 2,
       'dc_family': 7,
@@ -87,6 +119,7 @@ void main() {
     expect(k.id, 'x');
     expect(k.dcVendor, 'Shearwater');
     expect(k.dcSerial, 5);
+    expect(k.dcDiveNumber, 9);
     expect(k.startTime, 100);
     expect(k.parserVersion, 2);
     expect(k.dcFamily, 7);
@@ -94,6 +127,7 @@ void main() {
       'id': 'y',
       'dc_vendor': null,
       'dc_serial': 5,
+      'dc_dive_number': 3,
       'start_time': 100,
       'parser_version': -1,
       'dc_family': null,

@@ -98,6 +98,18 @@ void main() {
       );
     });
 
+    test('a Subsurface copy never refreshes a download', () {
+      expect(
+        refreshMayWrite(
+          storedVersion: 1,
+          storedIsLibdc: false,
+          incomingVersion: -1,
+          incomingIsLibdc: false,
+        ),
+        isFalse,
+      );
+    });
+
     test('another engine never refreshes a download', () {
       expect(
         refreshMayWrite(
