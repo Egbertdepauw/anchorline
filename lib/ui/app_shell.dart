@@ -321,7 +321,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       wipeLocal: () async {
         try {
           await LocalDataWiper(db: widget.db, powerSyncDb: widget.powerSyncDb)
-              .wipe();
+              .wipeDeletedAccount();
         } finally {
           // Runs even when the wipe throws: the account is already gone, so
           // clear what can be cleared. The pending-upload paths are best

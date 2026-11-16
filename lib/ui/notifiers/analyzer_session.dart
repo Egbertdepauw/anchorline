@@ -15,7 +15,6 @@ import 'dart:async' show StreamSubscription, unawaited;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show BuildContext;
-import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../analyzer/analyzer_controller.dart';
@@ -29,6 +28,7 @@ import '../../analyzer/transport/ble_bridge_transport.dart';
 import '../../analyzer/usb_ok_logger.dart';
 import '../../data/db/gas_analyses_dao.dart';
 import '../../data/db/open_blends_dao.dart';
+import '../../diagnostics/sentry_redaction.dart';
 import '../../label_printer/label_printer.dart' show LabelPrinterException;
 import '../../labels/label_print_service.dart';
 import '../widgets/analyzer/bridge_transport_option.dart';
@@ -340,7 +340,7 @@ class AnalyzerSession extends ChangeNotifier {
 /// The [UsbOkLogger] the analyzer session uses: saves go to [dao] under the
 /// id of the press (a press that was already saved is not saved twice), a
 /// label is printed through [printing], and an error that is not the diver's
-/// goes to Sentry.
+/// goes to Sentry without its text ([captureRedactedException]).
 ///
 /// The logger is built once per session, so whether a printer is set up is
 /// left to the print itself and to the save card, which says at each press
@@ -374,7 +374,7 @@ UsbOkLogger buildOkLogger({
       tickInterval: tickInterval,
       onError: (e, s) {
         if (e is LabelPrinterException) return;
-        (report ?? (e, s) => Sentry.captureException(e, stackTrace: s))(e, s);
+        (report ?? captureRedactedException)(e, s);
       },
     );
 
@@ -395,7 +395,7 @@ BridgeOkHandler buildBridgeOkHandler({
 }) {
   void onError(Object e, StackTrace s) {
     if (e is LabelPrinterException) return;
-    (report ?? (e, s) => Sentry.captureException(e, stackTrace: s))(e, s);
+    (report ?? captureRedactedException)(e, s);
   }
 
   return BridgeOkHandler(
