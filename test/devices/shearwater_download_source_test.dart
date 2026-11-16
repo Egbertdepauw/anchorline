@@ -168,6 +168,22 @@ void main() {
     expect(outcomes[1], isA<DiveSourceDive>());
   });
 
+  test('a selection entry the source never listed throws StateError', () async {
+    final source = await ShearwaterDownloadSource.open(_traceTransport());
+    final listings = await source.listDives();
+    final stranger = DiveListing(
+      diveNumber: 99999,
+      startTimestamp: 1,
+      endTimestamp: 2,
+      fingerprint: Uint8List.fromList([9, 9, 9, 9]),
+      diveId: 'not-in-the-manifest',
+    );
+    expect(
+      source.download(selection: [listings.first, stranger]).toList(),
+      throwsStateError,
+    );
+  });
+
   test('the mock transport works through the same source', () async {
     TestWidgetsFlutterBinding.ensureInitialized();
     final source = await ShearwaterDownloadSource.open(

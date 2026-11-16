@@ -136,6 +136,9 @@ abstract class DiveDownloadSource {
 
   /// Downloads [selection] (every dive when null, or when the engine cannot
   /// list), newer than [sinceFingerprint] when given.
+  ///
+  /// A [selection] must come from this source's own [listDives]; an entry
+  /// the source does not know makes the stream throw a [StateError].
   Stream<DiveSourceEvent> download({
     List<DiveListing>? selection,
     Uint8List? sinceFingerprint,

@@ -3,6 +3,8 @@ library;
 
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import 'package:subsurface_core/data/models/dive.dart' show generateDiveId;
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
 import 'package:subsurface_core/shearwater/parser/hardware.dart'
@@ -92,7 +94,12 @@ class ShearwaterDownloadSource implements DiveDownloadSource {
     final entries = <ManifestEntry>[];
     for (final l in chosen) {
       final e = _entries[l.diveId];
-      if (e != null) entries.add(e);
+      if (e == null) {
+        throw StateError(
+            'Dive ${l.diveNumber} (${l.diveId}) is not in this source\'s '
+            'last listDives');
+      }
+      entries.add(e);
     }
 
     final parser = ShearwaterDiveParser(model: _info.model);
@@ -131,5 +138,16 @@ class ShearwaterDownloadSource implements DiveDownloadSource {
   }
 
   @override
-  Future<void> close() => _link.disconnect();
+  Future<void> close() async {
+    // Cap the wait. The Shearwater shutdown handshake (a WDBI write the unit
+    // is meant to ack) silently never returns once the Petrel has already
+    // left log mode, common after the last selected dive came down. Three
+    // seconds is plenty for a healthy disconnect; longer means the device
+    // already walked away.
+    try {
+      await _link.disconnect().timeout(const Duration(seconds: 3));
+    } catch (e) {
+      debugPrint('BLE disconnect timed out / failed (non-fatal): $e');
+    }
+  }
 }
