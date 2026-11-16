@@ -26,6 +26,8 @@ library;
 
 import 'format/subsurface_format.dart';
 import 'format/subsurface_parser.dart';
+import '../../shearwater/parser/hardware.dart' show kShearwaterVendor;
+import 'subsurface_model.dart';
 import 'sync_planner.dart' show ExistingRemoteDive;
 
 class RemoteSnapshotData {
@@ -101,7 +103,12 @@ class RemoteSnapshot {
       if (d == null) continue;
       if (d.diveNumber > maxDiveNumber) maxDiveNumber = d.diveNumber;
       if (d.serial != null && d.startTime != null) {
-        byKey[(serial: d.serial!, startTime: d.startTime!)] = d;
+        // Index under every serial reading so a local dive matches whichever
+        // one it was stored with (see subsurfaceSerialForms).
+        final vendor = _vendorOf(d.divecomputerLines);
+        for (final s in subsurfaceSerialForms(vendor, d.serial!)) {
+          byKey[(serial: s, startTime: d.startTime!)] = d;
+        }
       }
     }
 
@@ -188,7 +195,8 @@ class RemoteSnapshot {
           divecomputerText,
           kind: SubsurfaceFileKind.divecomputer,
         );
-        serial = _serialFromDivecomputer(parsed.lines);
+        serial = _serialFromDivecomputer(
+            parsed.lines, _vendorOf(parsed.lines));
         divecomputerLines = parsed.lines;
       } catch (_) {
         // Leave serial + lines null/empty; this dive won't match a CCRLog
@@ -223,11 +231,25 @@ class RemoteSnapshot {
   /// Pull the integer serial out of `keyvalue "Serial" "<hex>"`. Returns
   /// null when the line is missing, the value isn't valid hex, or the
   /// parse fails outright.
-  static int? _serialFromDivecomputer(List<SsLine> lines) {
+  static int? _serialFromDivecomputer(List<SsLine> lines, String? vendor) {
     for (final line in lines) {
       if (line is KeyvaluePairLine && line.key == 'Serial') {
         final s = line.value;
-        return int.tryParse(s, radix: 16);
+        // Shearwater / unknown vendor: hex, null when invalid (unchanged).
+        if (vendor == null || vendor == kShearwaterVendor) {
+          return int.tryParse(s, radix: 16);
+        }
+        return parseSubsurfaceSerial(vendor, s);
+      }
+    }
+    return null;
+  }
+
+  /// Vendor from the Divecomputer's `model` line, null when absent.
+  static String? _vendorOf(List<SsLine> lines) {
+    for (final line in lines) {
+      if (line is QuotedLine && line.key == 'model') {
+        return splitSubsurfaceModel(line.value)?.vendor;
       }
     }
     return null;

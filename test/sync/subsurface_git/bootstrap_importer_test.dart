@@ -54,6 +54,7 @@ class _FakeBootstrapDataSource implements BootstrapDataSource {
   final Set<({int dcSerial, int startTime})> existing = {};
   final List<ConvertedDive> imported = [];
   final Map<String, DiveAnnotation> annotations = {};
+  int importCalls = 0;
 
   @override
   Future<Set<({int dcSerial, int startTime})>> existingDiveKeys() async =>
@@ -65,6 +66,7 @@ class _FakeBootstrapDataSource implements BootstrapDataSource {
     required Uint8List rawBlob,
     required int parserVersion,
   }) async {
+    importCalls++;
     final key = (
       dcSerial: converted.dive.dcSerial,
       startTime: converted.dive.startTime.millisecondsSinceEpoch ~/ 1000,
@@ -92,10 +94,24 @@ class _IdCheckingDataSource extends _FakeBootstrapDataSource {
     required Uint8List rawBlob,
     required int parserVersion,
   }) async {
+    importCalls++;
     if (existingIds.contains(converted.dive.id)) return false;
     existingIds.add(converted.dive.id);
     imported.add(converted);
     return true;
+  }
+}
+
+/// importDive always reports an already-stored id.
+class _AlwaysExistingDataSource extends _FakeBootstrapDataSource {
+  @override
+  Future<bool> importDive({
+    required ConvertedDive converted,
+    required Uint8List rawBlob,
+    required int parserVersion,
+  }) async {
+    importCalls++;
+    return false;
   }
 }
 
@@ -162,6 +178,18 @@ void _copyFixtureDive(Directory repoRoot, String relPath) {
       f.copySync(p.join(dst.path, p.basename(f.path)));
     }
   }
+}
+
+/// Copy the 2026/04/04 Petrel fixture and turn it into a Divesoft Liberty
+/// dive with the decimal Serial "1234567".
+void _copyDivesoftDive(Directory repoRoot) {
+  _copyFixtureDive(repoRoot, '2026/04/04-Sat-13=30=15');
+  final dcFile = File(
+      p.join(repoRoot.path, '2026/04/04-Sat-13=30=15', 'Divecomputer'));
+  dcFile.writeAsStringSync(dcFile
+      .readAsStringSync()
+      .replaceAll('model "Shearwater Petrel 3"', 'model "Divesoft Liberty"')
+      .replaceAll('"Serial" "b89641e4"', '"Serial" "1234567"'));
 }
 
 /// Copy a fixture site file into `<repo>/01-Divesites/`. By default
@@ -353,15 +381,7 @@ void main() {
         'nothing new', () async {
       final cloneRoot = _tempDir('clones');
       final repoDir = _bootstrapClone(cloneRoot, 'tester@example.com');
-      _copyFixtureDive(repoDir, '2026/04/04-Sat-13=30=15');
-      // Turn the Petrel copy into a Divesoft one with a decimal serial.
-      final dcFile = File(p.join(
-          repoDir.path, '2026/04/04-Sat-13=30=15', 'Divecomputer'));
-      dcFile.writeAsStringSync(dcFile
-          .readAsStringSync()
-          .replaceAll('model "Shearwater Petrel 3"', 'model "Divesoft Liberty"')
-          .replaceAll('"Serial" "b89641e4"', '"Serial" "1234567"'));
-
+      _copyDivesoftDive(repoDir);
       final start = DateTime.utc(2026, 4, 4, 13, 30, 15);
       // What an earlier build stored: the decimal text read as hex.
       final ds = _IdCheckingDataSource()
@@ -384,6 +404,46 @@ void main() {
       expect(done.result.divesSkipped, 1);
       expect(done.result.divesUnmappable, 0);
       expect(ds.imported, isEmpty);
+      expect(ds.annotations, isEmpty);
+    });
+
+    test('a copy stored with the old hex serial is skipped by key, not '
+        'reaching importDive', () async {
+      final cloneRoot = _tempDir('clones');
+      final repoDir = _bootstrapClone(cloneRoot, 'tester@example.com');
+      _copyDivesoftDive(repoDir);
+      final start = DateTime.utc(2026, 4, 4, 13, 30, 15);
+      final ds = _FakeBootstrapDataSource()
+        ..existing.add((
+          dcSerial: 0x1234567,
+          startTime: start.millisecondsSinceEpoch ~/ 1000,
+        ));
+      final imp = _makeImporter(
+        credentials: _FakeCredentials(),
+        cloneRoot: cloneRoot,
+        dataSource: ds,
+      );
+      final done = (await imp.import().toList()).last as BootstrapDone;
+      expect(done.result.divesSkipped, 1);
+      expect(done.result.divesImported, 0);
+      expect(ds.importCalls, 0);
+      expect(ds.annotations, isEmpty);
+    });
+
+    test('an existing id never gets its annotation rewritten', () async {
+      final cloneRoot = _tempDir('clones');
+      final repoDir = _bootstrapClone(cloneRoot, 'tester@example.com');
+      _copyFixtureDive(repoDir, '2025/05/04-Sun-09=48=36');
+      final ds = _AlwaysExistingDataSource();
+      final imp = _makeImporter(
+        credentials: _FakeCredentials(),
+        cloneRoot: cloneRoot,
+        dataSource: ds,
+      );
+      final done = (await imp.import().toList()).last as BootstrapDone;
+      expect(ds.importCalls, 1);
+      expect(done.result.divesSkipped, 1);
+      expect(ds.annotations, isEmpty);
     });
 
     test('manual-only dives (no model line) import with synthesised DC',

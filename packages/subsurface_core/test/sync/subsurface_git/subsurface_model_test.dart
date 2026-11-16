@@ -43,4 +43,14 @@ void main() {
     expect(shearwaterModelFromProduct('Nope'), ShearwaterModel.unknown);
     expect(shearwaterModelFromProduct(null), ShearwaterModel.unknown);
   });
+
+  test('subsurfaceSerialForms: Shearwater and null vendor give one form', () {
+    expect(subsurfaceSerialForms('Shearwater', 0xB89641E4), {0xB89641E4});
+    expect(subsurfaceSerialForms(null, 1234567), {1234567});
+  });
+
+  test('subsurfaceSerialForms: Divesoft 1234567 adds the old hex reading',
+      () {
+    expect(subsurfaceSerialForms('Divesoft', 1234567), {1234567, 0x1234567});
+  });
 }

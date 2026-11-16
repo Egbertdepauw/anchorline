@@ -58,6 +58,7 @@ import 'credentials.dart';
 import 'package:subsurface_core/sync/subsurface_git/format/subsurface_format.dart';
 import 'package:subsurface_core/sync/subsurface_git/format/subsurface_parser.dart';
 import 'repo.dart';
+import 'package:subsurface_core/sync/subsurface_git/subsurface_model.dart';
 import 'package:subsurface_core/sync/subsurface_git/subsurface_to_ccrlog_mapper.dart';
 
 /// Sentinel parser version stamped on dives the bootstrap importer
@@ -477,7 +478,13 @@ class SubsurfaceBootstrapImporter {
         startTime:
             converted.dive.startTime.millisecondsSinceEpoch ~/ 1000,
       );
-      if (existing.contains(key)) {
+      // Copies stored before brands were read carry the hex reading of a
+      // decimal serial, so match under every reading.
+      final alreadyStored = subsurfaceSerialForms(
+        converted.dive.dcVendor,
+        converted.dive.dcSerial,
+      ).any((s) => existing.contains((dcSerial: s, startTime: key.startTime)));
+      if (alreadyStored) {
         skipped++;
         continue;
       }
@@ -488,16 +495,18 @@ class SubsurfaceBootstrapImporter {
           rawBlob: Uint8List(0),
           parserVersion: kSubsurfaceImportedParserVersion,
         );
-        if (imported0.annotation != null) {
-          await _data.upsertAnnotation(imported0.annotation!);
-        }
         if (isNew) {
+          // Only a dive that was just inserted gets Subsurface's annotation;
+          // the bootstrap never changes a stored dive.
+          if (imported0.annotation != null) {
+            await _data.upsertAnnotation(imported0.annotation!);
+          }
           imported++;
           existing.add(key);
         } else {
-          // DAO reported existing id — could happen on a re-run where
-          // an earlier bootstrap import already brought this dive in
-          // but our key set didn't include it (race / refresh delay).
+          // DAO reported an existing id — a dive stored under a key our set
+          // didn't include (race / refresh delay). Leave it, and its
+          // annotation, untouched.
           skipped++;
         }
       } catch (e) {

@@ -43,6 +43,19 @@ int parseSubsurfaceSerial(String? vendor, String text) {
   return int.tryParse(t) ?? int.tryParse(t, radix: 16) ?? 0;
 }
 
+/// Every reading of [serial] that a Subsurface copy may be stored or keyed
+/// under. Every serial-keyed match against Subsurface copies must accept
+/// both readings, because copies stored before brands were read carry the
+/// hex reading of the Serial text.
+///
+/// A Shearwater or null vendor gives just [serial]. Any other vendor also
+/// gets the old hex reading of the decimal digits (null if not valid hex).
+Set<int> subsurfaceSerialForms(String? vendor, int serial) {
+  if (vendor == null || vendor == kShearwaterVendor) return {serial};
+  final hexReading = int.tryParse('$serial', radix: 16);
+  return {serial, ?hexReading};
+}
+
 /// Inverse of [shearwaterProductName]. Anything unrecognised, including a
 /// null product, is [ShearwaterModel.unknown].
 ShearwaterModel shearwaterModelFromProduct(String? product) {
