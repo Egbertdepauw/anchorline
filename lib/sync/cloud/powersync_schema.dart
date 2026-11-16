@@ -367,3 +367,6 @@ const appSchema = Schema([
     Column.integer('sync_status'),
   ]),
 ]);
+
+/// Names of every synced table in [appSchema].
+final Set<String> kSyncedTableNames = {for (final t in appSchema.tables) t.name};

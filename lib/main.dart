@@ -26,6 +26,7 @@ import 'sync/cloud/dives_powersync_migrator.dart';
 import 'sync/cloud/drift_crud_quarantine.dart';
 import 'sync/cloud/powersync_database.dart';
 import 'sync/cloud/sync_status_source.dart';
+import 'sync/cloud/upload_permission_report.dart';
 import 'sync/cloud/usage_tracker.dart';
 import 'sync/subsurface_git/ssl_certs.dart';
 import 'ui/app_shell.dart';
@@ -109,6 +110,7 @@ void main() async {
     connector: CcrloggerBackendConnector(
       Supabase.instance.client,
       quarantine: DriftCrudQuarantine(db),
+      onPermissionDenied: reportUploadPermissionDenied,
     ),
     authService: authService,
   )..start();

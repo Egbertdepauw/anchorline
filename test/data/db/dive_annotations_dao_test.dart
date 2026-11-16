@@ -175,6 +175,32 @@ void main() {
       expect(got.version, greaterThan(v1));
     });
 
+    test('upsert keeps an existing owner and claims an ownerless row',
+        () async {
+      final session = FakeSessionSource();
+      final owned = DiveAnnotationsDao(db, session);
+      Future<String?> ownerOf(String id) async => (await db.get(
+          'SELECT owner_id FROM dive_annotations WHERE dive_id = ?',
+          [id]))['owner_id'] as String?;
+      for (final id in ['an1', 'an2', 'an3']) {
+        await owned.upsert(_blank(id));
+      }
+      await db.execute(
+          'UPDATE dive_annotations SET owner_id = ? WHERE dive_id IN (?, ?)',
+          ['uid-a', 'an1', 'an2']);
+
+      session.setUserId('uid-b');
+      await owned.upsert(_blank('an1').copyWith(siteName: const Patch('x')));
+      session.clear();
+      await owned.upsert(_blank('an2').copyWith(siteName: const Patch('x')));
+      session.setUserId('uid-b');
+      await owned.upsert(_blank('an3').copyWith(siteName: const Patch('x')));
+
+      expect(await ownerOf('an1'), 'uid-a');
+      expect(await ownerOf('an2'), 'uid-a');
+      expect(await ownerOf('an3'), 'uid-b');
+    });
+
     test('upsert without session leaves owner_id null in local DB', () async {
       await dao.upsert(_blank('dive_no_owner'));
       final row = await db.get(

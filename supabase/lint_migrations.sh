@@ -4,7 +4,7 @@
 # idempotency rule every migration must follow (issue #20).
 set -euo pipefail
 
-dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/migrations" && pwd)"
+dir="$(cd "${1:-$(dirname "${BASH_SOURCE[0]}")/migrations}" && pwd)"
 [ -d "$dir" ] || { echo "migrations dir not found: $dir" >&2; exit 1; }
 shopt -s nullglob
 sqls=("$dir"/*.sql)
@@ -71,6 +71,44 @@ if [ -n "$missing" ]; then
   echo ""
   echo "FAIL: tables without an explicit Data API grant (issue #76). Add e.g." >&2
   echo "  grant select, insert, update, delete on table public.<t> to authenticated, service_role;" >&2
+  exit 1
+fi
+# Rule 8 (per file, migrations numbered 0027+): a table added to the
+# `powersync` publication must be created in the same file with
+# `primary key (owner_id, id)`. Ids are computed from hardware and dive data,
+# so two accounts can share one (0027, CLAUDE.md principle 7).
+# Only sees single-line, unquoted `add table` / `for table` forms (the rule 6
+# convention).
+fail8=0
+for f in "${sqls[@]}"; do
+  name="$(basename "$f")"
+  num="${name%%_*}"
+  case "$num" in ''|*[!0-9]*) continue ;; esac
+  [ "$((10#$num))" -ge 27 ] || continue
+  body="$( { grep -vE '^[[:space:]]*--' "$f" || true; } | sed -E 's/--.*$//' | tr '[:upper:]' '[:lower:]')"
+  tables="$( {
+    printf '%s\n' "$body" | sed -nE "s/.*add table[[:space:]]+([^;']*).*/\1/p" \
+      | tr ',' '\n' | sed -E 's/^[[:space:]]*(public\.)?//; s/[^a-z0-9_].*$//'
+    printf '%s\n' "$body" | sed -nE 's/.*create publication.*for table[[:space:]]+([^;]*).*/\1/p' \
+      | tr ',' '\n' | sed -E 's/^[[:space:]]*(public\.)?//; s/[^a-z0-9_].*$//'
+  } | { grep -E '.' || true; } | sort -u)"
+  for t in $tables; do
+    # The create table block, whitespace-collapsed, up to the first line with `;`.
+    block="$(printf '%s\n' "$body" | awk -v t="$t" '
+      BEGIN { re = "^[ \t]*create table if not exists[ \t]+(public\\.)?" t "([ \t(]|$)" }
+      $0 ~ re { on = 1 }
+      on { printf "%s ", $0 }
+      on && /;/ { exit }
+    ' | tr -s '[:space:]' ' ')"
+    if ! printf '%s' "$block" | grep -qE 'primary key ?\( ?owner_id ?, ?id ?\)'; then
+      echo "  $name  synced table $t needs primary key (owner_id, id)"
+      fail8=1
+    fi
+  done
+done
+if [ "$fail8" -ne 0 ]; then
+  echo ""
+  echo "FAIL: synced tables must use primary key (owner_id, id) (CLAUDE.md principle 7)." >&2
   exit 1
 fi
 echo "OK: all migrations are idempotent and every table has explicit Data API grants."

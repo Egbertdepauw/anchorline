@@ -74,10 +74,11 @@ void main() {
   late AppDatabase db;
   late EquipmentDao dao;
   late PowerSyncDatabase ps;
+  late EquipmentDaoTestRig rig;
 
   setUp(() async {
     db = _db();
-    final rig = await openEquipmentDaoForTest(db);
+    rig = await openEquipmentDaoForTest(db);
     dao = rig.dao;
     ps = rig.ps;
   });
@@ -444,6 +445,32 @@ void main() {
       final list = await dao.listScrubberSessions();
       expect(list.single.id, id);
       expect(list.single.mediaType, 'Sofnolime 797');
+    });
+
+    test('deleteScrubberSession keeps an existing owner and claims an '
+        'ownerless row', () async {
+      Future<String?> ownerOf(String id) async => (await ps.get(
+          'SELECT owner_id FROM scrubber_sessions WHERE id = ?',
+          [id]))['owner_id'] as String?;
+      final a = await dao.addScrubberSession(startedDate: DateTime(2024, 1, 1));
+      final b = await dao.addScrubberSession(startedDate: DateTime(2024, 2, 1));
+      final c = await dao.addScrubberSession(startedDate: DateTime(2024, 3, 1));
+      await ps.execute(
+          'UPDATE scrubber_sessions SET owner_id = ? WHERE id IN (?, ?)',
+          ['uid-a', a, b]);
+      await ps.execute(
+          'UPDATE scrubber_sessions SET owner_id = NULL WHERE id = ?', [c]);
+
+      rig.session.setUserId('uid-b');
+      await dao.deleteScrubberSession(a);
+      rig.session.clear();
+      await dao.deleteScrubberSession(b);
+      rig.session.setUserId('uid-b');
+      await dao.deleteScrubberSession(c);
+
+      expect(await ownerOf(a), 'uid-a');
+      expect(await ownerOf(b), 'uid-a');
+      expect(await ownerOf(c), 'uid-b');
     });
 
     test('listScrubberSessions sorts active first then by date desc', () async {

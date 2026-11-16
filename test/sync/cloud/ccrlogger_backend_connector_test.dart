@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ccrlogger/sync/cloud/ccrlogger_backend_connector.dart';
@@ -524,7 +525,450 @@ void main() {
       expect(up.calls.whereType<_Upsert>().map((u) => u.data['id']),
           ['dive-c']);
     });
+
+    // A PATCH carries no owner; the owner is on its local row, which still
+    // names the previous account while that account's ops wait in the queue.
+
+    group('PATCH of another account\'s row', () {
+      late _RecordingQuarantine q;
+      late _RecordingUploader up;
+      late List<(String, String)> lookups;
+
+      CcrloggerBackendConnector connector({
+        String? signedIn = 'uid-b',
+      }) {
+        final sessions = _FakeSessions();
+        if (signedIn != null) sessions.session = _sessionFor(signedIn);
+        return CcrloggerBackendConnector.forTesting(
+          sessions: sessions,
+          uploader: up,
+          quarantine: q,
+        );
+      }
+
+      Future<Map<String, dynamic>?> Function(String, String) localRows(
+          Map<(String, String), Map<String, dynamic>> rows) {
+        return (table, id) async {
+          lookups.add((table, id));
+          return rows[(table, id)];
+        };
+      }
+
+      setUp(() {
+        q = _RecordingQuarantine();
+        up = _RecordingUploader();
+        lookups = [];
+      });
+
+      test('a PATCH whose local row names another account is quarantined '
+          'unsent', () async {
+        await connector().replayCrud([
+          CrudEntry(60, UpdateType.patch, 'dive_annotations', 'd1', null,
+              {'notes': 'x'}),
+          CrudEntry(61, UpdateType.put, 'dives', 'd2', null,
+              {'owner_id': 'uid-b', 'x': 1}),
+        ],
+            fetchLocalRow: localRows({
+              ('dive_annotations', 'd1'): {'owner_id': 'uid-a'},
+            }));
+
+        expect(q.records.map((e) => e.id), ['d1']);
+        expect(q.causes.single, isA<OtherAccountOpException>());
+        expect(up.calls.whereType<_Update>(), isEmpty);
+        expect(up.calls.whereType<_Upsert>().map((u) => u.data['id']), ['d2']);
+      });
+
+      test('a PATCH whose local row is ownerless, the signed-in account\'s, '
+          'or missing is uploaded', () async {
+        await connector().replayCrud([
+          CrudEntry(62, UpdateType.patch, 'dive_annotations', 'p1', null,
+              {'notes': 'a'}),
+          CrudEntry(63, UpdateType.patch, 'dive_annotations', 'p2', null,
+              {'notes': 'b'}),
+          CrudEntry(64, UpdateType.patch, 'dive_annotations', 'p3', null,
+              {'notes': 'c'}),
+        ],
+            fetchLocalRow: localRows({
+              ('dive_annotations', 'p1'): {'owner_id': null},
+              ('dive_annotations', 'p2'): {'owner_id': 'uid-b'},
+            }));
+
+        expect(up.calls.whereType<_Update>().map((u) => u.id),
+            ['p1', 'p2', 'p3']);
+        expect(q.records, isEmpty);
+      });
+
+      test('a DELETE is uploaded and never looks up the local row', () async {
+        await connector().replayCrud([
+          CrudEntry(65, UpdateType.delete, 'oxygen_cells', 'c1', null, null),
+        ], fetchLocalRow: localRows({}));
+
+        expect(up.calls.whereType<_Delete>().map((d) => d.id), ['c1']);
+        expect(lookups, isEmpty);
+      });
+
+      test('a PATCH on a table outside the synced tables never reaches the '
+          'local-row lookup', () async {
+        await connector().replayCrud([
+          CrudEntry(66, UpdateType.patch, 'ps_untyped', 'u1', null, {'x': 1}),
+        ], fetchLocalRow: localRows({}));
+
+        expect(lookups, isEmpty);
+        expect(up.calls.whereType<_Update>().map((u) => u.table),
+            ['ps_untyped']);
+      });
+
+      test('with no session, a PATCH uploads without a local lookup',
+          () async {
+        await connector(signedIn: null).replayCrud([
+          CrudEntry(67, UpdateType.patch, 'dive_annotations', 'n1', null,
+              {'notes': 'x'}),
+        ],
+            fetchLocalRow: localRows({
+              ('dive_annotations', 'n1'): {'owner_id': 'uid-a'},
+            }));
+
+        expect(lookups, isEmpty);
+        expect(up.calls.whereType<_Update>().map((u) => u.id), ['n1']);
+        expect(q.records, isEmpty);
+      });
+    });
+    group('isQueuedByAnotherAccount', () {
+      Future<bool> check(
+        UpdateType op, {
+        String table = 'dive_annotations',
+        Map<String, dynamic>? data,
+        String? signedIn = 'uid-b',
+        Map<String, dynamic>? Function(String, String)? local,
+        List<(String, String)>? lookups,
+      }) =>
+          CcrloggerBackendConnector.isQueuedByAnotherAccount(
+            op: op,
+            table: table,
+            id: 'x1',
+            data: data,
+            signedInUserId: signedIn,
+            fetchLocalRow: local == null
+                ? null
+                : (t, i) async {
+                    lookups?.add((t, i));
+                    return local(t, i);
+                  },
+          );
+
+      test('PUT: another account, own account, ownerless', () async {
+        expect(await check(UpdateType.put, data: {'owner_id': 'uid-a'}), isTrue);
+        expect(await check(UpdateType.put, data: {'owner_id': 'uid-b'}), isFalse);
+        expect(await check(UpdateType.put, data: {'x': 1}), isFalse);
+        expect(await check(UpdateType.put, data: {'owner_id': 'uid-a'}, signedIn: null),
+            isFalse);
+      });
+
+      test('PATCH: another account, own, ownerless, missing', () async {
+        expect(await check(UpdateType.patch, local: (_, _) => {'owner_id': 'uid-a'}),
+            isTrue);
+        expect(await check(UpdateType.patch, local: (_, _) => {'owner_id': 'uid-b'}),
+            isFalse);
+        expect(await check(UpdateType.patch, local: (_, _) => {'owner_id': null}),
+            isFalse);
+        expect(await check(UpdateType.patch, local: (_, _) => null), isFalse);
+      });
+
+      test('PATCH: non-synced table and null session never look up', () async {
+        final lookups = <(String, String)>[];
+        expect(
+            await check(UpdateType.patch,
+                table: 'ps_untyped',
+                local: (_, _) => {'owner_id': 'uid-a'},
+                lookups: lookups),
+            isFalse);
+        expect(
+            await check(UpdateType.patch,
+                signedIn: null,
+                local: (_, _) => {'owner_id': 'uid-a'},
+                lookups: lookups),
+            isFalse);
+        expect(lookups, isEmpty);
+      });
+
+      test('DELETE is never another account\'s', () async {
+        final lookups = <(String, String)>[];
+        expect(
+            await check(UpdateType.delete,
+                local: (_, _) => {'owner_id': 'uid-a'}, lookups: lookups),
+            isFalse);
+        expect(lookups, isEmpty);
+      });
+    });
   });
+
+  group('permission-denied reporting', () {
+    late _RecordingReporter reporter;
+    late _RecordingQuarantine quarantine;
+
+    setUp(() {
+      reporter = _RecordingReporter();
+      quarantine = _RecordingQuarantine();
+    });
+
+    CcrloggerBackendConnector connectorFor(SupabaseRestUploader uploader,
+        {String? signedIn = 'uid-b'}) {
+      final sessions = _FakeSessions();
+      if (signedIn != null) sessions.session = _sessionFor(signedIn);
+      return CcrloggerBackendConnector.forTesting(
+        sessions: sessions,
+        uploader: uploader,
+        quarantine: quarantine,
+        onPermissionDenied: reporter.call,
+      );
+    }
+
+    CrudEntry ownedPut(String table, String id) => CrudEntry(
+        1, UpdateType.put, table, id, null, {'owner_id': 'uid-b', 'x': 1});
+
+    test('a 42501 on an owned PUT is rethrown and reported once', () async {
+      final connector = connectorFor(
+          _CodePoisonUploader(failTable: 'dive_computers', code: '42501'));
+      await expectLater(
+        connector.replayCrud([ownedPut('dive_computers', 'dc_b89641e4')]),
+        throwsA(isA<CrudUploadException>()),
+      );
+      expect(reporter.reports, [('dive_computers', UpdateType.put)]);
+      expect(quarantine.records, isEmpty);
+    });
+
+    test('a repeated 42501 on the same table and op is not reported again',
+        () async {
+      final connector = connectorFor(
+          _CodePoisonUploader(failTable: 'dive_computers', code: '42501'));
+      for (var i = 0; i < 2; i++) {
+        await expectLater(
+          connector.replayCrud([ownedPut('dive_computers', 'dc_b89641e4')]),
+          throwsA(isA<CrudUploadException>()),
+        );
+      }
+      expect(reporter.reports, hasLength(1));
+    });
+
+    test("an ownerless PUT's 42501 is rethrown but not reported", () async {
+      final connector = connectorFor(
+          _CodePoisonUploader(failTable: 'dive_computers', code: '42501'));
+      await expectLater(
+        connector.replayCrud([
+          CrudEntry(1, UpdateType.put, 'dive_computers', 'dc_x', null,
+              {'x': 1}),
+        ]),
+        throwsA(isA<CrudUploadException>()),
+      );
+      expect(reporter.reports, isEmpty);
+    });
+
+    test('a 42501 on a PATCH is reported', () async {
+      final connector = connectorFor(
+          _CodePoisonUploader(failTable: 'dives', code: '42501'));
+      await expectLater(
+        connector.replayCrud([
+          CrudEntry(1, UpdateType.patch, 'dives', 'd1', null, {'x': 1}),
+        ]),
+        throwsA(isA<CrudUploadException>()),
+      );
+      expect(reporter.reports, [('dives', UpdateType.patch)]);
+    });
+
+    test('self-heal never uploads a parent that names another account: the '
+        'child is set aside', () async {
+      final uploader = _FkPoisonUploader(
+          failTable: 'dive_merge_links', failTimes: 99);
+      final connector = connectorFor(uploader);
+      await connector.replayCrud([
+        CrudEntry(1, UpdateType.put, 'dive_merge_links', 'd1', null,
+            {'owner_id': 'uid-b', 'group_id': 'g'}),
+        CrudEntry(2, UpdateType.put, 'dives', 'd2', null,
+            {'owner_id': 'uid-b', 'x': 1}),
+      ],
+          fetchLocalRow: (table, id) async =>
+              table == 'dives' && id == 'd1' ? {'owner_id': 'uid-a'} : null);
+
+      expect(quarantine.records.map((e) => e.id), ['d1']);
+      expect(quarantine.causes.single, isA<OtherAccountOpException>());
+      expect((quarantine.causes.single as OtherAccountOpException).ownerId,
+          'uid-a');
+      // No parent upsert; only the next op's own upsert went out.
+      expect(uploader.upserted, ['dives']);
+      expect(reporter.reports, isEmpty);
+    });
+
+    test('a reporter that never completes does not hold up the upload',
+        () async {
+      final connector = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions()..session = _sessionFor('uid-b'),
+        uploader:
+            _CodePoisonUploader(failTable: 'dive_computers', code: '42501'),
+        quarantine: quarantine,
+        onPermissionDenied: (t, o, e, s) => Completer<void>().future,
+      );
+      await expectLater(
+        connector.replayCrud([ownedPut('dive_computers', 'dc_1')]).timeout(
+            const Duration(seconds: 2)),
+        throwsA(isA<CrudUploadException>()),
+      );
+    });
+
+    test('a reporter that throws synchronously does not change the outcome',
+        () async {
+      final connector = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions()..session = _sessionFor('uid-b'),
+        uploader:
+            _CodePoisonUploader(failTable: 'dive_computers', code: '42501'),
+        quarantine: quarantine,
+        onPermissionDenied: (t, o, e, s) => throw StateError('boom'),
+      );
+      await expectLater(
+        connector.replayCrud([ownedPut('dive_computers', 'dc_1')]),
+        throwsA(isA<CrudUploadException>()),
+      );
+    });
+
+    test('a 42501 from the self-heal parent upsert is reported under the '
+        "parent's table", () async {
+      final connector = connectorFor(_HealDeniedUploader());
+      await expectLater(
+        connector.replayCrud(
+          [ownedPut('dive_samples', 'd1')],
+          fetchLocalRow: (table, id) async =>
+              table == 'dives' ? {'owner_id': 'uid-b'} : null,
+        ),
+        throwsA(isA<CrudUploadException>()),
+      );
+      expect(reporter.reports, [('dives', UpdateType.put)]);
+    });
+
+    for (final code in ['22001', '503']) {
+      test('a $code is not reported', () async {
+        final connector = connectorFor(
+            _CodePoisonUploader(failTable: 'dives', code: code));
+        try {
+          await connector.replayCrud([ownedPut('dives', 'd1')]);
+        } on CrudUploadException {
+          // 503 is retried; 22001 is quarantined.
+        }
+        expect(reporter.reports, isEmpty);
+      });
+    }
+
+    test('a 42P10 is retried, not quarantined or reported', () async {
+      final connector = connectorFor(
+          _CodePoisonUploader(failTable: 'dives', code: '42P10'));
+      await expectLater(
+        connector.replayCrud([ownedPut('dives', 'd1')]),
+        throwsA(isA<CrudUploadException>()),
+      );
+      expect(quarantine.records, isEmpty);
+      expect(reporter.reports, isEmpty);
+    });
+
+    test('a throwing reporter does not change the outcome', () async {
+      final connector = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions()..session = _sessionFor('uid-b'),
+        uploader:
+            _CodePoisonUploader(failTable: 'dive_computers', code: '42501'),
+        quarantine: quarantine,
+        onPermissionDenied: (t, o, e, s) async => throw StateError('boom'),
+      );
+      await expectLater(
+        connector.replayCrud([ownedPut('dive_computers', 'dc_1')]),
+        throwsA(isA<CrudUploadException>()
+            .having((e) => isPermissionDenied(e), 'denied', isTrue)),
+      );
+      expect(quarantine.records, isEmpty);
+    });
+  });
+
+  group('isServerPermissionBlock', () {
+    CrudUploadException denied(UpdateType type, Map<String, dynamic>? data) =>
+        CrudUploadException(
+            CrudEntry(1, type, 'dives', 'd1', null, data),
+            PostgrestException(message: 'm', code: '42501'));
+
+    test('true for a 42501 on an owned PUT or on a PATCH', () {
+      expect(isServerPermissionBlock(denied(UpdateType.put, {'owner_id': 'u'})),
+          isTrue);
+      expect(isServerPermissionBlock(denied(UpdateType.patch, {'x': 1})),
+          isTrue);
+    });
+    test('false for a 42501 on an ownerless PUT', () {
+      expect(isServerPermissionBlock(denied(UpdateType.put, {'x': 1})),
+          isFalse);
+      expect(isServerPermissionBlock(denied(UpdateType.put, null)), isFalse);
+    });
+    test('false for other errors and null', () {
+      expect(
+          isServerPermissionBlock(CrudUploadException(
+              CrudEntry(1, UpdateType.put, 'dives', 'd1', null,
+                  {'owner_id': 'u'}),
+              PostgrestException(message: 'm', code: '23503'))),
+          isFalse);
+      expect(isServerPermissionBlock('42501'), isFalse);
+      expect(isServerPermissionBlock(null), isFalse);
+    });
+    test('a bare 42501 (no op to inspect) counts as a block', () {
+      expect(
+          isServerPermissionBlock(
+              PostgrestException(message: 'm', code: '42501')),
+          isTrue);
+    });
+  });
+
+  group('isPermissionDenied', () {
+    final op = CrudEntry(1, UpdateType.put, 'dives', 'd1', null, {'x': 1});
+    test('true for a 42501 PostgrestException', () {
+      expect(
+          isPermissionDenied(PostgrestException(message: 'm', code: '42501')),
+          isTrue);
+    });
+    test('true for a CrudUploadException wrapping one', () {
+      expect(
+          isPermissionDenied(CrudUploadException(
+              op, PostgrestException(message: 'm', code: '42501'))),
+          isTrue);
+    });
+    test('false for a string, another code and null', () {
+      expect(isPermissionDenied('42501'), isFalse);
+      expect(
+          isPermissionDenied(PostgrestException(message: 'm', code: '23503')),
+          isFalse);
+      expect(isPermissionDenied(null), isFalse);
+    });
+  });
+}
+
+class _RecordingReporter {
+  final List<(String, UpdateType)> reports = [];
+
+  Future<void> call(
+      String table, UpdateType opType, Object error, StackTrace stack) async {
+    reports.add((table, opType));
+  }
+}
+
+/// 23503 for `dive_samples` (so self-heal runs), 42501 for the `dives`
+/// parent upsert.
+class _HealDeniedUploader implements SupabaseRestUploader {
+  @override
+  Future<void> upsert(String table, Map<String, dynamic> data) async {
+    if (table == 'dive_samples') {
+      throw PostgrestException(message: 'fk', code: '23503');
+    }
+    if (table == 'dives') {
+      throw PostgrestException(message: 'rls', code: '42501');
+    }
+  }
+
+  @override
+  Future<void> update(String t, String id, Map<String, dynamic> d) async {}
+
+  @override
+  Future<void> delete(String t, String id) async {}
 }
 
 Session _sessionFor(String userId) =>
@@ -532,9 +976,13 @@ Session _sessionFor(String userId) =>
 
 class _RecordingQuarantine implements CrudQuarantine {
   final List<CrudEntry> records = [];
+  final List<Object> causes = [];
 
   @override
-  Future<void> record(CrudEntry op, Object cause) async => records.add(op);
+  Future<void> record(CrudEntry op, Object cause) async {
+    records.add(op);
+    causes.add(cause);
+  }
 }
 
 /// Uploader that rejects [failTable] with a PostgrestException carrying a

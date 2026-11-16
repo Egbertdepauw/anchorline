@@ -11,6 +11,7 @@
 /// `supabase.from(...)` query-builder chain.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -18,6 +19,35 @@ import 'package:powersync/powersync.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'cloud_config.dart';
+import 'powersync_schema.dart' show kSyncedTableNames;
+
+/// Told once per (table, op type) when the server refuses an upload with
+/// 42501. See [CcrloggerBackendConnector.replayCrud].
+typedef UploadPermissionReporter = Future<void> Function(
+    String table, UpdateType opType, Object error, StackTrace stack);
+
+/// Whether [error] is a Postgres 42501 (insufficient privilege / RLS), or a
+/// [CrudUploadException] wrapping one.
+bool isPermissionDenied(Object? error) {
+  if (error is CrudUploadException) return isPermissionDenied(error.cause);
+  return error is PostgrestException && error.code == '42501';
+}
+
+/// Whether [error] is a 42501 the SERVER is to blame for, so the Sync tab
+/// may say "Upload blocked by the server". Not an ownerless PUT's 42501:
+/// that is the sign-in backfill racing the connect, which resolves on the
+/// client (and [CcrloggerBackendConnector.replayCrud] does not report it
+/// either).
+bool isServerPermissionBlock(Object? error) {
+  if (!isPermissionDenied(error)) return false;
+  if (error is CrudUploadException) {
+    final op = error.op;
+    if (op.op == UpdateType.put && op.opData?['owner_id'] == null) {
+      return false;
+    }
+  }
+  return true;
+}
 
 abstract class SupabaseRestUploader {
   Future<void> upsert(String table, Map<String, dynamic> data);
@@ -67,14 +97,20 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   final SupabaseRestUploader _uploader;
   final CrudQuarantine? _quarantine;
   final String _endpoint;
+  final UploadPermissionReporter? _onPermissionDenied;
+
+  /// `'$table/${opType.name}'` keys already reported by this instance.
+  final Set<String> _reportedPermissionDenied = {};
 
   CcrloggerBackendConnector(
     SupabaseClient supabase, {
     String endpoint = CloudConfig.powerSyncEndpoint,
     CrudQuarantine? quarantine,
+    UploadPermissionReporter? onPermissionDenied,
   })  : _sessions = SupabaseAuthSessionSource(supabase),
         _uploader = SupabaseClientRestUploader(supabase),
         _quarantine = quarantine,
+        _onPermissionDenied = onPermissionDenied,
         _endpoint = endpoint;
 
   /// Test-only: inject the auth + REST seams directly.
@@ -82,10 +118,12 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
     required SessionSource sessions,
     required SupabaseRestUploader uploader,
     CrudQuarantine? quarantine,
+    UploadPermissionReporter? onPermissionDenied,
     String endpoint = 'https://test.powersync.invalid',
   })  : _sessions = sessions,
         _uploader = uploader,
         _quarantine = quarantine,
+        _onPermissionDenied = onPermissionDenied,
         _endpoint = endpoint;
 
   /// Window before token expiry within which we try to refresh
@@ -154,8 +192,10 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
         batch.crud,
         // Self-heal lookup: fetch a parent row from the LOCAL PowerSync DB so a
         // child op whose parent never reached the cloud can re-upload it. The
-        // table comes only from the hard-coded [_fkParents] map (never user
-        // input), so the interpolation is safe.
+        // table comes from the hard-coded [_fkParents] map (never user input)
+        // or, for the PATCH owner check, from an op's table, which
+        // [isQueuedByAnotherAccount] validates against [kSyncedTableNames]
+        // before calling — so the interpolation is safe.
         fetchLocalRow: (table, id) =>
             database.getOptional('SELECT * FROM $table WHERE id = ?', [id]),
       );
@@ -197,8 +237,28 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   /// the previous account can reach this one. It names that account as
   /// `owner_id`; RLS rejects it with 42501, which is retried, so sent as-is
   /// it would block the queue forever. It is quarantined unsent instead.
-  /// PATCH and DELETE ops carry no owner; RLS makes them no-ops for rows of
-  /// another account, so they need no check.
+  ///
+  /// Since 0027 the server keys every row by (owner_id, id), so two accounts
+  /// can own the same id and a PATCH queued by account A would update B's
+  /// same-id row under B's session. A PATCH carries only the changed columns,
+  /// but its row is still local, and the local row names A. PowerSync does not
+  /// publish downloaded data while the upload queue holds anything (priority 0
+  /// excepted; `can_apply_sync_changes` in powersync-sqlite-core's
+  /// `crates/core/src/sync/sync_local.rs`), and local updates keep an existing
+  /// owner (`owner_id = COALESCE(owner_id, ?)`), so while A's ops wait the
+  /// local row keeps A as `owner_id`, even after a signed-out edit or an edit
+  /// under B's session.
+  /// A PATCH whose local row names another account is quarantined unsent. An
+  /// ownerless row (a signed-out import, claimed by the sign-in backfill) or a
+  /// row that no longer exists uploads as before.
+  ///
+  /// A DELETE carries no data and its local row is gone, so it has no owner
+  /// to read and uploads as before. The only hard deletes are on `dive_plans`
+  /// (random ids), `oxygen_cells` (`cell_<ms>_<slot>`) and
+  /// `dive_bailout_carry` (`<diveId>:<cylinderId>`, the cylinder id being per
+  /// account), whose ids do not repeat across accounts in practice, so a
+  /// DELETE can only reach the signed-in account's own row. Revisit this if a
+  /// table with repeating ids ever gets hard deletes.
   Future<void> replayCrud(
     List<CrudEntry> entries, {
     Future<Map<String, dynamic>?> Function(String table, String id)?
@@ -206,20 +266,48 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   }) async {
     final signedInUserId = _sessions.currentSession?.user.id;
     for (final op in entries) {
-      if (_queuedByAnotherAccount(op, signedInUserId)) {
-        await _quarantine?.record(op, OtherAccountOpException());
+      final otherOwner = await otherAccountOwnerOf(
+        op: op.op,
+        table: op.table,
+        id: op.id,
+        data: op.opData,
+        signedInUserId: signedInUserId,
+        fetchLocalRow: fetchLocalRow,
+      );
+      if (otherOwner != null) {
+        await _quarantine?.record(op, OtherAccountOpException(otherOwner));
         debugPrint('replayCrud: quarantined ${op.op.name} ${op.table} '
             'id=${op.id} — queued by another account');
         continue;
       }
       try {
         await _applyOp(op);
-      } on PostgrestException catch (e) {
+      } on PostgrestException catch (e, st) {
+        // After 0027 a 42501 on the user's own row is a server defect. It is
+        // still retried below; it is reported once so we find out. An
+        // ownerless PUT is the signed-out-import case the sign-in backfill
+        // claims, so it is expected and not reported.
+        if (e.code == '42501' &&
+            !(op.op == UpdateType.put && op.opData?['owner_id'] == null)) {
+          _reportPermissionDenied(op.table, op.op, e, st);
+        }
         if (e.code == '23503' &&
             fetchLocalRow != null &&
             _fkParents.containsKey(op.table)) {
           try {
-            final heal = await _healMissingParents(op, fetchLocalRow);
+            final heal =
+                await _healMissingParents(op, fetchLocalRow, signedInUserId);
+            if (heal.otherAccountOwner != null) {
+              // The parent is still local and names another account (an
+              // account switch before its queue drained). Uploading it would
+              // 42501 forever; set the child aside like any other op of that
+              // account.
+              await _quarantine?.record(
+                  op, OtherAccountOpException(heal.otherAccountOwner!));
+              debugPrint('replayCrud: quarantined ${op.op.name} ${op.table} '
+                  'id=${op.id} — its parent belongs to another account');
+              continue;
+            }
             if (heal.missingLocally) {
               // A required parent doesn't exist locally either — this child is
               // orphaned referential garbage that can never upload. Drop it so
@@ -260,19 +348,73 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
     }
   }
 
-  /// Whether [op] is a PUT that names an owner other than [signedInUserId].
-  /// An ownerless PUT is not: the sign-in backfill claims it, and until it
-  /// runs the RLS rejection is retried.
-  static bool _queuedByAnotherAccount(CrudEntry op, String? signedInUserId) {
-    if (op.op != UpdateType.put || signedInUserId == null) return false;
-    final owner = op.opData?['owner_id'];
-    return owner != null && owner != signedInUserId;
+  /// Whether an op belongs to an account other than [signedInUserId], so it
+  /// must not be sent under this session. Shared by [replayCrud] and the
+  /// Settings "Push stuck uploads" drain, which would otherwise bypass it.
+  ///
+  /// - PUT: its [data] names an `owner_id` other than [signedInUserId]. An
+  ///   ownerless PUT is not: the sign-in backfill claims it, and until it
+  ///   runs the RLS rejection is retried.
+  /// - PATCH: the local row's `owner_id` (via [fetchLocalRow]) names another
+  ///   account. Without a session or a [fetchLocalRow] there is nothing to
+  ///   compare, and a table outside [kSyncedTableNames] is never looked up,
+  ///   since the name goes into SQL. A missing or ownerless row is not
+  ///   another account's.
+  /// - DELETE: never (see [replayCrud]).
+  static Future<bool> isQueuedByAnotherAccount({
+    required UpdateType op,
+    required String table,
+    required String id,
+    Map<String, dynamic>? data,
+    required String? signedInUserId,
+    Future<Map<String, dynamic>?> Function(String table, String id)?
+        fetchLocalRow,
+  }) async =>
+      await otherAccountOwnerOf(
+        op: op,
+        table: table,
+        id: id,
+        data: data,
+        signedInUserId: signedInUserId,
+        fetchLocalRow: fetchLocalRow,
+      ) !=
+      null;
+
+  /// Same decision as [isQueuedByAnotherAccount], returning the account the
+  /// op belongs to, or null when it is not another account's.
+  static Future<String?> otherAccountOwnerOf({
+    required UpdateType op,
+    required String table,
+    required String id,
+    Map<String, dynamic>? data,
+    required String? signedInUserId,
+    Future<Map<String, dynamic>?> Function(String table, String id)?
+        fetchLocalRow,
+  }) async {
+    if (signedInUserId == null) return null;
+    switch (op) {
+      case UpdateType.put:
+        final owner = data?['owner_id'];
+        return owner is String && owner != signedInUserId ? owner : null;
+      case UpdateType.patch:
+        if (fetchLocalRow == null || !kSyncedTableNames.contains(table)) {
+          return null;
+        }
+        final owner = (await fetchLocalRow(table, id))?['owner_id'];
+        return owner is String && owner != signedInUserId ? owner : null;
+      case UpdateType.delete:
+        return null;
+    }
   }
 
   /// SQLSTATE codes for backend rejections that a retry of the same payload
   /// can never fix (so the op must be quarantined, not retried forever).
   /// Deliberately EXCLUDES 23503 (foreign-key — handled by self-heal/drop
-  /// above) and 42501 (RLS — recoverable once `owner_id` is backfilled).
+  /// above) and 42501 (RLS). Since 0027 keys every table by (owner_id, id),
+  /// a 42501 on the user's own row means a server defect that a server fix
+  /// resolves, so it is retried, shown in the Sync tab and reported once
+  /// ([_reportPermissionDenied]). The ownerless case (sign-in backfill
+  /// pending) still resolves on the client.
   static const _permanentSqlStates = {
     '23505', // unique_violation
     '23502', // not_null_violation
@@ -295,6 +437,20 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
     if (_permanentSqlStates.contains(code)) return true;
     final status = int.tryParse(code);
     return status != null && _permanentHttpStatuses.contains(status);
+  }
+
+  /// Reports a 42501 once per (table, op type) for this connector. A failing
+  /// reporter must never change the upload outcome.
+  /// Fire-and-forget: the upload never waits on the reporter, and neither a
+  /// synchronous throw nor an async error from it escapes.
+  void _reportPermissionDenied(
+      String table, UpdateType opType, Object error, StackTrace stack) {
+    final reporter = _onPermissionDenied;
+    if (reporter == null) return;
+    if (!_reportedPermissionDenied.add('$table/${opType.name}')) return;
+    try {
+      unawaited(reporter(table, opType, error, stack).catchError((_) {}));
+    } catch (_) {}
   }
 
   Future<void> _applyOp(CrudEntry op) async {
@@ -320,15 +476,24 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   /// - `missingLocally` — at least one required parent row is absent from the
   ///   local DB too, so the child can never satisfy its FK and must be dropped.
   ///
+  /// - `otherAccountOwner` — a parent exists locally but names an account other
+  ///   than [signedInUserId]; nothing is uploaded then, because the upsert
+  ///   would be refused (42501) forever. An ownerless parent is uploaded.
+  ///
   /// A `null` parent id (e.g. a PATCH whose opData doesn't carry the FK column)
   /// is neither uploaded nor counted missing — such ops don't FK-fault anyway
   /// (an UPDATE matching no cloud row is a harmless no-op).
-  Future<({bool uploadedAny, bool missingLocally})> _healMissingParents(
+  Future<({bool uploadedAny, bool missingLocally, String? otherAccountOwner})>
+      _healMissingParents(
     CrudEntry op,
     Future<Map<String, dynamic>?> Function(String, String) fetchLocalRow,
+    String? signedInUserId,
   ) async {
     var uploadedAny = false;
     var missingLocally = false;
+    // Look every parent up first, so nothing is uploaded when one of them
+    // turns out to belong to another account.
+    final parents = <(String, String, Map<String, dynamic>)>[];
     for (final (column, parentTable) in _fkParents[op.table]!) {
       final parentId =
           column == 'id' ? op.id : op.opData?[column] as String?;
@@ -338,11 +503,33 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
         missingLocally = true;
         continue;
       }
-      await _uploader.upsert(
-          parentTable, {..._decodeJsonColumns(parentTable, row), 'id': parentId});
+      final owner = row['owner_id'];
+      if (signedInUserId != null && owner is String && owner != signedInUserId) {
+        return (
+          uploadedAny: false,
+          missingLocally: false,
+          otherAccountOwner: owner,
+        );
+      }
+      parents.add((parentTable, parentId, row));
+    }
+    for (final (parentTable, parentId, row) in parents) {
+      try {
+        await _uploader.upsert(parentTable,
+            {..._decodeJsonColumns(parentTable, row), 'id': parentId});
+      } on PostgrestException catch (e, st) {
+        if (e.code == '42501' && row['owner_id'] != null) {
+          _reportPermissionDenied(parentTable, UpdateType.put, e, st);
+        }
+        rethrow;
+      }
       uploadedAny = true;
     }
-    return (uploadedAny: uploadedAny, missingLocally: missingLocally);
+    return (
+      uploadedAny: uploadedAny,
+      missingLocally: missingLocally,
+      otherAccountOwner: null,
+    );
   }
 }
 
@@ -380,14 +567,19 @@ class CrudUploadException implements Exception {
       'CRUD upload failed on ${op.op.name} ${op.table} id=${op.id}: $cause';
 }
 
-/// The quarantine cause for a PUT the previous account queued before
-/// signing out ([CcrloggerBackendConnector.replayCrud]). A future re-drive
-/// must replay it only while that account is signed in.
+/// The quarantine cause for an op the previous account queued before
+/// signing out ([CcrloggerBackendConnector.replayCrud]): a PUT naming that
+/// account, a PATCH of its local row, or a child op whose self-heal parent
+/// names it. [ownerId] is that account; a future re-drive must replay the op
+/// only while it is signed in.
 class OtherAccountOpException implements Exception {
+  final String ownerId;
+  OtherAccountOpException(this.ownerId);
+
   @override
   String toString() =>
-      'Queued while another account was signed in; not uploaded to this '
-      'account';
+      'Queued by account $ownerId while another account was signed in; not '
+      'uploaded to this account';
 }
 
 /// Per-table set of columns that hold JSON-encoded text in PowerSync's

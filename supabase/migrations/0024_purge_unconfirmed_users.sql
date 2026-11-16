@@ -14,8 +14,8 @@
 --
 -- An unconfirmed user never had a session, so it cannot own rows. Every
 -- owner_id foreign key is `on delete cascade` anyway. The three NO ACTION
--- foreign keys into a user's data (dive_bailout_carry.dive_id and
--- .cylinder_id, dive_merge_links.id) are cleared first, exactly as
+-- foreign keys into a user's data (dive_bailout_carry's dive and cylinder,
+-- dive_merge_links' dive) are cleared first, exactly as
 -- public.delete_my_account() in 0022 does, so the auth delete can never
 -- fail on them. The audit-log entries that hold the email and IP address
 -- are deleted too, guarded the same way as in 0022.
@@ -25,6 +25,9 @@
 -- Execute is revoked from everyone else, so the Data API cannot call it.
 --
 -- Creates no table, so no table grants are needed.
+--
+-- Amended for 0027 (per-owner keys): edited in place because apply_migrations.sh
+-- re-runs every file.
 
 create or replace function public.purge_unconfirmed_users()
 returns integer
@@ -50,11 +53,11 @@ begin
     return 0;
   end if;
 
-  delete from public.dive_bailout_carry
-  where dive_id in (select id from public.dives where owner_id = any(doomed))
-     or cylinder_id in (select id from public.cylinders where owner_id = any(doomed));
-  delete from public.dive_merge_links
-  where id in (select id from public.dives where owner_id = any(doomed));
+  -- Matched by owner, not by dive or cylinder id: since 0027 ids repeat
+  -- across accounts, and the composite foreign keys keep a child row's owner
+  -- equal to its parent's.
+  delete from public.dive_bailout_carry where owner_id = any(doomed);
+  delete from public.dive_merge_links where owner_id = any(doomed);
 
   begin
     delete from auth.audit_log_entries

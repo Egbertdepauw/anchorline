@@ -10,6 +10,8 @@ library;
 
 import 'package:powersync/powersync.dart';
 
+import 'ccrlogger_backend_connector.dart' show isServerPermissionBlock;
+
 class SyncStatusSnapshot {
   final bool connected;
   final bool uploading;
@@ -24,6 +26,12 @@ class SyncStatusSnapshot {
   final String? uploadError;
   final String? downloadError;
 
+  /// True when the last upload failed with a Postgres permission error
+  /// (42501) the server is to blame for (not an ownerless PUT's, which the
+  /// sign-in backfill resolves). The connector keeps retrying it, so the
+  /// queue stays stuck until the server is fixed.
+  final bool uploadBlockedByServer;
+
   const SyncStatusSnapshot({
     this.connected = false,
     this.uploading = false,
@@ -31,6 +39,7 @@ class SyncStatusSnapshot {
     this.lastSyncedAt,
     this.uploadError,
     this.downloadError,
+    this.uploadBlockedByServer = false,
   });
 
   factory SyncStatusSnapshot.fromPowerSync(SyncStatus s) => SyncStatusSnapshot(
@@ -40,6 +49,7 @@ class SyncStatusSnapshot {
         lastSyncedAt: s.lastSyncedAt,
         uploadError: s.uploadError?.toString(),
         downloadError: s.downloadError?.toString(),
+        uploadBlockedByServer: isServerPermissionBlock(s.uploadError),
       );
 }
 

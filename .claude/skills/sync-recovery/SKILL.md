@@ -64,6 +64,20 @@ It claims only rows and queued PUTs **without** an owner. Signing out keeps the 
 
 If uploads still fail with 42501 after sign-in, PowerSync's `uploadError` names the op (`CrudUploadException`). Check that the migration creating its table grants it to `authenticated` (see `supabase/README.md`). Don't run Re-assign just to read the error, because it also re-owns.
 
+### Upload blocked by the server (42501)
+
+**Symptom:** the Sync tab shows "Upload blocked by the server" with the line "The server refused a change. It uploads by itself once the server is fixed." Uploads stay queued.
+
+**Cause:** since migration 0027 (per-owner row keys), a 42501 on a row the signed-in account owns means a server defect, not a data problem. The connector reports each blocked upload to Sentry once.
+
+**Steps:**
+1. Find the Sentry event and read its `sync.table`, `sync.op` and `sync.sqlstate` tags.
+2. For that table, check the grants: `select has_table_privilege('authenticated', 'public.<t>', 'INSERT');`.
+3. Check the table's RLS policy.
+4. Check that its primary key is `(owner_id, id)`.
+
+**Recovery:** the queue drains by itself once the server is fixed. Don't run Re-assign or Push stuck uploads for this.
+
 ### Subsurface-Cloud branch corruption from CCRLog write-direction sync
 
 Historical incident (2026-05-08): an early version of the CCRLog → Subsurface git write-direction sync emitted samples in the older Subsurface format (sparse `dc_supplied_ppo2=`, frequent `po2=`) and force-pushed a commit titled "CCRLog sync — N dives" to Subsurface Cloud, **overwriting the user's authoritative recordings** for those dives. The user's main repo at `~/Dev/CCRLog/ss_git/...` retained the correct working-tree content because it hadn't fetched yet, but the cloud branch held the corrupt commit.
