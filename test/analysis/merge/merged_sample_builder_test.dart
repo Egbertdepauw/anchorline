@@ -11,6 +11,11 @@ Dive d({
   required int end,
   int maxDepthMm = 30000,
   String gasMixesJson = '[{"o2":21,"he":0,"dil":false}]',
+  String? dcVendor,
+  String? dcProduct,
+  int? dcFamily,
+  int? dcModelCode,
+  String? matchCandidatesJson,
 }) =>
     Dive(
       id: id,
@@ -26,6 +31,11 @@ Dive d({
       waterDensity: 1030,
       logVersion: 1,
       dcModel: 0,
+      dcVendor: dcVendor,
+      dcProduct: dcProduct,
+      dcFamily: dcFamily,
+      dcModelCode: dcModelCode,
+      matchCandidatesJson: matchCandidatesJson,
       sampleIntervalMs: 10000,
       gasMixesJson: gasMixesJson,
       rawBlob: Uint8List(0),
@@ -38,6 +48,7 @@ SampleSet samples({
   required int count,
   double depth = 20.0,
   int gasIdx = 0,
+  int cellChannels = 0,
 }) =>
     SampleSet(
       diveId: diveId,
@@ -56,6 +67,10 @@ SampleSet samples({
       ttsSeconds: Int32List.fromList(List.filled(count, 0)),
       gasMixIndex: Uint8List.fromList(List.filled(count, gasIdx)),
       statusFlags: Uint8List.fromList(List.filled(count, 0)),
+      cellPpo2Bar: [
+        for (var c = 0; c < cellChannels; c++)
+          Float32List.fromList(List.filled(count, 1.0 + c / 10)),
+      ],
     );
 
 void main() {
@@ -183,5 +198,45 @@ void main() {
     ]);
     // Gap clamped to 0 -> total is just the two segments.
     expect(res.samples.sampleCount, 200);
+  });
+
+  test('a merged dive keeps the first member\'s vendor and product and joins '
+      'cellPpo2Bar', () {
+    final a = d(
+        id: 'a',
+        start: 0,
+        end: 1000,
+        dcVendor: 'Garmin',
+        dcProduct: 'Descent Mk2',
+        dcFamily: 12,
+        dcModelCode: 3,
+        matchCandidatesJson: '["x"]');
+    final b = d(id: 'b', start: 1060, end: 2060, dcVendor: 'Other');
+    final res = buildMergedDive(mergedId: 'grp', members: [
+      (dive: a, samples: samples(diveId: 'a', count: 100, cellChannels: 3)),
+      (dive: b, samples: samples(diveId: 'b', count: 100, cellChannels: 2)),
+    ]);
+    expect(res.dive.dcVendor, 'Garmin');
+    expect(res.dive.dcProduct, 'Descent Mk2');
+    expect(res.dive.dcFamily, 12);
+    expect(res.dive.dcModelCode, 3);
+    expect(res.dive.matchCandidatesJson, isNull);
+
+    final cells = res.samples.cellPpo2Bar;
+    expect(cells.length, 3);
+    expect(cells[0].length, res.samples.sampleCount);
+    expect(cells[0][0], closeTo(1.0, 1e-6));
+    expect(cells[2][0], closeTo(1.2, 1e-6));
+    expect(cells[0][102].isNaN, isTrue); // surface gap
+    expect(cells[1][110], closeTo(1.1, 1e-6)); // member b, channel 1
+    expect(cells[2][110].isNaN, isTrue); // member b has only two channels
+  });
+
+  test('members without cell ppO2 give a merged set without it', () {
+    final res = buildMergedDive(mergedId: 'grp', members: [
+      (dive: d(id: 'a', start: 0, end: 1000), samples: samples(diveId: 'a', count: 10)),
+      (dive: d(id: 'b', start: 1060, end: 2060), samples: samples(diveId: 'b', count: 10)),
+    ]);
+    expect(res.samples.cellPpo2Bar, isEmpty);
   });
 }

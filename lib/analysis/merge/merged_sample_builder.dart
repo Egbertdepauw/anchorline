@@ -95,6 +95,11 @@ typedef MergeMember = ({Dive dive, SampleSet samples});
       .fold<int>(0, (a, b) => a > b ? a : b);
   final tanks = List.generate(tankChannels, (_) => Float32List(total));
 
+  final cellChannels = sorted
+      .map((m) => m.samples.cellPpo2Bar.length)
+      .fold<int>(0, (a, b) => a > b ? a : b);
+  final cellPpo2 = List.generate(cellChannels, (_) => Float32List(total));
+
   var w = 0;
   void fillSurface(int count) {
     for (var i = 0; i < count; i++) {
@@ -113,6 +118,9 @@ typedef MergeMember = ({Dive dive, SampleSet samples});
       status[w] = 0;
       for (final t in tanks) {
         t[w] = double.nan;
+      }
+      for (final c in cellPpo2) {
+        c[w] = double.nan;
       }
       w++;
     }
@@ -142,6 +150,11 @@ typedef MergeMember = ({Dive dive, SampleSet samples});
             ? s.tankPressuresBar[c][i]
             : double.nan;
       }
+      for (var c = 0; c < cellChannels; c++) {
+        cellPpo2[c][w] = (c < s.cellPpo2Bar.length)
+            ? s.cellPpo2Bar[c][i]
+            : double.nan;
+      }
       w++;
     }
   }
@@ -164,6 +177,7 @@ typedef MergeMember = ({Dive dive, SampleSet samples});
     gasMixIndex: gasIdx,
     statusFlags: status,
     tankPressuresBar: tanks,
+    cellPpo2Bar: cellPpo2,
   );
 
   final first = sorted.first.dive;
@@ -193,6 +207,12 @@ typedef MergeMember = ({Dive dive, SampleSet samples});
     logVersion: first.logVersion,
     dcModel: first.dcModel,
     dcFirmware: first.dcFirmware,
+    dcVendor: first.dcVendor,
+    dcProduct: first.dcProduct,
+    dcFamily: first.dcFamily,
+    dcModelCode: first.dcModelCode,
+    // matchCandidatesJson is deliberately not carried: it belongs to one
+    // stored dives row, and a merged dive has no row of its own.
     sampleIntervalMs: interval,
     gasMixesJson: jsonEncode(mergedGas),
     tanksJson: first.tanksJson,
