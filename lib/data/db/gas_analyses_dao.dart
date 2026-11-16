@@ -37,7 +37,8 @@ abstract class GasAnalysesDaoLike {
   /// Replaces the editable fields (desired mix, gas role, analysed by,
   /// notes, cylinder, fill pressure, analysed for) of one analysis, and
   /// clears needs_signoff when [GasAnalysisEdit.signOff]. The measured
-  /// values, capture_source and bridge_record_id are never touched.
+  /// values, capture_source, bridge_record_id and is_residual are never
+  /// touched.
   Future<void> update(String id, GasAnalysisEdit edit);
 
   /// Sets needs_signoff, bumps version and updated_at.
@@ -104,10 +105,10 @@ class GasAnalysesDao implements GasAnalysesDaoLike {
       'analysed_at, o2_percent, he_percent, fill_pressure_bar, temp_c, '
       'baro_hpa, mod_ppo2s, stable, notes, target_o2_percent, '
       'target_he_percent, gas_role, needs_signoff, capture_source, '
-      'bridge_record_id, analysed_for, created_at, updated_at, '
-      'deleted_at, version, sync_status) '
+      'bridge_record_id, analysed_for, is_residual, created_at, '
+      'updated_at, deleted_at, version, sync_status) '
       'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-      '?, ?, NULL, 1, 0)';
+      '?, ?, ?, NULL, 1, 0)';
 
   List<Object?> _insertArgs(String id, NewGasAnalysis a) {
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -132,6 +133,7 @@ class GasAnalysesDao implements GasAnalysesDaoLike {
       a.captureSource.dbValue,
       a.bridgeRecordId,
       _blankToNull(a.analysedFor),
+      a.isResidual ? 1 : 0,
       now,
       now,
     ];
@@ -272,6 +274,7 @@ class GasAnalysesDao implements GasAnalysesDaoLike {
         targetHePercent: (r['target_he_percent'] as num?)?.toInt(),
         gasRole: GasRole.fromDb(r['gas_role'] as String?),
         needsSignoff: (r['needs_signoff'] as int? ?? 0) != 0,
+        isResidual: (r['is_residual'] as int? ?? 0) != 0,
         captureSource: CaptureSource.fromDb(r['capture_source'] as String?),
         bridgeRecordId: r['bridge_record_id'] as String?,
         analysedFor: r['analysed_for'] as String?,

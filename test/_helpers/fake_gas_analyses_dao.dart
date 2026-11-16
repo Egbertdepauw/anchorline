@@ -102,6 +102,7 @@ class FakeGasAnalysesDao implements GasAnalysesDaoLike {
         targetHePercent: a.targetHePercent,
         gasRole: a.gasRole,
         needsSignoff: a.needsSignoff,
+        isResidual: a.isResidual,
         captureSource: a.captureSource,
         bridgeRecordId: a.bridgeRecordId,
         analysedFor: a.analysedFor,
