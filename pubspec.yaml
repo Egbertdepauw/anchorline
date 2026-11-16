@@ -88,6 +88,7 @@ dependencies:
   # Gated by kReleaseMode AND --dart-define=SENTRY_DSN=... at build time
   # (see main.dart) so debug builds never init the SDK or report.
   sentry_flutter: ^9.0.0
+  sqlite3: ^3.3.1
 
   # Renders the Anchorline brand marks (assets/brand/*.svg) — refined
   # SVGs have multi-colour fills baked into the paths, so we render
@@ -100,7 +101,6 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   drift_dev: ^2.24.0
   build_runner: ^2.4.14
-  sqlite3: ^3.3.1
   flutter_launcher_icons: ^0.14.4
   sentry_dart_plugin: ^3.4.0
 
