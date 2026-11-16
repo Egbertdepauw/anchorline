@@ -42,17 +42,20 @@ class OwnerIdBackfiller {
     total += await _copyPressureMappings(userId);
     total += await _copyDiveCylinders(userId);
     // In-place stamp covers every PowerSync-resident table whose rows
-    // may have been written before sign-in (owner_id NULL) or under a
-    // different account on the same device (owner_id != userId).
-    // Without this, RLS rejects every upload of those rows in a tight
-    // retry loop that leaves uploading=false and lastSyncedAt=null.
+    // may have been written before sign-in (owner_id NULL). Without
+    // this, RLS rejects every upload of those rows in a tight retry loop
+    // that leaves uploading=false and lastSyncedAt=null. Rows another
+    // account wrote on this device keep their owner: signing out keeps
+    // local data, and claiming them would hand that account's data to
+    // whoever signs in next.
     for (final t in _syncedTables) {
       total += await _stampOwnerIdInPlace(t, userId);
     }
     // Then patch any already-queued CRUD ops whose data payload still
-    // carries the old (null/wrong) owner_id. PowerSync sends `data.data`
-    // verbatim to Supabase, so fixing the live row is not enough —
-    // the queued PUT serialized at write time keeps failing RLS.
+    // lacks owner_id. PowerSync sends `data.data` verbatim to Supabase,
+    // so fixing the live row is not enough: the queued PUT serialized at
+    // write time keeps failing RLS. Ops another account queued are left
+    // alone; the connector quarantines them.
     total += await _patchPsCrudOwnerId(userId);
     debugPrint('OwnerIdBackfiller: copied $total rows for user $userId');
     return total;
@@ -77,10 +80,11 @@ class OwnerIdBackfiller {
     'open_blends',
   ];
 
-  /// Rewrites ps_crud PUT payloads to inject the current [userId] into
-  /// `data.owner_id`. Touches only PUT ops (PATCH/DELETE don't carry the
-  /// full row), and skips ops where `owner_id` already matches. Returns
-  /// the number of rows patched.
+  /// Rewrites ps_crud PUT payloads that carry no `data.owner_id` to carry
+  /// [userId]. Touches only PUT ops (PATCH/DELETE don't carry the full
+  /// row), and never one that already names an owner: a PUT another
+  /// account queued before signing out must not upload into this one.
+  /// Returns the number of rows patched.
   Future<int> _patchPsCrudOwnerId(String userId) async {
     final rows = await _ps.getAll('SELECT id, data FROM ps_crud');
     var patched = 0;
@@ -93,7 +97,7 @@ class OwnerIdBackfiller {
         if (parsed['op'] != 'PUT') continue;
         final inner = parsed['data'];
         if (inner is! Map<String, dynamic>) continue;
-        if (inner['owner_id'] == userId) continue;
+        if (inner['owner_id'] != null) continue;
         inner['owner_id'] = userId;
         await _ps.execute(
           'UPDATE ps_crud SET data = ? WHERE id = ?',

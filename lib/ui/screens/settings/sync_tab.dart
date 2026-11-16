@@ -33,6 +33,7 @@ class SyncTab extends StatelessWidget {
     this.onReset,
     this.onDeleteAccount,
     this.loadAttachmentUsage,
+    this.countPendingUploads,
   });
 
   final AuthService? authService;
@@ -52,6 +53,10 @@ class SyncTab extends StatelessWidget {
   /// Attachments row.
   final Future<AttachmentUsage> Function()? loadAttachmentUsage;
 
+  /// Counts the changes still waiting to upload, for the sign-out warning.
+  /// Null skips the warning.
+  final Future<int> Function()? countPendingUploads;
+
   @override
   Widget build(BuildContext context) {
     final auth = authService;
@@ -70,6 +75,7 @@ class SyncTab extends StatelessWidget {
                           _SignedInRow(
                             authService: auth,
                             syncStatusSource: syncStatusSource,
+                            countPendingUploads: countPendingUploads,
                           ),
                           if (loadAttachmentUsage != null)
                             _AttachmentUsageRow(
@@ -196,9 +202,11 @@ class _AttachmentUsageRowState extends State<_AttachmentUsageRow> {
 class _SignedInRow extends StatelessWidget {
   final AuthService authService;
   final SyncStatusSource? syncStatusSource;
+  final Future<int> Function()? countPendingUploads;
   const _SignedInRow({
     required this.authService,
     this.syncStatusSource,
+    this.countPendingUploads,
   });
 
   @override
@@ -209,7 +217,8 @@ class _SignedInRow extends StatelessWidget {
           title: email,
           helper: status,
           control: TextButton(
-            onPressed: () => _confirmSignOut(context, authService),
+            onPressed: () =>
+                _confirmSignOut(context, authService, countPendingUploads),
             child: const Text('Sign out'),
           ),
         );
@@ -267,14 +276,32 @@ Future<void> _openAuthSheet(BuildContext context, AuthService auth) {
   );
 }
 
-Future<void> _confirmSignOut(BuildContext context, AuthService auth) async {
+Future<void> _confirmSignOut(
+  BuildContext context,
+  AuthService auth,
+  Future<int> Function()? countPendingUploads,
+) async {
   final messenger = ScaffoldMessenger.of(context);
+  // Signing out keeps the upload queue. Changes in it upload only when this
+  // account signs in again: the connector quarantines them for any other.
+  final pending = countPendingUploads == null
+      ? 0
+      : await countPendingUploads().catchError((Object _) => 0);
+  if (!context.mounted) return;
+  const keeps = 'Your local dives stay on the device. Cloud sync will pause '
+      'until you sign in again.';
+  final message = pending == 0
+      ? keeps
+      : '$keeps\n\n'
+          '${pending == 1 ? "1 change hasn't" : "$pending changes haven't"} '
+          'uploaded yet. They upload when you sign in again with this '
+          "account. If you sign in with another account first, they won't "
+          'upload.';
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: const Text('Sign out?'),
-      content: const Text(
-          'Your local dives stay on the device. Cloud sync will pause until you sign in again.'),
+      content: Text(message),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(false),

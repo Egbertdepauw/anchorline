@@ -169,6 +169,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPushStuck: _drainQueueManually,
                 onReset: canReset ? _confirmAndResetLocalData : null,
                 loadAttachmentUsage: widget.loadAttachmentUsage,
+                countPendingUploads: widget.powerSyncDb == null
+                    ? null
+                    : () async =>
+                        (await widget.powerSyncDb!.getUploadQueueStats())
+                            .count,
                 onDeleteAccount: widget.accountDeleter == null
                     ? null
                     : () => runDeleteAccountFlow(

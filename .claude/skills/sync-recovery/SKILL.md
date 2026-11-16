@@ -54,13 +54,15 @@ then restart and re-import — bootstrap will re-clone fresh.
 
 Long-term fix: bootstrap should `git fetch && git reset --hard origin/<branch>` before reading, or compare commit hashes and re-clone on mismatch.
 
-### Sign in BEFORE bootstrap-import, not after
+### Dives imported before signing in
 
-Sample data flowing through `dao.importDive()` stamps `owner_id` from the current Supabase session at write time. If the user is **not signed in** when bootstrap runs, every `dives` and `dive_samples` row gets `owner_id = NULL`. Sync indicator goes green because there's no auth needed locally — but the moment the user signs in, PowerSync's CRUD upload fails every row with `new row violates row-level security policy for table "dives"`.
+`dao.importDive()` stamps `owner_id` from the current Supabase session at write time. Rows imported while signed out (BLE or bootstrap) get `owner_id = NULL`, and PowerSync queues PUTs with no `owner_id`. Uploaded like that, RLS rejects every one (`new row violates row-level security policy for table "dives"`, SQLSTATE 42501). The connector retries 42501 rather than quarantining it, so the queue waits for the fix below.
 
-The existing `OwnerIdBackfiller` (run on first sign-in) **omits `dives` and `dive_samples`** — it only stamps the seven smaller equipment/annotation tables. So a sign-in after a not-signed-in import doesn't fix it; the only recovery today is to wipe local state and re-import while signed in.
+`OwnerIdBackfiller` makes that fix on every sign-in (password, sign-up and email code). It stamps `owner_id` on ownerless rows in every synced table, `dives` and `dive_samples` included, and patches queued PUTs that lack one. No wipe or re-import is needed.
 
-Long-term fix: extend `OwnerIdBackfiller` with SQL `UPDATE` paths that stamp `owner_id = $userId WHERE owner_id IS NULL` against the existing PowerSync local rows for `dives` and `dive_samples`. The current backfiller does Drift→PowerSync copies; this needs to be an in-place PowerSync update instead.
+It claims only rows and queued PUTs **without** an owner. Signing out keeps the local data and the upload queue. If another account signs in next, `CcrloggerBackendConnector.replayCrud` quarantines the PUTs the previous account queued (cause `OtherAccountOpException`) instead of uploading them into the new account. The sign-out dialog warns when changes are still waiting. Settings → Sync → Repair → **Re-assign dives to this account** is the deliberate exception: it re-owns everything local to the signed-in account.
+
+If uploads still fail with 42501 after sign-in, PowerSync's `uploadError` names the op (`CrudUploadException`). Check that the migration creating its table grants it to `authenticated` (see `supabase/README.md`). Don't run Re-assign just to read the error, because it also re-owns.
 
 ### Subsurface-Cloud branch corruption from CCRLog write-direction sync
 

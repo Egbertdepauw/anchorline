@@ -192,12 +192,26 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   /// Skip it so the caller's `batch.complete()` clears it, instead of letting
   /// it sit at the head of the FIFO queue and block every op behind it forever
   /// (issue #2, Part 3).
+  ///
+  /// Account switch: signing out keeps the upload queue, so a PUT queued by
+  /// the previous account can reach this one. It names that account as
+  /// `owner_id`; RLS rejects it with 42501, which is retried, so sent as-is
+  /// it would block the queue forever. It is quarantined unsent instead.
+  /// PATCH and DELETE ops carry no owner; RLS makes them no-ops for rows of
+  /// another account, so they need no check.
   Future<void> replayCrud(
     List<CrudEntry> entries, {
     Future<Map<String, dynamic>?> Function(String table, String id)?
         fetchLocalRow,
   }) async {
+    final signedInUserId = _sessions.currentSession?.user.id;
     for (final op in entries) {
+      if (_queuedByAnotherAccount(op, signedInUserId)) {
+        await _quarantine?.record(op, OtherAccountOpException());
+        debugPrint('replayCrud: quarantined ${op.op.name} ${op.table} '
+            'id=${op.id} — queued by another account');
+        continue;
+      }
       try {
         await _applyOp(op);
       } on PostgrestException catch (e) {
@@ -244,6 +258,15 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
         throw CrudUploadException(op, e);
       }
     }
+  }
+
+  /// Whether [op] is a PUT that names an owner other than [signedInUserId].
+  /// An ownerless PUT is not: the sign-in backfill claims it, and until it
+  /// runs the RLS rejection is retried.
+  static bool _queuedByAnotherAccount(CrudEntry op, String? signedInUserId) {
+    if (op.op != UpdateType.put || signedInUserId == null) return false;
+    final owner = op.opData?['owner_id'];
+    return owner != null && owner != signedInUserId;
   }
 
   /// SQLSTATE codes for backend rejections that a retry of the same payload
@@ -355,6 +378,16 @@ class CrudUploadException implements Exception {
   @override
   String toString() =>
       'CRUD upload failed on ${op.op.name} ${op.table} id=${op.id}: $cause';
+}
+
+/// The quarantine cause for a PUT the previous account queued before
+/// signing out ([CcrloggerBackendConnector.replayCrud]). A future re-drive
+/// must replay it only while that account is signed in.
+class OtherAccountOpException implements Exception {
+  @override
+  String toString() =>
+      'Queued while another account was signed in; not uploaded to this '
+      'account';
 }
 
 /// Per-table set of columns that hold JSON-encoded text in PowerSync's
