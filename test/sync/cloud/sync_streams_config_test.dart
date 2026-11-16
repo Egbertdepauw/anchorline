@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// gated `libdc_dives` stream.
 void main() {
   final config =
-      File('infra/powersync-sync-rules.yaml').readAsStringSync();
+      File('infra/powersync-sync-streams.yaml').readAsStringSync();
   final query = RegExp(
     r'^\s*-\s*SELECT \* FROM ([a-z_]+) WHERE owner_id = auth\.user_id\(\)([ \t].*)?$',
     multiLine: true,

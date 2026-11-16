@@ -1,5 +1,5 @@
 /// Connection parameters sent to PowerSync on every connect. The Sync Streams
-/// in `infra/powersync-sync-rules.yaml` read them via `connection.parameter()`.
+/// in `infra/powersync-sync-streams.yaml` read them via `connection.parameter()`.
 ///
 /// `dc_engines` says which dive-computer engines this build can read:
 ///   * 1 = "this build reads Shearwater only". Rows with `dc_family` set

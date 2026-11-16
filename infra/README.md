@@ -26,15 +26,14 @@ the app gets from Supabase auth.
 
 ## 4. Apply the Sync Streams
 
-Paste the contents of `powersync-sync-rules.yaml` into the PowerSync
+Paste the contents of `powersync-sync-streams.yaml` into the PowerSync
 instance's sync configuration and deploy it. It is Sync Streams
 (`config: edition: 3`): two auto-subscribed streams. `user_data` has one
 query per table, scoped on `owner_id = auth.user_id()`; `dives`,
 `dive_samples`, `dive_computers` and `dive_bailout_carry` also carry
 `AND dc_family IS NULL` there. `libdc_dives` carries the rows with
 `dc_family` set, only to builds that connect with `dc_engines >= 2`
-(`lib/sync/cloud/sync_params.dart`). The file name is
-kept from the Sync Rules days so the many references to it stay valid.
+(`lib/sync/cloud/sync_params.dart`).
 
 The app needs no subscribe call: `auto_subscribe: true` makes every client
 sync the stream on connect. That needs the Dart SDK at 1.16.0 or later;
@@ -75,9 +74,9 @@ this order:
 2. Paste the file into the dashboard editor and run **Validate**: no errors
    or warnings on the `libdc_dives` queries. The Streams docs show
    `connection.parameter()` compared with a column, not with a constant.
-3. If the switch from Sync Rules (#208) isn't deployed yet, deploy both
-   together. Either way, let every device finish syncing first (see the
-   switch steps above) and expect one full re-sync per device.
+3. Let every device finish syncing first (see the switch steps above),
+   then deploy. The switch from Sync Rules (#208) is already live, so this
+   is a config change of its own: expect one more full re-sync per device.
 4. Fake-row check. In the SQL editor insert a `dives` row for your account
    with `dc_family = 999`. It must **not** appear on an installed store
    build (it sends no params; this is the only live test that old builds are

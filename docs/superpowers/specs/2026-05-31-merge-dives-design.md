@@ -107,7 +107,7 @@ group-level annotation is a clean later addition if wanted.
 
 ### Sync
 
-Add to `infra/powersync-sync-rules.yaml` under `user_data.data`:
+Add to `infra/powersync-sync-streams.yaml` under `user_data.data`:
 
 ```yaml
 - SELECT * FROM dive_merge_links WHERE owner_id = bucket.user_id
