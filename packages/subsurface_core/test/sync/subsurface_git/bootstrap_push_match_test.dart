@@ -81,6 +81,33 @@ void main() {
       }
     });
 
+    // Once every dive matches, the owned-line merge decides whether its
+    // Dive-NNN is rewritten. A dive bootstrapped from the repository holds
+    // what the repository holds, so pushing it back must leave every
+    // Dive-NNN as it is. The fixture dives lack `divemaster` and `suit`
+    // lines, which the merge used to append as `divemaster ""` and
+    // `suit ""`.
+    test('every fixture dive pushed back unchanged is skipped', () {
+      final files = _fixtureFiles();
+      final snapshot = RemoteSnapshot.fromFiles(files);
+      final folders = _diveFolders(files);
+      final bundles = [
+        for (final folder in folders) _bootstrapBundle(files, folder),
+      ];
+
+      final plan = _plan(snapshot, bundles);
+
+      expect(plan.stats.skippedDives, folders.length);
+      expect(plan.stats.updatedDives, 0);
+      expect(plan.diveIdsPlanned, isEmpty);
+      final writtenDiveFiles = [
+        for (final path in plan.filesToWrite.keys)
+          if (p.posix.basename(path).startsWith('Dive-'))
+            '$path:\n${_lineDiff(files[path], plan.filesToWrite[path]!)}',
+      ];
+      expect(writtenDiveFiles, isEmpty);
+    });
+
     // Subsurface itself writes `SP change` events too: the real repository
     // has a serial-less `model "Perdix 2"` CCR dive with
     // `event 0:00 type=20 value=1100 name="SP change"`. The planner's
@@ -140,6 +167,19 @@ void main() {
       expect(plan.filesToWrite.keys, contains('$petrel/Dive-707'));
     });
   });
+}
+
+/// The lines [after] drops (`-`) and adds (`+`) relative to [before], for
+/// a readable failure message.
+String _lineDiff(String? before, String after) {
+  final b = const LineSplitter().convert(before ?? '');
+  final a = const LineSplitter().convert(after);
+  return [
+    for (final l in b)
+      if (!a.contains(l)) '  - $l',
+    for (final l in a)
+      if (!b.contains(l)) '  + $l',
+  ].join('\n');
 }
 
 /// [files] with an `SP change` event added to [folder]'s Divecomputer,
