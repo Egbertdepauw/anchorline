@@ -280,6 +280,35 @@ void main() {
     expect((dcPutAfter['data'] as Map)['owner_id'], 'uid-123');
   });
 
+  // Signing out keeps the local data. When another account signs in on the
+  // same device, the previous account's rows and queued uploads must stay
+  // that account's: re-owning them would upload them into the new account.
+  test(
+      'leaves rows and queued PUTs of another account alone, so a sign-in '
+      'never uploads them into this account', () async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final ps = await openPowerSyncForTest();
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await ps.execute(
+      'INSERT INTO dive_computers '
+      '(id, owner_id, serial, model, created_at, updated_at, version, '
+      'sync_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ['dc-a', 'uid-a', 12345, 1, now, now, 1, 0],
+    );
+
+    await OwnerIdBackfiller(db, ps).backfillIfNeeded('uid-b');
+
+    final row = await ps.get('SELECT owner_id FROM dive_computers');
+    expect(row['owner_id'], 'uid-a');
+    final crud = await ps.getAll('SELECT data FROM ps_crud ORDER BY id');
+    final put = crud
+        .map((r) => jsonDecode(r['data'] as String) as Map<String, dynamic>)
+        .firstWhere((m) => m['type'] == 'dive_computers' && m['op'] == 'PUT');
+    expect((put['data'] as Map)['owner_id'], 'uid-a');
+  });
+
   test('AuthService.signIn invokes the backfiller and logs', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);

@@ -477,8 +477,58 @@ void main() {
       expect(caught, isA<CrudUploadException>());
       expect(q.records, isEmpty);
     });
+
+    // ── Account switch ─────────────────────────────────────────────────
+    // Signing out keeps the upload queue. A PUT the previous account queued
+    // carries that account's owner_id: RLS rejects it for the new account
+    // (42501, which is retried), so sent as-is it would block the queue
+    // forever. It is quarantined instead, and never re-owned.
+
+    test('a PUT another account queued is quarantined, not uploaded',
+        () async {
+      final q = _RecordingQuarantine();
+      final up = _RecordingUploader();
+      final c = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions()..session = _sessionFor('uid-b'),
+        uploader: up,
+        quarantine: q,
+      );
+
+      await c.replayCrud([
+        CrudEntry(50, UpdateType.put, 'dives', 'dive-a', null,
+            {'owner_id': 'uid-a', 'x': 1}),
+        CrudEntry(51, UpdateType.put, 'dives', 'dive-b', null,
+            {'owner_id': 'uid-b', 'x': 2}),
+      ]);
+
+      expect(q.records.map((e) => e.id), ['dive-a']);
+      expect(up.calls.whereType<_Upsert>().map((u) => u.data['id']),
+          ['dive-b'],
+          reason: 'the op behind it still uploads');
+    });
+
+    test('an ownerless PUT is still uploaded, for the sign-in claim to fix',
+        () async {
+      final q = _RecordingQuarantine();
+      final up = _RecordingUploader();
+      final c = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions()..session = _sessionFor('uid-b'),
+        uploader: up,
+        quarantine: q,
+      );
+
+      await c.replayCrud(
+          [CrudEntry(52, UpdateType.put, 'dives', 'dive-c', null, {'x': 1})]);
+
+      expect(q.records, isEmpty);
+      expect(up.calls.whereType<_Upsert>().map((u) => u.data['id']),
+          ['dive-c']);
+    });
   });
 }
+
+Session _sessionFor(String userId) =>
+    Session(accessToken: 'token', tokenType: 'bearer', user: _user(userId));
 
 class _RecordingQuarantine implements CrudQuarantine {
   final List<CrudEntry> records = [];
