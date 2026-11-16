@@ -1,9 +1,5 @@
-import 'package:subsurface_core/shearwater/parser/dive_converter.dart'
-    show ConvertedDive;
-
-// Only the constant is used; this file stays free of database and Flutter code.
-import '../../sync/subsurface_git/bootstrap_importer.dart'
-    show kSubsurfaceImportedParserVersion;
+import 'package:subsurface_core/subsurface_core.dart'
+    show ConvertedDive, kSubsurfaceImportedParserVersion;
 
 /// Whether a download may overwrite the imported data of a stored dive.
 ///
