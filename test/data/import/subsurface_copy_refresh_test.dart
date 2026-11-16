@@ -79,6 +79,10 @@ Directory _cloneRootWithFixture() {
   }
   copyDir(Directory('$_fixtureRoot/sites'),
       Directory(p.join(clone.path, '01-Divesites')));
+  // Shift one copy's start by +7 s. The importer takes a dive's start from
+  // its folder name alone, so renaming the folder is the whole shift.
+  Directory(p.join(clone.path, '2026', '04', '04-Sat-13=30=15'))
+      .renameSync(p.join(clone.path, '2026', '04', '04-Sat-13=30=22'));
   File('$_fixtureRoot/00-Subsurface')
       .copySync(p.join(clone.path, '00-Subsurface'));
   return root;
@@ -183,6 +187,8 @@ void main() {
     final cylBefore = await equipment.listCylindersForDive(userIdBefore);
     expect(cylBefore, hasLength(1));
 
+    int startOf(DiveSourceDive d) =>
+        d.converted.dive.startTime.millisecondsSinceEpoch ~/ 1000;
     final downloaded = await _downloadAll();
     expect(downloaded, hasLength(8));
     final outcomes = <ImportOutcome>[];
@@ -194,6 +200,16 @@ void main() {
       ));
     }
     expect(outcomes, everyElement(ImportOutcome.refreshed));
+
+    // The shifted copy (dive #714 in the trace) started 7 s after the trace.
+    final shifted = downloaded
+        .singleWhere((d) => d.converted.dive.dcDiveNumber == 714);
+    final shiftedBefore = before.singleWhere(
+        (r) => r['start_time'] == startOf(shifted) + 7);
+    final shiftedAfter = (await diveRows())
+        .singleWhere((r) => r['id'] == shiftedBefore['id']);
+    expect(shiftedAfter['start_time'], startOf(shifted) + 7);
+    expect(outcomes[downloaded.indexOf(shifted)], ImportOutcome.refreshed);
 
     final after = await diveRows();
     expect(after, hasLength(8), reason: 'no duplicates');
@@ -208,12 +224,9 @@ void main() {
     }
 
     // Each copy took the data of the download that matches its start time.
-    final byStart = {
-      for (final d in downloaded)
-        d.converted.dive.startTime.millisecondsSinceEpoch ~/ 1000: d,
-    };
     for (final a in after) {
-      final d = byStart[a['start_time']]!;
+      final d = downloaded.singleWhere(
+          (d) => (startOf(d) - (a['start_time'] as int)).abs() <= 60);
       final id = a['id'] as String;
       expect(await dao.getRawBlob(id), d.rawBlob);
       expect(a['dc_dive_number'], d.converted.dive.dcDiveNumber);
@@ -236,6 +249,48 @@ void main() {
         bailoutBefore);
     final cylAfter = await equipment.listCylindersForDive(userIdBefore);
     expect([for (final c in cylAfter) c.cylinderId], ['cylA']);
+  });
+
+  test('refreshed copies are not offered as new on the next scan', () async {
+    await bootstrap();
+    // The scan's listings, one per downloaded dive. The trace replays its
+    // blobs in the order they were recorded, not the order requested, so a
+    // blob's own number and start (what the stored dive carries) are the
+    // coherent pair; the manifest's pairing differs for this trace only.
+    final downloaded = await _downloadAll();
+    final listings = [
+      for (final d in downloaded)
+        (
+          diveId: d.converted.dive.id,
+          startTimestamp:
+              d.converted.dive.startTime.millisecondsSinceEpoch ~/ 1000,
+          diveNumber: d.converted.dive.dcDiveNumber,
+        )
+    ];
+    Future<Set<String>> hidden() => dao.alreadyDownloadedAmong(
+          [
+            for (final l in listings)
+              (
+                diveId: l.diveId,
+                startTimeSeconds: l.startTimestamp,
+                diveNumber: l.diveNumber,
+              )
+          ],
+          vendor: 'Shearwater',
+          serial: 0xB89641E4,
+        );
+
+    expect(await hidden(), isEmpty, reason: 'copies only, still at -1');
+
+    for (final d in downloaded) {
+      await dao.importDive(
+        converted: d.converted,
+        rawBlob: d.rawBlob,
+        parserVersion: d.parserVersion,
+      );
+    }
+    expect(await hidden(), hasLength(8));
+    expect(await hidden(), {for (final l in listings) l.diveId});
   });
 
   test('downloading everything again changes nothing', () async {
