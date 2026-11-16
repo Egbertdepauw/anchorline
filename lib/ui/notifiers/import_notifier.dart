@@ -13,15 +13,12 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../data/db/import_state_dao.dart';
-import 'package:subsurface_core/data/models/dive.dart' show generateDiveId;
+import '../../devices/dive_download_source.dart';
+import '../../devices/shearwater/shearwater_download_source.dart';
 import '../../shearwater/ble/ble_io_impl.dart';
 import '../../shearwater/ble/mock_ble_transport.dart';
 import '../../shearwater/ble/shearwater_ble_transport.dart';
-import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
-import 'package:subsurface_core/shearwater/parser/hardware.dart'
-    show kShearwaterVendor, modelFromHardware, shearwaterProductName;
-import '../../shearwater/parser/dive_parser.dart';
-import '../../shearwater/parser/manifest_parser.dart';
+import '../../shearwater/ble/shearwater_link.dart';
 import '../../sync/cloud/usage_tracker.dart';
 
 /// Phases of the import flow.
@@ -52,8 +49,9 @@ class ImportNotifier extends ChangeNotifier {
 
   bool _disposed = false;
   ImportFlowState _state = ImportFlowState.idle;
-  DeviceInfo? _deviceInfo;
-  List<ManifestEntry> _newDives = [];
+  DiveDownloadSource? _source;
+  DcIdentity? _identity;
+  List<DiveListing> _newDives = [];
   int _downloadedCount = 0;
   int _totalToDownload = 0;
   int? _currentDiveNumber;
@@ -68,7 +66,7 @@ class ImportNotifier extends ChangeNotifier {
   int? _totalDives;
   int? _diveBytes;
   int? _diveTotalBytes;
-  ManifestEntry? _currentEntry;
+  DiveListing? _currentEntry;
 
   // Throttle for notifyListeners during the high-frequency progress
   // stream. Coalesces multiple updates into a single rebuild at ~10 Hz
@@ -78,11 +76,9 @@ class ImportNotifier extends ChangeNotifier {
   Timer? _pendingNotify;
 
   // Mock
-  MockBleTransport? _mockTransport;
   bool _mockDeviceAvailable = false;
 
   // Real BLE
-  ShearwaterBleTransport? _realTransport;
   final List<BluetoothDevice> _discoveredDevices = [];
   StreamSubscription<List<ScanResult>>? _scanSubscription;
 
@@ -100,8 +96,8 @@ class ImportNotifier extends ChangeNotifier {
   // ── Accessors ──────────────────────────────────────────────────────────────
 
   ImportFlowState get state => _state;
-  DeviceInfo? get deviceInfo => _deviceInfo;
-  List<ManifestEntry> get newDives => List.unmodifiable(_newDives);
+  DcIdentity? get identity => _identity;
+  List<DiveListing> get newDives => List.unmodifiable(_newDives);
   int get downloadedCount => _downloadedCount;
   int get totalToDownload => _totalToDownload;
   int? get currentDiveNumber => _currentDiveNumber;
@@ -130,7 +126,7 @@ class ImportNotifier extends ChangeNotifier {
 
   /// Manifest entry for the dive currently being downloaded, surfaced
   /// so the UI can show dive number + date alongside the progress bar.
-  ManifestEntry? get currentEntry => _currentEntry;
+  DiveListing? get currentEntry => _currentEntry;
 
   /// Whether the mock device advertisement is ready to be selected.
   bool get mockDeviceAvailable => _mockDeviceAvailable;
@@ -233,16 +229,33 @@ class ImportNotifier extends ChangeNotifier {
     _state = ImportFlowState.connecting;
     notifyListeners();
 
+    await _connectLink(
+      MockBleTransport(perDiveDelay: const Duration(milliseconds: 100)),
+    );
+  }
+
+  /// Connects through [link] as the mock device would. Tests use it to
+  /// inject a link that misbehaves.
+  @visibleForTesting
+  Future<void> connectLinkForTest(ShearwaterLink link) async {
+    _stopScan();
+    _state = ImportFlowState.connecting;
+    notifyListeners();
+    await _connectLink(link);
+  }
+
+  Future<void> _connectLink(ShearwaterLink link) async {
     try {
-      _mockTransport = MockBleTransport(
-        perDiveDelay: const Duration(milliseconds: 100),
-      );
-      await _mockTransport!.connectMock();
-      _deviceInfo = await _mockTransport!.readDeviceInfo();
+      if (link is MockBleTransport) await link.connectMock();
+      _source = await ShearwaterDownloadSource.open(link);
+      _identity = _source!.identity;
+      // The mock device has never been registered as a dive computer.
+      if (link is! MockBleTransport) await _registerComputer(_identity!);
       _state = ImportFlowState.readingManifest;
     } catch (e) {
       _errorMessage = 'Connection failed: $e';
       _state = ImportFlowState.error;
+      await _closeLink(link);
       await _disableWakelock();
     }
     notifyListeners();
@@ -259,38 +272,54 @@ class ImportNotifier extends ChangeNotifier {
     _state = ImportFlowState.connecting;
     notifyListeners();
 
+    ShearwaterLink? link;
     try {
-      _realTransport = ShearwaterBleTransport();
-      await _realTransport!.connect(device);
-      _deviceInfo = await _realTransport!.readDeviceInfo();
-      try {
-        await _equipmentDao.upsertDiveComputer(
-          vendor: kShearwaterVendor,
-          product: shearwaterProductName(
-              modelFromHardware(_deviceInfo!.hardwareId)),
-          serial: int.parse(_deviceInfo!.serial, radix: 16),
-          model: _deviceInfo!.hardwareId,
-          firmwareVersion: _parseFirmwareVersion(_deviceInfo!.firmware),
-        );
-      } catch (e) {
-        debugPrint('Failed to upsert DiveComputer row: $e');
-      }
+      final transport = ShearwaterBleTransport();
+      link = transport;
+      await transport.connect(device);
+      final source = await ShearwaterDownloadSource.open(transport);
+      _source = source;
+      final identity = source.identity;
+      _identity = identity;
+      await _registerComputer(identity);
       _state = ImportFlowState.readingManifest;
     } catch (e) {
       _errorMessage = 'Connection failed: $e';
       _state = ImportFlowState.error;
-      try {
-        await _realTransport?.disconnect();
-      } catch (_) {}
+      await _closeLink(link);
       await _disableWakelock();
-      _realTransport = null;
+      _source = null;
     }
     notifyListeners();
   }
 
-  // ── Manifest ───────────────────────────────────────────────────────────────
+  /// Records the connected computer in `dive_computers`. Failures are local
+  /// and non-fatal.
+  Future<void> _registerComputer(DcIdentity identity) async {
+    try {
+      await _equipmentDao.upsertDiveComputer(
+        vendor: identity.vendor,
+        product: identity.product,
+        serial: identity.serial,
+        model: identity.computerModel,
+        firmwareVersion: identity.firmware,
+        family: identity.family,
+        modelCode: identity.modelCode,
+      );
+    } catch (e) {
+      debugPrint('Failed to upsert DiveComputer row: $e');
+    }
+  }
 
-  bool get _isRealBle => _realTransport != null;
+  /// Disconnects a link whose source never opened (a failed connect or
+  /// device-info read), so the Bluetooth connection is not left dangling.
+  Future<void> _closeLink(ShearwaterLink? link) async {
+    try {
+      await link?.disconnect();
+    } catch (_) {}
+  }
+
+  // ── Manifest ───────────────────────────────────────────────────────────────
 
   /// Read the manifest and filter out dives that are already in the database.
   ///
@@ -306,25 +335,13 @@ class ImportNotifier extends ChangeNotifier {
   /// [DiveDao.importDive] regardless.
   Future<void> readManifestAndFilterNew() async {
     try {
-      List<ManifestEntry> manifest;
-
-      if (_isRealBle) {
-        final lastFp = _forceFullReimport
-            ? null
-            : await _importStateDao.getLastFingerprint(_deviceInfo!.serial);
-        manifest =
-            await _realTransport!.readManifest(lastFingerprint: lastFp);
-      } else {
-        manifest = await _mockTransport!.readManifest();
-      }
-
-      var entries = manifest.where((e) => e.isValid).toList();
+      final lastFp = _forceFullReimport
+          ? null
+          : await _importStateDao.getLastFingerprint(_identity!.importStateKey);
+      var entries = await _source!.listDives(sinceFingerprint: lastFp);
 
       if (!_forceFullReimport && entries.isNotEmpty) {
-        final serial = int.parse(_deviceInfo!.serial, radix: 16);
-        final ids = entries
-            .map((e) => generateDiveId(serial, e.diveNumber, e.startTimestamp))
-            .toList(growable: false);
+        final ids = entries.map((e) => e.diveId).toList(growable: false);
         final existing = await _dao.existingDiveIdsAmong(ids);
         if (existing.isNotEmpty) {
           entries = [
@@ -362,7 +379,7 @@ class ImportNotifier extends ChangeNotifier {
   /// imported dive in [subset]; if you skip older dives via the UI,
   /// they may be hidden from future incremental scans (use the
   /// "Force full re-scan" toggle to bring them back).
-  Future<void> downloadAll([List<ManifestEntry>? subset]) async {
+  Future<void> downloadAll([List<DiveListing>? subset]) async {
     final toDownload = subset ?? _newDives;
     _totalToDownload = toDownload.length;
     _state = ImportFlowState.downloading;
@@ -375,71 +392,66 @@ class ImportNotifier extends ChangeNotifier {
     _currentEntry = null;
     notifyListeners();
 
-    final parser = ShearwaterDiveParser(model: _deviceInfo!.model);
-    final serial = int.parse(_deviceInfo!.serial, radix: 16);
-    ManifestEntry? lastSuccessfulEntry;
+    final identity = _identity!;
+    final serial = identity.serial;
+    Uint8List? lastSuccessfulFingerprint;
 
     // Persist each dive as soon as it lands. The earlier two-phase split
     // existed to avoid interleaving disk writes with BLE downloads, but
     // the actual BLE timeout culprits turned out to be elsewhere
     // (iOS screen-lock → wakelock_plus; disconnect handshake hang →
-    // 3s cap below). PowerSync writes are sub-second; the Petrel
-    // log-mode session timer is ~60s, so per-dive commits leave plenty
-    // of headroom — and a mid-batch BLE drop now keeps every dive that
-    // already made it to disk.
+    // 3s cap in ShearwaterDownloadSource.close). PowerSync writes are
+    // sub-second; the Petrel log-mode session timer is ~60s, so per-dive
+    // commits leave plenty of headroom — and a mid-batch BLE drop now keeps
+    // every dive that already made it to disk.
     try {
-      final Stream<DownloadEvent> eventStream = _isRealBle
-          ? _realTransport!.downloadDives(toDownload)
-          : _mockTransport!.downloadDives(toDownload);
-
-      await for (final event in eventStream) {
+      await for (final event in _source!.download(selection: toDownload)) {
         switch (event) {
-          case DownloadProgressEvent():
+          case DiveSourceProgress():
             _currentDiveIndex = event.diveIndex;
             _totalDives = event.totalDives;
             _diveBytes = event.diveBytes;
             _diveTotalBytes = event.diveTotalBytes;
-            _currentEntry = event.currentEntry;
-            _currentDiveNumber = event.currentEntry.diveNumber;
+            _currentEntry = event.listing;
+            _currentDiveNumber = event.listing?.diveNumber;
             _notifyThrottled();
 
-          case DownloadedDive():
-            final d = event;
-            _currentDiveNumber = d.manifest.diveNumber;
+          case DiveSourceIdentified():
+            // Shearwater never emits this; engines that learn the computer
+            // during the download announce it here.
+            final id = event.identity;
+            _identity = id;
+            await _registerComputer(id);
+
+          case DiveSourceDive():
+            _currentDiveNumber = event.listing?.diveNumber;
             try {
-              final parsed = parser.parse(d.data);
-              final converted = DiveConverter.convert(
-                parsed: parsed,
-                dcSerial: serial,
-                dcDiveNumber: d.manifest.diveNumber,
-                dcModel: _deviceInfo!.model,
-              );
               final imported = await _dao.importDive(
-                converted: converted,
-                rawBlob: d.data,
-                parserVersion: 1,
+                converted: event.converted,
+                rawBlob: event.rawBlob,
+                parserVersion: event.parserVersion,
               );
               if (imported) {
                 _downloadedCount++;
-                lastSuccessfulEntry = d.manifest;
+                lastSuccessfulFingerprint = event.fingerprint;
               }
             } catch (e) {
-              debugPrint('Failed to import dive ${d.manifest.diveNumber}: $e');
+              debugPrint(
+                  'Failed to import dive ${event.listing?.diveNumber}: $e');
               _failedCount++;
             }
-            // Forward-compatible: parser does not currently surface
-            // scrubberResetAt. Failures here are local and non-fatal.
-            try {
-              await _equipmentDao.applyScrubberEvents(
-                scrubberResetAt: null,
-                dcSerial: serial,
-              );
-            } catch (e) {
-              debugPrint('Failed to apply scrubber events: $e');
-            }
+            await _applyScrubberEvents(serial);
             // After a dive lands, force a non-throttled rebuild so
             // the "N of M imported" counter updates immediately —
             // each save is the most informative UX moment.
+            _flushNotify();
+
+          case DiveSourceDiveFailed():
+            _currentDiveNumber = event.listing?.diveNumber;
+            debugPrint(
+                'Failed to import dive ${event.listing?.diveNumber}: ${event.error}');
+            _failedCount++;
+            await _applyScrubberEvents(serial);
             _flushNotify();
         }
       }
@@ -449,20 +461,8 @@ class ImportNotifier extends ChangeNotifier {
       _state = ImportFlowState.error;
     }
 
-    // Release the BLE link, but cap the wait. The Shearwater shutdown
-    // handshake (a WDBI write the unit is meant to ack) silently never
-    // returns once the Petrel has already left log mode — common after
-    // the last selected dive came down. Three seconds is plenty for a
-    // healthy disconnect; longer means the device already walked away.
-    if (_isRealBle) {
-      try {
-        await _realTransport!
-            .disconnect()
-            .timeout(const Duration(seconds: 3));
-      } catch (e) {
-        debugPrint('BLE disconnect timed out / failed (non-fatal): $e');
-      }
-    }
+    // Release the link. The source caps the wait (see its close()).
+    await _source!.close();
 
     if (_state != ImportFlowState.error) {
       _state = ImportFlowState.done;
@@ -492,11 +492,11 @@ class ImportNotifier extends ChangeNotifier {
       });
     }
 
-    // Save fingerprint for incremental sync on real BLE imports
-    if (_isRealBle && lastSuccessfulEntry != null) {
+    // Save fingerprint for incremental sync
+    if (lastSuccessfulFingerprint != null) {
       await _importStateDao.saveLastFingerprint(
-        _deviceInfo!.serial,
-        lastSuccessfulEntry.fingerprint,
+        _identity!.importStateKey,
+        lastSuccessfulFingerprint,
       );
     }
 
@@ -509,6 +509,19 @@ class ImportNotifier extends ChangeNotifier {
     _diveTotalBytes = null;
     _currentEntry = null;
     _flushNotify();
+  }
+
+  // Forward-compatible: the parser does not currently surface
+  // scrubberResetAt. Failures here are local and non-fatal.
+  Future<void> _applyScrubberEvents(int serial) async {
+    try {
+      await _equipmentDao.applyScrubberEvents(
+        scrubberResetAt: null,
+        dcSerial: serial,
+      );
+    } catch (e) {
+      debugPrint('Failed to apply scrubber events: $e');
+    }
   }
 
   // ── Error / retry ──────────────────────────────────────────────────────────
@@ -538,7 +551,7 @@ class ImportNotifier extends ChangeNotifier {
     _pendingNotify?.cancel();
     _pendingNotify = null;
     _stopScan();
-    _realTransport?.disconnect();
+    unawaited(_source?.close());
     // Best-effort: don't await, the framework expects dispose to be sync.
     unawaited(_disableWakelock());
     super.dispose();
@@ -575,16 +588,15 @@ class ImportNotifier extends ChangeNotifier {
 
   void _reset() {
     _state = ImportFlowState.idle;
-    _deviceInfo = null;
+    _source = null;
+    _identity = null;
     _newDives = [];
     _downloadedCount = 0;
     _totalToDownload = 0;
     _currentDiveNumber = null;
     _errorMessage = null;
     _failedCount = 0;
-    _mockTransport = null;
     _mockDeviceAvailable = false;
-    _realTransport = null;
     _discoveredDevices.clear();
     _forceFullReimport = false;
     _currentDiveIndex = null;
@@ -632,11 +644,5 @@ class ImportNotifier extends ChangeNotifier {
     _pendingNotify = null;
     _lastNotifyMs = DateTime.now().millisecondsSinceEpoch;
     notifyListeners();
-  }
-
-  int? _parseFirmwareVersion(String firmware) {
-    // "V103 DiveCAN" → 103
-    final m = RegExp(r'V(\d+)').firstMatch(firmware);
-    return m == null ? null : int.tryParse(m.group(1)!);
   }
 }

@@ -9,12 +9,13 @@ import 'package:flutter/services.dart';
 import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import '../parser/manifest_parser.dart';
 import 'shearwater_ble_transport.dart';
+import 'shearwater_link.dart';
 
 /// Mock transport that simulates a Petrel 3 with 8 fixture dives.
 ///
 /// Used by [ImportNotifier] when `useMock: true`, and directly in
 /// `mock_ble_transport_test.dart`.
-class MockBleTransport {
+class MockBleTransport implements ShearwaterLink {
   DeviceInfo? _deviceInfo;
 
   /// Simulated delay per downloaded dive.
@@ -28,6 +29,7 @@ class MockBleTransport {
   }
 
   /// Return a hard-coded [DeviceInfo] representing a Petrel 3.
+  @override
   Future<DeviceInfo> readDeviceInfo() async {
     await Future<void>.delayed(const Duration(milliseconds: 300));
     _deviceInfo = DeviceInfo(
@@ -45,7 +47,8 @@ class MockBleTransport {
   /// Dive numbers match the fixture filenames (dive_711.bin … dive_718.bin).
   /// The entries are returned newest-first (highest dive number first),
   /// matching real device behavior.
-  Future<List<ManifestEntry>> readManifest() async {
+  @override
+  Future<List<ManifestEntry>> readManifest({Uint8List? lastFingerprint}) async {
     await Future<void>.delayed(const Duration(milliseconds: 500));
     const diveNumbers = [711, 712, 713, 714, 715, 716, 717, 718];
     // Build entries and reverse so newest (718) comes first.
@@ -65,6 +68,7 @@ class MockBleTransport {
   /// at 100% — the mock has nothing to throttle and tests don't care
   /// about mid-transfer progress) followed by one [DownloadedDive].
   /// Entries without a matching asset file are silently skipped.
+  @override
   Stream<DownloadEvent> downloadDives(List<ManifestEntry> manifest) async* {
     final valid = manifest.where((e) => e.isValid).toList();
     for (var i = 0; i < valid.length; i++) {
@@ -92,5 +96,6 @@ class MockBleTransport {
   }
 
   /// No-op disconnect.
+  @override
   Future<void> disconnect() async {}
 }
