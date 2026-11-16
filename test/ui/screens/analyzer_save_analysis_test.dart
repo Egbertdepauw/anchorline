@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:ccrlogger/analyzer/transport/demo_transport.dart';
 import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
+import 'package:ccrlogger/data/db/open_blends_dao.dart';
 import 'package:ccrlogger/ui/notifiers/analyzer_session.dart';
 import 'package:ccrlogger/ui/notifiers/blend_notifier.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
@@ -12,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../_helpers/fake_elapsed.dart';
 import '../../_helpers/fake_gas_analyses_dao.dart';
+import '../../_helpers/fake_open_blends_dao.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -324,19 +326,34 @@ void main() {
       ],
     );
     addTearDown(session.dispose);
-    final blend = BlendNotifier(settings: settings)
-      ..setTargetMix(18, 45)
-      ..setTargetPressure(200);
+    final blend = BlendNotifier(settings: settings);
+    final open = FakeOpenBlendsDao(blends: [
+      OpenBlend(
+        id: 'b1',
+        target: const DesiredMix(18, 45),
+        targetPressureBar: 200,
+        residual: const DesiredMix(21, 0),
+        residualPressureBar: 0,
+        topoff: const DesiredMix(21, 0),
+        waterCapacityL: 3,
+        role: GasRole.diluent,
+        blendedBy: null,
+        blendedAt: DateTime.now().subtract(const Duration(hours: 1)),
+      ),
+    ]);
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: AnalyzerScreen(
-            settings: settings, session: session, blend: blend),
+            settings: settings,
+            session: session,
+            blend: blend,
+            openBlends: open),
       ),
     ));
     await tester.pump();
     await connect(tester);
     await seconds(tester, 90);
-    // Tx18/45 is picked automatically (the Blend target).
+    // Tx18/45 is picked automatically (the open blend).
     expect(mod16(), contains('77 m'));
 
     // The diver's "no mix": the rows go back to the stop rule.
@@ -350,6 +367,55 @@ void main() {
     await tester.pump();
     expect(dao.added.single.desiredMix, isNull);
     expect(mod16(), contains('77 m'));
+  });
+
+  testWidgets('a residual analysis fills the Blend tab\'s residual gas',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 3200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final settings = await loadSettings();
+    final dao = FakeGasAnalysesDao();
+    final session = AnalyzerSession(
+      settings: settings,
+      analysesDao: dao,
+      controller: fakeClockAnalyzerController(tester),
+      transportOptions: [
+        AnalyzerTransportOption(
+          label: 'Bench',
+          create: () => DemoAnalyzerTransport(
+            targetO2: 18.2,
+            targetHe: 45.1,
+            random: Random(11),
+          ),
+        ),
+      ],
+    );
+    addTearDown(session.dispose);
+    final blend = BlendNotifier(settings: settings);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: AnalyzerScreen(
+            settings: settings,
+            session: session,
+            blend: blend,
+            openBlends: FakeOpenBlendsDao()),
+      ),
+    ));
+    await tester.pump();
+    await connect(tester);
+    await seconds(tester, 90);
+
+    await tester.tap(find.byKey(const ValueKey('analysis-residual-toggle')));
+    await tester.pump();
+    await disconnect(tester);
+    await tester.tap(saveButton());
+    await tester.pump();
+
+    expect(dao.added.single.isResidual, isTrue);
+    expect(dao.added.single.desiredMix, isNull);
+    expect(blend.currentOxygenPercent, 18);
+    expect(blend.currentHeliumPercent, 45);
   });
 
   testWidgets('wide layout also shows the save card', (tester) async {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../data/db/database.dart';
 import '../../../data/db/equipment_dao.dart';
 import '../../../data/db/gas_analyses_dao.dart';
+import '../../../data/db/open_blends_dao.dart';
 import '../../../data/models/equipment.dart';
 import '../../../labels/label_print_service.dart';
 import '../gas_analysis_log_screen.dart';
@@ -17,12 +18,16 @@ class CylinderDetailScreen extends StatefulWidget {
   /// Cylinder label printing (#114), for reprints from the log.
   final LabelPrintService? labelPrinting;
 
+  /// The open blends a sign-off in the cylinder's log can close (#112).
+  final OpenBlendsDaoLike? openBlends;
+
   const CylinderDetailScreen(
       {super.key,
       required this.dao,
       this.id,
       this.analysesDao,
-      this.labelPrinting});
+      this.labelPrinting,
+      this.openBlends});
 
   @override
   State<CylinderDetailScreen> createState() => _CylinderDetailScreenState();
@@ -219,6 +224,7 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
                         cylinderId: widget.id,
                         cylinderLabel: _c?.label,
                         labelPrinting: widget.labelPrinting,
+                        openBlends: widget.openBlends,
                       ),
                     )),
                   ),

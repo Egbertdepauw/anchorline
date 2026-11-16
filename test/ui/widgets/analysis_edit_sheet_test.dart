@@ -240,7 +240,7 @@ void main() {
     await _tapAndSettle(tester, _key('desired-mix-50-0'));
     expect(_inSheet(find.text('O2 27.5, He 33.8 off EAN50')), findsOneWidget,
         reason: 'the grade follows the picked mix');
-    await _tapAndSettle(tester, find.text('Bailout/deco'));
+    await _tapAndSettle(tester, find.text('Bailout'));
     await tester.enterText(_key('analysis-edit-diver'), '  EdP ');
     await tester.enterText(_key('analysis-edit-notes'), '   ');
     await _tapAndSettle(tester, _key('analysis-edit-save'));
@@ -253,6 +253,17 @@ void main() {
     expect(edit.notes, isNull);
     expect(results, [AnalysisEditOutcome.saved]);
     expect(_sheet, findsNothing);
+  });
+
+  testWidgets('the role control offers four roles', (tester) async {
+    final dao = FakeGasAnalysesDao(analyses: [_tx()]);
+    await _open(tester, dao: dao);
+    for (final t in ['Diluent', 'Bailout', 'Backgas', 'Deco']) {
+      expect(_inSheet(find.text(t)), findsOneWidget, reason: t);
+    }
+    await _tapAndSettle(tester, _inSheet(find.text('Deco')));
+    await _tapAndSettle(tester, _key('analysis-edit-save'));
+    expect(dao.updated.single.$2.gasRole, GasRole.deco);
   });
 
   testWidgets('tapping the picked mix clears it, and Save clears it too',

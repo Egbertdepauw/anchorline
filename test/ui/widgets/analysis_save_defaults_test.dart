@@ -3,9 +3,11 @@
 // and the layout of §4.1 items 6–7 on a real phone size.
 import 'dart:async';
 
+import 'package:ccrlogger/analysis/standard_mix_pick.dart' show gasRoleForMix;
 import 'package:ccrlogger/analyzer/analyzer_controller.dart';
 import 'package:ccrlogger/analyzer/transport/analyzer_transport.dart';
 import 'package:ccrlogger/data/db/gas_analyses_dao.dart';
+import 'package:ccrlogger/data/db/open_blends_dao.dart';
 import 'package:ccrlogger/data/models/equipment.dart';
 import 'package:ccrlogger/label_printer/label_bitmap.dart';
 import 'package:ccrlogger/labels/label_print_service.dart';
@@ -25,6 +27,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../_helpers/fake_elapsed.dart';
 import '../../_helpers/fake_gas_analyses_dao.dart';
 import '../../_helpers/fake_label_printer.dart';
+import '../../_helpers/fake_open_blends_dao.dart';
 
 Finder _key(String k) => find.byKey(ValueKey(k));
 
@@ -65,19 +68,6 @@ class _FakeSolo implements AnalyzerTransport {
       _set(AnalyzerConnectionStatus.disconnected);
   @override
   Future<void> dispose() async {}
-}
-
-/// A Blend notifier that counts the marks of its target as used.
-class _CountingBlend extends BlendNotifier {
-  _CountingBlend({required super.settings});
-
-  int marks = 0;
-
-  @override
-  Future<void> markRecentTargetUsed() {
-    marks++;
-    return super.markRecentTargetUsed();
-  }
 }
 
 /// A log whose saves fail while [fail] is set.
@@ -121,7 +111,8 @@ class _Rig {
   final bool printerSetUp;
 
   late SettingsNotifier settings;
-  late _CountingBlend blend;
+  late BlendNotifier blend;
+  final openBlends = FakeOpenBlendsDao();
   late AnalyzerSession session;
   late AnalyzerController controller;
   _FakeSolo? solo;
@@ -140,7 +131,7 @@ class _Rig {
     addTearDown(tester.view.reset);
     settings = SettingsNotifier();
     await settings.load();
-    blend = _CountingBlend(settings: settings);
+    blend = BlendNotifier(settings: settings);
     final printing = printer
         ? LabelPrintService(
             render: (label) async => LabelBitmap.blank(384, 240),
@@ -154,7 +145,6 @@ class _Rig {
       settings: settings,
       analysesDao: dao,
       labelPrinting: printing,
-      blend: blend,
       controller: controller = AnalyzerController(elapsed: fakeElapsed(tester)),
       keepAwake: (_) async {},
       transportOptions: [
@@ -181,6 +171,7 @@ class _Rig {
           settings: settings,
           session: session,
           analysesDao: dao,
+          openBlendsDao: openBlends,
           labelPrinting: printing,
           onHome: () {},
         ),
@@ -203,6 +194,22 @@ class _Rig {
     await tester.pumpAndSettle();
     await tester.tap(_key('gas-tab-analyse'));
     await tester.pumpAndSettle();
+  }
+
+  /// A gas blended to [target] an hour ago and not analysed yet.
+  Future<void> blended(DesiredMix target, {GasRole? role}) async {
+    await openBlends.add(NewOpenBlend(
+      target: target,
+      targetPressureBar: 200,
+      residual: const DesiredMix(21, 0),
+      residualPressureBar: 0,
+      topoff: const DesiredMix(21, 0),
+      waterCapacityL: 3,
+      // As the Blend tab guesses: lean is diluent, rich bailout.
+      role: role ?? gasRoleForMix(target.o2Percent.toDouble()),
+      blendedBy: null,
+      blendedAt: DateTime.now().subtract(const Duration(hours: 1)),
+    ));
   }
 
   /// Leaves the screen and stops the controller's timers.
@@ -357,15 +364,13 @@ void main() {
       expect(_key('analysis-verdict'), findsNothing);
     });
 
-    _test('the Blend target beats the standard mix and says so',
+    _test('an open blend beats the standard mix and says so',
         (tester, rig) async {
       await rig.pump(tester);
-      // 22/33 and 21/35 both grade match against 21.6/33.6; the target wins.
-      rig.blend
-        ..setTargetMix(22, 33)
-        ..setTargetPressure(200);
+      // 22/33 and 21/35 both grade match against 21.6/33.6; the blend wins.
+      await rig.blended(const DesiredMix(22, 33));
       await rig.stable(tester, 21.6, 33.6);
-      expect(_verdict(tester), 'Matches Tx22/33, the Blend target');
+      expect(_verdict(tester), 'Matches Tx22/33, an open blend');
       expect(_picked(tester), ['desired-mix-22-33']);
     });
 
@@ -405,11 +410,9 @@ void main() {
 
     _test('at most three mix chips plus Other…', (tester, rig) async {
       await rig.pump(tester);
-      rig.blend
-        ..setTargetMix(21, 35)
-        ..setTargetPressure(200);
+      await rig.blended(const DesiredMix(21, 35));
       await rig.stable(tester, 49.2, 0);
-      // The pick, the Blend target, then the log; Tx21/35 only once.
+      // The pick, the open blend, then the log; Tx21/35 only once.
       expect(_chipLabels(tester), ['EAN50', 'Tx21/35', 'Tx18/45', 'Other…']);
       expect(_picked(tester), ['desired-mix-50-0']);
     },
@@ -422,7 +425,7 @@ void main() {
   });
 
   group('the role', () {
-    _test('the role is Diluent for Tx21/35 and Bailout/deco for EAN50',
+    _test('the role is Diluent for Tx21/35 and Bailout for EAN50',
         (tester, rig) async {
       await rig.pump(tester);
       await rig.stable(tester, 20.4, 33.5);
@@ -454,7 +457,7 @@ void main() {
       await _pickCylinder(tester, 'Dil 3L');
       expect(_role(tester), {GasRole.diluent});
 
-      await _tap(tester, find.text('Bailout / deco'));
+      await _tap(tester, find.text('Bailout'));
       expect(_role(tester), {GasRole.bailout});
     });
 
@@ -462,7 +465,7 @@ void main() {
         (tester, rig) async {
       await rig.pump(tester);
       await rig.stable(tester, 20.4, 33.5);
-      await _tap(tester, find.text('Bailout / deco'));
+      await _tap(tester, find.text('Bailout'));
       expect(_role(tester), {GasRole.bailout});
 
       await rig.feed(tester, 18.2, 45.1);
@@ -596,49 +599,43 @@ void main() {
       expect(a.gasRole, GasRole.diluent);
     });
 
-    _test('a completed save of the Blend target marks it used',
+    _test('a completed save closes the open blend',
         (tester, rig) async {
       await rig.pump(tester);
-      rig.blend
-        ..setTargetMix(21, 35)
-        ..setTargetPressure(200);
+      await rig.blended(const DesiredMix(21, 35));
       await rig.stable(tester, 20.6, 33.8);
-      expect(_verdict(tester), 'Matches Tx21/35, the Blend target');
+      expect(_verdict(tester), 'Matches Tx21/35, an open blend');
 
       await _save(tester);
       expect(rig.dao.added.single.desiredMix, const DesiredMix(21, 35));
-      expect(rig.blend.marks, 1);
-      expect(rig.blend.unusedRecentTarget(), isNull);
+      expect(rig.openBlends.closedBy.keys, ['b1']);
+      expect(rig.openBlends.closedBy['b1'], isNotNull);
       // One blend is one cylinder: the next pick is the standard mix.
       expect(_verdict(tester), 'Matches Tx21/35, the nearest standard mix');
     });
 
-    _test('a failed save does not use the Blend target up',
+    _test('a failed save leaves the blend open',
         (tester, rig) async {
       final dao = rig.dao as _FlakyDao;
       dao.fail = true;
       await rig.pump(tester);
-      rig.blend
-        ..setTargetMix(21, 35)
-        ..setTargetPressure(200);
+      await rig.blended(const DesiredMix(21, 35));
       await rig.stable(tester, 20.6, 33.8);
       await _save(tester);
       expect(find.text('Save failed: Exception: disk full'), findsOneWidget);
-      expect(rig.blend.marks, 0);
-      expect(_verdict(tester), 'Matches Tx21/35, the Blend target');
+      expect(rig.openBlends.closeBlendCalls, isEmpty);
+      expect(_verdict(tester), 'Matches Tx21/35, an open blend');
     }, dao: _FlakyDao(cylinders: const [_dil, _s80]));
 
-    _test('a save of another mix leaves the Blend target unused',
+    _test('a save of another mix leaves the blend open',
         (tester, rig) async {
       await rig.pump(tester);
-      rig.blend
-        ..setTargetMix(21, 35)
-        ..setTargetPressure(200);
+      await rig.blended(const DesiredMix(21, 35));
       await rig.stable(tester, 49.2, 0);
       await _save(tester);
       expect(rig.dao.added.single.desiredMix, const DesiredMix(50, 0));
-      expect(rig.blend.marks, 0);
-      expect(rig.blend.unusedRecentTarget(), const DesiredMix(21, 35));
+      expect(rig.openBlends.closeBlendCalls, isEmpty);
+      expect(await rig.openBlends.listOpen(), hasLength(1));
     });
   });
 
@@ -742,12 +739,12 @@ void main() {
     _test('Analyse tab fits 393×852 with insets and the bottom nav (stable, '
         'printer set up)', (tester, rig) async {
       await rig.pump(tester, prefs: {'your_initials': 'EdP'});
-      rig.blend
-        ..setTargetMix(21, 35)
-        ..setTargetPressure(200);
       await rig.stable(tester, 20.6, 33.8);
       expect(_key('analysis-verdict'), findsOneWidget);
       expect(_key('analysis-save-print'), findsOneWidget);
+      // The residual switch is on the "+ Add a note" line: no height.
+      expect(_key('analysis-residual-toggle'), findsOneWidget);
+      expect(_key('blend-close-row'), findsNothing);
       expect(_key('analyzer-log-on-ok'), findsOneWidget);
 
       expect(maxScroll(tester), 0);
@@ -767,6 +764,16 @@ void main() {
       expect(tester.getSize(_key('analyzer-log-on-ok')).height,
           greaterThanOrEqualTo(32));
       expect(tester.takeException(), isNull);
+    });
+
+    _test('an open blend adds one 32 pt row, no more', (tester, rig) async {
+      await rig.pump(tester, prefs: {'your_initials': 'EdP'});
+      await rig.blended(const DesiredMix(21, 35));
+      await rig.stable(tester, 20.6, 33.8);
+      expect(_key('blend-close-row'), findsOneWidget);
+      expect(tester.getSize(_key('blend-close-row')).height, 32);
+      // The tab was full to the pixel; the row is what overflows.
+      expect(maxScroll(tester), lessThanOrEqualTo(32));
     });
 
     _test('and without a printer, with its set-up link', (tester, rig) async {
