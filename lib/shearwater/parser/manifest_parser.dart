@@ -31,16 +31,23 @@ class ManifestEntry {
   /// at offset 20).
   final int address;
 
-  /// End address of the dive data in flash memory (exclusive, relative to
-  /// the same base, at offset 24). [endAddress] - [address] is the exact
-  /// number of compressed bytes the Petrel will return when we download
-  /// this dive. Without this, we'd request a generic upper bound (16 MB)
-  /// and the Petrel happily streams the next-younger dive's data right
-  /// after this one — the LRE end-marker convention only fires at the
-  /// very end of the on-flash log, not between dives.
+  /// An end address at offset 24, relative to the same base as [address].
+  /// Its exact meaning is unknown.
+  ///
+  /// It is NOT the size of the dive's compressed data. For dive #718 in
+  /// the recorded Petrel 3 trace (`test/fixtures/raw/`) it lies 78,176
+  /// bytes past [address], while the Petrel sent 54,576 compressed bytes.
+  /// Downloads don't need it: each dive is requested with size 0xFFFFFF,
+  /// like libdivecomputer does, and the Petrel ends every dive's stream
+  /// with its own LRE end marker. Asking for this range instead made the
+  /// download run past the end of the dive (the NAK 0x24 path in
+  /// `ShearwaterProtocol.download()`). See
+  /// `docs/upstream/libdivecomputer-findings.md`, item 5.
   final int endAddress;
 
-  /// Compressed dive size in bytes, derived from [endAddress] - [address].
+  /// [endAddress] - [address]. Despite the name this is not the dive's
+  /// compressed size (see [endAddress]); it is only used as a rough total
+  /// for download progress.
   int get compressedSize => endAddress - address;
 
   bool get isValid => header == manifestHeaderValid;

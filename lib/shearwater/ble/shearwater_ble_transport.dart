@@ -54,37 +54,34 @@ class ImportProgress {
 enum ImportPhase { connecting, readingManifest, downloadingDives, done }
 
 /// Events emitted by [ShearwaterBleTransport.downloadDives] during an
-/// import. A single bulk BLE transfer covers every dive in the manifest;
-/// progress events stream live as bytes accumulate, dive events fire
-/// once per demuxed dive after the transfer completes.
+/// import. Each dive is its own BLE download; progress events stream
+/// live as that dive's bytes arrive, and a dive event follows once its
+/// download completes.
 sealed class DownloadEvent {
   const DownloadEvent();
 }
 
-/// Periodic progress update during the bulk download.
+/// Progress update while one dive downloads.
 ///
-/// The single-session download covers a flash range spanning [totalDives]
-/// dives. As bytes accumulate, we attribute them to whichever manifest
-/// entry the running compressed-byte count falls inside, expressed as
-/// [diveIndex] (0-based) with [diveBytes] / [diveTotalBytes] for the
-/// current dive's contribution.
+/// [diveIndex] is the dive being downloaded, with [diveBytes] /
+/// [diveTotalBytes] for how far its download has got.
 class DownloadProgressEvent extends DownloadEvent {
-  /// 0-based index into the manifest passed to `downloadDives`.
+  /// 0-based position of the dive in download order (the valid entries
+  /// of the manifest passed to `downloadDives`, sorted by flash address).
   final int diveIndex;
 
   /// Total number of dives in this import.
   final int totalDives;
 
-  /// Compressed bytes attributed to the current dive so far. Capped to
-  /// [diveTotalBytes] when the running cursor would otherwise exceed
-  /// the manifest entry's flash range.
+  /// Compressed bytes received for this dive so far, capped at
+  /// [diveTotalBytes].
   final int diveBytes;
 
-  /// Compressed allocation for the current dive — the dive's flash
-  /// range size from the manifest (`endAddress - address`). This is an
-  /// upper bound on what we'll receive for the dive, not the exact
-  /// data length (the Petrel terminates each dive's actual data with
-  /// an LRE end marker somewhere before the end of the allocation).
+  /// Rough total for the progress bar: the manifest's `endAddress -
+  /// address` ([ManifestEntry.compressedSize]). The real compressed size
+  /// isn't known until the dive's LRE end marker arrives, and this range
+  /// is not it: for dive #718 in the recorded Petrel 3 trace the range is
+  /// 78,176 bytes and the Petrel sent 54,576.
   final int diveTotalBytes;
 
   /// The manifest entry for the dive currently being downloaded — UI
@@ -177,9 +174,11 @@ class ShearwaterBleTransport {
     final firmwareData = await p.rdbi(idFirmware);
     final firmware = String.fromCharCodes(firmwareData);
 
+    // The hardware ID is still read: it's what the dive computer row
+    // stores, and the model fallback below needs it.
     final hwData = await p.rdbi(idHardware);
     final hardwareId = uint16BE(Uint8List.fromList(hwData), 0);
-    final model = modelFromHardware(hardwareId);
+    final model = await _readModel(p, hardwareId);
 
     final logUploadData = await p.rdbi(idLogUpload);
     final baseAddress = (logUploadData[1] << 24) |
@@ -196,6 +195,33 @@ class ShearwaterBleTransport {
     );
 
     return _deviceInfo!;
+  }
+
+  /// Read the model number with RDBI 0x8060, as libdivecomputer does
+  /// since `f351434`. Only when the device NAKs that request does the
+  /// model come from mapping [hardwareId] through the hardware-ID table,
+  /// which lags behind new hardware revisions.
+  static Future<ShearwaterModel> _readModel(
+      ShearwaterProtocol p, int hardwareId) async {
+    final hw = '0x${hardwareId.toRadixString(16).padLeft(4, '0')}';
+    final Uint8List modelData;
+    try {
+      modelData = await p.rdbi(idModel);
+    } on RdbiNakException catch (e) {
+      final model = modelFromHardware(hardwareId);
+      BleDebugLogger.instance.log('RDBI 0x8060 NAK '
+          '(0x${e.errorCode.toRadixString(16)}); model from hardware ID '
+          '$hw: ${model.name}');
+      return model;
+    }
+    if (modelData.length != 1) {
+      throw ProtocolException(
+          'Unexpected model number response: ${modelData.length} bytes');
+    }
+    final model = modelFromNumber(modelData[0], hardwareId: hardwareId);
+    BleDebugLogger.instance.log('model number ${modelData[0]} '
+        '(hardware ID $hw): ${model.name}');
+    return model;
   }
 
   /// Read the dive manifest (may download multiple pages).
@@ -245,29 +271,26 @@ class ShearwaterBleTransport {
 
   /// Download dives from the manifest, yielding events as they happen.
   ///
-  /// Issues a SINGLE [ShearwaterProtocol.download] call covering every
-  /// dive in [manifest], then demuxes the resulting decompressed blob
-  /// into per-dive records. Emits two kinds of [DownloadEvent]:
+  /// Downloads the valid dives in [manifest] one at a time, in
+  /// flash-address order. Each dive is its own [ShearwaterProtocol.download]
+  /// from the dive's start address with size 0xFFFFFF, one block request
+  /// at a time, as libdivecomputer's Shearwater driver does. The Petrel
+  /// ends every dive's compressed stream with an LRE end marker in the
+  /// dive's last block; the download stops there, the quit command is
+  /// acknowledged, and the next dive's init starts on a clean session.
+  /// Emits two kinds of [DownloadEvent]:
   ///
-  /// * [DownloadProgressEvent] during the bulk transfer, throttled to
-  ///   at most one update per 200 ms with an unthrottled extra event
-  ///   each time the running byte count crosses into a new dive's flash
-  ///   range — the boundary event is the most useful UX signal.
-  /// * [DownloadedDive] once per dive after demux, in flash-address
-  ///   order. Each is preceded by a final 100%-progress event for that
-  ///   dive so the UI can briefly show a saturated bar.
+  /// * [DownloadProgressEvent]: one as each dive starts, at most one per
+  ///   200 ms while its bytes arrive, and a saturated 100% one when it
+  ///   completes, so the UI can briefly show a full bar.
+  /// * [DownloadedDive] once per dive, right after its 100% event.
   ///
-  /// Why one big download instead of N small ones: the Petrel keeps UDS
-  /// session state INDEPENDENTLY of the GATT link. After each per-dive
-  /// download ends in a self-NAK 0x24 (the manifest's `endAddress` is a
-  /// flash *allocation* boundary, not the data end, so the Petrel always
-  /// runs off the actual dive bytes and rejects the next 0x36), the
-  /// firmware's UDS state machine is wedged. On iOS this happened to
-  /// recover by accident; on Android it didn't, and no combination of
-  /// Quit / settle delay / RDBI ping / full GATT reconnect could
-  /// unstick it. This matches libdivecomputer's Shearwater driver,
-  /// which has always done one big download terminated cleanly by the
-  /// LRE 0 end-marker at the very end of the on-flash log.
+  /// In May 2026 Anchorline asked for the manifest's `address`..`endAddress`
+  /// range instead. That range is larger than the dive's data, so the
+  /// download ran past its end: the Petrel answered the extra block
+  /// request with NAK 0x24, and on Android its UDS session then stayed
+  /// wedged for the next dive. Downloading the whole log in one session
+  /// was tried next; #40 replaced both with this.
   Stream<DownloadEvent> downloadDives(List<ManifestEntry> manifest) {
     late final StreamController<DownloadEvent> controller;
     controller = StreamController<DownloadEvent>(
@@ -288,8 +311,8 @@ class ShearwaterBleTransport {
     final p = _protocol!;
     final info = _deviceInfo!;
 
-    // Filter + sort valid entries by flash address ascending. The Petrel
-    // streams them out in address order in one continuous LRE stream.
+    // Filter + sort valid entries by flash address ascending; each one is
+    // downloaded on its own below.
     final entries = manifest.where((e) => e.isValid).toList()
       ..sort((a, b) => a.address.compareTo(b.address));
     if (entries.isEmpty) {
@@ -305,9 +328,9 @@ class ShearwaterBleTransport {
     // Android's `requestConnectionPriority(HIGH)` is NOT sticky — empirically
     // the Petrel link reverts to balanced (~177 ms inter-notification gap,
     // matching ~537 ms/block) about 5–10 s after the last priority request,
-    // unless we keep asserting it. A multi-dive single-session download
-    // can run for many minutes; without the refresher the link reverts
-    // to balanced mid-transfer.
+    // unless we keep asserting it. A multi-dive import can run for many
+    // minutes; without the refresher the link reverts to balanced
+    // mid-transfer.
     //
     // Interval was 4 s; bumped to 6 s after the app was observed losing
     // connection mid-import. 6 s sits well under the ~8-10 s expiry but

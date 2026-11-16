@@ -21,6 +21,12 @@ void _bleLog(String message) {
   BleDebugLogger.instance.log(message);
 }
 
+/// Largest response payload the protocol Anchorline speaks can carry. The
+/// packet header's length byte counts the payload plus one, so 254 bytes
+/// (libdivecomputer's `SZ_PACKET_V1`). The Perdix 3's newer protocol
+/// variant allows larger packets and isn't supported here.
+const int maxPacketSizeV1 = 254;
+
 /// Abstract BLE I/O interface.
 ///
 /// Implementations provide raw BLE characteristic read/write.
@@ -122,6 +128,7 @@ class ShearwaterProtocol {
   ///
   /// Sends `[0x22, id_hi, id_lo]` and returns the response data
   /// (after stripping the `[0x62, id_hi, id_lo]` response header).
+  /// Throws [RdbiNakException] when the device NAKs the request.
   Future<Uint8List> rdbi(int id) async {
     final request = Uint8List.fromList([
       0x22,
@@ -134,8 +141,7 @@ class ShearwaterProtocol {
       throw ProtocolException('Invalid RDBI response');
     }
     if (response.isNak) {
-      throw ProtocolException(
-          'RDBI NAK: error code 0x${response.nakErrorCode.toRadixString(16)}');
+      throw RdbiNakException(id, response.nakErrorCode);
     }
 
     final payload = response.payload;
@@ -165,6 +171,42 @@ class ShearwaterProtocol {
       throw ProtocolException(
           'WDBI NAK: error code 0x${response.nakErrorCode.toRadixString(16)}');
     }
+  }
+
+  /// Parse a download init response (`0x75 ...`) and return the maximum
+  /// packet length the device will use for the data blocks that follow.
+  ///
+  /// The upper nibble of byte 1 is the length of the maximum-packet field
+  /// in bytes (at most 4); the field follows, big-endian. The Petrel 3 in
+  /// the recorded trace sends a 1-byte field (`0x10`): `75 10 82` for the
+  /// manifest (130 bytes) and `75 10 92` for a dive (146 bytes, a 2-byte
+  /// block header plus 144 bytes of data). Newer devices send a longer
+  /// field; libdivecomputer reads it this way since `661cb6e`.
+  ///
+  /// Throws [ProtocolException] when the response is malformed, or when
+  /// the device announces packets larger than [maxPacketSizeV1].
+  @visibleForTesting
+  static int parseDownloadInitResponse(Uint8List payload) {
+    if (payload.length < 2 || payload[0] != 0x75) {
+      throw ProtocolException(
+          'Unexpected download init response: ${_hex(payload.take(8))}');
+    }
+    final fieldLength = (payload[1] & 0xF0) >> 4;
+    if (fieldLength > 4 || payload.length < 2 + fieldLength) {
+      throw ProtocolException(
+          'Unexpected download init response: $fieldLength-byte '
+          'max packet field in ${_hex(payload.take(8))}');
+    }
+    var maxPacket = 0;
+    for (var i = 0; i < fieldLength; i++) {
+      maxPacket = (maxPacket << 8) | payload[2 + i];
+    }
+    if (maxPacket > maxPacketSizeV1) {
+      throw ProtocolException(
+          'Unexpected download init response: max packet $maxPacket bytes '
+          'exceeds $maxPacketSizeV1 (newer protocol not supported)');
+    }
+    return maxPacket;
   }
 
   /// Download data from a flash memory address.
@@ -226,25 +268,26 @@ class ShearwaterProtocol {
     if (!initResponse.isValid) {
       throw ProtocolException('Invalid download init response');
     }
-    final initPayload = initResponse.payload;
-    if (initPayload.length < 3 ||
-        initPayload[0] != 0x75 ||
-        initPayload[1] != 0x10) {
-      throw ProtocolException('Unexpected download init response');
-    }
+    final maxPacket = parseDownloadInitResponse(initResponse.payload);
+    _bleLog('  max packet $maxPacket bytes');
 
     // ── Blocks ──
     // For uncompressed downloads (manifest), the device tells us how big
     // the payload is up front via `size`; we just accumulate until full.
     // For compressed downloads (dive blobs), we accumulate the raw 9-bit
     // LRE bit stream into `rawBuffer` and re-decode the entire buffer after
-    // each block to look for the `0` end marker. Per-block decode does NOT
-    // work because LRE values are 9 bits wide and BLE block boundaries land
-    // mid-value — decoding each block from offset 0 reinterprets the bit
-    // alignment and either silently produces garbage or trips the end
-    // marker by accident on some blocks and not others. Decoding the full
-    // accumulated buffer keeps the bit alignment correct and gives us a
-    // reliable isFinal signal at the real end of the dive blob.
+    // each block to look for the `0` end marker. The Petrel ends every
+    // dive's stream with its own end marker, in the dive's last block, so
+    // that marker is what ends a dive download; `size` (0xFFFFFF for dives,
+    // as in libdivecomputer) is only an upper bound.
+    //
+    // libdivecomputer decodes each block on its own instead. That works
+    // because a block is a whole number of 9-bit values: the Petrel 3
+    // announces 146-byte packets in its init response (2-byte header plus
+    // 144 bytes of data, 128 values), and every compressed block in the
+    // recorded trace is 144 bytes, the last block of each dive included.
+    // Re-decoding the accumulated buffer doesn't rely on that; it costs
+    // O(nbytes) per block, which is fine at ~50 KB per dive.
     final buffer = BytesBuilder(copy: false);
     final rawBuffer = BytesBuilder(copy: false);
     var done = false;
@@ -379,10 +422,10 @@ class ShearwaterProtocol {
           // Decode the full accumulated raw buffer to check for the end
           // marker. Cheap enough — the bit stream is decoded once more
           // in finalize for the actual data, but each per-block pass is
-          // O(nbytes) and nbytes stays small (~30-100 KB per dive). The
-          // marker only fires at the very end of the on-flash log, not
-          // per dive, so for non-newest dives we rely on nbytes >= size
-          // instead (size comes from the manifest's per-dive end address).
+          // O(nbytes) and nbytes stays small (~30-100 KB per dive). Every
+          // dive's stream ends with its own marker, so this is where a
+          // dive download stops, long before nbytes reaches the 0xFFFFFF
+          // size a dive is requested with.
           final lreResult = lreDecode(rawBuffer.toBytes());
           if (lreResult.isFinal) {
             done = true;
@@ -472,4 +515,18 @@ class ProtocolException implements Exception {
 
   @override
   String toString() => 'ProtocolException: $message';
+}
+
+/// The device answered an RDBI request with a NAK, typically because it
+/// doesn't support that identifier. Lets callers fall back to an older
+/// identifier without swallowing other protocol errors.
+class RdbiNakException extends ProtocolException {
+  /// The identifier that was requested.
+  final int id;
+
+  /// The NAK's error code.
+  final int errorCode;
+
+  RdbiNakException(this.id, this.errorCode)
+      : super('RDBI NAK: error code 0x${errorCode.toRadixString(16)}');
 }

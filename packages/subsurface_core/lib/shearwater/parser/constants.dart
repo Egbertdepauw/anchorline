@@ -127,6 +127,7 @@ const int undefined = 0xFFFFFFFF;
 const int idSerial = 0x8010;
 const int idFirmware = 0x8011;
 const int idHardware = 0x8050;
+const int idModel = 0x8060; // model number, 1 byte (libdc f351434)
 const int idLogUpload = 0x8021;
 const int idTimeLocal = 0x9030;
 const int idTimeUtc = 0x9031;

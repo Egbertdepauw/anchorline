@@ -29,12 +29,15 @@ class LreResult {
 /// - Bit 8 clear, value > 0: run of N zero bytes
 /// - Bit 8 clear, value == 0: end of compressed stream
 ///
-/// Any leftover bits at the end (fewer than 9) are ignored — this lets the
-/// download path feed a partial / mid-stream buffer here every block to
-/// look for the end marker without waiting for a 9-bit-aligned tail.
-/// A complete stream is by construction 9-bit-aligned and contains the
-/// `0` end marker, so the tail-bit tolerance only matters for streaming
-/// callers that don't yet have the whole input.
+/// Decoding stops at the end marker; anything after it is ignored. Any
+/// leftover bits at the end (fewer than 9) are ignored too; libdivecomputer
+/// instead rejects a block whose length isn't a whole number of 9-bit
+/// values (a multiple of 9 bytes). No real log needs that tolerance: in
+/// the recorded Petrel 3 trace (`test/fixtures/raw/`) every
+/// compressed block is 144 bytes (128 values), the last block of each
+/// dive included, so the buffer the download path decodes after every
+/// block is always 9-bit aligned, and each dive's end marker sits in its
+/// last block.
 ///
 /// Ported from `shearwater_common_decompress_lre` in libdivecomputer.
 LreResult lreDecode(Uint8List compressed) {
