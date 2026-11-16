@@ -19,6 +19,18 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'cloud_config.dart';
 
+/// Told once per (table, op type) when the server refuses an upload with
+/// 42501. See [CcrloggerBackendConnector.replayCrud].
+typedef UploadPermissionReporter = Future<void> Function(
+    String table, UpdateType opType, Object error, StackTrace stack);
+
+/// Whether [error] is a Postgres 42501 (insufficient privilege / RLS), or a
+/// [CrudUploadException] wrapping one.
+bool isPermissionDenied(Object? error) {
+  if (error is CrudUploadException) return isPermissionDenied(error.cause);
+  return error is PostgrestException && error.code == '42501';
+}
+
 abstract class SupabaseRestUploader {
   Future<void> upsert(String table, Map<String, dynamic> data);
   Future<void> update(String table, String id, Map<String, dynamic> data);
@@ -67,14 +79,20 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   final SupabaseRestUploader _uploader;
   final CrudQuarantine? _quarantine;
   final String _endpoint;
+  final UploadPermissionReporter? _onPermissionDenied;
+
+  /// `'$table/${opType.name}'` keys already reported by this instance.
+  final Set<String> _reportedPermissionDenied = {};
 
   CcrloggerBackendConnector(
     SupabaseClient supabase, {
     String endpoint = CloudConfig.powerSyncEndpoint,
     CrudQuarantine? quarantine,
+    UploadPermissionReporter? onPermissionDenied,
   })  : _sessions = SupabaseAuthSessionSource(supabase),
         _uploader = SupabaseClientRestUploader(supabase),
         _quarantine = quarantine,
+        _onPermissionDenied = onPermissionDenied,
         _endpoint = endpoint;
 
   /// Test-only: inject the auth + REST seams directly.
@@ -82,10 +100,12 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
     required SessionSource sessions,
     required SupabaseRestUploader uploader,
     CrudQuarantine? quarantine,
+    UploadPermissionReporter? onPermissionDenied,
     String endpoint = 'https://test.powersync.invalid',
   })  : _sessions = sessions,
         _uploader = uploader,
         _quarantine = quarantine,
+        _onPermissionDenied = onPermissionDenied,
         _endpoint = endpoint;
 
   /// Window before token expiry within which we try to refresh
@@ -214,7 +234,15 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
       }
       try {
         await _applyOp(op);
-      } on PostgrestException catch (e) {
+      } on PostgrestException catch (e, st) {
+        // After 0027 a 42501 on the user's own row is a server defect. It is
+        // still retried below; it is reported once so we find out. An
+        // ownerless PUT is the signed-out-import case the sign-in backfill
+        // claims, so it is expected and not reported.
+        if (e.code == '42501' &&
+            !(op.op == UpdateType.put && op.opData?['owner_id'] == null)) {
+          await _reportPermissionDenied(op.table, op.op, e, st);
+        }
         if (e.code == '23503' &&
             fetchLocalRow != null &&
             _fkParents.containsKey(op.table)) {
@@ -272,7 +300,11 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
   /// SQLSTATE codes for backend rejections that a retry of the same payload
   /// can never fix (so the op must be quarantined, not retried forever).
   /// Deliberately EXCLUDES 23503 (foreign-key — handled by self-heal/drop
-  /// above) and 42501 (RLS — recoverable once `owner_id` is backfilled).
+  /// above) and 42501 (RLS). Since 0027 keys every table by (owner_id, id),
+  /// a 42501 on the user's own row means a server defect that a server fix
+  /// resolves, so it is retried, shown in the Sync tab and reported once
+  /// ([_reportPermissionDenied]). The ownerless case (sign-in backfill
+  /// pending) still resolves on the client.
   static const _permanentSqlStates = {
     '23505', // unique_violation
     '23502', // not_null_violation
@@ -295,6 +327,18 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
     if (_permanentSqlStates.contains(code)) return true;
     final status = int.tryParse(code);
     return status != null && _permanentHttpStatuses.contains(status);
+  }
+
+  /// Reports a 42501 once per (table, op type) for this connector. A failing
+  /// reporter must never change the upload outcome.
+  Future<void> _reportPermissionDenied(
+      String table, UpdateType opType, Object error, StackTrace stack) async {
+    final reporter = _onPermissionDenied;
+    if (reporter == null) return;
+    if (!_reportedPermissionDenied.add('$table/${opType.name}')) return;
+    try {
+      await reporter(table, opType, error, stack);
+    } catch (_) {}
   }
 
   Future<void> _applyOp(CrudEntry op) async {
@@ -338,8 +382,15 @@ class CcrloggerBackendConnector extends PowerSyncBackendConnector {
         missingLocally = true;
         continue;
       }
-      await _uploader.upsert(
-          parentTable, {..._decodeJsonColumns(parentTable, row), 'id': parentId});
+      try {
+        await _uploader.upsert(parentTable,
+            {..._decodeJsonColumns(parentTable, row), 'id': parentId});
+      } on PostgrestException catch (e, st) {
+        if (e.code == '42501' && row['owner_id'] != null) {
+          await _reportPermissionDenied(parentTable, UpdateType.put, e, st);
+        }
+        rethrow;
+      }
       uploadedAny = true;
     }
     return (uploadedAny: uploadedAny, missingLocally: missingLocally);

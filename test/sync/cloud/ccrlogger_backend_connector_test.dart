@@ -525,6 +525,185 @@ void main() {
           ['dive-c']);
     });
   });
+
+  group('permission-denied reporting', () {
+    late _RecordingReporter reporter;
+    late _RecordingQuarantine quarantine;
+
+    setUp(() {
+      reporter = _RecordingReporter();
+      quarantine = _RecordingQuarantine();
+    });
+
+    CcrloggerBackendConnector connectorFor(SupabaseRestUploader uploader,
+        {String? signedIn = 'uid-b'}) {
+      final sessions = _FakeSessions();
+      if (signedIn != null) sessions.session = _sessionFor(signedIn);
+      return CcrloggerBackendConnector.forTesting(
+        sessions: sessions,
+        uploader: uploader,
+        quarantine: quarantine,
+        onPermissionDenied: reporter.call,
+      );
+    }
+
+    CrudEntry ownedPut(String table, String id) => CrudEntry(
+        1, UpdateType.put, table, id, null, {'owner_id': 'uid-b', 'x': 1});
+
+    test('a 42501 on an owned PUT is rethrown and reported once', () async {
+      final connector = connectorFor(
+          _CodePoisonUploader(failTable: 'dive_computers', code: '42501'));
+      await expectLater(
+        connector.replayCrud([ownedPut('dive_computers', 'dc_b89641e4')]),
+        throwsA(isA<CrudUploadException>()),
+      );
+      expect(reporter.reports, [('dive_computers', UpdateType.put)]);
+      expect(quarantine.records, isEmpty);
+    });
+
+    test('a repeated 42501 on the same table and op is not reported again',
+        () async {
+      final connector = connectorFor(
+          _CodePoisonUploader(failTable: 'dive_computers', code: '42501'));
+      for (var i = 0; i < 2; i++) {
+        await expectLater(
+          connector.replayCrud([ownedPut('dive_computers', 'dc_b89641e4')]),
+          throwsA(isA<CrudUploadException>()),
+        );
+      }
+      expect(reporter.reports, hasLength(1));
+    });
+
+    test("an ownerless PUT's 42501 is rethrown but not reported", () async {
+      final connector = connectorFor(
+          _CodePoisonUploader(failTable: 'dive_computers', code: '42501'));
+      await expectLater(
+        connector.replayCrud([
+          CrudEntry(1, UpdateType.put, 'dive_computers', 'dc_x', null,
+              {'x': 1}),
+        ]),
+        throwsA(isA<CrudUploadException>()),
+      );
+      expect(reporter.reports, isEmpty);
+    });
+
+    test('a 42501 on a PATCH is reported', () async {
+      final connector = connectorFor(
+          _CodePoisonUploader(failTable: 'dives', code: '42501'));
+      await expectLater(
+        connector.replayCrud([
+          CrudEntry(1, UpdateType.patch, 'dives', 'd1', null, {'x': 1}),
+        ]),
+        throwsA(isA<CrudUploadException>()),
+      );
+      expect(reporter.reports, [('dives', UpdateType.patch)]);
+    });
+
+    test('a 42501 from the self-heal parent upsert is reported under the '
+        "parent's table", () async {
+      final connector = connectorFor(_HealDeniedUploader());
+      await expectLater(
+        connector.replayCrud(
+          [ownedPut('dive_samples', 'd1')],
+          fetchLocalRow: (table, id) async =>
+              table == 'dives' ? {'owner_id': 'uid-b'} : null,
+        ),
+        throwsA(isA<CrudUploadException>()),
+      );
+      expect(reporter.reports, [('dives', UpdateType.put)]);
+    });
+
+    for (final code in ['22001', '503']) {
+      test('a $code is not reported', () async {
+        final connector = connectorFor(
+            _CodePoisonUploader(failTable: 'dives', code: code));
+        try {
+          await connector.replayCrud([ownedPut('dives', 'd1')]);
+        } on CrudUploadException {
+          // 503 is retried; 22001 is quarantined.
+        }
+        expect(reporter.reports, isEmpty);
+      });
+    }
+
+    test('a 42P10 is retried, not quarantined or reported', () async {
+      final connector = connectorFor(
+          _CodePoisonUploader(failTable: 'dives', code: '42P10'));
+      await expectLater(
+        connector.replayCrud([ownedPut('dives', 'd1')]),
+        throwsA(isA<CrudUploadException>()),
+      );
+      expect(quarantine.records, isEmpty);
+      expect(reporter.reports, isEmpty);
+    });
+
+    test('a throwing reporter does not change the outcome', () async {
+      final connector = CcrloggerBackendConnector.forTesting(
+        sessions: _FakeSessions()..session = _sessionFor('uid-b'),
+        uploader:
+            _CodePoisonUploader(failTable: 'dive_computers', code: '42501'),
+        quarantine: quarantine,
+        onPermissionDenied: (t, o, e, s) async => throw StateError('boom'),
+      );
+      await expectLater(
+        connector.replayCrud([ownedPut('dive_computers', 'dc_1')]),
+        throwsA(isA<CrudUploadException>()
+            .having((e) => isPermissionDenied(e), 'denied', isTrue)),
+      );
+      expect(quarantine.records, isEmpty);
+    });
+  });
+
+  group('isPermissionDenied', () {
+    final op = CrudEntry(1, UpdateType.put, 'dives', 'd1', null, {'x': 1});
+    test('true for a 42501 PostgrestException', () {
+      expect(
+          isPermissionDenied(PostgrestException(message: 'm', code: '42501')),
+          isTrue);
+    });
+    test('true for a CrudUploadException wrapping one', () {
+      expect(
+          isPermissionDenied(CrudUploadException(
+              op, PostgrestException(message: 'm', code: '42501'))),
+          isTrue);
+    });
+    test('false for a string, another code and null', () {
+      expect(isPermissionDenied('42501'), isFalse);
+      expect(
+          isPermissionDenied(PostgrestException(message: 'm', code: '23503')),
+          isFalse);
+      expect(isPermissionDenied(null), isFalse);
+    });
+  });
+}
+
+class _RecordingReporter {
+  final List<(String, UpdateType)> reports = [];
+
+  Future<void> call(
+      String table, UpdateType opType, Object error, StackTrace stack) async {
+    reports.add((table, opType));
+  }
+}
+
+/// 23503 for `dive_samples` (so self-heal runs), 42501 for the `dives`
+/// parent upsert.
+class _HealDeniedUploader implements SupabaseRestUploader {
+  @override
+  Future<void> upsert(String table, Map<String, dynamic> data) async {
+    if (table == 'dive_samples') {
+      throw PostgrestException(message: 'fk', code: '23503');
+    }
+    if (table == 'dives') {
+      throw PostgrestException(message: 'rls', code: '42501');
+    }
+  }
+
+  @override
+  Future<void> update(String t, String id, Map<String, dynamic> d) async {}
+
+  @override
+  Future<void> delete(String t, String id) async {}
 }
 
 Session _sessionFor(String userId) =>
