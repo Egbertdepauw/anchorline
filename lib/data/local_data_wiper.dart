@@ -38,6 +38,7 @@ class LocalDataWiper {
       await _db.customStatement('DELETE FROM cylinders');
       await _db.customStatement('DELETE FROM pressure_mappings');
       await _db.customStatement('DELETE FROM dive_cylinders');
+      await _db.customStatement('DELETE FROM dive_import_marks');
     });
     // PowerSync: disconnect + clear local SQLite. Re-sync on next start.
     //

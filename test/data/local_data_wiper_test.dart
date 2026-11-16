@@ -22,6 +22,11 @@ void main() {
       "1020, 1, 0, 10000, '[]', x'00', 1, 1000)",
       ['d1'],
     );
+    // Device-local re-parse bookkeeping.
+    await db.customStatement(
+      'INSERT INTO dive_import_marks (dive_id, raw_blob_missing, '
+      "reparse_failed_version) VALUES ('d1', 1, 2)",
+    );
     // PowerSync `dives` and `gas_analyses`.
     await ps.execute(
       'INSERT INTO dives (id, owner_id, dc_serial) VALUES (?, ?, ?)',
@@ -36,6 +41,10 @@ void main() {
         (await q() as List).length;
     expect(await count(() => db.customSelect('SELECT id FROM dives').get()),
         1);
+    expect(
+        await count(
+            () => db.customSelect('SELECT dive_id FROM dive_import_marks').get()),
+        1);
     expect(await count(() => ps.getAll('SELECT id FROM dives')), 1);
     expect(await count(() => ps.getAll('SELECT id FROM gas_analyses')), 1);
 
@@ -47,6 +56,10 @@ void main() {
     ).wipe();
 
     expect(await count(() => db.customSelect('SELECT id FROM dives').get()),
+        0);
+    expect(
+        await count(
+            () => db.customSelect('SELECT dive_id FROM dive_import_marks').get()),
         0);
     expect(await count(() => ps.getAll('SELECT id FROM dives')), 0);
     expect(await count(() => ps.getAll('SELECT id FROM gas_analyses')), 0);

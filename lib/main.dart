@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/native.dart';
@@ -10,7 +11,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'build_info.dart';
 import 'data/app_data_folder.dart';
 import 'data/db/database.dart';
+import 'data/db/dive_dao.dart';
 import 'data/db/equipment_dao.dart';
+import 'data/import/import_problem_reporter.dart';
+import 'data/import/shearwater_reparser.dart';
 import 'dev/fixture_seeder.dart';
 import 'sync/cloud/auth_service.dart';
 import 'sync/cloud/ccrlogger_backend_connector.dart';
@@ -20,6 +24,7 @@ import 'sync/cloud/cloud_sync_coordinator.dart';
 import 'sync/cloud/dives_powersync_migrator.dart';
 import 'sync/cloud/drift_crud_quarantine.dart';
 import 'sync/cloud/powersync_database.dart';
+import 'sync/cloud/sync_status_source.dart';
 import 'sync/cloud/usage_tracker.dart';
 import 'sync/subsurface_git/ssl_certs.dart';
 import 'ui/app_shell.dart';
@@ -104,6 +109,11 @@ void main() async {
     authService: authService,
   )..start();
 
+  // After a reader update, re-parse stored dives from their local raw blobs
+  // in the background. Never awaited and never throws: it must not block
+  // launch, and its errors go to the import reporter (type only) instead.
+  unawaited(_startReparse(db, powerSyncDb, session, authService));
+
   final usageTracker = UsageTracker(Supabase.instance.client);
 
   final app = CCRLogApp(
@@ -173,6 +183,28 @@ void main() async {
     );
   } else {
     runApp(app);
+  }
+}
+
+/// Starts the background re-parse. Errors are reported with `where: 'reparse'`
+/// and swallowed; building the reparser itself is inside the same guard.
+Future<void> _startReparse(AppDatabase db, PowerSyncDatabase powerSyncDb,
+    SessionSource session, AuthService authService) async {
+  try {
+    await ShearwaterReparser(
+      diveDao: DiveDao(db, powerSyncDb, session),
+      drift: db,
+      report: reportImportProblemToSentry,
+      waitUntilSynced: waitUntilSyncedFor(
+        isSignedIn: () => authService.isSignedIn,
+        status: PowerSyncStatusSource(powerSyncDb),
+      ),
+    ).run();
+  } catch (e, st) {
+    debugPrint('reparse failed: $e\n$st');
+    try {
+      reportImportProblemToSentry(e, st, 'reparse');
+    } catch (_) {}
   }
 }
 
