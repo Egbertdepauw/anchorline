@@ -9,11 +9,16 @@
 -- applying 0026, with your own auth.users uuid (Authentication -> Users) in
 -- the set_config line below (same pattern as the delete_my_account dry run
 -- in supabase/README.md). Or run it with psql through the Session pooler
--- (see supabase/README.md) with the same edit. Run all of it together.
+-- (see supabase/README.md) with the same edit:
+--   psql -v ON_ERROR_STOP=1 -f supabase/checks/0026_keep_newer_parse.sql "<pooler url>"
+-- Run all of it together.
 begin;
 select set_config('request.jwt.claims', '{"sub":"<your auth.users uuid>","role":"authenticated"}', true);
 
 do $$ begin
+  if current_setting('request.jwt.claims', true) like '%<your auth.users%' then
+    raise exception 'replace <your auth.users uuid> in the set_config line with your uuid';
+  end if;
   if auth.uid() is null then
     raise exception 'auth.uid() is null: put your auth.users uuid in the set_config line';
   end if;

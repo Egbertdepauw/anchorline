@@ -70,19 +70,32 @@ begin
      and new.parser_version < old.parser_version then
     return old;
   end if;
+  return new;
+end $$;
 
-  -- dive_samples only: builds from before this migration upload with an
-  -- upsert (INSERT ... ON CONFLICT (id) DO UPDATE SET <payload columns>)
-  -- that never names dive_samples.parser_version, so NEW keeps OLD's value
-  -- and the rule above cannot fire. Without this, such a build replaces a
-  -- refreshed row's blobs with its older parse while dives stays current,
-  -- a mixed pair no later refresh repairs. So: at an equal (or omitted)
-  -- version, a change to any imported data column is refused. A change
-  -- that carries a higher version is a real refresh and goes through.
-  -- dives is deliberately not covered: same-version PATCHes of dives
-  -- (deleted_at, user fields) must still apply.
-  if tg_table_name = 'dive_samples'
-     and old.parser_version is not null and old.parser_version >= 0
+-- dive_samples has its own function: PL/pgSQL resolves every new.<field> in
+-- an IF condition against the trigger table at parse time, so the sample
+-- columns cannot be mentioned in a function that also runs on dives.
+create or replace function public.keep_newer_samples() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  -- Same lower-version rule as keep_newer_parse().
+  if old.parser_version is not null and new.parser_version is not null
+     and old.parser_version >= 0
+     and new.parser_version < old.parser_version then
+    return old;
+  end if;
+
+  -- Builds from before this migration upload with an upsert
+  -- (INSERT ... ON CONFLICT (id) DO UPDATE SET <payload columns>) that never
+  -- names dive_samples.parser_version, so NEW keeps OLD's value and the rule
+  -- above cannot fire. Without this, such a build replaces a refreshed row's
+  -- blobs with its older parse while dives stays current, a mixed pair no
+  -- later refresh repairs. So: at an equal (or omitted) version, a change to
+  -- any imported data column is refused. A change that carries a higher
+  -- version is a real refresh and goes through. dives has no such rule:
+  -- same-version PATCHes of dives (deleted_at, user fields) must still apply.
+  if old.parser_version is not null and old.parser_version >= 0
      and (new.parser_version is null or new.parser_version = old.parser_version)
      and (new.sample_count, new.depth_blob, new.temperature_blob, new.ppo2_blob,
           new.cell_mv0_blob, new.cell_mv1_blob, new.cell_mv2_blob,
@@ -110,7 +123,7 @@ create trigger dives_keep_newer_parse
 drop trigger if exists dive_samples_keep_newer_parse on public.dive_samples;
 create trigger dive_samples_keep_newer_parse
   before update on public.dive_samples
-  for each row execute function public.keep_newer_parse();
+  for each row execute function public.keep_newer_samples();
 
 -- Explicit Data API grants (issue #76), restated for the tables this touches.
 revoke all on table public.dives from anon, authenticated, service_role;
