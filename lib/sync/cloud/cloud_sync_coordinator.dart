@@ -17,11 +17,15 @@ import 'package:powersync/powersync.dart';
 
 import 'auth_service.dart';
 import 'ccrlogger_backend_connector.dart';
+import 'sync_params.dart';
 
 /// Thin abstraction over the parts of [PowerSyncDatabase] the coordinator
 /// uses, so tests can inject a recording fake without faking the whole DB.
 abstract class CloudSyncTarget {
-  Future<void> connect(PowerSyncBackendConnector connector);
+  Future<void> connect(
+    PowerSyncBackendConnector connector, {
+    Map<String, Object?>? params,
+  });
   Future<void> disconnect();
 }
 
@@ -30,8 +34,11 @@ class PowerSyncCloudSyncTarget implements CloudSyncTarget {
   PowerSyncCloudSyncTarget(this._db);
 
   @override
-  Future<void> connect(PowerSyncBackendConnector connector) =>
-      _db.connect(connector: connector);
+  Future<void> connect(
+    PowerSyncBackendConnector connector, {
+    Map<String, Object?>? params,
+  }) =>
+      _db.connect(connector: connector, params: params);
 
   @override
   Future<void> disconnect() => _db.disconnect();
@@ -110,7 +117,7 @@ class CloudSyncCoordinator implements SyncPause {
     if (_connected) return;
     _connected = true;
     try {
-      await _target.connect(_connector);
+      await _target.connect(_connector, params: kSyncConnectionParams);
     } catch (e, st) {
       _connected = false;
       debugPrint('CloudSyncCoordinator.connect failed: $e\n$st');
