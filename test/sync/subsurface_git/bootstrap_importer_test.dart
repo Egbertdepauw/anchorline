@@ -15,6 +15,10 @@ import 'package:subsurface_core/data/models/annotation.dart';
 import 'package:subsurface_core/data/models/dive.dart' show generateDiveId;
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart'
     show ConvertedDive;
+import 'package:ccrlogger/data/db/dive_dao.dart' show ImportOutcome;
+import 'package:ccrlogger/data/import/import_problem_reporter.dart';
+import 'package:ccrlogger/data/import/same_dive_matcher.dart'
+    show StoredDiveKey;
 import 'package:ccrlogger/sync/subsurface_git/bootstrap_importer.dart';
 import 'package:ccrlogger/sync/subsurface_git/credentials.dart';
 import 'package:ccrlogger/sync/subsurface_git/repo.dart';
@@ -51,30 +55,49 @@ class _NullCredentials implements SubsurfaceCredentialsSource {
 /// In-memory data source. Records every importDive / upsertAnnotation
 /// so tests can assert on counts without needing the real DAOs.
 class _FakeBootstrapDataSource implements BootstrapDataSource {
+  /// Rows stored under the legacy reading: any brand, a Subsurface copy.
   final Set<({int dcSerial, int startTime})> existing = {};
+
+  /// Rows with every column the test cares about.
+  final List<StoredDiveKey> stored = [];
   final List<ConvertedDive> imported = [];
+  final List<bool> matchFlags = [];
   final Map<String, DiveAnnotation> annotations = {};
   int importCalls = 0;
+  int _n = 0;
 
   @override
-  Future<Set<({int dcSerial, int startTime})>> existingDiveKeys() async =>
-      Set.of(existing);
+  Future<List<StoredDiveKey>> storedDiveKeys() async => [
+        for (final k in existing)
+          StoredDiveKey(
+            id: 'legacy${_n++}',
+            dcVendor: null,
+            dcSerial: k.dcSerial,
+            dcDiveNumber: 0,
+            startTime: k.startTime,
+            parserVersion: -1,
+            dcFamily: null,
+          ),
+        ...stored,
+      ];
 
   @override
-  Future<bool> importDive({
+  Future<ImportOutcome> importDive({
     required ConvertedDive converted,
     required Uint8List rawBlob,
     required int parserVersion,
+    required bool matchSubsurfaceCopies,
   }) async {
     importCalls++;
+    matchFlags.add(matchSubsurfaceCopies);
     final key = (
       dcSerial: converted.dive.dcSerial,
       startTime: converted.dive.startTime.millisecondsSinceEpoch ~/ 1000,
     );
-    if (existing.contains(key)) return false;
+    if (existing.contains(key)) return ImportOutcome.unchanged;
     imported.add(converted);
     existing.add(key);
-    return true;
+    return ImportOutcome.inserted;
   }
 
   @override
@@ -89,30 +112,62 @@ class _IdCheckingDataSource extends _FakeBootstrapDataSource {
   final Set<String> existingIds = {};
 
   @override
-  Future<bool> importDive({
+  Future<ImportOutcome> importDive({
     required ConvertedDive converted,
     required Uint8List rawBlob,
     required int parserVersion,
+    required bool matchSubsurfaceCopies,
   }) async {
     importCalls++;
-    if (existingIds.contains(converted.dive.id)) return false;
+    if (existingIds.contains(converted.dive.id)) return ImportOutcome.unchanged;
     existingIds.add(converted.dive.id);
     imported.add(converted);
-    return true;
+    return ImportOutcome.inserted;
   }
 }
 
 /// importDive always reports an already-stored id.
 class _AlwaysExistingDataSource extends _FakeBootstrapDataSource {
   @override
-  Future<bool> importDive({
+  Future<ImportOutcome> importDive({
     required ConvertedDive converted,
     required Uint8List rawBlob,
     required int parserVersion,
+    required bool matchSubsurfaceCopies,
   }) async {
     importCalls++;
-    return false;
+    return ImportOutcome.unchanged;
   }
+}
+
+/// importDive reports [outcome] for every dive.
+class _OutcomeDataSource extends _FakeBootstrapDataSource {
+  _OutcomeDataSource(this.outcome);
+  final ImportOutcome outcome;
+
+  @override
+  Future<ImportOutcome> importDive({
+    required ConvertedDive converted,
+    required Uint8List rawBlob,
+    required int parserVersion,
+    required bool matchSubsurfaceCopies,
+  }) async {
+    importCalls++;
+    matchFlags.add(matchSubsurfaceCopies);
+    return outcome;
+  }
+}
+
+/// importDive throws.
+class _ThrowingDataSource extends _FakeBootstrapDataSource {
+  @override
+  Future<ImportOutcome> importDive({
+    required ConvertedDive converted,
+    required Uint8List rawBlob,
+    required int parserVersion,
+    required bool matchSubsurfaceCopies,
+  }) async =>
+      throw StateError('boom');
 }
 
 /// Test-only [SubsurfaceRepo] override. Both action methods are
@@ -227,11 +282,13 @@ SubsurfaceBootstrapImporter _makeImporter({
   required _FakeBootstrapDataSource dataSource,
   Object? cloneThrows,
   Object? pullThrows,
+  ImportProblemReporter? reporter,
 }) {
   return SubsurfaceBootstrapImporter(
     credentials: credentials,
     localCloneRoot: cloneRoot,
     dataSource: dataSource,
+    reporter: reporter,
     repoFactory: ({
       required Directory localDir,
       required String remoteUrl,
@@ -425,6 +482,184 @@ void main() {
       expect(done.result.divesImported, 0);
       expect(ds.importCalls, 0);
       expect(ds.annotations, isEmpty);
+    });
+
+    test('a Subsurface dive 40 s from a stored Petrel download is skipped',
+        () async {
+      final cloneRoot = _tempDir('clones');
+      final repoDir = _bootstrapClone(cloneRoot, 'tester@example.com');
+      _copyFixtureDive(repoDir, '2026/04/04-Sat-13=30=15');
+      final start = DateTime.utc(2026, 4, 4, 13, 30, 15);
+      final ds = _FakeBootstrapDataSource()
+        ..stored.add(StoredDiveKey(
+          id: 'download1',
+          dcVendor: 'Shearwater',
+          dcSerial: 0xb89641e4,
+          dcDiveNumber: 705,
+          startTime: start.millisecondsSinceEpoch ~/ 1000 + 40,
+          parserVersion: 1,
+          dcFamily: null,
+        ));
+      final imp = _makeImporter(
+        credentials: _FakeCredentials(),
+        cloneRoot: cloneRoot,
+        dataSource: ds,
+      );
+      final done = (await imp.import().toList()).last as BootstrapDone;
+      expect(done.result.divesSkipped, 1);
+      expect(done.result.divesImported, 0);
+      expect(ds.importCalls, 0);
+    });
+
+    test('a non-Shearwater dive stored with the decimal serial is skipped',
+        () async {
+      final cloneRoot = _tempDir('clones');
+      final repoDir = _bootstrapClone(cloneRoot, 'tester@example.com');
+      _copyDivesoftDive(repoDir);
+      final start = DateTime.utc(2026, 4, 4, 13, 30, 15);
+      final ds = _FakeBootstrapDataSource()
+        ..stored.add(StoredDiveKey(
+          id: 'download1',
+          dcVendor: 'Divesoft',
+          dcSerial: 1234567,
+          dcDiveNumber: 0,
+          startTime: start.millisecondsSinceEpoch ~/ 1000,
+          parserVersion: 1,
+          dcFamily: null,
+        ));
+      final imp = _makeImporter(
+        credentials: _FakeCredentials(),
+        cloneRoot: cloneRoot,
+        dataSource: ds,
+      );
+      final done = (await imp.import().toList()).last as BootstrapDone;
+      expect(done.result.divesSkipped, 1);
+      expect(done.result.divesImported, 0);
+      expect(ds.importCalls, 0);
+    });
+
+    test('a manual dive keeps the exact serial and start-time check',
+        () async {
+      final cloneRoot = _tempDir('clones');
+      final repoDir = _bootstrapClone(cloneRoot, 'tester@example.com');
+      _copyFixtureDive(repoDir, '2004/06/19-Sat-09=00=00');
+      final start = DateTime.utc(2004, 6, 19, 9);
+      final s0 = start.millisecondsSinceEpoch ~/ 1000;
+      StoredDiveKey key(String id, int serial, int t) => StoredDiveKey(
+            id: id,
+            dcVendor: null,
+            dcSerial: serial,
+            dcDiveNumber: 0,
+            startTime: t,
+            parserVersion: -1,
+            dcFamily: null,
+          );
+
+      // 30 s away: a manual dive is not matched by a window.
+      final near = _FakeBootstrapDataSource()..stored.add(key('a', 0, s0 + 30));
+      var imp = _makeImporter(
+        credentials: _FakeCredentials(),
+        cloneRoot: cloneRoot,
+        dataSource: near,
+      );
+      var done = (await imp.import().toList()).last as BootstrapDone;
+      expect(done.result.divesImported, 1);
+
+      // Same serial and start time: skipped.
+      final exact = _FakeBootstrapDataSource()..stored.add(key('b', 0, s0));
+      imp = _makeImporter(
+        credentials: _FakeCredentials(),
+        cloneRoot: cloneRoot,
+        dataSource: exact,
+      );
+      done = (await imp.import().toList()).last as BootstrapDone;
+      expect(done.result.divesSkipped, 1);
+      expect(exact.importCalls, 0);
+    });
+
+    test('the importer never refreshes a stored dive', () async {
+      final cloneRoot = _tempDir('clones');
+      final repoDir = _bootstrapClone(cloneRoot, 'tester@example.com');
+      _copyFixtureDive(repoDir, '2026/04/04-Sat-13=30=15');
+      final ds = _FakeBootstrapDataSource();
+      final imp = _makeImporter(
+        credentials: _FakeCredentials(),
+        cloneRoot: cloneRoot,
+        dataSource: ds,
+      );
+      await imp.import().toList();
+      expect(ds.matchFlags, [false]);
+    });
+
+    test('a second folder for the same dive in one run is skipped',
+        () async {
+      final cloneRoot = _tempDir('clones');
+      final repoDir = _bootstrapClone(cloneRoot, 'tester@example.com');
+      _copyFixtureDive(repoDir, '2026/04/04-Sat-13=30=15');
+      // The same dive again, 30 s later, as a Subsurface multi-DC or
+      // hand-edited entry would be.
+      final dst = Directory(p.join(repoDir.path, '2026/04/04-Sat-13=30=45'))
+        ..createSync(recursive: true);
+      for (final f in Directory(p.join(repoDir.path, '2026/04/04-Sat-13=30=15'))
+          .listSync()
+          .whereType<File>()) {
+        f.copySync(p.join(dst.path, p.basename(f.path)));
+      }
+      final ds = _OutcomeDataSource(ImportOutcome.inserted);
+      final imp = _makeImporter(
+        credentials: _FakeCredentials(),
+        cloneRoot: cloneRoot,
+        dataSource: ds,
+      );
+      final done = (await imp.import().toList()).last as BootstrapDone;
+      expect(done.result.divesImported, 1);
+      expect(done.result.divesSkipped, 1);
+      expect(ds.importCalls, 1);
+    });
+
+    test('only an inserted dive gets its annotation; refreshed and '
+        'unchanged do not', () async {
+      for (final entry in {
+        ImportOutcome.inserted: 1,
+        ImportOutcome.insertedFlagged: 1,
+        ImportOutcome.refreshed: 0,
+        ImportOutcome.unchanged: 0,
+        ImportOutcome.rejected: 0,
+      }.entries) {
+        final cloneRoot = _tempDir('clones');
+        final repoDir = _bootstrapClone(cloneRoot, 'tester@example.com');
+        _copyFixtureDive(repoDir, '2025/05/04-Sun-09=48=36');
+        final ds = _OutcomeDataSource(entry.key);
+        final imp = _makeImporter(
+          credentials: _FakeCredentials(),
+          cloneRoot: cloneRoot,
+          dataSource: ds,
+        );
+        await imp.import().toList();
+        expect(ds.annotations.length, entry.value, reason: '${entry.key}');
+      }
+    });
+
+    test('a failing or rejected import is reported once with where=bootstrap',
+        () async {
+      for (final ds in [
+        _ThrowingDataSource(),
+        _OutcomeDataSource(ImportOutcome.rejected),
+      ]) {
+        final cloneRoot = _tempDir('clones');
+        final repoDir = _bootstrapClone(cloneRoot, 'tester@example.com');
+        _copyFixtureDive(repoDir, '2025/05/04-Sun-09=48=36');
+        final reports = <String>[];
+        final imp = _makeImporter(
+          credentials: _FakeCredentials(),
+          cloneRoot: cloneRoot,
+          dataSource: ds,
+          reporter: (e, st, where) => reports.add(where),
+        );
+        final done = (await imp.import().toList()).last as BootstrapDone;
+        expect(done.result.divesUnmappable, 1);
+        expect(reports, ['bootstrap']);
+      }
     });
 
     test('an existing id never gets its annotation rewritten', () async {

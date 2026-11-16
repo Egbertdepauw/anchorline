@@ -10,7 +10,9 @@ import 'dart:typed_data';
 
 import '../../data/db/database.dart';
 import 'package:subsurface_core/data/models/sample_set.dart';
+import 'package:subsurface_core/data/models/dive.dart' show DiveGasMix;
 import 'merge_constants.dart';
+import 'merged_gas_mixes.dart';
 
 /// One member of a merge: its (Drift) dive row + decoded samples.
 typedef MergeMember = ({Dive dive, SampleSet samples});
@@ -36,24 +38,15 @@ typedef MergeMember = ({Dive dive, SampleSet samples});
   }
 
   // Merge gas-mix lists; build a per-member old->new index remap.
-  final mergedGas = <Map<String, dynamic>>[];
-  final remaps = <List<int>>[];
-  for (final m in sorted) {
-    final list =
-        (jsonDecode(m.dive.gasMixesJson) as List).cast<Map<String, dynamic>>();
-    final remap = <int>[];
-    for (final g in list) {
-      final at = mergedGas.indexWhere((e) =>
-          e['o2'] == g['o2'] && e['he'] == g['he'] && e['dil'] == g['dil']);
-      if (at >= 0) {
-        remap.add(at);
-      } else {
-        remap.add(mergedGas.length);
-        mergedGas.add({'o2': g['o2'], 'he': g['he'], 'dil': g['dil']});
-      }
-    }
-    remaps.add(remap);
-  }
+  final gas = mergeGasMixLists([
+    for (final m in sorted)
+      [
+        for (final g in jsonDecode(m.dive.gasMixesJson) as List)
+          DiveGasMix.fromJson(Map<String, dynamic>.from(g as Map)),
+      ],
+  ]);
+  final mergedGas = [for (final g in gas.mixes) g.toJson()];
+  final remaps = gas.remaps;
 
   // Surface gaps (in samples) and total length. The drawn gap is clamped to
   // [kMergedSurfaceGapDisplayCap] so a long real surface interval doesn't bury

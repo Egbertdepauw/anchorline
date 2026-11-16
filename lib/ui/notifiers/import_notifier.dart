@@ -13,6 +13,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../data/db/import_state_dao.dart';
+import '../../data/import/import_problem_reporter.dart';
 import '../../devices/dive_download_source.dart';
 import '../../devices/shearwater/shearwater_download_source.dart';
 import '../../shearwater/ble/ble_io_impl.dart';
@@ -45,6 +46,7 @@ class ImportNotifier extends ChangeNotifier {
   final ImportStateDao _importStateDao;
   final EquipmentDao _equipmentDao;
   final UsageTracker? _usageTracker;
+  final ImportProblemReporter _report;
   final bool useMock;
 
   bool _disposed = false;
@@ -57,6 +59,7 @@ class ImportNotifier extends ChangeNotifier {
   int? _currentDiveNumber;
   String? _errorMessage;
   int _failedCount = 0;
+  int _refreshedCount = 0;
   bool _forceFullReimport = false;
 
   // Per-dive download progress, surfaced live during the bulk BLE
@@ -88,10 +91,12 @@ class ImportNotifier extends ChangeNotifier {
     required EquipmentDao equipmentDao,
     UsageTracker? usageTracker,
     this.useMock = false,
+    ImportProblemReporter? reporter,
   })  : _dao = dao,
         _importStateDao = importStateDao,
         _equipmentDao = equipmentDao,
-        _usageTracker = usageTracker;
+        _usageTracker = usageTracker,
+        _report = reporter ?? reportImportProblemToSentry;
 
   // ── Accessors ──────────────────────────────────────────────────────────────
 
@@ -103,6 +108,10 @@ class ImportNotifier extends ChangeNotifier {
   int? get currentDiveNumber => _currentDiveNumber;
   String? get errorMessage => _errorMessage;
   int get failedCount => _failedCount;
+
+  /// Dives of the current download whose stored data was refreshed in place.
+  /// A detail screen opened before the download may show stale cylinder rows.
+  int get refreshedCount => _refreshedCount;
 
   /// 0-based index into the download subset of the dive currently
   /// streaming bytes from the device. Null until the first progress
@@ -341,12 +350,19 @@ class ImportNotifier extends ChangeNotifier {
       var entries = await _source!.listDives(sinceFingerprint: lastFp);
 
       if (!_forceFullReimport && entries.isNotEmpty) {
-        final ids = entries.map((e) => e.diveId).toList(growable: false);
-        final existing = await _dao.existingDiveIdsAmong(ids);
+        final existing = await _dao.alreadyDownloadedAmong(
+          entries.map((l) => (
+                diveId: l.diveId,
+                startTimeSeconds: l.startTimestamp,
+                diveNumber: l.diveNumber,
+              )).toList(growable: false),
+          vendor: _identity!.vendor,
+          serial: _identity!.serial,
+        );
         if (existing.isNotEmpty) {
           entries = [
-            for (var i = 0; i < entries.length; i++)
-              if (!existing.contains(ids[i])) entries[i],
+            for (final e in entries)
+              if (!existing.contains(e.diveId)) e,
           ];
         }
       }
@@ -385,6 +401,7 @@ class ImportNotifier extends ChangeNotifier {
     _state = ImportFlowState.downloading;
     _downloadedCount = 0;
     _failedCount = 0;
+    _refreshedCount = 0;
     _currentDiveIndex = null;
     _totalDives = toDownload.length;
     _diveBytes = null;
@@ -426,19 +443,34 @@ class ImportNotifier extends ChangeNotifier {
           case DiveSourceDive():
             _currentDiveNumber = event.listing?.diveNumber;
             try {
-              final imported = await _dao.importDive(
+              final outcome = await _dao.importDive(
                 converted: event.converted,
                 rawBlob: event.rawBlob,
                 parserVersion: event.parserVersion,
               );
-              if (imported) {
-                _downloadedCount++;
-                lastSuccessfulFingerprint = event.fingerprint;
+              switch (outcome) {
+                case ImportOutcome.refreshed:
+                  _refreshedCount++;
+                  _downloadedCount++;
+                  lastSuccessfulFingerprint = event.fingerprint;
+                case ImportOutcome.inserted:
+                case ImportOutcome.insertedFlagged:
+                  _downloadedCount++;
+                  lastSuccessfulFingerprint = event.fingerprint;
+                case ImportOutcome.unchanged:
+                  break;
+                case ImportOutcome.rejected:
+                  _failedCount++;
+                  _report(
+                    const UnusableParse(),
+                    null,
+                    'download',
+                  );
               }
-            } catch (e) {
-              debugPrint(
-                  'Failed to import dive ${event.listing?.diveNumber}: $e');
+            } catch (e, st) {
+              debugPrint('Failed to import dive ${event.listing?.diveNumber}');
               _failedCount++;
+              _report(e, st, 'download');
             }
             await _applyScrubberEvents(serial);
             // After a dive lands, force a non-throttled rebuild so
@@ -448,9 +480,9 @@ class ImportNotifier extends ChangeNotifier {
 
           case DiveSourceDiveFailed():
             _currentDiveNumber = event.listing?.diveNumber;
-            debugPrint(
-                'Failed to import dive ${event.listing?.diveNumber}: ${event.error}');
+            debugPrint('Failed to import dive ${event.listing?.diveNumber}');
             _failedCount++;
+            _report(event.error, event.stack, 'download');
             await _applyScrubberEvents(serial);
             _flushNotify();
         }
@@ -596,6 +628,7 @@ class ImportNotifier extends ChangeNotifier {
     _currentDiveNumber = null;
     _errorMessage = null;
     _failedCount = 0;
+    _refreshedCount = 0;
     _mockDeviceAvailable = false;
     _discoveredDevices.clear();
     _forceFullReimport = false;

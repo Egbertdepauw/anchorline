@@ -1,0 +1,18 @@
+version 3
+divecomputerid "Shearwater Cloud Desktop" deviceid=963a0670 serial="2.9.5" nickname="Perdix 2"
+divecomputerid "Shearwater Cloud Desktop" deviceid=a060ede3 serial="2.9.6" nickname="Perdix 2"
+fingerprint model=00000000 serial=00000000 deviceid=00000000 diveid=00000000 data=""
+fingerprint model=41ef6c17 serial=4383b51e deviceid=2939b109 diveid=e8b939e3 data="634587a2"
+fingerprint model=41ef6c17 serial=5677bfef deviceid=bbd14b39 diveid=ea446535 data="634a6c31"
+fingerprint model=6b6ca4de serial=a929810b deviceid=c9170285 diveid=e697d0e4 data="63ffa84e"
+fingerprint model=84a707be serial=3517397e deviceid=f38f7184 diveid=7360c2b8 data="639ed85b"
+fingerprint model=dda29cc4 serial=b2a11c00 deviceid=366285fe diveid=ddd18117 data="6444fd07"
+fingerprint model=dda29cc4 serial=b89641e4 deviceid=18545bf0 diveid=66537ea0 data="69ef4997"
+fingerprint model=ef4d4584 serial=ed9f50fc deviceid=cf6f6172 diveid=b0c7180f data="323032322d31312d30382d32302d35372d35342e66697400"
+fingerprint model=f314f0f3 serial=316ec46b deviceid=a8cc004f diveid=0af2e206 data="62c976ac"
+fingerprint model=f314f0f3 serial=351f7276 deviceid=3216252f diveid=98a90bdd data="62c15c6a"
+units PERSONALIZE METERS LITER BAR CELSIUS KG MINUTES
+prefs DCCEILING
+prefs SHOW_SETPOINT
+prefs SHOW_SENSORS
+prefs PO2_GRAPH

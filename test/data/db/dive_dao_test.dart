@@ -163,10 +163,10 @@ void main() {
         parserVersion: 1,
       );
 
-      expect(result, isTrue); // new dive
+      expect(result, ImportOutcome.inserted);
     });
 
-    test('dedup: importing same dive twice returns false', () async {
+    test('dedup: importing same dive twice returns unchanged', () async {
       final converted = _convertFixture(718);
       final rawBlob =
           File('test/fixtures/dives/dive_718.bin').readAsBytesSync();
@@ -176,14 +176,14 @@ void main() {
         rawBlob: rawBlob,
         parserVersion: 1,
       );
-      expect(first, isTrue);
+      expect(first, ImportOutcome.inserted);
 
       final second = await dao.importDive(
         converted: converted,
         rawBlob: rawBlob,
         parserVersion: 1,
       );
-      expect(second, isFalse); // duplicate
+      expect(second, ImportOutcome.unchanged);
     });
 
     test('imports multiple different dives', () async {
@@ -196,7 +196,7 @@ void main() {
           rawBlob: rawBlob,
           parserVersion: 1,
         );
-        expect(result, isTrue, reason: 'Dive $num should import successfully');
+        expect(result, ImportOutcome.inserted, reason: 'Dive $num should import successfully');
       }
     });
 

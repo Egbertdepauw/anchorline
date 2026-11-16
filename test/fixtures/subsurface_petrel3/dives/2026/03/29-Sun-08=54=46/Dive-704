@@ -1,0 +1,19 @@
+duration 63:15 min
+rating 3
+visibility 3
+wavesize 5
+current 5
+surge 5
+chill 4
+tags "MOD2ANNA", "CCR", "X-CCR"
+divesiteid a36eace9
+divemaster ""
+buddy "Anna Visser"
+suit "ScubaForce Xpedition SE Droogpak - X-Nine onderpak"
+notes "Anna's eerst MOD-2 training. Bij de bus gebleven
+	Grote brasem die aan het doodgaan was."
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=18.0% he=23.0% use="diluent" depth=6.228m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=100.0% end=146.996bar use="oxygen" depth=22.375m
+cylinder vol=12.0l workpressure=300.0bar description="12L 300 bar" start=250.0bar depth=80.357m
+cylinder vol=5.547l workpressure=206.843bar description="AL40" o2=100.0% start=150.0bar end=150.0bar depth=67.788m
+airtemp 5.0°C

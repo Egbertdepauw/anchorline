@@ -1,0 +1,14 @@
+duration 22:50 min
+rating 2
+tags "CCR", "X-CCR", "DPV"
+divesiteid 211b8868
+divemaster ""
+buddy "Anna Visser"
+suit ""
+notes "Klote duik. Anna na 5 seconden kwijt.... stukje gedoken en toen maar omgedraaid... Anna was er nog in, maar wel met een kapotte scooter. Die was in een vislijn geraakt."
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=99.0% start=182.987bar end=173.058bar depth=6.249m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=50.0% end=157.063bar depth=22.396m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=20.0% he=48.0% depth=71.325m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=50.0% use="diluent" depth=22.396m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=20.0% he=48.0% use="diluent" depth=71.325m
+cylinder vol=3.0l workpressure=232.0bar description="3ℓ 232 bar" o2=18.0% he=23.0% use="diluent" depth=80.377m

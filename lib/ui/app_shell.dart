@@ -57,6 +57,7 @@ import 'notifiers/settings_notifier.dart';
 import 'screens/gas_screen.dart';
 import 'screens/buddies_list_screen.dart';
 import 'screens/dive_list_screen.dart';
+import 'util/pop_to_root.dart';
 import 'screens/dive_plan_screen.dart';
 import 'screens/equipment/equipment_landing_screen.dart';
 import 'screens/import_screen.dart';
@@ -423,6 +424,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   void _onViewDives() {
+    // A refresh can move a dive's cylinder rows. A detail screen opened in
+    // the Dives tab before the download would still hold the old rows, so
+    // drop back to the list, through the screens' unsaved-changes guards.
+    final nav = _divesNavigatorKey.currentState;
+    if (_importNotifier.refreshedCount > 0 && nav != null) {
+      popToRootRespectingGuards(nav);
+    }
     setState(() => _currentIndex = 0);
     _diveListNotifier.loadDives();
   }

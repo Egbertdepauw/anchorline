@@ -1,0 +1,723 @@
+model "Shearwater Petrel 3"
+deviceid 18545bf0
+diveid 1addbafe
+dctype CCR
+numberofoxygensensors 3
+maxdepth 39.2m
+meandepth 16.474m
+watertemp 6.0°C
+surfacepressure 1.001bar
+salinity 1000g/l
+keyvalue "Configured stack time [hh:mm:ss]" "7:00:00"
+keyvalue "Remaining stack time at start [hh:mm:ss]" "6:36:17"
+keyvalue "Remaining stack time at end [hh:mm:ss]" "5:38:13"
+keyvalue "Logversion" "17(PNF)"
+keyvalue "Serial" "b89641e4"
+keyvalue "FW Version" "a3"
+keyvalue "Deco model" "GF 50/95"
+keyvalue "Battery type" "3.6V Saft"
+keyvalue "Battery at end" "3.4 V"
+keyvalue "Sensor 1 calibration [bar / V]" "21.00"
+keyvalue "Sensor 2 calibration [bar / V]" "21.00"
+keyvalue "Sensor 3 calibration [bar / V]" "21.00"
+keyvalue "Divemode" "CC / BO"
+event 0:05 type=25 flags=6 name="gaschange" cylinder=2
+  0:05 1.6m 14.0°C 167.956bar:0 142.032bar:1 tts=1:00 sensor1=0.672bar sensor2=0.777bar sensor3=0.756bar dc_supplied_ppo2=0.74bar po2=0.7bar
+  0:10 1.7m sensor1=0.693bar sensor3=0.777bar dc_supplied_ppo2=0.75bar
+  0:15 1.8m ndl=99:00 dc_supplied_ppo2=0.76bar
+  0:20 2.0m sensor2=0.798bar
+  0:25 2.3m sensor3=0.798bar dc_supplied_ppo2=0.77bar
+  0:30 2.7m sensor1=0.714bar sensor2=0.819bar dc_supplied_ppo2=0.78bar
+  0:35 3.1m 166.991bar:0 141.067bar:1 sensor1=0.735bar sensor2=0.84bar sensor3=0.84bar dc_supplied_ppo2=0.8bar
+  0:40 3.4m sensor1=0.777bar sensor2=0.882bar sensor3=0.861bar dc_supplied_ppo2=0.84bar
+  0:45 3.7m sensor1=0.798bar sensor2=0.903bar sensor3=0.903bar dc_supplied_ppo2=0.87bar
+  0:50 4.1m sensor1=0.819bar sensor2=0.945bar sensor3=0.924bar dc_supplied_ppo2=0.9bar
+  0:55 4.3m sensor1=0.84bar sensor2=0.966bar sensor3=0.945bar dc_supplied_ppo2=0.92bar
+  1:00 4.4m sensor3=0.966bar
+  1:05 4.9m dc_supplied_ppo2=0.93bar
+  1:10 5.5m 166.026bar:0 sensor1=0.861bar sensor2=1.008bar sensor3=0.987bar dc_supplied_ppo2=0.95bar
+  1:15 6.0m 165.06bar:0 sensor1=0.903bar sensor2=1.029bar sensor3=1.029bar dc_supplied_ppo2=0.98bar
+  1:20 6.4m sensor2=1.05bar sensor3=1.05bar dc_supplied_ppo2=1.0bar
+  1:25 6.5m 13.0°C sensor3=1.029bar
+  1:30 6.6m 139.964bar:1 sensor1=0.924bar dc_supplied_ppo2=1.01bar
+  1:35 6.7m sensor1=0.945bar sensor3=1.05bar dc_supplied_ppo2=1.02bar
+  1:40 6.7m sensor2=1.071bar dc_supplied_ppo2=1.03bar
+  1:45 6.8m sensor3=1.071bar dc_supplied_ppo2=1.04bar
+  1:50 7.0m
+  1:55 7.3m
+  2:00 7.3m cns=1%
+  2:05 7.4m sensor1=0.966bar
+  2:10 7.6m sensor1=0.987bar sensor2=1.113bar sensor3=1.092bar dc_supplied_ppo2=1.06bar
+  2:15 7.8m 138.998bar:1 sensor3=1.113bar dc_supplied_ppo2=1.08bar
+  2:20 8.0m sensor1=1.008bar sensor2=1.134bar sensor3=1.134bar dc_supplied_ppo2=1.09bar
+  2:25 8.0m
+  2:30 8.0m dc_supplied_ppo2=1.1bar
+  2:35 8.1m sensor1=1.029bar sensor2=1.155bar dc_supplied_ppo2=1.11bar
+  2:40 8.1m sensor3=1.155bar dc_supplied_ppo2=1.12bar
+  2:45 8.3m
+  2:50 8.3m
+  2:55 8.3m
+  3:00 8.3m sensor2=1.176bar dc_supplied_ppo2=1.13bar
+  3:05 8.4m sensor3=1.176bar dc_supplied_ppo2=1.14bar
+  3:10 8.5m sensor1=1.05bar sensor2=1.197bar
+  3:15 8.7m 12.0°C sensor3=1.197bar dc_supplied_ppo2=1.15bar
+  3:20 8.7m dc_supplied_ppo2=1.16bar
+  3:25 8.7m
+  3:30 8.5m
+  3:35 9.2m sensor2=1.218bar
+  3:40 9.2m sensor1=1.071bar sensor3=1.218bar dc_supplied_ppo2=1.17bar
+  3:45 9.1m sensor1=1.05bar sensor3=1.197bar
+  3:50 9.1m
+  3:55 9.2m 138.033bar:1
+  4:00 8.8m sensor2=1.197bar dc_supplied_ppo2=1.16bar
+  4:05 8.9m sensor3=1.176bar dc_supplied_ppo2=1.15bar
+  4:10 8.9m sensor1=1.071bar sensor3=1.197bar
+  4:15 9.0m sensor2=1.218bar dc_supplied_ppo2=1.17bar
+  4:20 9.3m cns=2% sensor1=1.092bar sensor3=1.218bar dc_supplied_ppo2=1.18bar
+  4:25 9.6m 11.0°C sensor2=1.239bar
+  4:30 9.7m 163.957bar:0 sensor3=1.239bar dc_supplied_ppo2=1.19bar
+  4:35 10.1m sensor2=1.26bar dc_supplied_ppo2=1.2bar
+  4:40 10.5m sensor1=1.134bar sensor2=1.281bar sensor3=1.26bar dc_supplied_ppo2=1.23bar
+  4:45 10.8m sensor1=1.155bar sensor2=1.323bar sensor3=1.302bar dc_supplied_ppo2=1.26bar
+  4:50 11.1m tts=2:00 sensor1=1.176bar sensor2=1.344bar sensor3=1.323bar dc_supplied_ppo2=1.29bar
+  4:55 11.4m sensor1=1.197bar sensor2=1.365bar sensor3=1.365bar dc_supplied_ppo2=1.31bar
+  5:00 11.7m sensor1=1.218bar sensor2=1.386bar dc_supplied_ppo2=1.33bar
+  5:05 11.9m 162.992bar:0 sensor2=1.407bar sensor3=1.386bar dc_supplied_ppo2=1.34bar
+  5:10 12.0m 137.068bar:1 dc_supplied_ppo2=1.35bar
+  5:15 12.2m
+  5:20 12.0m sensor3=1.407bar
+  5:25 12.4m 162.027bar:0
+  5:30 12.4m sensor2=1.386bar sensor3=1.386bar
+  5:35 12.5m sensor3=1.365bar dc_supplied_ppo2=1.33bar
+  5:40 12.4m sensor1=1.197bar sensor2=1.365bar dc_supplied_ppo2=1.32bar
+  5:45 12.3m sensor1=1.176bar sensor2=1.344bar sensor3=1.344bar dc_supplied_ppo2=1.31bar
+  5:50 12.3m dc_supplied_ppo2=1.29bar
+  5:55 12.5m
+  6:00 12.8m 10.0°C 161.062bar:0 dc_supplied_ppo2=1.3bar
+  6:05 13.0m cns=3%
+  6:10 13.2m sensor2=1.365bar
+  6:15 13.3m sensor1=1.197bar
+  6:20 13.6m sensor3=1.365bar dc_supplied_ppo2=1.31bar
+  6:25 13.8m sensor2=1.386bar dc_supplied_ppo2=1.32bar
+  6:30 13.8m sensor2=1.365bar
+  6:35 13.7m sensor3=1.344bar dc_supplied_ppo2=1.31bar
+  6:40 13.5m sensor1=1.176bar sensor2=1.344bar sensor3=1.323bar dc_supplied_ppo2=1.29bar
+  6:45 13.4m sensor1=1.155bar sensor2=1.323bar sensor3=1.302bar dc_supplied_ppo2=1.27bar
+  6:50 13.4m sensor1=1.134bar sensor2=1.302bar sensor3=1.281bar dc_supplied_ppo2=1.26bar
+  6:55 13.4m sensor2=1.281bar dc_supplied_ppo2=1.24bar
+  7:00 13.6m dc_supplied_ppo2=1.23bar
+  7:05 13.8m 159.958bar:0 dc_supplied_ppo2=1.24bar
+  7:10 14.0m sensor2=1.302bar dc_supplied_ppo2=1.25bar
+  7:15 14.2m sensor3=1.302bar
+  7:20 14.5m sensor1=1.155bar sensor2=1.323bar dc_supplied_ppo2=1.26bar
+  7:25 14.8m 135.965bar:1 sensor3=1.323bar dc_supplied_ppo2=1.27bar
+  7:30 14.9m dc_supplied_ppo2=1.28bar
+  7:35 14.5m 9.0°C sensor3=1.302bar dc_supplied_ppo2=1.27bar
+  7:40 14.3m sensor2=1.302bar
+  7:45 14.2m sensor1=1.134bar dc_supplied_ppo2=1.26bar
+  7:50 14.2m sensor3=1.281bar dc_supplied_ppo2=1.25bar
+  7:55 14.1m sensor1=1.113bar sensor2=1.281bar sensor3=1.26bar dc_supplied_ppo2=1.23bar
+  8:00 14.5m
+  8:05 14.9m cns=4% sensor1=1.134bar sensor3=1.281bar dc_supplied_ppo2=1.24bar
+  8:10 15.3m 134.034bar:1 sensor2=1.302bar sensor3=1.302bar dc_supplied_ppo2=1.25bar
+  8:15 15.5m 135.965bar:1 dc_supplied_ppo2=1.26bar
+  8:20 15.8m sensor1=1.155bar sensor2=1.323bar dc_supplied_ppo2=1.27bar
+  8:25 16.0m sensor1=1.176bar sensor2=1.344bar sensor3=1.323bar dc_supplied_ppo2=1.28bar
+  8:30 16.4m 158.993bar:0 134.999bar:1 sensor1=1.197bar sensor2=1.365bar sensor3=1.344bar dc_supplied_ppo2=1.31bar
+  8:35 16.9m sensor1=1.218bar sensor2=1.386bar sensor3=1.386bar dc_supplied_ppo2=1.33bar
+  8:40 17.2m sensor1=1.239bar sensor2=1.407bar sensor3=1.407bar dc_supplied_ppo2=1.35bar
+  8:45 17.5m 158.028bar:0 sensor1=1.26bar sensor2=1.428bar sensor3=1.428bar dc_supplied_ppo2=1.37bar
+  8:50 17.8m sensor1=1.281bar sensor2=1.449bar sensor3=1.449bar dc_supplied_ppo2=1.4bar
+  8:55 17.9m sensor2=1.47bar dc_supplied_ppo2=1.41bar
+  9:00 18.1m
+  9:05 18.4m sensor2=1.449bar
+  9:10 18.5m sensor3=1.428bar dc_supplied_ppo2=1.4bar
+  9:15 18.7m sensor1=1.26bar sensor2=1.428bar dc_supplied_ppo2=1.39bar
+  9:20 19.1m dc_supplied_ppo2=1.38bar
+  9:25 19.4m 157.063bar:0 sensor2=1.449bar dc_supplied_ppo2=1.39bar
+  9:30 19.6m sensor2=1.428bar
+  9:35 19.7m dc_supplied_ppo2=1.38bar
+  9:40 19.6m cns=5%
+  9:45 19.6m sensor1=1.239bar sensor2=1.407bar sensor3=1.407bar dc_supplied_ppo2=1.37bar
+  9:50 19.4m sensor2=1.386bar sensor3=1.386bar dc_supplied_ppo2=1.35bar
+  9:55 19.6m sensor1=1.218bar dc_supplied_ppo2=1.34bar
+ 10:00 19.7m sensor3=1.365bar dc_supplied_ppo2=1.33bar
+ 10:05 19.8m 8.0°C sensor1=1.197bar sensor2=1.365bar
+ 10:10 19.9m 155.959bar:0 dc_supplied_ppo2=1.32bar
+ 10:15 20.1m dc_supplied_ppo2=1.31bar
+ 10:20 20.2m sensor3=1.344bar
+ 10:25 20.1m
+ 10:30 20.0m sensor1=1.176bar sensor2=1.344bar dc_supplied_ppo2=1.3bar
+ 10:35 20.1m sensor2=1.323bar sensor3=1.323bar dc_supplied_ppo2=1.29bar
+ 10:40 20.0m sensor1=1.155bar sensor3=1.302bar dc_supplied_ppo2=1.28bar
+ 10:45 19.8m sensor2=1.302bar dc_supplied_ppo2=1.26bar
+ 10:50 19.9m 133.069bar:1
+ 10:55 20.2m sensor2=1.323bar
+ 11:00 20.6m dc_supplied_ppo2=1.27bar
+ 11:05 21.1m sensor1=1.176bar sensor2=1.344bar sensor3=1.323bar dc_supplied_ppo2=1.29bar
+ 11:10 21.5m 154.994bar:0 tts=3:00 sensor1=1.218bar sensor2=1.386bar sensor3=1.365bar dc_supplied_ppo2=1.32bar
+ 11:15 21.9m sensor1=1.239bar sensor2=1.428bar sensor3=1.407bar dc_supplied_ppo2=1.36bar
+ 11:20 22.3m sensor1=1.26bar sensor3=1.428bar dc_supplied_ppo2=1.38bar
+ 11:25 22.6m cns=6% sensor2=1.449bar dc_supplied_ppo2=1.39bar
+ 11:30 22.9m sensor2=1.428bar dc_supplied_ppo2=1.38bar
+ 11:35 23.4m po2=1.3bar
+ 11:40 23.7m sensor2=1.449bar dc_supplied_ppo2=1.39bar
+ 11:45 24.0m 154.029bar:0 ndl=95:00 sensor1=1.281bar sensor3=1.449bar dc_supplied_ppo2=1.4bar
+ 11:50 24.2m ndl=91:00 dc_supplied_ppo2=1.41bar
+ 11:55 24.4m
+ 12:00 24.4m dc_supplied_ppo2=1.4bar
+ 12:05 24.4m ndl=85:00 sensor2=1.47bar
+ 12:10 24.5m ndl=84:00 sensor2=1.491bar sensor3=1.47bar dc_supplied_ppo2=1.42bar
+ 12:15 24.6m ndl=85:00 sensor1=1.302bar sensor2=1.47bar
+ 12:20 24.7m sensor1=1.281bar sensor2=1.449bar sensor3=1.449bar dc_supplied_ppo2=1.4bar
+ 12:25 24.9m ndl=79:00
+ 12:30 25.2m ndl=74:00 sensor2=1.47bar
+ 12:35 25.6m sensor1=1.302bar sensor2=1.491bar sensor3=1.47bar dc_supplied_ppo2=1.42bar
+ 12:40 25.9m ndl=67:00 sensor1=1.323bar sensor2=1.512bar sensor3=1.512bar dc_supplied_ppo2=1.44bar
+ 12:45 26.3m sensor1=1.344bar sensor2=1.554bar sensor3=1.554bar dc_supplied_ppo2=1.48bar
+ 12:50 26.4m ndl=68:00 cns=7% sensor1=1.365bar dc_supplied_ppo2=1.5bar
+ 12:55 26.4m sensor1=1.344bar sensor2=1.533bar sensor3=1.533bar dc_supplied_ppo2=1.49bar
+ 13:00 26.6m ndl=63:00 sensor3=1.512bar dc_supplied_ppo2=1.48bar
+ 13:05 26.8m 153.064bar:0 ndl=59:00 dc_supplied_ppo2=1.47bar
+ 13:10 27.0m
+ 13:15 27.3m 151.96bar:0
+ 13:20 27.4m ndl=53:00 sensor3=1.533bar
+ 13:25 27.5m ndl=52:00 sensor3=1.512bar
+ 13:30 27.8m sensor2=1.512bar sensor3=1.491bar dc_supplied_ppo2=1.46bar
+ 13:35 27.9m 7.0°C ndl=46:00 sensor1=1.323bar sensor2=1.47bar sensor3=1.47bar dc_supplied_ppo2=1.44bar
+ 13:40 28.2m ndl=43:00 sensor1=1.302bar sensor3=1.449bar dc_supplied_ppo2=1.42bar
+ 13:45 28.6m 131.966bar:1 sensor3=1.47bar dc_supplied_ppo2=1.41bar
+ 13:50 28.9m ndl=38:00 sensor2=1.491bar dc_supplied_ppo2=1.42bar
+ 13:55 29.1m ndl=37:00 sensor3=1.491bar dc_supplied_ppo2=1.44bar
+ 14:00 29.2m ndl=38:00 sensor1=1.344bar sensor2=1.512bar sensor3=1.512bar dc_supplied_ppo2=1.46bar
+ 14:05 29.5m sensor1=1.365bar sensor2=1.554bar sensor3=1.575bar dc_supplied_ppo2=1.5bar
+ 14:10 29.8m 150.995bar:0 ndl=39:00 cns=8% sensor1=1.407bar sensor2=1.617bar sensor3=1.617bar dc_supplied_ppo2=1.54bar
+ 14:15 30.0m sensor2=1.596bar sensor3=1.596bar dc_supplied_ppo2=1.55bar
+ 14:20 30.0m sensor1=1.386bar sensor2=1.575bar sensor3=1.554bar dc_supplied_ppo2=1.53bar
+ 14:25 30.3m sensor1=1.365bar sensor2=1.554bar sensor3=1.533bar dc_supplied_ppo2=1.5bar
+ 14:30 30.7m ndl=35:00 dc_supplied_ppo2=1.49bar
+ 14:35 31.0m ndl=32:00 tts=4:00 sensor3=1.554bar dc_supplied_ppo2=1.5bar
+ 14:40 31.4m sensor2=1.575bar dc_supplied_ppo2=1.51bar
+ 14:45 31.6m ndl=30:00
+ 14:50 31.7m sensor1=1.386bar sensor3=1.575bar
+ 14:55 31.9m 150.03bar:0 sensor3=1.554bar
+ 15:00 31.8m ndl=29:00 sensor1=1.365bar sensor2=1.554bar
+ 15:05 31.6m sensor3=1.533bar dc_supplied_ppo2=1.5bar
+ 15:10 31.5m sensor1=1.344bar sensor2=1.533bar dc_supplied_ppo2=1.48bar
+ 15:15 31.4m 149.065bar:0 sensor2=1.512bar sensor3=1.512bar dc_supplied_ppo2=1.46bar
+ 15:20 31.5m ndl=28:00 cns=9% sensor1=1.323bar sensor2=1.491bar sensor3=1.491bar dc_supplied_ppo2=1.45bar
+ 15:25 31.6m ndl=27:00 sensor1=1.302bar dc_supplied_ppo2=1.44bar
+ 15:30 31.4m sensor2=1.47bar sensor3=1.47bar dc_supplied_ppo2=1.42bar
+ 15:35 31.3m 147.961bar:0 ndl=26:00 sensor1=1.281bar sensor2=1.449bar sensor3=1.449bar dc_supplied_ppo2=1.41bar
+ 15:40 31.1m dc_supplied_ppo2=1.4bar
+ 15:45 30.9m sensor1=1.26bar sensor2=1.428bar sensor3=1.428bar dc_supplied_ppo2=1.38bar
+ 15:50 30.6m sensor1=1.239bar sensor2=1.407bar sensor3=1.407bar dc_supplied_ppo2=1.37bar
+ 15:55 30.5m tts=3:00 sensor1=1.218bar sensor2=1.386bar sensor3=1.386bar dc_supplied_ppo2=1.35bar
+ 16:00 30.3m dc_supplied_ppo2=1.34bar
+ 16:05 30.2m sensor1=1.197bar sensor2=1.365bar sensor3=1.365bar dc_supplied_ppo2=1.33bar
+ 16:10 30.5m ndl=25:00 dc_supplied_ppo2=1.32bar
+ 16:15 31.1m sensor1=1.218bar sensor2=1.386bar dc_supplied_ppo2=1.33bar
+ 16:20 31.7m ndl=23:00 tts=4:00 sensor3=1.386bar dc_supplied_ppo2=1.34bar
+ 16:25 32.0m sensor2=1.407bar dc_supplied_ppo2=1.35bar
+ 16:30 32.2m ndl=22:00 sensor1=1.239bar
+ 16:35 32.6m ndl=21:00 sensor1=1.218bar sensor2=1.386bar
+ 16:40 33.1m
+ 16:45 33.6m ndl=18:00 sensor1=1.239bar sensor2=1.407bar
+ 16:50 34.0m ndl=17:00 cns=10% sensor3=1.407bar dc_supplied_ppo2=1.36bar
+ 16:55 34.6m sensor2=1.428bar dc_supplied_ppo2=1.37bar
+ 17:00 35.1m ndl=15:00 sensor1=1.26bar sensor3=1.428bar dc_supplied_ppo2=1.38bar
+ 17:05 35.4m sensor2=1.449bar sensor3=1.449bar dc_supplied_ppo2=1.39bar
+ 17:10 35.9m sensor1=1.281bar dc_supplied_ppo2=1.4bar
+ 17:15 36.2m ndl=14:00
+ 17:20 36.6m ndl=13:00 dc_supplied_ppo2=1.41bar
+ 17:25 37.0m 146.996bar:0
+ 17:30 37.2m 146.031bar:0
+ 17:35 37.5m ndl=12:00
+ 17:40 37.7m dc_supplied_ppo2=1.4bar
+ 17:45 37.9m 6.0°C 145.066bar:0
+ 17:50 38.1m ndl=11:00
+ 17:55 38.3m sensor1=1.26bar sensor2=1.428bar sensor3=1.428bar dc_supplied_ppo2=1.39bar
+ 18:00 38.2m dc_supplied_ppo2=1.38bar
+ 18:05 38.1m ndl=10:00 sensor1=1.239bar sensor2=1.407bar sensor3=1.407bar dc_supplied_ppo2=1.36bar
+ 18:10 38.3m sensor1=1.218bar sensor2=1.386bar sensor3=1.386bar dc_supplied_ppo2=1.35bar
+ 18:15 38.5m dc_supplied_ppo2=1.34bar
+ 18:20 38.6m
+ 18:25 38.7m ndl=9:00 cns=11%
+ 18:30 38.9m
+ 18:35 39.0m 131.0bar:1
+ 18:40 39.0m dc_supplied_ppo2=1.33bar
+ 18:45 39.0m
+ 18:50 39.0m dc_supplied_ppo2=1.34bar
+ 18:55 39.0m sensor1=1.239bar sensor2=1.428bar sensor3=1.428bar dc_supplied_ppo2=1.37bar
+ 19:00 39.1m sensor1=1.26bar dc_supplied_ppo2=1.38bar
+ 19:05 39.1m sensor1=1.239bar sensor2=1.407bar sensor3=1.407bar dc_supplied_ppo2=1.37bar
+ 19:10 39.1m sensor1=1.26bar sensor2=1.428bar sensor3=1.428bar dc_supplied_ppo2=1.38bar
+ 19:15 39.0m sensor2=1.449bar sensor3=1.449bar dc_supplied_ppo2=1.39bar
+ 19:20 38.9m sensor1=1.302bar sensor2=1.491bar sensor3=1.491bar dc_supplied_ppo2=1.42bar
+ 19:25 38.7m sensor1=1.323bar sensor2=1.554bar sensor3=1.533bar dc_supplied_ppo2=1.47bar
+ 19:30 38.7m ndl=10:00 sensor1=1.344bar sensor2=1.533bar dc_supplied_ppo2=1.48bar
+ 19:35 38.6m sensor1=1.323bar sensor2=1.491bar sensor3=1.491bar dc_supplied_ppo2=1.45bar
+ 19:40 38.5m sensor1=1.302bar sensor2=1.47bar sensor3=1.47bar dc_supplied_ppo2=1.42bar
+ 19:45 38.4m ndl=9:00 sensor1=1.281bar sensor2=1.449bar sensor3=1.449bar dc_supplied_ppo2=1.41bar
+ 19:50 38.0m dc_supplied_ppo2=1.4bar
+ 19:55 37.8m cns=12% sensor1=1.26bar dc_supplied_ppo2=1.39bar
+ 20:00 37.4m sensor2=1.428bar sensor3=1.428bar
+ 20:05 37.1m sensor1=1.239bar sensor2=1.407bar dc_supplied_ppo2=1.37bar
+ 20:10 36.7m sensor3=1.407bar dc_supplied_ppo2=1.36bar
+ 20:15 36.0m dc_supplied_ppo2=1.35bar
+ 20:20 35.6m ndl=10:00 sensor2=1.449bar sensor3=1.428bar dc_supplied_ppo2=1.37bar
+ 20:25 35.1m ndl=11:00 sensor1=1.26bar sensor3=1.449bar dc_supplied_ppo2=1.4bar
+ 20:30 34.9m sensor2=1.428bar sensor3=1.428bar dc_supplied_ppo2=1.38bar
+ 20:35 34.4m ndl=12:00 sensor1=1.239bar sensor2=1.386bar sensor3=1.386bar dc_supplied_ppo2=1.35bar
+ 20:40 33.7m sensor1=1.197bar sensor2=1.344bar sensor3=1.365bar dc_supplied_ppo2=1.32bar
+ 20:45 33.0m sensor1=1.176bar sensor2=1.323bar sensor3=1.323bar dc_supplied_ppo2=1.29bar
+ 20:50 32.6m sensor1=1.155bar sensor2=1.302bar sensor3=1.302bar dc_supplied_ppo2=1.26bar
+ 20:55 32.1m ndl=13:00 sensor1=1.134bar sensor2=1.281bar sensor3=1.281bar dc_supplied_ppo2=1.25bar
+ 21:00 31.8m 130.035bar:1 dc_supplied_ppo2=1.24bar
+ 21:05 31.3m sensor1=1.113bar sensor2=1.26bar dc_supplied_ppo2=1.23bar
+ 21:10 31.1m sensor3=1.26bar dc_supplied_ppo2=1.22bar
+ 21:15 30.9m ndl=14:00 sensor1=1.134bar sensor2=1.302bar sensor3=1.281bar dc_supplied_ppo2=1.24bar
+ 21:20 30.3m sensor1=1.197bar sensor2=1.323bar sensor3=1.302bar dc_supplied_ppo2=1.28bar
+ 21:25 30.1m ndl=17:00 tts=3:00 sensor1=1.26bar sensor2=1.407bar sensor3=1.386bar dc_supplied_ppo2=1.34bar
+ 21:30 30.3m ndl=20:00 sensor3=1.407bar dc_supplied_ppo2=1.37bar
+ 21:35 30.7m sensor1=1.239bar sensor2=1.386bar sensor3=1.386bar dc_supplied_ppo2=1.35bar
+ 21:40 30.8m ndl=17:00 tts=4:00 cns=13% dc_supplied_ppo2=1.34bar
+ 21:45 30.9m sensor2=1.407bar sensor3=1.407bar dc_supplied_ppo2=1.35bar
+ 21:50 31.0m dc_supplied_ppo2=1.36bar
+ 21:55 31.2m ndl=16:00
+ 22:00 31.5m
+ 22:05 31.7m
+ 22:10 31.8m
+ 22:15 31.9m ndl=15:00
+ 22:20 31.9m
+ 22:25 32.0m 128.932bar:1 sensor2=1.386bar sensor3=1.386bar dc_supplied_ppo2=1.35bar
+ 22:30 31.8m ndl=14:00 sensor1=1.218bar
+ 22:35 31.8m ndl=15:00 sensor2=1.428bar sensor3=1.407bar
+ 22:40 31.8m sensor1=1.26bar sensor2=1.47bar sensor3=1.47bar dc_supplied_ppo2=1.4bar
+ 22:45 31.8m ndl=16:00 sensor1=1.302bar sensor2=1.491bar dc_supplied_ppo2=1.43bar
+ 22:50 31.8m sensor1=1.281bar sensor2=1.449bar sensor3=1.449bar dc_supplied_ppo2=1.41bar
+ 22:55 31.7m sensor1=1.26bar sensor2=1.428bar sensor3=1.428bar dc_supplied_ppo2=1.38bar
+ 23:00 31.5m sensor3=1.407bar dc_supplied_ppo2=1.37bar
+ 23:05 31.3m ndl=15:00 sensor3=1.428bar
+ 23:10 30.9m ndl=16:00 dc_supplied_ppo2=1.38bar
+ 23:15 30.5m cns=14% sensor1=1.239bar sensor2=1.407bar sensor3=1.407bar dc_supplied_ppo2=1.36bar
+ 23:20 30.3m ndl=17:00 tts=3:00 sensor1=1.218bar sensor2=1.386bar sensor3=1.386bar dc_supplied_ppo2=1.34bar
+ 23:25 30.2m ndl=16:00 sensor2=1.365bar sensor3=1.365bar dc_supplied_ppo2=1.33bar
+ 23:30 30.2m sensor1=1.197bar dc_supplied_ppo2=1.32bar
+ 23:35 29.9m
+ 23:40 29.5m ndl=17:00 sensor2=1.386bar
+ 23:45 29.2m ndl=19:00 sensor1=1.239bar sensor2=1.428bar sensor3=1.386bar dc_supplied_ppo2=1.35bar
+ 23:50 29.1m sensor1=1.302bar sensor2=1.512bar sensor3=1.449bar dc_supplied_ppo2=1.41bar
+ 23:55 29.0m ndl=24:00 sensor1=1.323bar sensor2=1.491bar sensor3=1.491bar dc_supplied_ppo2=1.45bar
+ 24:00 28.9m ndl=23:00 sensor1=1.302bar sensor2=1.449bar sensor3=1.449bar dc_supplied_ppo2=1.42bar
+ 24:05 28.8m sensor1=1.26bar sensor2=1.428bar sensor3=1.407bar dc_supplied_ppo2=1.38bar
+ 24:10 28.8m sensor1=1.239bar sensor2=1.407bar dc_supplied_ppo2=1.36bar
+ 24:15 28.9m ndl=21:00 sensor1=1.26bar sensor2=1.428bar dc_supplied_ppo2=1.37bar
+ 24:20 28.9m sensor3=1.428bar dc_supplied_ppo2=1.38bar
+ 24:25 28.7m sensor3=1.407bar dc_supplied_ppo2=1.37bar
+ 24:30 28.7m ndl=22:00 sensor1=1.239bar sensor2=1.407bar dc_supplied_ppo2=1.36bar
+ 24:35 28.7m ndl=21:00 dc_supplied_ppo2=1.35bar
+ 24:40 28.8m sensor1=1.218bar sensor2=1.386bar sensor3=1.386bar
+ 24:45 28.3m ndl=22:00 dc_supplied_ppo2=1.34bar
+ 24:50 28.4m ndl=21:00 cns=15% sensor3=1.365bar dc_supplied_ppo2=1.33bar
+ 24:55 28.3m sensor1=1.197bar sensor2=1.365bar
+ 25:00 28.3m dc_supplied_ppo2=1.32bar
+ 25:05 28.2m ndl=20:00 sensor3=1.344bar dc_supplied_ppo2=1.31bar
+ 25:10 28.1m sensor2=1.344bar dc_supplied_ppo2=1.3bar
+ 25:15 27.6m sensor1=1.176bar
+ 25:20 27.5m sensor2=1.323bar sensor3=1.323bar dc_supplied_ppo2=1.29bar
+ 25:25 27.4m ndl=21:00 sensor1=1.155bar sensor2=1.302bar sensor3=1.302bar dc_supplied_ppo2=1.27bar
+ 25:30 27.5m dc_supplied_ppo2=1.26bar
+ 25:35 27.5m
+ 25:40 27.6m ndl=20:00 sensor1=1.176bar sensor2=1.344bar sensor3=1.344bar dc_supplied_ppo2=1.28bar
+ 25:45 27.6m ndl=22:00 sensor1=1.218bar sensor2=1.428bar sensor3=1.386bar dc_supplied_ppo2=1.33bar
+ 25:50 27.6m sensor1=1.239bar sensor3=1.407bar dc_supplied_ppo2=1.37bar
+ 25:55 27.3m ndl=25:00 sensor1=1.218bar sensor2=1.386bar sensor3=1.386bar dc_supplied_ppo2=1.35bar
+ 26:00 27.0m ndl=24:00 sensor1=1.197bar sensor2=1.344bar sensor3=1.344bar dc_supplied_ppo2=1.31bar
+ 26:05 26.7m sensor1=1.176bar sensor2=1.323bar sensor3=1.323bar dc_supplied_ppo2=1.28bar
+ 26:10 26.4m sensor1=1.155bar sensor2=1.302bar sensor3=1.302bar dc_supplied_ppo2=1.27bar
+ 26:15 26.3m 127.967bar:1 dc_supplied_ppo2=1.26bar
+ 26:20 26.1m sensor1=1.134bar sensor2=1.281bar sensor3=1.281bar dc_supplied_ppo2=1.25bar
+ 26:25 25.8m dc_supplied_ppo2=1.24bar
+ 26:30 25.1m ndl=28:00 sensor1=1.176bar sensor2=1.302bar dc_supplied_ppo2=1.26bar
+ 26:35 24.8m ndl=33:00 sensor2=1.344bar sensor3=1.344bar dc_supplied_ppo2=1.29bar
+ 26:40 24.9m sensor1=1.197bar sensor3=1.365bar dc_supplied_ppo2=1.31bar
+ 26:45 25.2m ndl=34:00 cns=16% sensor3=1.344bar
+ 26:50 25.3m ndl=32:00 sensor1=1.176bar dc_supplied_ppo2=1.3bar
+ 26:55 25.2m sensor2=1.323bar sensor3=1.323bar dc_supplied_ppo2=1.28bar
+ 27:00 25.2m sensor1=1.197bar sensor2=1.386bar sensor3=1.344bar dc_supplied_ppo2=1.3bar
+ 27:05 25.1m ndl=34:00 sensor1=1.239bar sensor2=1.428bar sensor3=1.386bar dc_supplied_ppo2=1.35bar
+ 27:10 24.7m ndl=40:00 sensor1=1.218bar sensor2=1.365bar sensor3=1.365bar dc_supplied_ppo2=1.34bar
+ 27:15 24.5m sensor1=1.176bar sensor2=1.344bar sensor3=1.323bar dc_supplied_ppo2=1.3bar
+ 27:20 24.4m 7.0°C ndl=38:00 sensor1=1.155bar sensor2=1.323bar dc_supplied_ppo2=1.28bar
+ 27:25 24.2m 6.0°C ndl=37:00 sensor2=1.302bar sensor3=1.302bar dc_supplied_ppo2=1.27bar
+ 27:30 24.3m 7.0°C 126.036bar:1 dc_supplied_ppo2=1.26bar
+ 27:35 24.3m sensor2=1.323bar sensor3=1.323bar dc_supplied_ppo2=1.27bar
+ 27:40 24.0m ndl=42:00 sensor1=1.176bar dc_supplied_ppo2=1.28bar
+ 27:45 23.6m sensor1=1.218bar sensor2=1.386bar sensor3=1.365bar dc_supplied_ppo2=1.32bar
+ 27:50 23.2m sensor1=1.26bar sensor2=1.491bar sensor3=1.449bar dc_supplied_ppo2=1.39bar
+ 27:55 22.7m ndl=99:00 sensor1=1.323bar sensor2=1.512bar sensor3=1.512bar dc_supplied_ppo2=1.45bar
+ 28:00 22.3m sensor1=1.281bar sensor2=1.449bar sensor3=1.428bar dc_supplied_ppo2=1.41bar
+ 28:05 21.9m sensor1=1.239bar sensor2=1.407bar sensor3=1.386bar dc_supplied_ppo2=1.36bar
+ 28:10 21.9m sensor1=1.218bar dc_supplied_ppo2=1.35bar
+ 28:15 21.5m sensor1=1.239bar sensor3=1.407bar dc_supplied_ppo2=1.36bar
+ 28:20 21.7m
+ 28:25 21.2m cns=17%
+ 28:30 20.9m sensor1=1.218bar sensor2=1.386bar sensor3=1.386bar dc_supplied_ppo2=1.34bar
+ 28:35 20.6m sensor1=1.197bar sensor2=1.365bar sensor3=1.365bar dc_supplied_ppo2=1.32bar
+ 28:40 19.9m sensor2=1.344bar sensor3=1.344bar dc_supplied_ppo2=1.3bar
+ 28:45 19.8m tts=2:00 sensor2=1.386bar dc_supplied_ppo2=1.31bar
+ 28:50 19.8m sensor1=1.218bar sensor2=1.428bar sensor3=1.407bar dc_supplied_ppo2=1.34bar
+ 28:55 19.8m sensor1=1.239bar dc_supplied_ppo2=1.37bar
+ 29:00 19.7m sensor1=1.218bar sensor2=1.386bar sensor3=1.365bar dc_supplied_ppo2=1.34bar
+ 29:05 19.1m sensor1=1.197bar sensor2=1.344bar sensor3=1.344bar dc_supplied_ppo2=1.31bar
+ 29:10 18.7m sensor1=1.176bar sensor2=1.323bar sensor3=1.323bar dc_supplied_ppo2=1.28bar
+ 29:15 18.8m sensor1=1.155bar sensor3=1.302bar dc_supplied_ppo2=1.27bar
+ 29:20 19.2m sensor3=1.323bar
+ 29:25 19.4m sensor1=1.176bar sensor2=1.344bar dc_supplied_ppo2=1.28bar
+ 29:30 19.3m sensor3=1.344bar dc_supplied_ppo2=1.29bar
+ 29:35 19.4m sensor1=1.197bar sensor2=1.386bar sensor3=1.365bar dc_supplied_ppo2=1.31bar
+ 29:40 19.1m sensor1=1.218bar sensor2=1.428bar sensor3=1.386bar dc_supplied_ppo2=1.35bar
+ 29:45 19.1m sensor1=1.239bar sensor2=1.407bar dc_supplied_ppo2=1.36bar
+ 29:50 18.9m 146.031bar:0 sensor1=1.197bar sensor2=1.365bar sensor3=1.344bar dc_supplied_ppo2=1.32bar
+ 29:55 18.8m sensor1=1.176bar sensor2=1.344bar dc_supplied_ppo2=1.3bar
+ 30:00 18.6m dc_supplied_ppo2=1.29bar
+ 30:05 18.5m cns=18% sensor3=1.323bar
+ 30:10 18.4m sensor2=1.323bar dc_supplied_ppo2=1.28bar
+ 30:15 18.6m sensor1=1.155bar
+ 30:20 18.4m sensor3=1.302bar dc_supplied_ppo2=1.27bar po2=0.7bar
+ 30:25 17.9m 124.933bar:1 sensor2=1.302bar dc_supplied_ppo2=1.26bar
+ 30:30 17.6m sensor1=1.134bar sensor2=1.281bar sensor3=1.281bar dc_supplied_ppo2=1.24bar
+ 30:35 17.1m sensor1=1.113bar sensor3=1.26bar dc_supplied_ppo2=1.23bar
+ 30:40 17.0m sensor1=1.134bar sensor2=1.323bar sensor3=1.281bar dc_supplied_ppo2=1.24bar
+ 30:45 16.7m sensor1=1.155bar sensor3=1.302bar dc_supplied_ppo2=1.26bar
+ 30:50 16.6m sensor1=1.134bar sensor2=1.281bar sensor3=1.281bar
+ 30:55 16.5m sensor1=1.113bar sensor3=1.26bar dc_supplied_ppo2=1.23bar
+ 31:00 16.2m sensor1=1.092bar sensor2=1.239bar sensor3=1.239bar dc_supplied_ppo2=1.21bar
+ 31:05 15.6m sensor1=1.071bar sensor2=1.218bar sensor3=1.218bar dc_supplied_ppo2=1.18bar
+ 31:10 15.6m sensor1=1.05bar sensor2=1.197bar sensor3=1.197bar dc_supplied_ppo2=1.16bar
+ 31:15 15.6m 123.968bar:1
+ 31:20 15.6m sensor1=1.071bar sensor2=1.218bar
+ 31:25 15.4m sensor2=1.26bar sensor3=1.218bar dc_supplied_ppo2=1.19bar
+ 31:30 15.0m sensor1=1.134bar sensor2=1.323bar sensor3=1.281bar dc_supplied_ppo2=1.23bar
+ 31:35 14.9m sensor1=1.176bar sensor2=1.386bar sensor3=1.344bar dc_supplied_ppo2=1.29bar
+ 31:40 14.8m sensor1=1.197bar sensor2=1.344bar dc_supplied_ppo2=1.31bar
+ 31:45 14.6m sensor1=1.176bar sensor2=1.323bar sensor3=1.302bar dc_supplied_ppo2=1.28bar
+ 31:50 14.5m sensor1=1.155bar sensor3=1.323bar
+ 31:55 14.5m sensor1=1.176bar sensor2=1.344bar
+ 32:00 14.3m dc_supplied_ppo2=1.29bar
+ 32:05 14.2m cns=19% sensor1=1.155bar sensor2=1.323bar dc_supplied_ppo2=1.28bar
+ 32:10 14.0m sensor2=1.302bar sensor3=1.302bar dc_supplied_ppo2=1.27bar
+ 32:15 13.6m sensor1=1.134bar sensor2=1.281bar sensor3=1.281bar dc_supplied_ppo2=1.25bar
+ 32:20 13.9m dc_supplied_ppo2=1.24bar
+ 32:25 13.8m
+ 32:30 13.7m
+ 32:35 13.4m sensor2=1.323bar sensor3=1.302bar dc_supplied_ppo2=1.25bar
+ 32:40 13.5m 8.0°C sensor1=1.176bar sensor2=1.365bar sensor3=1.344bar dc_supplied_ppo2=1.3bar
+ 32:45 13.4m sensor2=1.323bar sensor3=1.323bar dc_supplied_ppo2=1.29bar
+ 32:50 13.3m sensor1=1.155bar sensor2=1.302bar sensor3=1.281bar dc_supplied_ppo2=1.26bar
+ 32:55 12.9m sensor1=1.134bar sensor2=1.281bar dc_supplied_ppo2=1.24bar
+ 33:00 13.3m
+ 33:05 13.5m
+ 33:10 13.6m 122.037bar:1 sensor2=1.302bar
+ 33:15 13.4m dc_supplied_ppo2=1.25bar
+ 33:20 13.5m sensor1=1.155bar sensor2=1.344bar sensor3=1.323bar dc_supplied_ppo2=1.27bar
+ 33:25 13.4m sensor1=1.218bar sensor2=1.428bar sensor3=1.386bar dc_supplied_ppo2=1.33bar
+ 33:30 13.4m sensor1=1.281bar sensor2=1.491bar sensor3=1.47bar dc_supplied_ppo2=1.4bar
+ 33:35 13.5m sensor2=1.47bar sensor3=1.449bar dc_supplied_ppo2=1.42bar
+ 33:40 13.3m sensor1=1.26bar sensor2=1.428bar sensor3=1.428bar dc_supplied_ppo2=1.39bar
+ 33:45 13.2m sensor3=1.407bar dc_supplied_ppo2=1.37bar
+ 33:50 13.4m sensor3=1.428bar
+ 33:55 13.0m cns=20% dc_supplied_ppo2=1.38bar
+ 34:00 13.0m sensor3=1.407bar dc_supplied_ppo2=1.37bar
+ 34:05 13.0m sensor1=1.239bar sensor2=1.407bar
+ 34:10 12.9m sensor3=1.386bar dc_supplied_ppo2=1.35bar
+ 34:15 12.9m
+ 34:20 12.6m sensor1=1.218bar sensor2=1.386bar dc_supplied_ppo2=1.34bar
+ 34:25 12.5m sensor3=1.365bar dc_supplied_ppo2=1.33bar
+ 34:30 12.2m sensor3=1.386bar dc_supplied_ppo2=1.34bar
+ 34:35 12.1m
+ 34:40 12.2m sensor3=1.365bar
+ 34:45 11.9m sensor1=1.197bar sensor2=1.365bar sensor3=1.344bar dc_supplied_ppo2=1.32bar
+ 34:50 11.6m sensor1=1.176bar sensor2=1.344bar sensor3=1.323bar dc_supplied_ppo2=1.3bar
+ 34:55 11.3m sensor1=1.155bar sensor2=1.323bar dc_supplied_ppo2=1.28bar
+ 35:00 11.0m sensor2=1.302bar sensor3=1.302bar dc_supplied_ppo2=1.26bar
+ 35:05 11.0m sensor1=1.134bar sensor2=1.281bar sensor3=1.281bar dc_supplied_ppo2=1.24bar
+ 35:10 10.7m 120.934bar:1 sensor1=1.113bar sensor3=1.26bar dc_supplied_ppo2=1.23bar
+ 35:15 10.3m tts=1:00 sensor2=1.26bar sensor3=1.239bar dc_supplied_ppo2=1.22bar
+ 35:20 10.1m sensor1=1.092bar dc_supplied_ppo2=1.2bar
+ 35:25 9.5m 122.037bar:1 sensor1=1.113bar sensor2=1.281bar sensor3=1.26bar dc_supplied_ppo2=1.22bar
+ 35:30 9.2m sensor3=1.281bar dc_supplied_ppo2=1.23bar
+ 35:35 9.1m sensor1=1.092bar sensor2=1.239bar sensor3=1.239bar dc_supplied_ppo2=1.21bar
+ 35:40 9.3m sensor2=1.218bar sensor3=1.218bar dc_supplied_ppo2=1.19bar
+ 35:45 9.1m cns=21% sensor1=1.071bar dc_supplied_ppo2=1.18bar
+ 35:50 9.4m
+ 35:55 9.4m
+ 36:00 9.3m
+ 36:05 9.3m dc_supplied_ppo2=1.17bar
+ 36:10 9.2m 146.996bar:0 sensor2=1.197bar sensor3=1.197bar
+ 36:15 9.1m sensor1=1.05bar dc_supplied_ppo2=1.16bar
+ 36:20 9.1m sensor3=1.176bar dc_supplied_ppo2=1.15bar
+ 36:25 9.0m sensor2=1.176bar dc_supplied_ppo2=1.14bar
+ 36:30 9.2m sensor1=1.029bar
+ 36:35 9.2m dc_supplied_ppo2=1.13bar
+ 36:40 9.2m 9.0°C dc_supplied_ppo2=1.14bar
+ 36:45 9.0m
+ 36:50 9.1m
+ 36:55 8.9m sensor1=1.05bar sensor2=1.197bar sensor3=1.197bar dc_supplied_ppo2=1.15bar
+ 37:00 9.1m
+ 37:05 9.1m sensor1=1.029bar sensor2=1.176bar sensor3=1.176bar dc_supplied_ppo2=1.14bar
+ 37:10 9.1m
+ 37:15 9.2m
+ 37:20 9.2m sensor1=1.05bar sensor2=1.197bar sensor3=1.197bar dc_supplied_ppo2=1.15bar
+ 37:25 8.9m sensor1=1.071bar sensor2=1.239bar sensor3=1.218bar dc_supplied_ppo2=1.17bar
+ 37:30 9.0m dc_supplied_ppo2=1.19bar
+ 37:35 8.6m sensor2=1.197bar sensor3=1.197bar dc_supplied_ppo2=1.17bar
+ 37:40 8.6m sensor1=1.029bar sensor2=1.176bar sensor3=1.176bar dc_supplied_ppo2=1.14bar
+ 37:45 8.6m sensor2=1.155bar sensor3=1.155bar dc_supplied_ppo2=1.12bar
+ 37:50 8.5m
+ 37:55 8.8m sensor2=1.176bar
+ 38:00 8.8m cns=22% dc_supplied_ppo2=1.13bar
+ 38:05 8.9m
+ 38:10 9.0m sensor3=1.176bar
+ 38:15 9.1m
+ 38:20 9.0m sensor3=1.155bar
+ 38:25 9.0m
+ 38:30 9.0m sensor2=1.155bar dc_supplied_ppo2=1.12bar
+ 38:35 9.2m
+ 38:40 9.2m sensor2=1.176bar dc_supplied_ppo2=1.13bar
+ 38:45 9.3m
+ 38:50 9.2m
+ 38:55 9.3m
+ 39:00 9.4m sensor3=1.176bar
+ 39:05 9.2m sensor1=1.05bar sensor2=1.197bar sensor3=1.197bar dc_supplied_ppo2=1.15bar
+ 39:10 9.3m dc_supplied_ppo2=1.17bar
+ 39:15 9.2m sensor3=1.176bar dc_supplied_ppo2=1.15bar
+ 39:20 9.2m sensor1=1.029bar sensor2=1.176bar dc_supplied_ppo2=1.13bar
+ 39:25 9.0m sensor2=1.155bar sensor3=1.155bar
+ 39:30 8.8m sensor1=1.008bar dc_supplied_ppo2=1.11bar
+ 39:35 8.8m sensor2=1.134bar sensor3=1.134bar dc_supplied_ppo2=1.1bar
+ 39:40 9.0m
+ 39:45 9.2m sensor2=1.155bar sensor3=1.155bar dc_supplied_ppo2=1.11bar
+ 39:50 8.9m sensor3=1.134bar
+ 39:55 9.0m sensor2=1.134bar dc_supplied_ppo2=1.1bar
+ 40:00 9.0m sensor1=0.987bar dc_supplied_ppo2=1.09bar
+ 40:05 8.6m sensor2=1.113bar sensor3=1.113bar dc_supplied_ppo2=1.08bar
+ 40:10 8.4m sensor1=0.966bar sensor2=1.092bar sensor3=1.092bar dc_supplied_ppo2=1.06bar
+ 40:15 8.2m sensor1=0.945bar sensor2=1.071bar sensor3=1.071bar dc_supplied_ppo2=1.04bar
+ 40:20 8.3m cns=23% sensor3=1.05bar dc_supplied_ppo2=1.03bar
+ 40:25 8.4m sensor3=1.071bar
+ 40:30 8.4m sensor3=1.05bar
+ 40:35 8.6m
+ 40:40 8.8m sensor3=1.071bar
+ 40:45 9.0m sensor2=1.092bar dc_supplied_ppo2=1.04bar
+ 40:50 9.1m sensor2=1.071bar
+ 40:55 9.2m
+ 41:00 9.0m sensor3=1.05bar dc_supplied_ppo2=1.03bar
+ 41:05 9.0m 10.0°C sensor1=0.924bar sensor2=1.05bar dc_supplied_ppo2=1.01bar
+ 41:10 8.9m sensor1=0.903bar sensor2=1.029bar sensor3=1.029bar dc_supplied_ppo2=0.99bar
+ 41:15 8.7m sensor2=1.008bar sensor3=1.008bar dc_supplied_ppo2=0.98bar
+ 41:20 8.7m sensor1=0.882bar sensor3=0.987bar dc_supplied_ppo2=0.97bar
+ 41:25 8.8m
+ 41:30 8.8m sensor2=0.987bar dc_supplied_ppo2=0.96bar
+ 41:35 8.5m sensor1=0.861bar sensor2=0.966bar sensor3=0.966bar dc_supplied_ppo2=0.95bar
+ 41:40 8.4m sensor1=0.84bar sensor2=0.945bar sensor3=0.945bar dc_supplied_ppo2=0.92bar
+ 41:45 8.5m
+ 41:50 8.5m
+ 41:55 8.4m dc_supplied_ppo2=0.91bar
+ 42:00 8.7m sensor1=0.819bar
+ 42:05 8.8m sensor1=0.84bar
+ 42:10 9.1m dc_supplied_ppo2=0.92bar
+ 42:15 9.0m dc_supplied_ppo2=0.91bar
+ 42:20 8.6m sensor1=0.819bar sensor3=0.924bar
+ 42:25 8.8m sensor2=0.924bar dc_supplied_ppo2=0.9bar
+ 42:30 8.8m
+ 42:35 8.8m dc_supplied_ppo2=0.89bar
+ 42:40 8.8m sensor1=0.798bar sensor3=0.903bar
+ 42:45 8.9m sensor2=0.903bar dc_supplied_ppo2=0.88bar
+ 42:50 8.9m
+ 42:55 8.7m sensor3=0.882bar dc_supplied_ppo2=0.87bar
+ 43:00 8.5m sensor1=0.777bar sensor2=0.882bar dc_supplied_ppo2=0.85bar
+ 43:05 8.4m sensor2=0.903bar sensor3=0.903bar dc_supplied_ppo2=0.86bar
+ 43:10 8.5m sensor1=0.819bar sensor2=0.945bar sensor3=0.945bar dc_supplied_ppo2=0.9bar
+ 43:15 8.6m sensor1=0.84bar dc_supplied_ppo2=0.92bar
+ 43:20 8.6m sensor1=0.819bar sensor2=0.924bar sensor3=0.903bar dc_supplied_ppo2=0.89bar
+ 43:25 8.6m sensor1=0.798bar sensor2=0.903bar dc_supplied_ppo2=0.87bar
+ 43:30 8.6m
+ 43:35 8.5m
+ 43:40 8.5m cns=24%
+ 43:45 8.6m sensor1=0.777bar sensor3=0.882bar
+ 43:50 8.7m dc_supplied_ppo2=0.86bar
+ 43:55 8.6m sensor2=0.882bar
+ 44:00 8.3m sensor3=0.861bar dc_supplied_ppo2=0.85bar
+ 44:05 7.9m sensor1=0.756bar sensor2=0.861bar sensor3=0.84bar dc_supplied_ppo2=0.83bar
+ 44:10 7.6m sensor1=0.735bar sensor2=0.84bar sensor3=0.819bar dc_supplied_ppo2=0.81bar
+ 44:15 8.4m sensor3=0.84bar
+ 44:20 9.0m 146.031bar:0 sensor1=0.756bar sensor2=0.882bar sensor3=0.861bar dc_supplied_ppo2=0.83bar
+ 44:25 8.9m sensor1=0.777bar sensor3=0.882bar dc_supplied_ppo2=0.84bar
+ 44:30 8.9m sensor1=0.756bar sensor2=0.861bar sensor3=0.861bar
+ 44:35 8.8m sensor1=0.735bar sensor2=0.819bar sensor3=0.819bar dc_supplied_ppo2=0.81bar
+ 44:40 8.8m sensor1=0.714bar sensor2=0.798bar sensor3=0.798bar dc_supplied_ppo2=0.79bar
+ 44:45 8.8m dc_supplied_ppo2=0.78bar
+ 44:50 8.8m sensor2=0.819bar
+ 44:55 8.7m sensor1=0.735bar sensor2=0.84bar sensor3=0.84bar dc_supplied_ppo2=0.8bar
+ 45:00 8.9m dc_supplied_ppo2=0.81bar
+ 45:05 8.7m sensor1=0.714bar sensor2=0.819bar sensor3=0.819bar dc_supplied_ppo2=0.8bar
+ 45:10 8.8m sensor3=0.798bar dc_supplied_ppo2=0.78bar
+ 45:15 8.6m sensor3=0.819bar dc_supplied_ppo2=0.79bar
+ 45:20 8.3m sensor1=0.735bar sensor2=0.861bar sensor3=0.84bar dc_supplied_ppo2=0.81bar
+ 45:25 8.4m sensor2=0.84bar dc_supplied_ppo2=0.82bar
+ 45:30 8.7m dc_supplied_ppo2=0.81bar
+ 45:35 8.7m sensor1=0.714bar sensor2=0.819bar sensor3=0.819bar dc_supplied_ppo2=0.8bar
+ 45:40 8.6m dc_supplied_ppo2=0.79bar
+ 45:45 8.6m
+ 45:50 8.7m
+ 45:55 8.8m
+ 46:00 9.0m
+ 46:05 9.1m
+ 46:10 8.9m dc_supplied_ppo2=0.78bar
+ 46:15 8.9m sensor2=0.798bar sensor3=0.798bar
+ 46:20 9.0m dc_supplied_ppo2=0.77bar
+ 46:25 9.0m sensor1=0.693bar
+ 46:30 8.9m dc_supplied_ppo2=0.76bar
+ 46:35 9.0m sensor3=0.777bar
+ 46:40 9.0m sensor2=0.777bar dc_supplied_ppo2=0.75bar
+ 46:45 9.1m
+ 46:50 9.1m sensor1=0.672bar
+ 46:55 9.1m sensor3=0.756bar dc_supplied_ppo2=0.74bar
+ 47:00 9.0m sensor2=0.756bar dc_supplied_ppo2=0.73bar
+ 47:05 9.0m sensor1=0.651bar sensor3=0.735bar dc_supplied_ppo2=0.72bar
+ 47:10 8.9m sensor2=0.735bar dc_supplied_ppo2=0.71bar
+ 47:15 8.9m
+ 47:20 8.7m sensor1=0.63bar sensor2=0.714bar sensor3=0.714bar dc_supplied_ppo2=0.7bar
+ 47:25 8.7m dc_supplied_ppo2=0.69bar
+ 47:30 8.8m sensor1=0.651bar sensor2=0.756bar sensor3=0.735bar dc_supplied_ppo2=0.71bar
+ 47:35 8.8m sensor1=0.672bar sensor2=0.777bar sensor3=0.777bar dc_supplied_ppo2=0.74bar
+ 47:40 8.8m dc_supplied_ppo2=0.75bar
+ 47:45 8.7m sensor2=0.756bar sensor3=0.756bar dc_supplied_ppo2=0.73bar
+ 47:50 8.6m sensor1=0.651bar sensor2=0.735bar sensor3=0.735bar dc_supplied_ppo2=0.72bar
+ 47:55 8.7m dc_supplied_ppo2=0.71bar
+ 48:00 8.7m
+ 48:05 8.7m
+ 48:10 8.9m
+ 48:15 9.1m
+ 48:20 9.1m
+ 48:25 9.0m cns=25% sensor1=0.63bar sensor3=0.714bar dc_supplied_ppo2=0.7bar
+ 48:30 8.7m sensor2=0.714bar dc_supplied_ppo2=0.69bar
+ 48:35 8.7m dc_supplied_ppo2=0.68bar
+ 48:40 8.9m
+ 48:45 9.2m sensor1=0.609bar sensor3=0.693bar
+ 48:50 9.0m sensor2=0.693bar
+ 48:55 8.9m dc_supplied_ppo2=0.67bar
+ 49:00 9.0m dc_supplied_ppo2=0.66bar
+ 49:05 9.0m sensor1=0.588bar sensor2=0.672bar sensor3=0.672bar
+ 49:10 9.2m dc_supplied_ppo2=0.65bar
+ 49:15 9.2m
+ 49:20 9.2m dc_supplied_ppo2=0.66bar
+ 49:25 9.1m sensor2=0.693bar sensor3=0.693bar
+ 49:30 9.0m sensor1=0.609bar
+ 49:35 8.9m sensor1=0.588bar sensor3=0.672bar
+ 49:40 8.9m sensor2=0.672bar dc_supplied_ppo2=0.65bar
+ 49:45 8.8m
+ 49:50 8.7m
+ 49:55 8.5m 120.934bar:1 sensor2=0.693bar sensor3=0.693bar dc_supplied_ppo2=0.66bar
+ 50:00 8.0m sensor1=0.609bar dc_supplied_ppo2=0.67bar
+ 50:05 7.8m sensor2=0.735bar sensor3=0.714bar dc_supplied_ppo2=0.69bar
+ 50:10 7.9m sensor1=0.651bar sensor2=0.777bar sensor3=0.756bar dc_supplied_ppo2=0.73bar
+ 50:15 8.2m sensor1=0.672bar dc_supplied_ppo2=0.74bar
+ 50:20 8.9m sensor2=0.756bar
+ 50:25 9.4m dc_supplied_ppo2=0.73bar
+ 50:30 9.7m
+ 50:35 9.8m sensor2=0.777bar dc_supplied_ppo2=0.74bar
+ 50:40 9.9m sensor3=0.777bar
+ 50:45 9.9m sensor3=0.756bar
+ 50:50 9.7m sensor1=0.651bar sensor2=0.756bar dc_supplied_ppo2=0.73bar
+ 50:55 9.6m
+ 51:00 9.4m 119.969bar:1 sensor1=0.672bar sensor2=0.798bar sensor3=0.777bar dc_supplied_ppo2=0.75bar
+ 51:05 9.3m sensor1=0.693bar sensor3=0.798bar dc_supplied_ppo2=0.77bar
+ 51:10 9.0m dc_supplied_ppo2=0.76bar
+ 51:15 8.8m sensor1=0.714bar sensor2=0.84bar sensor3=0.819bar dc_supplied_ppo2=0.78bar
+ 51:20 8.4m 145.066bar:0 sensor1=0.735bar sensor2=0.882bar sensor3=0.861bar dc_supplied_ppo2=0.82bar
+ 51:25 8.2m sensor2=0.819bar sensor3=0.819bar dc_supplied_ppo2=0.81bar
+ 51:30 7.8m sensor1=0.693bar sensor2=0.798bar sensor3=0.798bar dc_supplied_ppo2=0.77bar
+ 51:35 7.7m sensor1=0.672bar sensor2=0.777bar sensor3=0.777bar dc_supplied_ppo2=0.75bar
+ 51:40 7.7m dc_supplied_ppo2=0.74bar
+ 51:45 7.8m
+ 51:50 7.9m sensor3=0.756bar
+ 51:55 8.1m sensor3=0.777bar
+ 52:00 8.1m sensor3=0.756bar
+ 52:05 8.2m sensor2=0.756bar dc_supplied_ppo2=0.73bar
+ 52:10 7.9m sensor1=0.651bar
+ 52:15 8.0m dc_supplied_ppo2=0.72bar
+ 52:20 7.9m sensor3=0.735bar
+ 52:25 7.9m sensor2=0.735bar dc_supplied_ppo2=0.71bar
+ 52:30 7.8m sensor1=0.63bar dc_supplied_ppo2=0.7bar
+ 52:35 7.7m sensor2=0.714bar sensor3=0.714bar dc_supplied_ppo2=0.69bar
+ 52:40 7.7m
+ 52:45 7.6m sensor1=0.609bar sensor3=0.693bar dc_supplied_ppo2=0.68bar
+ 52:50 7.6m sensor2=0.693bar dc_supplied_ppo2=0.67bar
+ 52:55 7.7m
+ 53:00 7.5m dc_supplied_ppo2=0.66bar
+ 53:05 7.1m sensor1=0.588bar sensor2=0.672bar sensor3=0.672bar dc_supplied_ppo2=0.65bar
+ 53:10 6.8m sensor1=0.567bar sensor2=0.651bar sensor3=0.651bar dc_supplied_ppo2=0.63bar
+ 53:15 6.7m dc_supplied_ppo2=0.62bar
+ 53:20 6.8m dc_supplied_ppo2=0.63bar
+ 53:25 7.1m sensor1=0.588bar sensor2=0.672bar sensor3=0.672bar dc_supplied_ppo2=0.64bar
+ 53:30 7.1m 11.0°C sensor2=0.693bar sensor3=0.693bar dc_supplied_ppo2=0.66bar
+ 53:35 6.9m sensor1=0.609bar sensor2=0.714bar sensor3=0.714bar dc_supplied_ppo2=0.68bar
+ 53:40 6.7m sensor1=0.588bar sensor2=0.672bar sensor3=0.672bar dc_supplied_ppo2=0.66bar
+ 53:45 6.9m dc_supplied_ppo2=0.65bar
+ 53:50 6.9m
+ 53:55 6.9m sensor2=0.693bar sensor3=0.693bar dc_supplied_ppo2=0.66bar
+ 54:00 7.0m sensor1=0.609bar dc_supplied_ppo2=0.67bar
+ 54:05 6.5m cns=26% sensor2=0.714bar sensor3=0.714bar dc_supplied_ppo2=0.69bar
+ 54:10 6.5m sensor2=0.693bar sensor3=0.693bar dc_supplied_ppo2=0.67bar
+ 54:15 6.5m
+ 54:20 6.8m
+ 54:25 6.9m 118.038bar:1 sensor1=0.63bar sensor2=0.735bar sensor3=0.735bar dc_supplied_ppo2=0.69bar
+ 54:30 6.7m sensor1=0.651bar dc_supplied_ppo2=0.71bar
+ 54:35 6.4m sensor1=0.672bar sensor2=0.798bar sensor3=0.777bar dc_supplied_ppo2=0.74bar
+ 54:40 7.0m sensor1=0.693bar sensor2=0.819bar sensor3=0.798bar dc_supplied_ppo2=0.77bar
+ 54:45 6.7m sensor2=0.798bar
+ 54:50 6.7m sensor1=0.714bar
+ 54:55 6.7m sensor1=0.756bar sensor2=0.882bar sensor3=0.882bar dc_supplied_ppo2=0.83bar
+ 55:00 6.7m sensor1=0.777bar dc_supplied_ppo2=0.86bar
+ 55:05 6.6m sensor1=0.756bar sensor2=0.861bar sensor3=0.861bar dc_supplied_ppo2=0.83bar
+ 55:10 6.7m sensor1=0.735bar dc_supplied_ppo2=0.82bar
+ 55:15 6.7m sensor3=0.84bar
+ 55:20 6.8m sensor3=0.861bar
+ 55:25 6.7m sensor2=0.84bar sensor3=0.84bar dc_supplied_ppo2=0.81bar
+ 55:30 6.7m
+ 55:35 6.5m sensor1=0.714bar sensor2=0.819bar sensor3=0.819bar dc_supplied_ppo2=0.8bar
+ 55:40 6.4m dc_supplied_ppo2=0.78bar
+ 55:45 6.3m sensor1=0.693bar sensor2=0.798bar sensor3=0.798bar dc_supplied_ppo2=0.77bar
+ 55:50 6.2m sensor3=0.777bar dc_supplied_ppo2=0.76bar
+ 55:55 6.1m sensor1=0.672bar sensor2=0.777bar dc_supplied_ppo2=0.75bar
+ 56:00 5.9m 12.0°C sensor3=0.756bar dc_supplied_ppo2=0.74bar
+ 56:05 5.7m 11.0°C sensor1=0.651bar sensor2=0.756bar dc_supplied_ppo2=0.73bar
+ 56:10 5.4m 12.0°C sensor2=0.735bar sensor3=0.735bar dc_supplied_ppo2=0.71bar
+ 56:15 4.8m sensor1=0.63bar sensor2=0.714bar sensor3=0.714bar dc_supplied_ppo2=0.69bar
+ 56:20 4.6m sensor1=0.609bar sensor2=0.693bar sensor3=0.693bar dc_supplied_ppo2=0.67bar
+ 56:25 4.0m sensor1=0.588bar sensor2=0.672bar sensor3=0.672bar dc_supplied_ppo2=0.65bar
+ 56:30 3.7m sensor1=0.567bar sensor2=0.63bar sensor3=0.63bar dc_supplied_ppo2=0.62bar
+ 56:35 3.2m sensor1=0.546bar dc_supplied_ppo2=0.61bar
+ 56:40 3.3m sensor2=0.609bar sensor3=0.609bar dc_supplied_ppo2=0.59bar
+ 56:45 2.8m sensor2=0.63bar dc_supplied_ppo2=0.6bar
+ 56:50 2.5m sensor2=0.651bar sensor3=0.63bar dc_supplied_ppo2=0.61bar
+ 56:55 1.7m sensor1=0.567bar sensor3=0.651bar dc_supplied_ppo2=0.62bar
+ 57:00 1.3m sensor1=0.546bar sensor2=0.63bar sensor3=0.63bar
+ 57:05 1.3m sensor1=0.525bar sensor2=0.609bar sensor3=0.609bar dc_supplied_ppo2=0.59bar
+ 57:10 1.6m
+ 57:15 1.3m sensor1=0.546bar sensor2=0.651bar sensor3=0.63bar dc_supplied_ppo2=0.61bar
+ 57:20 0.0m sensor2=0.63bar
+ 57:25 0.0m 116.935bar:1 tts=0:00 sensor1=0.525bar sensor2=0.609bar sensor3=0.609bar dc_supplied_ppo2=0.59bar
+ 57:30 0.0m sensor2=0.63bar
+ 57:35 0.0m sensor1=0.546bar sensor2=0.651bar sensor3=0.651bar dc_supplied_ppo2=0.61bar
+ 57:40 0.0m sensor1=0.588bar sensor2=0.672bar sensor3=0.672bar dc_supplied_ppo2=0.64bar
+ 57:45 0.0m tts=1:00 sensor1=0.609bar sensor2=0.693bar sensor3=0.693bar dc_supplied_ppo2=0.66bar
+ 57:50 0.0m 115.97bar:1 dc_supplied_ppo2=0.67bar
+ 57:55 0.0m
+ 58:00 0.0m tts=0:00 sensor2=0.714bar sensor3=0.714bar dc_supplied_ppo2=0.68bar
+ 58:05 0.0m tts=1:00 dc_supplied_ppo2=0.69bar
+ 58:10 0.0m dc_supplied_ppo2=0.68bar
+ 58:15 0.0m tts=0:00

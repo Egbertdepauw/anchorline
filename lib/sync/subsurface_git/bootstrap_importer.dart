@@ -52,6 +52,8 @@ import 'package:path/path.dart' as p;
 
 import '../../data/db/dive_dao.dart';
 import '../../data/db/dive_annotations_dao.dart';
+import '../../data/import/import_problem_reporter.dart';
+import '../../data/import/same_dive_matcher.dart';
 import 'package:subsurface_core/data/models/annotation.dart';
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart' show ConvertedDive;
 import 'credentials.dart';
@@ -60,18 +62,6 @@ import 'package:subsurface_core/sync/subsurface_git/format/subsurface_parser.dar
 import 'repo.dart';
 import 'package:subsurface_core/sync/subsurface_git/subsurface_model.dart';
 import 'package:subsurface_core/sync/subsurface_git/subsurface_to_ccrlog_mapper.dart';
-
-/// Sentinel parser version stamped on dives the bootstrap importer
-/// brings in. Distinguishes Subsurface-imported dives from BLE-imported
-/// dives in `dives.parser_version` for any future debugging or
-/// re-parse-from-raw decisions. **Must fit in Postgres `integer`
-/// (signed 32-bit, max 2,147,483,647).** A previous value of
-/// `0xFFFFFFFF` overflowed the column on upsert and the entire upload
-/// queue stalled with `value "4294967295" is out of range for type
-/// integer`. `-1` reads cleanly as "sentinel / not from a real
-/// parser" and won't collide with any real Petrel parser version
-/// (those are small positive ints).
-const int kSubsurfaceImportedParserVersion = -1;
 
 /// Aggregated outcome of one bootstrap import run.
 class SubsurfaceBootstrapResult {
@@ -188,19 +178,22 @@ class BootstrapFailed extends SubsurfaceBootstrapEvent {
 /// production wiring is [DaoBootstrapDataSource], which is a thin
 /// adapter over the real DAOs.
 abstract class BootstrapDataSource {
-  /// Existing-dive lookup keyed by `(dcSerial, startTimeUnixSeconds)`.
-  /// The importer uses this to dedupe against dives already in CCRLog
-  /// from a Petrel BLE pull or a previous bootstrap run.
-  Future<Set<({int dcSerial, int startTime})>> existingDiveKeys();
+  /// Every stored dive's matching columns, soft-deleted rows included. The
+  /// importer uses them to skip dives CCRLog already has: a Petrel BLE pull,
+  /// an earlier bootstrap run, or any other brand's download.
+  Future<List<StoredDiveKey>> storedDiveKeys();
 
   /// Atomically import a Subsurface-derived dive bundle. Mirrors
   /// `DiveDao.importDive`. The importer always passes
-  /// `rawBlob: Uint8List(0)` and
-  /// `parserVersion: kSubsurfaceImportedParserVersion`.
-  Future<bool> importDive({
+  /// `rawBlob: Uint8List(0)`,
+  /// `parserVersion: kSubsurfaceImportedParserVersion` and
+  /// `matchSubsurfaceCopies: false`: the bootstrap never refreshes a stored
+  /// dive.
+  Future<ImportOutcome> importDive({
     required ConvertedDive converted,
     required Uint8List rawBlob,
     required int parserVersion,
+    required bool matchSubsurfaceCopies,
   });
 
   /// Upsert the dive's annotation row.
@@ -223,23 +216,20 @@ class DaoBootstrapDataSource implements BootstrapDataSource {
   final DiveAnnotationsDao _annotationsDao;
 
   @override
-  Future<Set<({int dcSerial, int startTime})>> existingDiveKeys() async {
-    final dives = await _diveDao.getAllDives();
-    return {
-      for (final d in dives) (dcSerial: d.dcSerial, startTime: d.startTime),
-    };
-  }
+  Future<List<StoredDiveKey>> storedDiveKeys() => _diveDao.storedDiveKeys();
 
   @override
-  Future<bool> importDive({
+  Future<ImportOutcome> importDive({
     required ConvertedDive converted,
     required Uint8List rawBlob,
     required int parserVersion,
+    required bool matchSubsurfaceCopies,
   }) =>
       _diveDao.importDive(
         converted: converted,
         rawBlob: rawBlob,
         parserVersion: parserVersion,
+        matchSubsurfaceCopies: matchSubsurfaceCopies,
       );
 
   @override
@@ -273,6 +263,7 @@ class SubsurfaceBootstrapImporter {
     SubsurfaceToCcrlogMapper? mapper,
     BootstrapRepoFactory? repoFactory,
     DateTime Function()? clock,
+    ImportProblemReporter? reporter,
   })  : _credentials = credentials,
         _localCloneRoot = localCloneRoot,
         _data = dataSource,
@@ -287,7 +278,8 @@ class SubsurfaceBootstrapImporter {
                   remoteUrl: remoteUrl,
                   credentials: credentials,
                 )),
-        _clock = clock ?? DateTime.now;
+        _clock = clock ?? DateTime.now,
+        _report = reporter ?? reportImportProblemToSentry;
 
   final SubsurfaceCredentialsSource _credentials;
   final Directory _localCloneRoot;
@@ -295,6 +287,7 @@ class SubsurfaceBootstrapImporter {
   final SubsurfaceToCcrlogMapper _mapper;
   final BootstrapRepoFactory _repoFactory;
   final DateTime Function() _clock;
+  final ImportProblemReporter _report;
 
   /// Mirrors [SubsurfaceRepo.isPlatformSupported]. False on iOS;
   /// callers (Settings UI) check this before enabling the button.
@@ -412,11 +405,11 @@ class SubsurfaceBootstrapImporter {
     final candidates = _enumerateDiveFolders(repoDir);
     out.add(WalkingRepo(totalCandidateDives: candidates.length));
 
-    // 6. Existing-key set — done once; any dive imported during the
-    // walk is added to this set on success so a duplicate folder
-    // (Subsurface multi-DC dives, hand-edited entries) is dedup'd
-    // against the just-imported one too.
-    final existing = await _data.existingDiveKeys();
+    // 6. Stored-dive keys — read once; any dive imported during the
+    // walk is added to this list so a duplicate folder (Subsurface
+    // multi-DC dives, hand-edited entries) is dedup'd against the
+    // just-imported one too.
+    final stored = await _data.storedDiveKeys();
 
     // Cache parsed sites lazily — the same site is referenced by many
     // dives (every "De Berendonck" dive points to the same Site-<id>),
@@ -474,48 +467,78 @@ class SubsurfaceBootstrapImporter {
       }
 
       final converted = imported0.converted;
-      final key = (
-        dcSerial: converted.dive.dcSerial,
-        startTime:
-            converted.dive.startTime.millisecondsSinceEpoch ~/ 1000,
-      );
-      // Match under every reading: copies stored by this or older builds
-      // carry the legacy hex reading, later downloads the decimal one.
-      final alreadyStored = subsurfaceSerialForms(
-        converted.dive.dcVendor,
-        imported0.brandSerial,
-      ).any((s) => existing.contains((dcSerial: s, startTime: key.startTime)));
+      final startSeconds =
+          converted.dive.startTime.millisecondsSinceEpoch ~/ 1000;
+      final vendor = converted.dive.dcVendor;
+      // Skip a dive CCRLog already has. With a vendor, match on the id or any
+      // stored dive the same-dive matcher finds: copies stored by this or
+      // older builds carry the legacy hex serial, downloads the per-brand
+      // one, and a download's start time may differ by a few seconds. A
+      // dive without a vendor (manual) keeps the exact serial and start
+      // time check.
+      final alreadyStored = stored.any((k) => k.id == converted.dive.id) ||
+          (vendor != null
+              ? findSameDive(
+                  vendor: vendor,
+                  serial: imported0.brandSerial,
+                  startTimeSeconds: startSeconds,
+                  diveNumber: null,
+                  excludeId: converted.dive.id,
+                  stored: stored,
+                ).isNotEmpty
+              : stored.any((k) =>
+                  k.dcSerial == converted.dive.dcSerial &&
+                  k.startTime == startSeconds));
       if (alreadyStored) {
         skipped++;
         continue;
       }
 
       try {
-        final isNew = await _data.importDive(
+        final outcome = await _data.importDive(
           converted: converted,
           rawBlob: Uint8List(0),
           parserVersion: kSubsurfaceImportedParserVersion,
+          matchSubsurfaceCopies: false,
         );
-        if (isNew) {
-          // Only a dive that was just inserted gets Subsurface's annotation;
-          // the bootstrap never changes a stored dive.
-          if (imported0.annotation != null) {
-            await _data.upsertAnnotation(imported0.annotation!);
-          }
-          imported++;
-          existing.add(key);
-        } else {
-          // DAO reported an existing id — a dive stored under a key our set
-          // didn't include (race / refresh delay). Leave it, and its
-          // annotation, untouched.
-          skipped++;
+        switch (outcome) {
+          case ImportOutcome.inserted:
+          case ImportOutcome.insertedFlagged:
+            // The dive is stored: remember it first, so a failing annotation
+            // doesn't let a near-duplicate folder in later.
+            stored.add(StoredDiveKey(
+              id: converted.dive.id,
+              dcVendor: vendor,
+              dcSerial: converted.dive.dcSerial,
+              dcDiveNumber: converted.dive.dcDiveNumber,
+              startTime: startSeconds,
+              parserVersion: kSubsurfaceImportedParserVersion,
+              dcFamily: converted.dive.dcFamily,
+            ));
+            imported++;
+            // Only a dive that was just inserted gets Subsurface's
+            // annotation; the bootstrap never changes a stored dive.
+            if (imported0.annotation != null) {
+              await _data.upsertAnnotation(imported0.annotation!);
+            }
+          case ImportOutcome.unchanged:
+          case ImportOutcome.refreshed:
+            // The DAO found the dive stored under a key our list didn't
+            // include (race / refresh delay). Leave it, and its annotation,
+            // untouched.
+            skipped++;
+          case ImportOutcome.rejected:
+            unmappable++;
+            _report(const UnusableParse(), null,
+                'bootstrap');
         }
-      } catch (e) {
+      } catch (e, st) {
         // Per-dive failures don't abort the whole run; bucket as
         // unmappable so the user sees a non-zero count and we keep
         // going. A run with hundreds of dives would otherwise fail
         // cold on the first malformed fixture.
         unmappable++;
+        _report(e, st, 'bootstrap');
       }
     }
 

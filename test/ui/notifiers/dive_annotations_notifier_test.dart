@@ -154,4 +154,30 @@ void main() {
       expect(n.displayDecoAlgorithm, 'zhl16c');
     });
   });
+
+  test('save after removing an unassigned cylinder does not bring it back',
+      () async {
+    final cyl = await equipmentDao.addCylinder(
+      label: 'AL80',
+      role: 'diluent',
+      volumeLiters: 11.1,
+      workingPressureBar: 207,
+    );
+    await equipmentDao.setDiveCylinder('dive_u', 0, cyl);
+    await equipmentDao.setDiveCylinder('dive_u', -1, cyl);
+    final n = DiveAnnotationsNotifier(annotationsDao, equipmentDao);
+    await n.load('dive_u');
+    expect(n.unassignedCylinders.keys, [-1]);
+
+    // The save starts while the removal is still writing.
+    final removal = n.removeUnassignedCylinder(-1);
+    await n.save();
+    await removal;
+
+    final rows = await psDb.getAll(
+        'SELECT gas_mix_index FROM dive_cylinders '
+        'WHERE dive_id = ? AND deleted_at IS NULL',
+        ['dive_u']);
+    expect([for (final r in rows) r['gas_mix_index']], [0]);
+  });
 }

@@ -13,6 +13,11 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   String? _diveId;
   DiveAnnotation? _annotation;
   Map<int, String?> _cylinderByMix = {};
+
+  /// Mix indexes the user changed since the last load or save. A save writes
+  /// only these: the rest of the map was read when the screen opened and may
+  /// be stale (a refresh can move cylinder rows meanwhile).
+  final Set<int> _dirtyMixes = {};
   bool _dirty = false;
 
   // ── Read accessors ────────────────────────────────────────────────────
@@ -42,6 +47,13 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   double? get waterTempC => _annotation?.waterTempC;
   List<Weight> get weights => _annotation?.weights ?? const [];
   Map<int, String?> get cylinderByMix => Map.unmodifiable(_cylinderByMix);
+
+  /// Cylinder assignments whose gas mix no longer exists on the dive (a
+  /// refresh keeps them under a negative index). Keyed by that index.
+  Map<int, String?> get unassignedCylinders => {
+        for (final e in _cylinderByMix.entries)
+          if (e.key < 0) e.key: e.value,
+      };
   bool get dirty => _dirty;
   bool get loaded => _annotation != null;
 
@@ -62,6 +74,7 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
     }
     final cylinders = await _equipmentDao.listCylindersForDive(diveId);
     _cylinderByMix = {for (final c in cylinders) c.gasMixIndex: c.cylinderId};
+    _dirtyMixes.clear();
     _dirty = false;
     notifyListeners();
   }
@@ -186,7 +199,24 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
 
   void setCylinderForMix(int gasMixIndex, String? cylinderId) {
     _cylinderByMix = {..._cylinderByMix, gasMixIndex: cylinderId};
+    _dirtyMixes.add(gasMixIndex);
     _markDirty();
+  }
+
+  /// Removes an unassigned cylinder's row now (it is not part of the
+  /// annotation save) and drops it from the list.
+  Future<void> removeUnassignedCylinder(int index) async {
+    final diveId = _diveId;
+    if (diveId == null || index >= 0) return;
+    // Drop it from the map first, so a save running meanwhile can't revive
+    // the row.
+    _cylinderByMix = {
+      for (final e in _cylinderByMix.entries)
+        if (e.key != index) e.key: e.value,
+    };
+    _dirtyMixes.remove(index);
+    notifyListeners();
+    await _equipmentDao.removeDiveCylinder(diveId, index);
   }
 
   void _markDirty() {
@@ -204,10 +234,15 @@ class DiveAnnotationsNotifier extends ChangeNotifier {
   Future<void> save() async {
     if (_annotation == null || _diveId == null) return;
     await _annotationsDao.upsert(_annotation!);
-    final mappings = _cylinderByMix.entries
-        .map((e) => (gasMixIndex: e.key, cylinderId: e.value))
-        .toList();
-    await _equipmentDao.setDiveCylinders(_annotation!.diveId, mappings);
+    final mappings = [
+      for (final i in _dirtyMixes)
+        if (_cylinderByMix.containsKey(i))
+          (gasMixIndex: i, cylinderId: _cylinderByMix[i]),
+    ];
+    if (mappings.isNotEmpty) {
+      await _equipmentDao.setDiveCylinders(_annotation!.diveId, mappings);
+    }
+    _dirtyMixes.clear();
     _dirty = false;
     notifyListeners();
   }

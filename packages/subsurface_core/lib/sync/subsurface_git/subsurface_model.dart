@@ -43,6 +43,18 @@ int parseSubsurfaceSerial(String? vendor, String text) {
   return int.tryParse(t) ?? int.tryParse(t, radix: 16) ?? 0;
 }
 
+/// Sentinel parser version stamped on dives the bootstrap importer
+/// brings in. Distinguishes Subsurface-imported dives from BLE-imported
+/// dives in `dives.parser_version` for any future debugging or
+/// re-parse-from-raw decisions. **Must fit in Postgres `integer`
+/// (signed 32-bit, max 2,147,483,647).** A previous value of
+/// `0xFFFFFFFF` overflowed the column on upsert and the entire upload
+/// queue stalled with `value "4294967295" is out of range for type
+/// integer`. `-1` reads cleanly as "sentinel / not from a real
+/// parser" and won't collide with any real Petrel parser version
+/// (those are small positive ints).
+const int kSubsurfaceImportedParserVersion = -1;
+
 /// Every reading of [serial] that a Subsurface copy may be stored or keyed
 /// under. Every serial-keyed match against Subsurface copies must accept
 /// both readings, because copies stored before brands were read carry the
