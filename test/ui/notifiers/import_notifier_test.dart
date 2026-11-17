@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -13,15 +14,26 @@ import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:subsurface_core/subsurface_core.dart'
     show kSubsurfaceImportedParserVersion;
 import 'package:ccrlogger/devices/dive_download_source.dart';
+import 'package:ccrlogger/devices/libdc/libdc_download_source.dart'
+    show LibdcRun;
 import 'package:ccrlogger/shearwater/ble/mock_ble_transport.dart';
 import 'package:ccrlogger/shearwater/ble/shearwater_ble_transport.dart';
 import 'package:ccrlogger/shearwater/ble/shearwater_link.dart';
 import 'package:ccrlogger/shearwater/parser/manifest_parser.dart';
 import 'package:ccrlogger/ui/notifiers/import_notifier.dart';
+import 'package:ccrlogger/shearwater/ble/ble_io_impl.dart'
+    show shearwaterServiceUuid;
+import 'package:ccrlogger/ble/ble_central.dart'
+    show BleAdapterState, BleScanResult;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
+import 'package:ccrlogger/sync/cloud/usage_tracker.dart' show UsageTracker;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:libdivecomputer/libdivecomputer.dart';
 import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 
+import '../../_helpers/fake_ble_central.dart';
 import '../../_helpers/powersync_test_helper.dart';
 
 /// The mock transport with scripted misbehaviour and call recording.
@@ -114,6 +126,36 @@ class _RejectingDao extends DiveDao {
     bool matchSubsurfaceCopies = true,
   }) async =>
       ImportOutcome.rejected;
+}
+
+/// A [DiveDao] that records what it is asked to import.
+class _CapturingDao extends DiveDao {
+  _CapturingDao(super.db, super.ps, super.session);
+
+  final rawBlobs = <Uint8List>[];
+  final parserVersions = <int>[];
+
+  @override
+  Future<ImportOutcome> importDive({
+    required ConvertedDive converted,
+    required Uint8List rawBlob,
+    required int parserVersion,
+    bool matchSubsurfaceCopies = true,
+  }) async {
+    rawBlobs.add(rawBlob);
+    parserVersions.add(parserVersion);
+    return ImportOutcome.inserted;
+  }
+}
+
+/// A [UsageTracker] that records its events instead of sending them.
+class _RecordingTracker implements UsageTracker {
+  _RecordingTracker(this.events);
+  final List<(String, Map<String, Object?>?)> events;
+
+  @override
+  void track(String eventName, [Map<String, Object?>? properties]) =>
+      events.add((eventName, properties));
 }
 
 /// The mock dive [n] as a Subsurface copy: Subsurface's own id and logbook
@@ -471,4 +513,531 @@ void main() {
       expect(numbers, contains(712));
     });
   });
+
+  group('scan', () {
+    late FakeBleCentral central;
+    late ImportNotifier scanner;
+
+    setUp(() async {
+      central = FakeBleCentral();
+      scanner = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: central,
+      );
+      extra.add(scanner);
+      scanner.startScan();
+      // The scan starts after the adapter check.
+      await Future<void>.delayed(Duration.zero);
+    });
+
+    BleScanResult petrel() => const BleScanResult(
+        id: 'AA:01',
+        name: 'Petrel 3',
+        serviceUuids: [shearwaterServiceUuid]);
+
+    test('a Petrel and an OSTC in one scan: one shearwater, one libdc result',
+        () async {
+      central.advertise(petrel());
+      central.advertise(const BleScanResult(id: 'BB:02', name: 'OSTC 4-1234'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(central.scans, [<String>[]], reason: 'one scan, no filter');
+      final found = scanner.discoveredDevices;
+      expect(found.map((d) => d.kind),
+          [ImportDeviceKind.shearwater, ImportDeviceKind.libdc]);
+      expect(found[0].id, 'AA:01');
+      expect(found[0].candidates, isEmpty);
+      expect(found[1].id, 'BB:02');
+      expect(found[1].name, 'OSTC 4-1234');
+      expect(found[1].candidates, isNotEmpty);
+      expect(found[1].candidates.every((c) => !c.isShearwater), isTrue);
+
+      // The same device again is not listed twice.
+      central.advertise(petrel());
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.discoveredDevices, hasLength(2));
+    });
+
+    test('a Shearwater name never becomes a libdc candidate', () async {
+      // No service UUID in the advertisement, so it is not "shearwater" by
+      // kind either; the name must still not match a libdivecomputer model.
+      central.advertise(const BleScanResult(id: 'CC:03', name: 'Petrel 3'));
+      central.advertise(const BleScanResult(id: 'DD:04', name: 'Perdix 2'));
+      await Future<void>.delayed(Duration.zero);
+
+      for (final d in scanner.discoveredDevices) {
+        expect(d.kind, ImportDeviceKind.unmatched, reason: d.name);
+        expect(d.candidates, isEmpty);
+      }
+      expect(Libdc.matchBle('Petrel 3').any((c) => c.isShearwater), isFalse);
+    });
+
+    test(
+        'an unnamed device is not listed; a named unmatched one is offered '
+        'to the picker', () async {
+      central.advertise(const BleScanResult(id: 'EE:05', name: ''));
+      central.advertise(
+          const BleScanResult(id: 'FF:06', name: 'Some Headphones'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(scanner.discoveredDevices.map((d) => d.id), ['FF:06']);
+      expect(scanner.discoveredDevices.single.kind,
+          ImportDeviceKind.unmatched);
+    });
+
+    test('a listed Petrel is not demoted by a later report without the UUID',
+        () async {
+      central.advertise(petrel());
+      await Future<void>.delayed(Duration.zero);
+      central.advertise(const BleScanResult(id: 'AA:01', name: 'Petrel 3'));
+      central.advertise(const BleScanResult(id: 'AA:01', name: ''));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(scanner.discoveredDevices, hasLength(1));
+      expect(scanner.discoveredDevices.single.kind, ImportDeviceKind.shearwater);
+      expect(scanner.discoveredDevices.single.name, 'Petrel 3');
+    });
+
+    test('Shearwater devices stay unlisted on Windows', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      central.advertise(petrel());
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.discoveredDevices, isEmpty);
+    });
+
+    test('the scan stops when a device is selected and on dispose', () async {
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: central,
+        libdcOpener: (c, r, d) async => throw StateError('no gatt'),
+      );
+      n.startScan();
+      await Future<void>.delayed(Duration.zero);
+      final before = central.stopScanCalls;
+      await n.selectLibdcDevice(
+          const ImportScanResult(
+              id: 'AA:11',
+              name: 'X',
+              kind: ImportDeviceKind.libdc,
+              candidates: [
+                LibdcDescriptor(
+                    vendor: 'V', product: 'P', family: 1, model: 1,
+                    transports: 32)
+              ]),
+          const LibdcDescriptor(
+              vendor: 'V', product: 'P', family: 1, model: 1, transports: 32));
+      expect(central.stopScanCalls, greaterThan(before));
+      final beforeDispose = central.stopScanCalls;
+      n.dispose();
+      expect(central.stopScanCalls, greaterThan(beforeDispose));
+    });
+
+    test('a reset during the adapter wait leaves no scan behind', () async {
+      final waiting = FakeBleCentral(adapter: BleAdapterState.off);
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: waiting,
+      );
+      extra.add(n);
+      n.startScan();
+      await Future<void>.delayed(Duration.zero);
+      n.reset();
+      waiting.setAdapter(BleAdapterState.on);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(waiting.scans, isEmpty);
+
+      // A retry during a wait gives one scan, not two.
+      n.startScan();
+      n.startScan();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(waiting.scans, hasLength(1));
+    });
+
+    test('a Windows Petrel listed before its UUID report is removed', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      central.advertise(const BleScanResult(id: 'AA:01', name: 'Petrel 3'));
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.discoveredDevices, hasLength(1));
+      central.advertise(petrel());
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.discoveredDevices, isEmpty);
+    });
+
+    test('a failing name match is treated as unrecognised', () async {
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: central,
+        matchBle: (_) => throw StateError('no native library'),
+      );
+      extra.add(n);
+      n.startScan();
+      await Future<void>.delayed(Duration.zero);
+      central.advertise(const BleScanResult(id: 'FF:06', name: 'Some Dive'));
+      await Future<void>.delayed(Duration.zero);
+      expect(n.discoveredDevices.single.kind, ImportDeviceKind.unmatched);
+    });
+
+    test('the scan ends after its time and Scan again starts exactly one',
+        () async {
+      expect(scanner.scanEnded, isFalse);
+      await central.endScan();
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.scanEnded, isTrue);
+
+      scanner.scanAgain();
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.scanEnded, isFalse);
+      expect(central.scans, hasLength(2));
+      central.advertise(const BleScanResult(id: 'FF:06', name: 'Some Dive'));
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.discoveredDevices, hasLength(1));
+    });
+
+    test('a scan that cannot start ends too', () async {
+      final off = FakeBleCentral()..scanError = StateError("scan failed");
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: off,
+      );
+      extra.add(n);
+      n.startScan();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(n.scanEnded, isTrue);
+    });
+
+    test('recordNextDownload defaults to false and can be set', () {
+      expect(scanner.recordNextDownload, isFalse);
+      scanner.recordNextDownload = true;
+      expect(scanner.recordNextDownload, isTrue);
+    });
+  });
+
+  group('libdc download', () {
+    const descriptor = LibdcDescriptor(
+        vendor: 'Divesoft',
+        product: 'Liberty',
+        family: 0x130000,
+        model: 10,
+        transports: 32);
+    const scan = ImportScanResult(
+        id: 'AA:11',
+        name: 'Liberty 1234',
+        kind: ImportDeviceKind.libdc,
+        candidates: [descriptor]);
+    const key = 'libdc:${0x130000}:1234';
+
+    LibdcEnvelope envelope(int n) => LibdcEnvelope(
+          pinnedCommit: '0194f09',
+          vendor: 'Divesoft',
+          product: 'Liberty',
+          family: 0x130000,
+          descriptorModel: 10,
+          devinfoModel: 10,
+          devinfoFirmware: 7,
+          devinfoSerial: 1234,
+          fingerprint: Uint8List.fromList([n & 0xFF, n >> 8, 1, 2]),
+          data: Uint8List.fromList([1, 2, 3]),
+        );
+
+    LibdcDiveDownloaded good(int n) => LibdcDiveDownloaded(
+          envelope: envelope(n),
+          diveId: 'x$n',
+          converted: _copyOfMockDive(n, shiftSeconds: 0, logbookNumber: n),
+        );
+
+    LibdcDiveDownloaded bad(int n) => LibdcDiveDownloaded(
+          envelope: envelope(n),
+          diveId: 'bad$n',
+          parseError: LibdcStatus.dataFormat,
+        );
+
+    LibdcFinished finished(LibdcStatus s) => LibdcFinished(
+        status: s, recording: LibdcRecording(log: ['the log line']));
+
+    const info = LibdcDeviceInfo(model: 10, firmware: 7, serial: 1234);
+
+    var closes = 0;
+    var cancels = 0;
+    Map<int, Uint8List>? passedKnown;
+    bool? passedRecord;
+
+    ImportNotifier libdcNotifier(List<LibdcDownloadEvent> script,
+        {bool failConnect = false}) {
+      closes = 0;
+      cancels = 0;
+      passedKnown = null;
+      passedRecord = null;
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: FakeBleCentral(),
+        libdcOpener: (central, r, d) async {
+          if (failConnect) throw StateError('no gatt');
+          return LibdcOpened(
+            connection: LibdcBleConnection(_NoLink()),
+            close: () async => closes++,
+            gattSummary: const ['service 1', 'char 2'],
+          );
+        },
+        libdcStarter: ({
+          required descriptor,
+          required connection,
+          required knownFingerprints,
+          required record,
+        }) {
+          passedKnown = knownFingerprints;
+          passedRecord = record;
+          return LibdcRun(
+              events: Stream.fromIterable(script), cancel: () => cancels++);
+        },
+      );
+      extra.add(n);
+      return n;
+    }
+
+    test('a libdc download skips the manifest and imports each dive',
+        () async {
+      final n = libdcNotifier(
+          [info, good(711), good(712), finished(LibdcStatus.done)]);
+      final states = <ImportFlowState>[];
+      n.addListener(() => states.add(n.state));
+
+      await n.selectLibdcDevice(scan, descriptor);
+
+      expect(states, isNot(contains(ImportFlowState.readingManifest)));
+      expect(states, contains(ImportFlowState.connecting));
+      expect(states, contains(ImportFlowState.downloading));
+      expect(n.state, ImportFlowState.done);
+      expect(n.downloadedCount, 2);
+      expect(n.failedCount, 0);
+      expect(n.identity!.vendor, 'Divesoft');
+      expect(closes, greaterThan(0));
+      expect(n.lastRecordingText, contains('the log line'));
+      expect(n.lastGattSummary, ['service 1', 'char 2']);
+      expect(n.isLibdcDownload, isTrue);
+    });
+
+    test('the fingerprint is saved after a clean finish with no failures only',
+        () async {
+      final n = libdcNotifier(
+          [info, good(711), good(712), finished(LibdcStatus.done)]);
+      await n.selectLibdcDevice(scan, descriptor);
+      // The computer sends the newest dive first: 711's fingerprint.
+      expect(await importStateDao.getLastFingerprint(key),
+          envelope(711).fingerprint);
+    });
+
+    test('a failed dive keeps the old fingerprint', () async {
+      final old = Uint8List.fromList([9, 9, 9, 9]);
+      await importStateDao.saveLastFingerprint(key, old);
+      final n = libdcNotifier(
+          [info, good(711), bad(712), finished(LibdcStatus.done)]);
+      await n.selectLibdcDevice(scan, descriptor);
+      expect(n.failedCount, 1);
+      expect(n.downloadedCount, 1);
+      expect(await importStateDao.getLastFingerprint(key), old);
+    });
+
+    test('download everything again passes no fingerprints', () async {
+      await importStateDao.saveLastFingerprint(
+          key, Uint8List.fromList([9, 9, 9, 9]));
+
+      final normal = libdcNotifier([info, finished(LibdcStatus.done)]);
+      await normal.selectLibdcDevice(scan, descriptor);
+      expect(passedKnown, {1234: Uint8List.fromList([9, 9, 9, 9])});
+      expect(passedRecord, isFalse);
+
+      final again = libdcNotifier([info, finished(LibdcStatus.done)]);
+      again.forceFullReimport = true;
+      again.recordNextDownload = true;
+      await again.selectLibdcDevice(scan, descriptor);
+      expect(passedKnown, isEmpty);
+      expect(passedRecord, isTrue);
+    });
+
+    test('a failed libdc download says how many dives were saved', () async {
+      final n =
+          libdcNotifier([info, good(711), finished(LibdcStatus.timeout)]);
+      await n.selectLibdcDevice(scan, descriptor);
+      expect(n.state, ImportFlowState.error);
+      expect(n.errorMessage,
+          'Download stopped (the computer stopped answering). 1 dive saved.');
+      expect(n.lastRecordingText, contains('the log line'));
+      expect(await importStateDao.getLastFingerprint(key), isNull);
+    });
+
+    test('the stop reason per status', () {
+      expect(libdcStopReason(LibdcStatus.timeout),
+          'the computer stopped answering');
+      expect(libdcStopReason(LibdcStatus.io), 'the connection dropped');
+      expect(libdcStopReason(LibdcStatus.protocol),
+          'unexpected data from the computer');
+      expect(libdcStopReason(LibdcStatus.cancelled), 'cancelled');
+      expect(libdcStopReason(LibdcStatus.noAccess), 'error noAccess');
+    });
+
+    test('a connect failure ends in the error state, not an exception',
+        () async {
+      final n = libdcNotifier(const [], failConnect: true);
+      await n.selectLibdcDevice(scan, descriptor);
+      expect(n.state, ImportFlowState.error);
+      expect(n.errorMessage, startsWith('Connection failed'));
+      expect(n.lastRecordingText, isNull);
+    });
+
+    test('cancelling a running download ends as stopped, not as a success',
+        () async {
+      final old = Uint8List.fromList([9, 9, 9, 9]);
+      await importStateDao.saveLastFingerprint(key, old);
+      final gate = StreamController<LibdcDownloadEvent>();
+      final tracked = <(String, Map<String, Object?>?)>[];
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        usageTracker: _RecordingTracker(tracked),
+        reporter: (e, st, where) {},
+        central: FakeBleCentral(),
+        libdcOpener: (c, r, d) async => LibdcOpened(
+          connection: LibdcBleConnection(_NoLink()),
+          close: () async => closes++,
+          gattSummary: const [],
+        ),
+        libdcStarter: ({
+          required descriptor,
+          required connection,
+          required knownFingerprints,
+          required record,
+        }) =>
+            LibdcRun(
+                events: gate.stream,
+                cancel: () {
+                  cancels++;
+                  // libdivecomputer ends a cancelled run with this status.
+                  gate
+                    ..add(finished(LibdcStatus.cancelled))
+                    ..close();
+                }),
+      );
+      extra.add(n);
+      closes = 0;
+      cancels = 0;
+
+      final flow = n.selectLibdcDevice(scan, descriptor);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      gate.add(info);
+      gate.add(good(711));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(n.state, ImportFlowState.downloading);
+
+      n.cancelDownload();
+      await flow;
+
+      expect(cancels, greaterThanOrEqualTo(1));
+      expect(closes, greaterThan(0), reason: 'the connection is closed');
+      expect(n.state, ImportFlowState.error);
+      expect(n.errorMessage, 'Download stopped (cancelled). 1 dive saved.');
+      expect(n.lastRecordingText, contains('the log line'),
+          reason: 'the Share button keeps working');
+      expect(await importStateDao.getLastFingerprint(key), old);
+      expect(tracked.map((t) => t.$1), ['import_failed']);
+      final props = tracked.single.$2!;
+      expect(props['engine'], 'libdc');
+      expect(props['vendor'], 'Divesoft');
+      expect(props['reason'], 'Download stopped (cancelled). 1 dive saved.');
+    });
+
+    test('a second select while connecting starts no second connection',
+        () async {
+      var opens = 0;
+      final gate = Completer<LibdcOpened>();
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: FakeBleCentral(),
+        libdcOpener: (c, r, d) {
+          opens++;
+          return gate.future;
+        },
+      );
+      extra.add(n);
+      n.startScan();
+      final first = n.selectLibdcDevice(scan, descriptor);
+      final second = n.selectLibdcDevice(scan, descriptor);
+      await second;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(opens, 1);
+      gate.completeError(StateError('stop'));
+      await first;
+      expect(opens, 1);
+    });
+
+    test('a libdc dive is stored with the envelope as raw blob and the '
+        'libdc parser version', () async {
+      final rig = await openEquipmentDaoForTest(db);
+      final capturing = _CapturingDao(db, rig.ps, rig.session);
+      final n = ImportNotifier(
+        dao: capturing,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: FakeBleCentral(),
+        libdcOpener: (c, r, d) async => LibdcOpened(
+          connection: LibdcBleConnection(_NoLink()),
+          close: () async {},
+          gattSummary: const [],
+        ),
+        libdcStarter: ({
+          required descriptor,
+          required connection,
+          required knownFingerprints,
+          required record,
+        }) =>
+            LibdcRun(
+                events: Stream.fromIterable(
+                    [info, good(711), finished(LibdcStatus.done)]),
+                cancel: () {}),
+      );
+      extra.add(n);
+      await n.selectLibdcDevice(scan, descriptor);
+      expect(capturing.rawBlobs, [envelope(711).encode()]);
+      expect(capturing.parserVersions, [kLibdcParserVersion]);
+    });
+  });
+}
+
+class _NoLink implements LibdcBleLink {
+  @override
+  String get advertisedName => 'fake';
+  @override
+  Stream<Uint8List> get notifications => const Stream.empty();
+  @override
+  Future<void> write(Uint8List bytes) async {}
+  @override
+  Future<Uint8List> readCharacteristic(String uuid) async => Uint8List(0);
+  @override
+  Future<void> writeCharacteristic(String uuid, Uint8List bytes) async {}
+  @override
+  Future<void> get disconnected => Completer<void>().future;
 }

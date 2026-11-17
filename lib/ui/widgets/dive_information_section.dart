@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/db/database.dart';
-import 'package:subsurface_core/shearwater/parser/hardware.dart' show ShearwaterModel;
 import '../components/data_row.dart' as components;
 import '../components/numeric_readout.dart';
 import '../components/section_header.dart';
 import '../components/status_dot.dart';
 import '../theme/tokens.dart';
+import '../util/dive_computer_labels.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import 'star_rating.dart';
 
@@ -154,8 +154,8 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
 
   List<Widget> _buildDiveComputerSection(BuildContext context) {
     final dive = widget.dive;
-    final modelName = _modelDisplayName(dive.dcModel);
-    final serialHex = dive.dcSerial.toRadixString(16).padLeft(8, '0');
+    final modelName = diveComputerName(dive);
+    final serialText = diveComputerSerialText(dive);
     final firmware = dive.dcFirmware == null
         ? '—'
         : '0x${dive.dcFirmware!.toRadixString(16).toUpperCase()}';
@@ -172,7 +172,7 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
     final children = <Widget>[
       const SectionHeader('Dive computer'),
       components.DataRow(label: 'Model', value: modelName),
-      components.DataRow(label: 'Serial', value: serialHex, numeric: true),
+      components.DataRow(label: 'Serial', value: serialText, numeric: true),
       components.DataRow(label: 'Firmware', value: firmware, numeric: true),
       components.DataRow(label: 'Deco model', value: decoModelLabel),
       components.DataRow(
@@ -181,7 +181,7 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
       components.DataRow(label: 'Units', value: unitsLabel),
       const SizedBox(height: Spacing.md),
       const SectionHeader('Sensors'),
-      _cellCalibrationRow(context),
+      if (_hasCalibration(dive)) _cellCalibrationRow(context),
       components.DataRow(label: 'Air-integration', value: _aiModeLabel(dive)),
     ];
 
@@ -218,6 +218,15 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
     }
 
     return children;
+  }
+
+  /// A Shearwater dive always shows the calibration row, with the Petrel
+  /// default when none was stored. Another brand shows it only when it stored
+  /// a calibration; a dive without one has no calibration to show.
+  bool _hasCalibration(Dive dive) {
+    if (isShearwaterDive(dive)) return true;
+    final raw = dive.sensorCalibrationJson;
+    return raw != null && raw.isNotEmpty && raw != '[]';
   }
 
   Widget _cellCalibrationRow(BuildContext context) {
@@ -260,27 +269,6 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
         ],
       ),
     );
-  }
-
-  String _modelDisplayName(int modelIdx) {
-    final values = ShearwaterModel.values;
-    if (modelIdx < 0 || modelIdx >= values.length) return 'Unknown';
-    return switch (values[modelIdx]) {
-      ShearwaterModel.predator => 'Shearwater Predator',
-      ShearwaterModel.petrel => 'Shearwater Petrel',
-      ShearwaterModel.petrel2 => 'Shearwater Petrel 2',
-      ShearwaterModel.petrel3 => 'Shearwater Petrel 3',
-      ShearwaterModel.nerd => 'Shearwater NERD',
-      ShearwaterModel.nerd2 => 'Shearwater NERD 2',
-      ShearwaterModel.perdix => 'Shearwater Perdix',
-      ShearwaterModel.perdixAi => 'Shearwater Perdix AI',
-      ShearwaterModel.perdix2 => 'Shearwater Perdix 2',
-      ShearwaterModel.teric => 'Shearwater Teric',
-      ShearwaterModel.peregrine => 'Shearwater Peregrine',
-      ShearwaterModel.peregrineTx => 'Shearwater Peregrine TX',
-      ShearwaterModel.tern => 'Shearwater Tern',
-      ShearwaterModel.unknown => 'Shearwater (unknown)',
-    };
   }
 
   String _decoModelLabel(int decoCode, int? gfLow, int? gfHigh) {

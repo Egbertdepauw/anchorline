@@ -1,15 +1,36 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:libdivecomputer/libdivecomputer.dart';
 
+import '../../build_info.dart';
 import '../../devices/dive_download_source.dart';
+import '../../devices/libdc/download_share.dart';
+import '../../devices/libdc/libdc_tiers.dart';
 import '../notifiers/import_notifier.dart';
+import '../widgets/libdc_model_picker.dart';
 
 class ImportScreen extends StatefulWidget {
   final ImportNotifier notifier;
   final VoidCallback onViewDives;
 
-  const ImportScreen({super.key, required this.notifier, required this.onViewDives});
+  /// Shares a libdivecomputer download's recording. A seam for tests.
+  final Future<String?> Function({
+    required String recordingText,
+    required List<String> extraHeader,
+    Rect? origin,
+  }) shareDownloadFn;
+
+  const ImportScreen({
+    super.key,
+    required this.notifier,
+    required this.onViewDives,
+    this.shareDownloadFn = shareDownload,
+  });
 
   @override
   State<ImportScreen> createState() => _ImportScreenState();
@@ -60,14 +81,14 @@ class _ImportScreenState extends State<ImportScreen> {
 
   Widget _buildIdle(ThemeData theme) {
     final n = widget.notifier;
-    return Center(child: Column(
+    return Center(child: SingleChildScrollView(child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Icon(Icons.bluetooth, size: 64, color: theme.colorScheme.primary),
         const SizedBox(height: 24),
         const Text('Import Dives', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
-        Text('Connect to your Shearwater dive computer',
+        Text('Connect to your dive computer',
             style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
         const SizedBox(height: 24),
         Row(
@@ -87,22 +108,35 @@ class _ImportScreenState extends State<ImportScreen> {
           ],
         ),
         const SizedBox(height: 12),
+        _buildRecordSwitch(n),
+        const SizedBox(height: 12),
         FilledButton.icon(
           onPressed: () => n.startScan(),
           icon: const Icon(Icons.search),
           label: const Text('Start Scan'),
         ),
       ],
-    ));
+    )));
   }
 
   Widget _buildScanning(ImportNotifier n, ThemeData theme) {
-    return Center(child: Column(
+    return Center(child: SingleChildScrollView(child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const SizedBox(width: 48, height: 48, child: CircularProgressIndicator()),
-        const SizedBox(height: 24),
-        const Text('Searching for dive computers...', style: TextStyle(fontSize: 16)),
+        if (n.scanEnded) ...[
+          const Text('Scan finished', style: TextStyle(fontSize: 16)),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            key: const ValueKey('scan-again'),
+            onPressed: n.scanAgain,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Scan again'),
+          ),
+        ] else ...[
+          const SizedBox(width: 48, height: 48, child: CircularProgressIndicator()),
+          const SizedBox(height: 24),
+          const Text('Searching for dive computers...', style: TextStyle(fontSize: 16)),
+        ],
         const SizedBox(height: 8),
         Text('Make sure your dive computer is in upload mode',
             style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.4), fontSize: 12)),
@@ -123,29 +157,142 @@ class _ImportScreenState extends State<ImportScreen> {
           )),
         ],
 
-        // Real BLE devices
-        for (final BluetoothDevice device in n.discoveredDevices) ...[
-          const SizedBox(height: 8),
-          Card(child: ListTile(
-            leading: Icon(Icons.bluetooth, color: theme.colorScheme.primary),
-            title: Text(device.platformName.isNotEmpty ? device.platformName : 'Shearwater DC'),
-            subtitle: Text(device.remoteId.toString()),
-            onTap: () async {
-              await n.selectRealDevice(device);
-              if (n.state == ImportFlowState.readingManifest) {
-                await n.readManifestAndFilterNew();
-              }
-            },
-          )),
-        ],
+        // Real BLE devices: Shearwater and libdivecomputer ones. Named
+        // devices nobody recognises only show up in the model picker.
+        for (final r in n.discoveredDevices)
+          if (r.kind == ImportDeviceKind.shearwater) ...[
+            const SizedBox(height: 8),
+            Card(child: ListTile(
+              leading: Icon(Icons.bluetooth, color: theme.colorScheme.primary),
+              title: Text(r.name.isNotEmpty ? r.name : 'Shearwater DC'),
+              subtitle: Text(r.id),
+              onTap: () async {
+                await n.selectRealDevice(BluetoothDevice.fromId(r.id));
+                if (n.state == ImportFlowState.readingManifest) {
+                  await n.readManifestAndFilterNew();
+                }
+              },
+            )),
+          ] else if (r.kind == ImportDeviceKind.libdc) ...[
+            const SizedBox(height: 8),
+            _buildLibdcRow(n, theme, r),
+          ],
 
-        if (!n.mockDeviceAvailable && n.discoveredDevices.isEmpty) ...[
+        if (!n.mockDeviceAvailable &&
+            !n.discoveredDevices.any((d) => d.kind != ImportDeviceKind.unmatched)) ...[
           const SizedBox(height: 24),
           Text('No devices found yet...',
               style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.3), fontSize: 12)),
         ],
+
+        const SizedBox(height: 16),
+        _buildRecordSwitch(n),
+        TextButton(
+          onPressed: () => _pickModel(n),
+          child: const Text("My computer isn't listed"),
+        ),
       ],
+    )));
+  }
+
+  /// "Record this download": keeps the packets as well as the log, so the
+  /// download can be shared with us afterwards.
+  Widget _buildRecordSwitch(ImportNotifier n) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 380),
+      child: SwitchListTile(
+        key: const ValueKey('record-download-switch'),
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Record this download'),
+        subtitle: const Text(
+            'Other brands only. Keeps what the computer says so you can '
+            'send it to us.'),
+        value: n.recordNextDownload,
+        onChanged: (v) => n.recordNextDownload = v,
+      ),
+    );
+  }
+
+  /// The row title for the models a name could mean. One product: the vendor
+  /// and product, with the advertised name below. Several: the app does not yet
+  /// know the model (the computer tells it on connect), so it shows the vendor
+  /// and the advertised name and claims no product.
+  ({String title, String? subtitle}) _candidateLabel(
+      List<LibdcDescriptor> candidates, String advertised) {
+    final products = {for (final c in candidates) '${c.vendor} ${c.product}'};
+    if (products.length == 1) {
+      return (title: products.single, subtitle: advertised);
+    }
+    final vendors = {for (final c in candidates) c.vendor};
+    return (
+      title: vendors.length == 1
+          ? '${vendors.single} \u00b7 $advertised'
+          : advertised,
+      subtitle: 'Model found when connected',
+    );
+  }
+
+  Widget _buildLibdcRow(
+      ImportNotifier n, ThemeData theme, ImportScanResult r) {
+    final families = {for (final c in r.candidates) c.family};
+    final label = _candidateLabel(r.candidates, r.name);
+    // Tested only when every family the name could mean is.
+    final tested = families.every(isCheckedLibdcFamily);
+    return Card(child: ListTile(
+      leading: Icon(Icons.bluetooth, color: theme.colorScheme.primary),
+      title: Text(label.title),
+      subtitle: label.subtitle == null ? null : Text(label.subtitle!),
+      trailing: tested
+          ? null
+          : Chip(
+              label: const Text(kNotYetTestedLabel),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+            ),
+      onTap: () => _connectLibdc(n, r),
     ));
+  }
+
+  /// One family connects straight away; a name that several families share
+  /// asks which one first. The family decides the protocol; within it the
+  /// first candidate stands in for the model.
+  Future<void> _connectLibdc(ImportNotifier n, ImportScanResult r) async {
+    var chosen = r.candidates.first;
+    final byFamily = <int, LibdcDescriptor>{};
+    for (final c in r.candidates) {
+      byFamily.putIfAbsent(c.family, () => c);
+    }
+    if (byFamily.length > 1) {
+      final pick = await showDialog<LibdcDescriptor>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: const Text('Which of these is your computer?'),
+          children: [
+            for (final d in byFamily.values)
+              SimpleDialogOption(
+                onPressed: () => Navigator.of(ctx).pop(d),
+                child: Text(_candidateLabel(
+                        r.candidates.where((c) => c.family == d.family).toList(),
+                        r.name)
+                    .title),
+              ),
+          ],
+        ),
+      );
+      if (pick == null) return;
+      chosen = pick;
+    }
+    await n.selectLibdcDevice(r, chosen);
+  }
+
+  Future<void> _pickModel(ImportNotifier n) async {
+    final pick = await showDialog<LibdcPick>(
+      context: context,
+      builder: (_) => LibdcModelPicker(devices: n.discoveredDevices, notifier: n),
+    );
+    if (pick == null) return;
+    await n.selectLibdcDevice(pick.device, pick.descriptor);
   }
 
   Widget _buildConnecting(ImportNotifier n, ThemeData theme) {
@@ -269,7 +416,93 @@ class _ImportScreenState extends State<ImportScreen> {
     return DateFormat('yyyy-MM-dd HH:mm').format(dt);
   }
 
+  /// "Share this download": hands the recording to the share sheet,
+  /// anchored at the button (iPad and iOS need it).
+  Widget _buildShareButton(ImportNotifier n) {
+    final text = n.lastRecordingText;
+    if (!n.isLibdcDownload || text == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Builder(
+        builder: (ctx) => OutlinedButton.icon(
+          onPressed: () async {
+            final messenger = ScaffoldMessenger.maybeOf(ctx);
+            final box = ctx.findRenderObject() as RenderBox?;
+            final origin =
+                box != null ? box.localToGlobal(Offset.zero) & box.size : null;
+            try {
+              final savedTo = await widget.shareDownloadFn(
+                recordingText: text,
+                extraHeader: [
+                  'app: ${BuildInfo.version.isEmpty ? 'dev' : BuildInfo.version}'
+                      '+${BuildInfo.build}',
+                  'platform: ${Platform.operatingSystem} '
+                      '${Platform.operatingSystemVersion}',
+                  'gatt:',
+                  ...n.lastGattSummary.map((l) => '  $l'),
+                ],
+                origin: origin,
+              );
+              if (savedTo != null) {
+                // No share sheet here (Linux): the file was saved instead.
+                messenger?.showSnackBar(SnackBar(
+                  duration: const Duration(seconds: 20),
+                  content: Text('Saved the download to $savedTo'),
+                  action: SnackBarAction(
+                    label: 'Open folder',
+                    onPressed: () => _openFolder(savedTo),
+                  ),
+                ));
+              }
+            } catch (e) {
+              // Only the error's type: a message could carry a path or text
+              // from the file.
+              messenger?.showSnackBar(SnackBar(
+                  content: Text(
+                      "Couldn't share the download: ${e.runtimeType}")));
+            }
+          },
+          icon: const Icon(Icons.ios_share),
+          label: const Text('Share this download'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openFolder(String file) async {
+    try {
+      await launchUrl(Uri.directory(p.dirname(file)));
+    } catch (e) {
+      debugPrint('Could not open the folder: $e');
+    }
+  }
+
+  Widget _buildLibdcDownloading(ImportNotifier n, ThemeData theme) {
+    final fade = theme.colorScheme.onSurface.withValues(alpha: 0.5);
+    return Center(child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text('Downloading from ${n.identity?.modelLabel ?? 'your dive computer'}...',
+            style: const TextStyle(fontSize: 16)),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: LinearProgressIndicator(value: n.currentDiveProgress),
+        ),
+        const SizedBox(height: 8),
+        Text('${diveCountLabel(n.downloadedCount)} saved',
+            style: TextStyle(color: fade)),
+        const SizedBox(height: 24),
+        OutlinedButton(
+          onPressed: n.cancelDownload,
+          child: const Text('Cancel'),
+        ),
+      ],
+    ));
+  }
+
   Widget _buildDownloading(ImportNotifier n, ThemeData theme) {
+    if (n.isLibdcDownload) return _buildLibdcDownloading(n, theme);
     // Two progress signals: overall (dives saved / total — drives the
     // big circular ring) and per-dive (compressed bytes received for
     // the dive currently streaming — drives the linear bar). Per-dive
@@ -356,6 +589,7 @@ class _ImportScreenState extends State<ImportScreen> {
           onPressed: () => widget.notifier.reset(),
           child: const Text('Import More'),
         ),
+        _buildShareButton(n),
       ],
     ));
   }
@@ -368,7 +602,8 @@ class _ImportScreenState extends State<ImportScreen> {
         const SizedBox(height: 24),
         Text(n.errorMessage ?? 'An error occurred',
             style: const TextStyle(fontSize: 16), textAlign: TextAlign.center),
-        if (n.downloadedCount > 0) ...[
+        // The libdivecomputer message already says how many dives were saved.
+        if (n.downloadedCount > 0 && !n.isLibdcDownload) ...[
           const SizedBox(height: 8),
           Text('${n.downloadedCount} dives were imported successfully',
               style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
@@ -379,6 +614,7 @@ class _ImportScreenState extends State<ImportScreen> {
           icon: const Icon(Icons.refresh),
           label: const Text('Retry'),
         ),
+        _buildShareButton(n),
       ],
     ));
   }

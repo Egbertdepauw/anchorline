@@ -15,13 +15,13 @@ import '../../data/models/dive_attachment.dart';
 import 'package:subsurface_core/shearwater/parser/parsed_dive.dart' show TankUsage;
 import 'package:subsurface_core/data/sample_codec/active_per_mix.dart';
 import 'package:subsurface_core/data/sample_codec/dive_stats.dart';
-import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import '../../sync/attachments/attachment_downloader.dart';
 import '../notifiers/dive_annotations_notifier.dart';
 import '../notifiers/dive_attachments_notifier.dart';
 import '../notifiers/dive_detail_notifier.dart';
 import '../notifiers/settings_notifier.dart';
 import '../util/attachment_picker.dart';
+import '../util/dive_computer_labels.dart';
 import '../util/dive_mode_color.dart';
 import '../util/format.dart';
 import '../util/tank_labels.dart';
@@ -412,9 +412,7 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
   Widget _buildDetailsTab(ThemeData theme) {
     final dive = widget.dive;
     final modeColor = diveModeColor(dive.diveMode);
-    final modelName = dive.dcModel < ShearwaterModel.values.length
-        ? ShearwaterModel.values[dive.dcModel].name
-        : 'Unknown';
+    final modelName = diveComputerBadgeName(dive);
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -612,8 +610,18 @@ class _DiveDetailScreenState extends State<DiveDetailScreen> {
                     ListenableBuilder(
                       listenable: widget.settingsNotifier,
                       builder: (context, _) {
-                        final visibleTraces =
+                        var visibleTraces =
                             widget.settingsNotifier.visibleTraces;
+                        // Another brand's dive has no cell millivolts: its
+                        // mV channels are zero-filled, so the Cells trace
+                        // and its tooltip rows would show flat zeros.
+                        if (!isShearwaterDive(widget.dive) &&
+                            !_hasCellMv(_notifier.samples!)) {
+                          visibleTraces = {
+                            for (final t in visibleTraces)
+                              if (t != TraceType.cells) t,
+                          };
+                        }
                         final useSpeedColored =
                             widget.settingsNotifier.useSpeedColoredGraph;
                         // In PHONE landscape the user is here to study the
@@ -1654,6 +1662,16 @@ String _runtimeReadout(int seconds) {
 /// Dive-mode badge: the mode (CC / OC / SC …) over the DC model in smaller
 /// print, in a bordered mode-coloured box. Sits under the rating, right-aligned
 /// in the summary card.
+/// Whether any of the three raw cell-millivolt channels carries a reading.
+bool _hasCellMv(SampleSet s) {
+  for (final ch in [s.cellMv0, s.cellMv1, s.cellMv2]) {
+    for (final v in ch) {
+      if (v != 0) return true;
+    }
+  }
+  return false;
+}
+
 class _ModeBadge extends StatelessWidget {
   final String mode;
   final String model;

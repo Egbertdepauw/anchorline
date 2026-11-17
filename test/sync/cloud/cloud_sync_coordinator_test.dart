@@ -170,7 +170,7 @@ void main() {
     expect(h.coord.isConnected, isTrue);
   });
 
-  test('connect passes {dc_engines: 1}', () async {
+  test('connect passes {dc_engines: 2}', () async {
     final h = _build(signedIn: true);
     addTearDown(() {
       h.coord.dispose();
@@ -181,7 +181,7 @@ void main() {
     h.coord.start();
     await Future<void>.delayed(Duration.zero);
 
-    expect(h.target.lastParams, {'dc_engines': 1});
+    expect(h.target.lastParams, {'dc_engines': 2});
     expect(h.target.lastParams, kSyncConnectionParams);
   });
 

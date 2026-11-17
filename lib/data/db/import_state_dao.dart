@@ -6,13 +6,33 @@ library;
 
 import 'package:drift/drift.dart';
 
+import '../../devices/fingerprint_store.dart';
 import 'database.dart';
 
 /// DAO for reading and writing per-device import state.
-class ImportStateDao {
+class ImportStateDao implements FingerprintStore {
   final AppDatabase _db;
 
   ImportStateDao(this._db);
+
+  @override
+  Future<Map<String, Uint8List>> withPrefix(String prefix) =>
+      fingerprintsWithPrefix(prefix);
+
+  /// Every saved fingerprint whose key starts with [prefix], by key. The
+  /// libdivecomputer keys are `libdc:<family>:<serial>`.
+  Future<Map<String, Uint8List>> fingerprintsWithPrefix(String prefix) async {
+    // LIKE treats `_` as a wildcard, so it only narrows the rows; the exact
+    // prefix test is in Dart.
+    final rows = await (_db.select(_db.importStates)
+          ..where((t) => t.dcSerial.like('${prefix.replaceAll('%', '')}%')))
+        .get();
+    return {
+      for (final r in rows)
+        if (r.dcSerial.startsWith(prefix) && r.lastFingerprint != null)
+          r.dcSerial: r.lastFingerprint!,
+    };
+  }
 
   /// Returns the last successfully imported fingerprint for [dcSerial],
   /// or `null` if this device has never been imported from.

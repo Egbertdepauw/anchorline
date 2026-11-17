@@ -1,5 +1,4 @@
 import 'package:libdivecomputer/libdivecomputer.dart';
-import 'package:libdivecomputer/src/bindings.g.dart';
 import 'package:libdivecomputer/src/upstream.g.dart';
 import 'package:test/test.dart';
 

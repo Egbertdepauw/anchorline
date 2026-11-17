@@ -29,11 +29,17 @@ final class LibdcDeviceInfo extends LibdcDownloadEvent {
     required this.model,
     required this.firmware,
     required this.serial,
+    this.descriptor,
   });
 
   final int model;
   final int firmware;
   final int serial;
+
+  /// The descriptor the computer is identified by (vendor and product of
+  /// the model it reported, [identityDescriptorIndex]); null when the
+  /// download could not say. The app labels and files the computer by it.
+  final LibdcDescriptor? descriptor;
 
   @override
   String toString() => 'LibdcDeviceInfo(model $model, firmware $firmware)';
