@@ -54,6 +54,7 @@ void main() {
     await dao.saveLastFingerprint('libdc:7:100', a);
     await dao.saveLastFingerprint('libdc:7:200', b);
     await dao.saveLastFingerprint('libdc:8:100', c);
+    await dao.saveLastFingerprint('libdc:70:100', c);
     await dao.saveLastFingerprint('B89641E4', c);
     // `_` and `%` are LIKE wildcards; the prefix is literal.
     await dao.saveLastFingerprint('libdcX7:300', c);

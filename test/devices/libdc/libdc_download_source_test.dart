@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:ccrlogger/devices/dive_download_source.dart';
 import 'package:ccrlogger/devices/fingerprint_store.dart';
 import 'package:ccrlogger/devices/libdc/libdc_download_source.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libdivecomputer/libdivecomputer.dart';
 import 'package:subsurface_core/subsurface_core.dart';
@@ -77,6 +77,13 @@ class _Store implements FingerprintStore {
         if (e.key.startsWith(prefix)) e.key: e.value,
     };
   }
+}
+
+class _GatedStore implements FingerprintStore {
+  _GatedStore(this.gate);
+  final Future<Map<String, Uint8List>> gate;
+  @override
+  Future<Map<String, Uint8List>> withPrefix(String prefix) => gate;
 }
 
 class _Harness {
@@ -306,6 +313,10 @@ void main() {
   });
 
   test('close returns within about 3 s when the connection never closes', () async {
+    final logged = <String?>[];
+    final old = debugPrint;
+    debugPrint = (String? m, {int? wrapWidth}) => logged.add(m);
+    addTearDown(() => debugPrint = old);
     final source = LibdcDownloadSource(
       descriptor: _descriptor,
       connection: _fakeConnection,
@@ -314,6 +325,60 @@ void main() {
     final watch = Stopwatch()..start();
     await source.close();
     expect(watch.elapsed, lessThan(const Duration(seconds: 5)));
+    expect(logged.single, contains('Disconnect timed out'));
+  });
+
+  test('a close during a running download cancels the run', () async {
+    final controller = StreamController<LibdcDownloadEvent>();
+    var cancels = 0;
+    final source = LibdcDownloadSource(
+      descriptor: _descriptor,
+      connection: _fakeConnection,
+      closeConnection: () async {},
+      starter: ({required descriptor, required connection,
+          required knownFingerprints, required record}) =>
+          LibdcRun(events: controller.stream, cancel: () => cancels++),
+    );
+    final done = _collect(source);
+    await Future<void>.delayed(Duration.zero);
+    controller.add(_info);
+    await Future<void>.delayed(Duration.zero);
+    await source.close();
+    expect(cancels, 1);
+    await controller.close();
+    await done;
+  });
+
+  test('close still cancels when closeConnection throws', () async {
+    final h = _Harness(const []);
+    final source = LibdcDownloadSource(
+      descriptor: _descriptor,
+      connection: _fakeConnection,
+      closeConnection: () async => throw StateError('gone'),
+      starter: ({required descriptor, required connection,
+          required knownFingerprints, required record}) =>
+          LibdcRun(events: const Stream.empty(), cancel: () => h.cancels++),
+    );
+    await _collect(source);
+    await source.close();
+    expect(h.cancels, 1);
+  });
+
+  test('a close while the fingerprints load starts nothing', () async {
+    final gate = Completer<Map<String, Uint8List>>();
+    final h = _Harness(
+      [_info, _finished(LibdcStatus.done)],
+      store: _GatedStore(gate.future),
+    );
+    final done = _collect(h.source);
+    await Future<void>.delayed(Duration.zero);
+    await h.source.close();
+    gate.complete({});
+    final (events, error) = await done;
+    expect(h.started, 0);
+    expect(error, isNull);
+    expect(events.single, isA<DiveSourceFinished>());
+    expect((events.single as DiveSourceFinished).fingerprintToKeep, isNull);
   });
 
   test('the real replay of the Petrel 3 trace: 8 dives, then PROTOCOL where '
@@ -373,6 +438,9 @@ LibdcRecording _petrelTrace() {
   final i = events.indexWhere(
     (e) => e.kind == 'W' && e.payload.join(',') == request.join(','),
   );
+  if (i < 0 || i + 1 >= events.length || events[i + 1].kind != 'R') {
+    throw StateError('the trace has no hardware id exchange to swap');
+  }
   events[i] = LibdcIoEvent('W', hex('01 00 ff 01 04 00 22 80 60 c0'));
   events[i + 1] = LibdcIoEvent('R', hex('01 00 01 ff 05 00 62 80 60 0a c0'));
   return LibdcRecording(header: raw.header, events: events);

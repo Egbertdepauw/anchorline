@@ -135,6 +135,11 @@ class LibdcDownloadSource implements DiveDownloadSource {
     Uint8List? sinceFingerprint,
   }) async* {
     final known = await _known();
+    if (_closing != null) {
+      // Closed while the saved fingerprints were loading: the link is gone.
+      yield const DiveSourceFinished();
+      return;
+    }
     final run = _starter(
       descriptor: _descriptor,
       connection: _connection,
