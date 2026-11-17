@@ -1,7 +1,7 @@
 # Garmin dives from FIT files — design
 
 **Date:** 2026-11-17
-**Status:** Draft, for Egbert's review (approaches chosen by Egbert, 2026-11-17)
+**Status:** Approved by Egbert, 2026-11-17
 **Builds on:** [`2026-11-15-libdivecomputer-brands-design.md`](2026-11-15-libdivecomputer-brands-design.md)
 (the brands spec). This design replaces its phase 4 ("Garmin, as FIT file
 import") and changes its rollout order (section 11).
