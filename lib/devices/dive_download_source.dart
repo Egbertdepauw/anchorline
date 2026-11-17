@@ -62,12 +62,30 @@ class DiveListing {
   /// The computed dive id.
   final String diveId;
 
+  /// Extra listing facts a source may know (FIT files do). Null when unknown.
+  final double? maxDepthMeters;
+  final int? durationSeconds;
+
+  /// The computer's name, for lists that mix computers.
+  final String? modelLabel;
+
+  /// A short note the picker shows beside the dive.
+  final String? flag;
+
+  /// Whether the picker ticks this dive by default.
+  final bool preselected;
+
   const DiveListing({
     required this.diveNumber,
     required this.startTimestamp,
     required this.endTimestamp,
     required this.fingerprint,
     required this.diveId,
+    this.maxDepthMeters,
+    this.durationSeconds,
+    this.modelLabel,
+    this.flag,
+    this.preselected = true,
   });
 }
 

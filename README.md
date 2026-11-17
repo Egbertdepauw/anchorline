@@ -34,6 +34,18 @@ and any GPS positions it logged. Send it to recordings@anchorline.eu or attach
 it to an issue at github.com/Egbertdepauw/anchorline/issues so we can check
 your computer.
 
+### Help us test your Garmin
+
+Garmin dive watches work through files rather than Bluetooth: pick `.fit`
+files, a Garmin Connect export (.zip) or a folder (desktop) with "Import Garmin
+files…" on the import screen. A model we have not checked against a real
+recording shows "Not yet tested by us". After an import of such a model the
+done screen offers "Send us one of these dives". The file is one of your dives,
+as your watch recorded it. It contains the dive, the watch's serial number, and
+any GPS positions and heart rate it logged. Send it to recordings@anchorline.eu
+or attach it to an issue at github.com/Egbertdepauw/anchorline/issues so we can
+check your model.
+
 ## Future ideas
 - Sharing gas analysis between users
 - Tagging users in dives

@@ -5,10 +5,12 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:libdivecomputer/libdivecomputer.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../ble/ble_central.dart';
@@ -21,12 +23,17 @@ import '../../data/db/equipment_dao.dart';
 import '../../data/db/import_state_dao.dart';
 import '../../data/import/import_problem_reporter.dart';
 import '../../devices/dive_download_source.dart';
+import '../../devices/fit/fit_file_source.dart';
+import '../../devices/fit/fit_inputs.dart';
+import '../../devices/fit/fit_listing_marks.dart';
+import '../../devices/fit/fit_tiers.dart';
 import '../../devices/shearwater/shearwater_download_source.dart';
 import '../../shearwater/ble/ble_io_impl.dart';
 import '../../shearwater/ble/mock_ble_transport.dart';
 import '../../shearwater/ble/shearwater_ble_transport.dart';
 import '../../shearwater/ble/shearwater_link.dart';
 import '../../sync/cloud/usage_tracker.dart';
+import '../util/fit_picker.dart' show deletePickedCopies;
 
 /// Phases of the import flow.
 ///
@@ -97,6 +104,40 @@ class LibdcOpened {
 typedef LibdcOpener = Future<LibdcOpened> Function(
     BleCentral central, ImportScanResult r, LibdcDescriptor d);
 
+
+/// Makes the FIT source for an import. The default is [FitFileSource]; tests
+/// pass a stand-in.
+typedef FitSourceFactory = FitDownloadSource Function({
+  required List<FitInput> inputs,
+  required Directory workDir,
+  required void Function(FitScanCounts) onProgress,
+});
+
+FitDownloadSource _defaultFitSource({
+  required List<FitInput> inputs,
+  required Directory workDir,
+  required void Function(FitScanCounts) onProgress,
+}) =>
+    FitFileSource(inputs: inputs, workDir: workDir, onProgress: onProgress);
+
+/// The app's cache and temporary folders: the only places a picker's copies
+/// of picked files may be deleted from. Desktop has none: file_picker copies
+/// files only on Android and iOS, and a file picked from /tmp or %TEMP% is the
+/// user's own. [desktop] is a test seam.
+Future<List<Directory>> defaultFitCopyRoots({bool? desktop}) async {
+  if (desktop ?? (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
+    return const [];
+  }
+  final roots = <Directory>[];
+  try {
+    roots.add(await getTemporaryDirectory());
+  } catch (_) {}
+  try {
+    roots.add(await getApplicationCacheDirectory());
+  } catch (_) {}
+  return roots;
+}
+
 /// "1 dive" or "N dives".
 String diveCountLabel(int n) => n == 1 ? '1 dive' : '$n dives';
 
@@ -130,6 +171,20 @@ class ImportNotifier extends ChangeNotifier {
   bool _cancelRequested = false;
   final LibdcOpener? _libdcOpener;
   final LibdcStarter? _libdcStarter;
+  final FitSourceFactory _fitSourceFactory;
+  final Future<Directory> Function() _tempDir;
+  final Future<List<Directory>> Function() _pickedCopyRoots;
+  List<FitInput> _fitPicked = const [];
+
+  // The FIT file import in progress or just finished.
+  bool _fit = false;
+
+  // The wakelock the FIT scan holds; the download holds its own.
+  bool _fitWakelock = false;
+  FitScanCounts? _fitCounts;
+  bool _fitListed = false;
+  final Map<String, String> _untested = {};
+  ({String diveId, String vendor, String? product})? _fitShareDive;
 
   // The libdivecomputer download in progress or just finished.
   bool _libdc = false;
@@ -193,7 +248,13 @@ class ImportNotifier extends ChangeNotifier {
     List<LibdcDescriptor> Function(String name)? matchBle,
     LibdcOpener? libdcOpener,
     LibdcStarter? libdcStarter,
-  })  : _libdcOpener = libdcOpener,
+    FitSourceFactory? fitSourceFactory,
+    Future<Directory> Function()? tempDir,
+    Future<List<Directory>> Function()? pickedCopyRoots,
+  })  : _pickedCopyRoots = pickedCopyRoots ?? defaultFitCopyRoots,
+        _fitSourceFactory = fitSourceFactory ?? _defaultFitSource,
+        _tempDir = tempDir ?? getTemporaryDirectory,
+        _libdcOpener = libdcOpener,
         _libdcStarter = libdcStarter,
         _centralOverride = central,
         _matchBle = matchBle ?? Libdc.matchBle,
@@ -275,6 +336,25 @@ class ImportNotifier extends ChangeNotifier {
   /// The GATT services and characteristics of the last libdivecomputer
   /// device, one line each.
   List<String> get lastGattSummary => List.unmodifiable(_gattSummary);
+
+  /// Whether the import in progress (or just finished) reads FIT files.
+  bool get isFitImport => _fit;
+
+  /// True while the FIT files are being read, before the dives are listed.
+  bool get isFitReading =>
+      _fit && _state == ImportFlowState.readingManifest && !_fitListed;
+
+  /// How far the FIT scan has come; null outside a FIT import.
+  FitScanCounts? get fitCounts => _fitCounts;
+
+  /// The models of the dives imported from FIT files that Anchorline has not
+  /// checked against a real recording ([kCheckedFitModels]).
+  List<String> get untestedModels => List.unmodifiable(_untested.values);
+
+  /// An imported dive of an untested model, for "Send us one of these
+  /// dives". Null when there is none.
+  ({String diveId, String vendor, String? product})? get fitShareDive =>
+      _fitShareDive;
 
   /// Devices seen during scanning: Shearwater and libdivecomputer ones, and
   /// named devices nobody recognises ([ImportDeviceKind.unmatched]).
@@ -687,6 +767,133 @@ class ImportNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── FIT files ──────────────────────────────────────────────────────────────
+
+  /// Reads [inputs] (FIT files, Garmin exports, folders), lists the dives in
+  /// them and marks the ones the diver already has. Goes to
+  /// [ImportFlowState.readingManifest] straight away; [fitCounts] updates
+  /// while the files are read, and [newDives] holds the marked listings when
+  /// it returns. The diver then picks dives and [downloadAll] imports them.
+  ///
+  /// Never throws; a failure ends in [ImportFlowState.error]. Nothing is
+  /// saved under the source's import state key: a file import has no
+  /// fingerprint to keep.
+  Future<void> importFitFiles(List<FitInput> inputs) async {
+    if (_state == ImportFlowState.connecting ||
+        _state == ImportFlowState.downloading ||
+        isFitReading) {
+      return;
+    }
+    _reset();
+    _fit = true;
+    _fitPicked = inputs;
+    _fitCounts = FitScanCounts();
+    _fitListed = false;
+    _state = ImportFlowState.readingManifest;
+    final generation = _downloadGeneration;
+    notifyListeners();
+    _fitWakelock = true;
+    unawaited(_enableWakelock());
+
+    FitDownloadSource? source;
+    try {
+      final temp = await _tempDir();
+      // Cancelled or reset while the folder was looked up: no source yet, so
+      // nothing may be assigned or scanned.
+      if (_disposed || generation != _downloadGeneration) return;
+      // A random name: another user of the temp folder cannot guess it.
+      final workDir = await temp.createTemp('fit-import-');
+      if (_disposed || generation != _downloadGeneration) {
+        try {
+          await workDir.delete(recursive: true);
+        } catch (_) {}
+        return;
+      }
+      source = _fitSourceFactory(
+        inputs: inputs,
+        workDir: workDir,
+        onProgress: (c) {
+          if (_disposed || generation != _downloadGeneration) return;
+          _fitCounts = c;
+          _notifyThrottled();
+        },
+      );
+      _source = source;
+      final listed = await source.listDives();
+      if (_disposed || generation != _downloadGeneration) {
+        // Reset or cancelled meanwhile: the reset closed the source.
+        await source.close();
+        return;
+      }
+      final marked = await markFitListings(_dao, source, listed);
+      if (_disposed || generation != _downloadGeneration) {
+        await source.close();
+        return;
+      }
+      _newDives = marked;
+      _totalToDownload = marked.where((l) => l.preselected).length;
+      _fitListed = true;
+    } catch (e, st) {
+      if (_disposed || generation != _downloadGeneration) return;
+      _errorMessage = 'Could not read these files.';
+      _state = ImportFlowState.error;
+      _report(e, st, 'download');
+      _trackFitFailure(_errorMessage!);
+      _source = null;
+      unawaited(source?.close());
+      unawaited(_releaseFitPicked(inputs));
+    } finally {
+      // The scan is over: let the screen sleep again, unless a reset or a
+      // newer import took over (the reset let go of this one's lock itself).
+      if (_fitWakelock && generation == _downloadGeneration) {
+        _fitWakelock = false;
+        await _disableWakelock();
+      }
+    }
+    _flushNotify();
+  }
+
+  /// Ends in the error state with [message] after the files could not even be
+  /// picked (the copy into the cache failed, say).
+  void failFitPick(String message) {
+    _reset();
+    _fit = true;
+    _errorMessage = message;
+    _state = ImportFlowState.error;
+    _trackFitFailure(message);
+    notifyListeners();
+  }
+
+  void _trackFitFailure(String reason) {
+    // The vendor is not known before a dive is read.
+    _usageTracker?.track('import_failed', {
+      'dives': 0,
+      'total': 0,
+      'engine': 'fit',
+      'reason': reason,
+      'mock': useMock,
+    });
+  }
+
+  /// Deletes the picker's cache copies of the files this import was given
+  /// (never a picked folder, never anything outside the app's cache).
+  ///
+  /// [picked] is the list of the import being finished, never read from
+  /// [_fitPicked] after an await: a newer import's copies must stay.
+  Future<void> _releaseFitPicked(List<FitInput> picked) async {
+    if (identical(_fitPicked, picked)) _fitPicked = const [];
+    if (picked.isEmpty) return;
+    try {
+      await deletePickedCopies(picked, await _pickedCopyRoots());
+    } catch (_) {}
+  }
+
+  /// Reads the stored raw blob of a dive, for sharing it.
+  Future<Uint8List?> rawBlobOf(String diveId) => _dao.getRawBlob(diveId);
+
+  /// Stops reading the files and goes back to idle, closing the source.
+  void cancelFitImport() => reset();
+
   // ── Download ───────────────────────────────────────────────────────────────
 
   /// Download and persist all queued dives.
@@ -728,7 +935,16 @@ class ImportNotifier extends ChangeNotifier {
     // What the rest of this method needs is captured now: a Retry during the
     // up-to-3 s close below resets the notifier under us.
     final libdc = _libdc;
+    final fit = _fit;
+    final fitPicked = _fitPicked;
     final source = _source!;
+    if (fit) unawaited(_enableWakelock());
+    // Neither engine saves a fingerprint per dive: libdivecomputer does at its
+    // end, FIT files never do.
+    final perDiveFingerprints = !libdc && !fit;
+    DcIdentity? fitIdentity;
+    final untested = <String, String>{};
+    ({String diveId, String vendor, String? product})? shareDive;
     final generation = ++_downloadGeneration;
 
     // libdivecomputer learns the computer during the download (see
@@ -761,6 +977,7 @@ class ImportNotifier extends ChangeNotifier {
             // during the download announce it here.
             final id = event.identity;
             _identity = id;
+            fitIdentity = id;
             serial = id.serial;
             await _registerComputer(id);
 
@@ -776,11 +993,21 @@ class ImportNotifier extends ChangeNotifier {
                 case ImportOutcome.refreshed:
                   _refreshedCount++;
                   _downloadedCount++;
-                  if (!libdc) lastSuccessfulFingerprint = event.fingerprint;
+                  if (perDiveFingerprints) {
+                    lastSuccessfulFingerprint = event.fingerprint;
+                  }
+                  // A refresh may have stored the blob under a Subsurface
+                  // copy's id, which the outcome does not name: the model
+                  // counts as untested, but the dive is no share candidate.
+                  _noteFitDive(fitIdentity, event, untested, null);
                 case ImportOutcome.inserted:
                 case ImportOutcome.insertedFlagged:
                   _downloadedCount++;
-                  if (!libdc) lastSuccessfulFingerprint = event.fingerprint;
+                  if (perDiveFingerprints) {
+                    lastSuccessfulFingerprint = event.fingerprint;
+                  }
+                  _noteFitDive(
+                      fitIdentity, event, untested, (v) => shareDive ??= v);
                 case ImportOutcome.unchanged:
                   break;
                 case ImportOutcome.rejected:
@@ -823,7 +1050,9 @@ class ImportNotifier extends ChangeNotifier {
         }
       }
     } catch (e) {
-      _errorMessage = libdc
+      _errorMessage = fit
+          ? 'Import stopped. $_downloadedCount of $_totalToDownload dives imported.'
+          : libdc
           ? _libdcStoppedMessage(_cancelRequested
               ? 'cancelled'
               : e is LibdcDownloadFailed
@@ -839,18 +1068,19 @@ class ImportNotifier extends ChangeNotifier {
       _state = ImportFlowState.error;
     }
 
-    final engine = libdc ? 'libdc' : 'shearwater';
+    final engine = fit ? 'fit' : (libdc ? 'libdc' : 'shearwater');
     final vendor = _identity?.vendor ?? _libdcVendor;
     final identity = _identity;
 
     // Release the link. The source caps the wait (see its close()).
     await source.close();
+    if (fit) await _releaseFitPicked(fitPicked);
 
     // Save fingerprint for incremental sync, from what was captured above, so
     // that a reset or dispose during the close does not skip it.
     // libdivecomputer saves its own at DiveSourceFinished, and only after a
     // download without failures.
-    if (!libdc && lastSuccessfulFingerprint != null) {
+    if (perDiveFingerprints && lastSuccessfulFingerprint != null) {
       await _importStateDao.saveLastFingerprint(
         identity!.importStateKey,
         lastSuccessfulFingerprint,
@@ -867,6 +1097,13 @@ class ImportNotifier extends ChangeNotifier {
         await _disableWakelock();
       }
       return;
+    }
+
+    if (fit) {
+      _untested
+        ..clear()
+        ..addAll(untested);
+      _fitShareDive = shareDive;
     }
 
     if (_state != ImportFlowState.error) {
@@ -925,6 +1162,24 @@ class ImportNotifier extends ChangeNotifier {
     }
   }
 
+  /// Remembers the model of an imported FIT dive when it is not a checked
+  /// one, and one dive of it to share.
+  void _noteFitDive(
+    DcIdentity? id,
+    DiveSourceDive event,
+    Map<String, String> untested,
+    void Function(({String diveId, String vendor, String? product}))? share,
+  ) {
+    if (!_fit || id == null) return;
+    if (isCheckedFitModel(id.product ?? id.modelLabel)) return;
+    untested.putIfAbsent(id.modelLabel, () => id.modelLabel);
+    share?.call((
+      diveId: event.converted.dive.id,
+      vendor: id.vendor,
+      product: id.product,
+    ));
+  }
+
   // ── Error / retry ──────────────────────────────────────────────────────────
 
   /// Manually push into the error state (useful in tests).
@@ -953,6 +1208,7 @@ class ImportNotifier extends ChangeNotifier {
     _pendingNotify = null;
     _stopScan();
     unawaited(_source?.close());
+    if (_fit) unawaited(_releaseFitPicked(_fitPicked));
     // Best-effort: don't await, the framework expects dispose to be sync.
     unawaited(_disableWakelock());
     super.dispose();
@@ -988,6 +1244,20 @@ class ImportNotifier extends ChangeNotifier {
   // ── Internal ───────────────────────────────────────────────────────────────
 
   void _reset() {
+    // A FIT import holds a work folder: let go of it.
+    if (_fit) {
+      unawaited(_source?.close());
+      unawaited(_releaseFitPicked(_fitPicked));
+    }
+    if (_fitWakelock) {
+      _fitWakelock = false;
+      unawaited(_disableWakelock());
+    }
+    _fit = false;
+    _fitCounts = null;
+    _fitListed = false;
+    _untested.clear();
+    _fitShareDive = null;
     _state = ImportFlowState.idle;
     _source = null;
     _identity = null;
