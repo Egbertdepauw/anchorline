@@ -25,23 +25,31 @@ ConvertedDive mapLibdcDive(
   }
 
   // Gas mixes: oxygen-usage mixes are left out, and sample indexes are
-  // translated to the remaining list.
+  // translated to the remaining list. When that leaves nothing although the
+  // parser reported mixes (a CCR whose only mix is its oxygen), keep them.
   final gasMixes = <DiveGasMix>[];
   final gasMap = <int?>[];
-  for (final g in p.gasMixes) {
-    if (g.usage == LibdcUsage.oxygen) {
-      gasMap.add(null);
-      continue;
+  void collect({required bool skipOxygen}) {
+    gasMixes.clear();
+    gasMap.clear();
+    for (final g in p.gasMixes) {
+      if (skipOxygen && g.usage == LibdcUsage.oxygen) {
+        gasMap.add(null);
+        continue;
+      }
+      gasMap.add(gasMixes.length);
+      gasMixes.add(
+        DiveGasMix(
+          oxygenPercent: (g.oxygen * 100).round(),
+          heliumPercent: (g.helium * 100).round(),
+          isDiluent: g.usage == LibdcUsage.diluent,
+        ),
+      );
     }
-    gasMap.add(gasMixes.length);
-    gasMixes.add(
-      DiveGasMix(
-        oxygenPercent: (g.oxygen * 100).round(),
-        heliumPercent: (g.helium * 100).round(),
-        isDiluent: g.usage == LibdcUsage.diluent,
-      ),
-    );
   }
+
+  collect(skipOxygen: true);
+  if (gasMixes.isEmpty && p.gasMixes.isNotEmpty) collect(skipOxygen: false);
   // The deco replay needs at least one mix; a computer with none (gauge or
   // freedive) gets air, and every sample stays on index 0.
   if (gasMixes.isEmpty) {
