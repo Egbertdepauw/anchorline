@@ -218,6 +218,11 @@ void main() {
       expect(c.dive.dcModelCode, 10);
     });
 
+    test('the mapped dive carries the fingerprint as lower-case hex', () {
+      final c = _map(testDive());
+      expect(c.dive.dcFingerprint, 'deadbeef');
+    });
+
     test('no serial gives dcSerial 0, and the model code falls back to the '
         'descriptor', () {
       final c = _map(testDive(), e: testEnvelope(serial: null));

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:subsurface_core/subsurface_core.dart';
 
+import '../dive_id.dart';
 import '../envelope.dart';
 import '../parse/parsed_dive.dart';
 import '../parse/status.dart';
@@ -13,7 +14,7 @@ import 'resample.dart';
 /// `kLibdcParserVersion`.
 ///
 /// Throws [LibdcParseException] (`dataFormat`) when the dive has no start
-/// time. `Dive.dcFingerprint` is not set here; the importer sets it.
+/// time. `Dive.dcFingerprint` is the envelope's fingerprint as lower-case hex.
 ConvertedDive mapLibdcDive(
   LibdcParsedDive p,
   LibdcEnvelope e, {
@@ -187,6 +188,7 @@ ConvertedDive mapLibdcDive(
     dcProduct: e.product,
     dcFamily: e.family,
     dcModelCode: e.devinfoModel ?? e.descriptorModel,
+    dcFingerprint: fingerprintHex(e.fingerprint),
   );
 
   final n = grid.count;
