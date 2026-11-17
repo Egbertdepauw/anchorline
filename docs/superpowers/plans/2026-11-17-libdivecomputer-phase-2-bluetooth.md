@@ -933,6 +933,57 @@ Pin: take the newest upstream master commit on the day Task 1 runs. At plan time
 
 ---
 
+## Changes made during execution (2026-11-17)
+
+The PRs are #239 (PR A, Tasks 1–3), #243 (PR B, Tasks 4–7), #242 (PR C, Tasks 8–9) and #244 (PR D, Tasks 10–13). Where this plan and the code differ, the code and this list are what was decided.
+
+- **PR A, the build.**
+  - Windows exports through the `.def` file passed bare on the `cl` command line; `#pragma comment(linker, "/DEF:...")` is ignored (LNK4229). The sources go in a response file (cmd.exe's 8,191-character limit), and the DLL links `ws2_32` and `advapi32`. CI checks the exports with `dumpbin`.
+  - macOS CI builds with `--config-only` plus an unsigned `xcodebuild`. iOS CI builds the device slice without codesigning, because the image has no simulator runtime.
+  - `tool/update_upstream.sh` applies the patches in a temporary clone. Inside a subdirectory of the repo, `git apply` silently skipped paths relative to the repo root.
+  - The licence page is reached from a new "Open-source licences" row on About, which also names the source repository.
+- **PR C, the Subsurface writer (Ruling G1, from the Garmin session).** Instead of skipping every other-brand dive, the writer leaves out only those that match no remote dive, and the sync screen counts them. A matched one gets the merge of CCRLog-owned lines, and only of non-empty ones, so a download without annotations never blanks Subsurface's buddy or suit. "Other brand" means `dc_family` is set, or a vendor other than Shearwater; a vendor-less copy whose product is a Shearwater model counts as Shearwater.
+- **PR C → PR D.** `dc_engines: 2` moved to PR D, together with the first code that creates libdivecomputer dives. `dc_family` -1 is reserved for FIT: `diveEngineOf` maps null to shearwater, -1 to fit and everything else to libdc.
+- **PR B, the C layer.** `al_link_pending` returns a request id and the request's kind, and `al_link_complete` takes that id, so a late answer can never complete a newer request. Recordings also carry `E` (a failed call's status) and empty `R` events, so a replay fails where the live download failed.
+- **PR B, parse and identity.** This amends spec section 7 and the Global Constraint "Parse with `dc_parser_new2` and the descriptor chosen for the download".
+  - Dives are parsed with the *identity descriptor*: the row in the opened descriptor's family whose model equals the model the computer reported in DEVINFO, the first such row in table order, or else the opened row. libdivecomputer's own `dc_parser_new(device)` uses the reported model; `dc_parser_new2` takes the model from the descriptor, and a Bluetooth name matches every model of its family (an OSTC 4 opens as "OSTC 2").
+  - The identity descriptor also gives the dive id's vendor and `dc_vendor` / `dc_product`, so the same dive gets the same id whichever sibling row was opened.
+  - The envelope keeps the opened descriptor and the device info, so a re-parse from the envelope alone gives the same dive.
+  - The opened row is found by vendor, product and model, then by family and model. Some vendor-and-product pairs repeat with different models (the Aqualung i200C).
+  - Checked against the vendored source: the OSTC 4 and 5 report 0x43 and 0x44, and Divesoft reports 10 (Liberty) and 19 (Freedom), as in the table. Ratio's 16-bit model uses the table's numbering. hwOS 3 OSTCs report 0 and so show as "OSTC 2", which doesn't change their parse.
+- **PR B, the dive id.** When a computer gives no fingerprint, the hex of the SHA-256 of the dive's data stands in for it in the id, and `dc_fingerprint` stays null.
+- **PR B, the mapping.**
+  - The grid is capped in time, at twice the dive time or 24 h, and at 1,000,000 points.
+  - Carried channels start from their first value, and no gas or setpoint event is made up at t = 0.
+  - Air is assumed only when the computer reports no mixes; a lone oxygen-usage mix is kept.
+  - Impossible dates are rejected.
+- **PR B, the Petrel 3 trace.** It was recorded on Subsurface's fork of libdivecomputer, which reads RDBI 0x8050 where upstream reads 0x8060. Test support swaps that one exchange; the C replay stays strict, and a test pins the difference. The trace stops inside a 9th dive, so a replay gives 8 dives and then PROTOCOL.
+- **PR B, the time base.** libdivecomputer dates a Shearwater's first sample one interval into the dive, and the grid holds it back to t = 0. This is accepted for libdivecomputer dives; Shearwater dives keep the Dart reader.
+- **PR B, the session.** A crash inside a callback ends the download as `io`. `LibdcFinished` always comes, and every native object is freed on every path.
+- **PR D, how it was built.** Task 12 was built in two halves: the scan, pickers and share file first, the download after Task 11. `LibdcDownloadSource`'s test seam returns `LibdcRun {events, cancel}`, because `LibdcDownload` has a private constructor, and the source gained `cancel()`, which stops the run and keeps the connection.
+- **PR D, the download.**
+  - A cancelled download ends as "Download stopped (cancelled). N dives saved.", is tracked as `import_failed`, and can still be shared.
+  - For libdivecomputer dives the per-dive fingerprint save is skipped. Only `fingerprintToKeep` is saved, after a clean finish with no failed dive.
+  - `LibdcDeviceInfo` carries the identity descriptor, so the download screen, the dive and the `dive_computers` row name the same model. Before connecting, a name that fits several products shows only the vendor and the advertised name.
+  - There is no model picker. Ratio's Bluetooth models, the OSTCs and Divesoft open the same way whatever model the row names.
+- **PR D, the screen.**
+  - The re-import toggle keeps its label, "Re-import all dives (ignore prior imports)". The plan's "Download everything again" describes what it does.
+  - On Linux, share_plus can't share files, so "Share this download" saves the file to Downloads and shows its path with "Open folder". Windows keeps the share sheet.
+  - The scan screen offers "Scan again" when the 15 s scan has ended.
+  - `redactImportError` doesn't exist. The import path uses `captureRedactedException` and the global Sentry redaction.
+
+### Follow-ups found during execution
+
+- A model picker for families whose device open depends on the model: Oceanic, Mares, Suunto EON Steel and the Pelagic i330R.
+- "Share this download", with the GATT summary, when the connect itself fails.
+- Android connection priority and PHY in `BleCentral`.
+- PIN pairing: Windows answers 0000, Linux has no BlueZ agent, and the 15 s notify step can cut off a slow PIN entry.
+- A name-based model hint for hwOS 3 OSTCs, as Subsurface's Bluetooth discovery does.
+- Building the recording text only when it is shared.
+- On Linux, a configured but missing Downloads folder fails instead of falling back to the temporary directory, and the share text isn't shown.
+- The dive computers list shows "Unknown" as the model of other brands.
+- A fresh `record: true` recording of a Petrel 3 needs a developer tool, because the app never sends a Shearwater through libdivecomputer.
+
 ## Follow-ups outside this plan
 
 These are from the spec and phase 1, unchanged:
