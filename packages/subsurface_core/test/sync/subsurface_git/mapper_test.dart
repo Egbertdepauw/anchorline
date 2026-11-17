@@ -433,6 +433,9 @@ void main() {
         logVersion: 17,
         dcModel: 3,
         dcFirmware: 0xa3,
+        dcVendor: 'Shearwater',
+        dcProduct: 'Petrel 3',
+        dcFamily: null,
       );
       final samples = _threeMinSampleSet(diveId: dive.id);
       final result = mapper.mapDive(
@@ -612,6 +615,43 @@ void main() {
       // original description.
       expect(text, contains(r'description="lead \"ankle\" weights"'));
     });
+
+    test("mapDiveLines gives mapDive's Dive-NNN lines", () {
+      final mapper = CcrlogToSubsurfaceMapper();
+      final dive = _ccrPetrelDive();
+      final samples = _threeMinSampleSet(diveId: dive.id);
+      final annotation = _annotation(
+        diveId: dive.id,
+        rating: 4,
+        buddies: ['Alex Marlin'],
+        notes: 'Trim test, all cells happy.',
+        siteName: 'Om Sid - Dahab',
+        siteLatitude: 28.420550,
+        siteLongitude: 34.457473,
+      );
+      String render(List<SsLine> lines) =>
+          serializeSubsurfaceFile(SubsurfaceFile(lines: lines));
+
+      final full = mapper.mapDive(
+        dive: dive,
+        samples: samples,
+        annotation: annotation,
+        gasMixes: _threeGasMixes(),
+        tanks: _threeTanks(),
+        cylindersByMixIndex: const {},
+        nextSubsurfaceDiveNumber: 705,
+      );
+      final diveLines = mapper.mapDiveLines(
+        dive: dive,
+        samples: samples,
+        annotation: annotation,
+        gasMixes: _threeGasMixes(),
+        tanks: _threeTanks(),
+        cylindersByMixIndex: const {},
+      );
+
+      expect(render(diveLines), render(full.diveLines));
+    });
   });
 
   group('CcrlogToSubsurfaceMapper.topLevelDelta', () {
@@ -671,6 +711,9 @@ SubsurfaceDiveInput _ccrPetrelDive({
     logVersion: 17,
     dcModel: 3, // petrel3
     dcFirmware: 0xa3,
+    dcVendor: 'Shearwater',
+    dcProduct: 'Petrel 3',
+    dcFamily: null,
     sensorCalibrationJson: sensorCalibrationJson,
     configuredStackSeconds: configuredStackSeconds,
     stackRemainingAtStartSeconds: stackRemainingAtStartSeconds,
@@ -683,6 +726,8 @@ SubsurfaceDiveComputerInput _diveComputer() {
     serial: 0xb89641e4,
     model: 3,
     nickname: 'Petrel 3',
+    dcVendor: 'Shearwater',
+    dcFamily: null,
   );
 }
 

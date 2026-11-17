@@ -281,6 +281,8 @@ const appSchema = Schema([
     Column.integer('dc_family'),
     Column.integer('dc_model_code'),
     Column.text('match_candidates_json'),
+    // libdivecomputer phase 2 (migration 0028): hex of the dive's fingerprint.
+    Column.text('dc_fingerprint'),
     Column.integer('sample_interval_ms'),
     Column.text('gas_mixes_json'),
     Column.text('tanks_json'),

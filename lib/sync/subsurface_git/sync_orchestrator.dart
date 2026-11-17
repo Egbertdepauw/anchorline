@@ -42,6 +42,7 @@ class SubsurfaceSyncResult {
     required this.abortedDives,
     required this.commitSha,
     required this.completedAt,
+    this.otherBrandDives = 0,
   });
 
   /// Number of dives the orchestrator wrote to the working tree (new
@@ -57,6 +58,11 @@ class SubsurfaceSyncResult {
   /// Dives the planner declined to push because of a foreign edit on
   /// the Subsurface side. Surface as "Skipped" in the UI; not errors.
   final List<AbortedDive> abortedDives;
+
+  /// Dives from other brands that Subsurface Cloud doesn't have, which the
+  /// planner left out (`SyncPlanStats.otherBrandDives`). The writer only
+  /// writes Shearwater dives there; the sync section says so.
+  final int otherBrandDives;
 
   /// Git SHA of the commit we pushed, or null if the plan was empty
   /// (nothing changed since the previous sync).
@@ -365,6 +371,7 @@ class SubsurfaceSyncOrchestrator {
         abortedDives: plan.abortedDives,
         commitSha: null,
         completedAt: _clock(),
+        otherBrandDives: plan.stats.otherBrandDives,
       );
     }
 
@@ -390,6 +397,7 @@ class SubsurfaceSyncOrchestrator {
       abortedDives: plan.abortedDives,
       commitSha: sha,
       completedAt: _clock(),
+      otherBrandDives: plan.stats.otherBrandDives,
     );
   }
 

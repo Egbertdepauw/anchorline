@@ -55,6 +55,11 @@ class Dives extends Table {
   /// JSON array of dive ids a Subsurface copy may match. Null = none.
   TextColumn get matchCandidatesJson => text().nullable()();
 
+  /// Lower-case hex of the libdivecomputer fingerprint; set only on
+  /// libdivecomputer dives. Tells apart two dives from one computer that
+  /// start less than a minute apart.
+  TextColumn get dcFingerprint => text().nullable()();
+
   IntColumn get sampleIntervalMs => integer()();
 
   /// Gas mixes as JSON array.

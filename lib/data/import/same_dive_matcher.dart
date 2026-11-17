@@ -22,6 +22,10 @@ class StoredDiveKey {
   final int parserVersion;
   final int? dcFamily;
 
+  /// Hex of the libdivecomputer fingerprint; null on Subsurface copies and
+  /// Shearwater downloads.
+  final String? dcFingerprint;
+
   const StoredDiveKey({
     required this.id,
     required this.dcVendor,
@@ -30,6 +34,7 @@ class StoredDiveKey {
     required this.startTime,
     required this.parserVersion,
     required this.dcFamily,
+    this.dcFingerprint,
   });
 
   /// Builds a key from a `dives` row (PowerSync column names).
@@ -41,6 +46,7 @@ class StoredDiveKey {
         startTime: (row['start_time']! as num).toInt(),
         parserVersion: (row['parser_version']! as num).toInt(),
         dcFamily: (row['dc_family'] as num?)?.toInt(),
+        dcFingerprint: row['dc_fingerprint'] as String?,
       );
 }
 
@@ -67,14 +73,19 @@ String? effectiveVendor(String? dcVendor, int parserVersion) =>
 /// different dives from one computer differ in dive number, and a refreshed
 /// copy carries the download's number, so a re-download still finds it. Stored
 /// copies (-1) are not compared on number, since theirs is Subsurface's
-/// logbook number. libdivecomputer dives (number 0 on both sides) keep the
-/// time-window rule until phase 2.
+/// logbook number.
+///
+/// libdivecomputer dives all have number 0, so [fingerprint] (the incoming
+/// dive's, as lower-case hex) tells them apart: when it is non-null, a stored
+/// row that has a fingerprint matches only if it is equal. Rows without one
+/// (Subsurface copies, Shearwater downloads) keep the rules above.
 List<StoredDiveKey> findSameDive({
   required String vendor,
   required int serial,
   required int startTimeSeconds,
   required String excludeId,
   int? diveNumber,
+  String? fingerprint,
   required Iterable<StoredDiveKey> stored,
 }) {
   final serials = subsurfaceSerialForms(vendor, serial);
@@ -83,6 +94,9 @@ List<StoredDiveKey> findSameDive({
       if (k.id != excludeId &&
           (effectiveVendor(k.dcVendor, k.parserVersion) ?? vendor) == vendor &&
           serials.contains(k.dcSerial) &&
+          (fingerprint == null ||
+              k.dcFingerprint == null ||
+              k.dcFingerprint == fingerprint) &&
           (diveNumber == null ||
               k.parserVersion == kSubsurfaceImportedParserVersion ||
               k.dcDiveNumber == diveNumber) &&

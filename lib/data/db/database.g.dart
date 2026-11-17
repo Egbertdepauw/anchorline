@@ -244,6 +244,17 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _dcFingerprintMeta = const VerificationMeta(
+    'dcFingerprint',
+  );
+  @override
+  late final GeneratedColumn<String> dcFingerprint = GeneratedColumn<String>(
+    'dc_fingerprint',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _sampleIntervalMsMeta = const VerificationMeta(
     'sampleIntervalMs',
   );
@@ -398,6 +409,7 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
     dcFamily,
     dcModelCode,
     matchCandidatesJson,
+    dcFingerprint,
     sampleIntervalMs,
     gasMixesJson,
     tanksJson,
@@ -599,6 +611,15 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
         matchCandidatesJson.isAcceptableOrUnknown(
           data['match_candidates_json']!,
           _matchCandidatesJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('dc_fingerprint')) {
+      context.handle(
+        _dcFingerprintMeta,
+        dcFingerprint.isAcceptableOrUnknown(
+          data['dc_fingerprint']!,
+          _dcFingerprintMeta,
         ),
       );
     }
@@ -805,6 +826,10 @@ class $DivesTable extends Dives with TableInfo<$DivesTable, Dive> {
         DriftSqlType.string,
         data['${effectivePrefix}match_candidates_json'],
       ),
+      dcFingerprint: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dc_fingerprint'],
+      ),
       sampleIntervalMs: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}sample_interval_ms'],
@@ -905,6 +930,11 @@ class Dive extends DataClass implements Insertable<Dive> {
 
   /// JSON array of dive ids a Subsurface copy may match. Null = none.
   final String? matchCandidatesJson;
+
+  /// Lower-case hex of the libdivecomputer fingerprint; set only on
+  /// libdivecomputer dives. Tells apart two dives from one computer that
+  /// start less than a minute apart.
+  final String? dcFingerprint;
   final int sampleIntervalMs;
 
   /// Gas mixes as JSON array.
@@ -968,6 +998,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     this.dcFamily,
     this.dcModelCode,
     this.matchCandidatesJson,
+    this.dcFingerprint,
     required this.sampleIntervalMs,
     required this.gasMixesJson,
     this.tanksJson,
@@ -1023,6 +1054,9 @@ class Dive extends DataClass implements Insertable<Dive> {
     }
     if (!nullToAbsent || matchCandidatesJson != null) {
       map['match_candidates_json'] = Variable<String>(matchCandidatesJson);
+    }
+    if (!nullToAbsent || dcFingerprint != null) {
+      map['dc_fingerprint'] = Variable<String>(dcFingerprint);
     }
     map['sample_interval_ms'] = Variable<int>(sampleIntervalMs);
     map['gas_mixes_json'] = Variable<String>(gasMixesJson);
@@ -1099,6 +1133,9 @@ class Dive extends DataClass implements Insertable<Dive> {
       matchCandidatesJson: matchCandidatesJson == null && nullToAbsent
           ? const Value.absent()
           : Value(matchCandidatesJson),
+      dcFingerprint: dcFingerprint == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dcFingerprint),
       sampleIntervalMs: Value(sampleIntervalMs),
       gasMixesJson: Value(gasMixesJson),
       tanksJson: tanksJson == null && nullToAbsent
@@ -1162,6 +1199,7 @@ class Dive extends DataClass implements Insertable<Dive> {
       matchCandidatesJson: serializer.fromJson<String?>(
         json['matchCandidatesJson'],
       ),
+      dcFingerprint: serializer.fromJson<String?>(json['dcFingerprint']),
       sampleIntervalMs: serializer.fromJson<int>(json['sampleIntervalMs']),
       gasMixesJson: serializer.fromJson<String>(json['gasMixesJson']),
       tanksJson: serializer.fromJson<String?>(json['tanksJson']),
@@ -1214,6 +1252,7 @@ class Dive extends DataClass implements Insertable<Dive> {
       'dcFamily': serializer.toJson<int?>(dcFamily),
       'dcModelCode': serializer.toJson<int?>(dcModelCode),
       'matchCandidatesJson': serializer.toJson<String?>(matchCandidatesJson),
+      'dcFingerprint': serializer.toJson<String?>(dcFingerprint),
       'sampleIntervalMs': serializer.toJson<int>(sampleIntervalMs),
       'gasMixesJson': serializer.toJson<String>(gasMixesJson),
       'tanksJson': serializer.toJson<String?>(tanksJson),
@@ -1258,6 +1297,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     Value<int?> dcFamily = const Value.absent(),
     Value<int?> dcModelCode = const Value.absent(),
     Value<String?> matchCandidatesJson = const Value.absent(),
+    Value<String?> dcFingerprint = const Value.absent(),
     int? sampleIntervalMs,
     String? gasMixesJson,
     Value<String?> tanksJson = const Value.absent(),
@@ -1298,6 +1338,9 @@ class Dive extends DataClass implements Insertable<Dive> {
     matchCandidatesJson: matchCandidatesJson.present
         ? matchCandidatesJson.value
         : this.matchCandidatesJson,
+    dcFingerprint: dcFingerprint.present
+        ? dcFingerprint.value
+        : this.dcFingerprint,
     sampleIntervalMs: sampleIntervalMs ?? this.sampleIntervalMs,
     gasMixesJson: gasMixesJson ?? this.gasMixesJson,
     tanksJson: tanksJson.present ? tanksJson.value : this.tanksJson,
@@ -1365,6 +1408,9 @@ class Dive extends DataClass implements Insertable<Dive> {
       matchCandidatesJson: data.matchCandidatesJson.present
           ? data.matchCandidatesJson.value
           : this.matchCandidatesJson,
+      dcFingerprint: data.dcFingerprint.present
+          ? data.dcFingerprint.value
+          : this.dcFingerprint,
       sampleIntervalMs: data.sampleIntervalMs.present
           ? data.sampleIntervalMs.value
           : this.sampleIntervalMs,
@@ -1423,6 +1469,7 @@ class Dive extends DataClass implements Insertable<Dive> {
           ..write('dcFamily: $dcFamily, ')
           ..write('dcModelCode: $dcModelCode, ')
           ..write('matchCandidatesJson: $matchCandidatesJson, ')
+          ..write('dcFingerprint: $dcFingerprint, ')
           ..write('sampleIntervalMs: $sampleIntervalMs, ')
           ..write('gasMixesJson: $gasMixesJson, ')
           ..write('tanksJson: $tanksJson, ')
@@ -1465,6 +1512,7 @@ class Dive extends DataClass implements Insertable<Dive> {
     dcFamily,
     dcModelCode,
     matchCandidatesJson,
+    dcFingerprint,
     sampleIntervalMs,
     gasMixesJson,
     tanksJson,
@@ -1504,6 +1552,7 @@ class Dive extends DataClass implements Insertable<Dive> {
           other.dcFamily == this.dcFamily &&
           other.dcModelCode == this.dcModelCode &&
           other.matchCandidatesJson == this.matchCandidatesJson &&
+          other.dcFingerprint == this.dcFingerprint &&
           other.sampleIntervalMs == this.sampleIntervalMs &&
           other.gasMixesJson == this.gasMixesJson &&
           other.tanksJson == this.tanksJson &&
@@ -1542,6 +1591,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
   final Value<int?> dcFamily;
   final Value<int?> dcModelCode;
   final Value<String?> matchCandidatesJson;
+  final Value<String?> dcFingerprint;
   final Value<int> sampleIntervalMs;
   final Value<String> gasMixesJson;
   final Value<String?> tanksJson;
@@ -1578,6 +1628,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     this.dcFamily = const Value.absent(),
     this.dcModelCode = const Value.absent(),
     this.matchCandidatesJson = const Value.absent(),
+    this.dcFingerprint = const Value.absent(),
     this.sampleIntervalMs = const Value.absent(),
     this.gasMixesJson = const Value.absent(),
     this.tanksJson = const Value.absent(),
@@ -1615,6 +1666,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     this.dcFamily = const Value.absent(),
     this.dcModelCode = const Value.absent(),
     this.matchCandidatesJson = const Value.absent(),
+    this.dcFingerprint = const Value.absent(),
     required int sampleIntervalMs,
     required String gasMixesJson,
     this.tanksJson = const Value.absent(),
@@ -1669,6 +1721,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     Expression<int>? dcFamily,
     Expression<int>? dcModelCode,
     Expression<String>? matchCandidatesJson,
+    Expression<String>? dcFingerprint,
     Expression<int>? sampleIntervalMs,
     Expression<String>? gasMixesJson,
     Expression<String>? tanksJson,
@@ -1708,6 +1761,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
       if (dcModelCode != null) 'dc_model_code': dcModelCode,
       if (matchCandidatesJson != null)
         'match_candidates_json': matchCandidatesJson,
+      if (dcFingerprint != null) 'dc_fingerprint': dcFingerprint,
       if (sampleIntervalMs != null) 'sample_interval_ms': sampleIntervalMs,
       if (gasMixesJson != null) 'gas_mixes_json': gasMixesJson,
       if (tanksJson != null) 'tanks_json': tanksJson,
@@ -1752,6 +1806,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
     Value<int?>? dcFamily,
     Value<int?>? dcModelCode,
     Value<String?>? matchCandidatesJson,
+    Value<String?>? dcFingerprint,
     Value<int>? sampleIntervalMs,
     Value<String>? gasMixesJson,
     Value<String?>? tanksJson,
@@ -1790,6 +1845,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
       dcFamily: dcFamily ?? this.dcFamily,
       dcModelCode: dcModelCode ?? this.dcModelCode,
       matchCandidatesJson: matchCandidatesJson ?? this.matchCandidatesJson,
+      dcFingerprint: dcFingerprint ?? this.dcFingerprint,
       sampleIntervalMs: sampleIntervalMs ?? this.sampleIntervalMs,
       gasMixesJson: gasMixesJson ?? this.gasMixesJson,
       tanksJson: tanksJson ?? this.tanksJson,
@@ -1883,6 +1939,9 @@ class DivesCompanion extends UpdateCompanion<Dive> {
         matchCandidatesJson.value,
       );
     }
+    if (dcFingerprint.present) {
+      map['dc_fingerprint'] = Variable<String>(dcFingerprint.value);
+    }
     if (sampleIntervalMs.present) {
       map['sample_interval_ms'] = Variable<int>(sampleIntervalMs.value);
     }
@@ -1958,6 +2017,7 @@ class DivesCompanion extends UpdateCompanion<Dive> {
           ..write('dcFamily: $dcFamily, ')
           ..write('dcModelCode: $dcModelCode, ')
           ..write('matchCandidatesJson: $matchCandidatesJson, ')
+          ..write('dcFingerprint: $dcFingerprint, ')
           ..write('sampleIntervalMs: $sampleIntervalMs, ')
           ..write('gasMixesJson: $gasMixesJson, ')
           ..write('tanksJson: $tanksJson, ')
@@ -12429,6 +12489,7 @@ typedef $$DivesTableCreateCompanionBuilder =
       Value<int?> dcFamily,
       Value<int?> dcModelCode,
       Value<String?> matchCandidatesJson,
+      Value<String?> dcFingerprint,
       required int sampleIntervalMs,
       required String gasMixesJson,
       Value<String?> tanksJson,
@@ -12467,6 +12528,7 @@ typedef $$DivesTableUpdateCompanionBuilder =
       Value<int?> dcFamily,
       Value<int?> dcModelCode,
       Value<String?> matchCandidatesJson,
+      Value<String?> dcFingerprint,
       Value<int> sampleIntervalMs,
       Value<String> gasMixesJson,
       Value<String?> tanksJson,
@@ -12696,6 +12758,11 @@ class $$DivesTableFilterComposer extends Composer<_$AppDatabase, $DivesTable> {
 
   ColumnFilters<String> get matchCandidatesJson => $composableBuilder(
     column: $table.matchCandidatesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dcFingerprint => $composableBuilder(
+    column: $table.dcFingerprint,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13004,6 +13071,11 @@ class $$DivesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get dcFingerprint => $composableBuilder(
+    column: $table.dcFingerprint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get sampleIntervalMs => $composableBuilder(
     column: $table.sampleIntervalMs,
     builder: (column) => ColumnOrderings(column),
@@ -13157,6 +13229,11 @@ class $$DivesTableAnnotationComposer
 
   GeneratedColumn<String> get matchCandidatesJson => $composableBuilder(
     column: $table.matchCandidatesJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get dcFingerprint => $composableBuilder(
+    column: $table.dcFingerprint,
     builder: (column) => column,
   );
 
@@ -13396,6 +13473,7 @@ class $$DivesTableTableManager
                 Value<int?> dcFamily = const Value.absent(),
                 Value<int?> dcModelCode = const Value.absent(),
                 Value<String?> matchCandidatesJson = const Value.absent(),
+                Value<String?> dcFingerprint = const Value.absent(),
                 Value<int> sampleIntervalMs = const Value.absent(),
                 Value<String> gasMixesJson = const Value.absent(),
                 Value<String?> tanksJson = const Value.absent(),
@@ -13432,6 +13510,7 @@ class $$DivesTableTableManager
                 dcFamily: dcFamily,
                 dcModelCode: dcModelCode,
                 matchCandidatesJson: matchCandidatesJson,
+                dcFingerprint: dcFingerprint,
                 sampleIntervalMs: sampleIntervalMs,
                 gasMixesJson: gasMixesJson,
                 tanksJson: tanksJson,
@@ -13470,6 +13549,7 @@ class $$DivesTableTableManager
                 Value<int?> dcFamily = const Value.absent(),
                 Value<int?> dcModelCode = const Value.absent(),
                 Value<String?> matchCandidatesJson = const Value.absent(),
+                Value<String?> dcFingerprint = const Value.absent(),
                 required int sampleIntervalMs,
                 required String gasMixesJson,
                 Value<String?> tanksJson = const Value.absent(),
@@ -13506,6 +13586,7 @@ class $$DivesTableTableManager
                 dcFamily: dcFamily,
                 dcModelCode: dcModelCode,
                 matchCandidatesJson: matchCandidatesJson,
+                dcFingerprint: dcFingerprint,
                 sampleIntervalMs: sampleIntervalMs,
                 gasMixesJson: gasMixesJson,
                 tanksJson: tanksJson,
