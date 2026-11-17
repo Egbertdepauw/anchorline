@@ -17,6 +17,7 @@ import 'package:ffi/ffi.dart';
 import 'package:subsurface_core/subsurface_core.dart';
 
 import '../bindings.g.dart' as c;
+import '../descriptors.dart';
 import '../dive_id.dart';
 import '../envelope.dart';
 import '../mapping/map_dive.dart';
@@ -31,23 +32,21 @@ import 'events.dart';
 final class DownloadArgs {
   DownloadArgs({
     required this.linkAddress,
-    required this.vendor,
-    required this.product,
-    required this.family,
-    required this.model,
+    required this.requested,
     required this.advertisedName,
     required this.knownFingerprints,
     required this.record,
     required this.port,
+    this.debugLegacyParser = false,
   });
 
   /// The `al_link_t`; the main isolate keeps it alive until this isolate
   /// has exited.
   final int linkAddress;
-  final String vendor;
-  final String product;
-  final int family;
-  final int model;
+
+  /// The descriptor the caller chose. The one opened is looked up from it
+  /// and may differ in family or names (see [chooseDescriptorIndex]).
+  final LibdcDescriptor requested;
   final String? advertisedName;
 
   /// Saved fingerprints by serial number (amendment 7).
@@ -59,6 +58,9 @@ final class DownloadArgs {
   /// Gets every [LibdcDownloadEvent]; [LibdcFinished] comes last, with the
   /// isolate's exit.
   final SendPort port;
+
+  /// Test-only: also parse each dive with `dc_parser_new(device)`.
+  final bool debugLegacyParser;
 }
 
 /// The isolate's entry point.
@@ -67,18 +69,24 @@ void downloadIsolateMain(DownloadArgs args) {
   Isolate.exit(args.port, finished);
 }
 
-/// The recording's header lines for a download.
+/// The recording's header lines for a download: `descriptor` is the one
+/// opened, and `requested` the caller's, when it differs or nothing was
+/// opened.
 List<String> recordingHeader({
-  required String vendor,
-  required String product,
-  required int family,
-  required int model,
+  required LibdcDescriptor? opened,
+  required LibdcDescriptor requested,
   required String? advertisedName,
-}) => [
-  'descriptor $vendor|$product|$family|$model',
-  if (advertisedName != null) 'advertised $advertisedName',
-  'libdivecomputer $kLibdcPinnedCommit',
-];
+}) {
+  String row(LibdcDescriptor d) =>
+      '${d.vendor}|${d.product}|${d.family}|${d.model}';
+  return [
+    if (opened != null) 'descriptor ${row(opened)}',
+    if (opened == null || row(opened) != row(requested))
+      'requested ${row(requested)}',
+    if (advertisedName != null) 'advertised $advertisedName',
+    'libdivecomputer $kLibdcPinnedCommit',
+  ];
+}
 
 const _levelNames = {
   c.dc_loglevel_t.DC_LOGLEVEL_ERROR: 'ERROR',
@@ -96,10 +104,14 @@ final class _Download {
   final log = <String>[];
   final envelopes = <LibdcEnvelope>[];
 
+  /// The descriptor the device was opened with. Every envelope, dive id and
+  /// the header use it, not the caller's.
+  LibdcDescriptor? _opened;
   LibdcDeviceInfo? _devinfo;
   ({int devtime, int systime})? _clock;
   LibdcProgress? _progress;
   var _failed = false;
+  Pointer<c.dc_device_t> _device = nullptr;
 
   LibdcFinished run() {
     var status = c.dc_status_t.DC_STATUS_IO;
@@ -132,11 +144,16 @@ final class _Download {
         );
         c.dc_context_set_logfunc(context, logCallable.nativeFunction, nullptr);
 
-        descriptor = _findDescriptor(context, args);
+        final (found, opened) = _findDescriptor(context, args.requested);
+        descriptor = found;
         if (descriptor == nullptr) {
-          _note('libdivecomputer has no ${args.vendor} ${args.product}.');
+          _note(
+            'libdivecomputer has no ${args.requested.vendor} '
+            '${args.requested.product}.',
+          );
           return c.dc_status_t.DC_STATUS_UNSUPPORTED;
         }
+        _opened = opened;
 
         final iostreamOut = arena<Pointer<c.dc_iostream_t>>();
         rc = c.al_link_iostream(link, context, iostreamOut);
@@ -147,6 +164,7 @@ final class _Download {
         rc = c.dc_device_open(deviceOut, context, descriptor, iostream);
         if (rc != c.dc_status_t.DC_STATUS_SUCCESS) return rc;
         device = deviceOut.value;
+        _device = device;
 
         c.dc_device_set_cancel(
           device,
@@ -191,17 +209,16 @@ final class _Download {
       eventCallable.close();
       logCallable.close();
     }
-    if (_failed && status == c.dc_status_t.DC_STATUS_SUCCESS) {
-      status = c.dc_status_t.DC_STATUS_CANCELLED;
-    }
+    // A callback that threw cancelled the download to stop it: a failure of
+    // ours, not the diver's cancel, so IO like a download isolate that died.
+    if (_failed) status = c.dc_status_t.DC_STATUS_IO;
     return LibdcFinished(
       status: LibdcStatus.fromCode(status),
+      descriptor: _opened,
       recording: LibdcRecording(
         header: recordingHeader(
-          vendor: args.vendor,
-          product: args.product,
-          family: args.family,
-          model: args.model,
+          opened: _opened,
+          requested: args.requested,
           advertisedName: args.advertisedName,
         ),
         events: events,
@@ -357,12 +374,14 @@ final class _Download {
     try {
       final info = _devinfo;
       final clock = _clock;
+      // Set before dc_device_open, so always set when a dive arrives.
+      final opened = _opened!;
       final envelope = LibdcEnvelope(
         pinnedCommit: kLibdcPinnedCommit,
-        vendor: args.vendor,
-        product: args.product,
-        family: args.family,
-        descriptorModel: args.model,
+        vendor: opened.vendor,
+        product: opened.product,
+        family: opened.family,
+        descriptorModel: opened.model,
         devinfoModel: info?.model,
         devinfoFirmware: info?.firmware,
         devinfoSerial: info?.serial,
@@ -372,7 +391,7 @@ final class _Download {
         data: _copy(data, size),
       );
       final diveId = libdcDiveId(
-        vendor: args.vendor,
+        vendor: opened.vendor,
         serial: info?.serial ?? 0,
         fingerprint: envelope.fingerprint,
       );
@@ -384,6 +403,18 @@ final class _Download {
         parseError = e.status;
       } catch (_) {
         parseError = LibdcStatus.dataFormat;
+      }
+      ConvertedDive? legacy;
+      if (args.debugLegacyParser && _device != nullptr) {
+        try {
+          legacy = mapLibdcDive(
+            debugParseDiveWithDevice(envelope, _device),
+            envelope,
+            diveId: diveId,
+          );
+        } catch (_) {
+          legacy = null;
+        }
       }
       if (parseError != null) {
         _note(
@@ -397,6 +428,7 @@ final class _Download {
           diveId: diveId,
           converted: converted,
           parseError: parseError,
+          debugLegacyConverted: legacy,
         ),
       );
       return 1;
@@ -414,14 +446,15 @@ final class _Download {
 
 /// The descriptor to open the computer with, chosen by
 /// [chooseDescriptorIndex] (vendor, product and model, else family and
-/// model), the rule the parser uses too. Returns `nullptr` when there is
-/// none; the caller frees the result.
-Pointer<c.dc_descriptor_t> _findDescriptor(
+/// model), the rule the parser uses too, and what it is. Returns `nullptr`
+/// and null when there is none; the caller frees the pointer.
+(Pointer<c.dc_descriptor_t>, LibdcDescriptor?) _findDescriptor(
   Pointer<c.dc_context_t> context,
-  DownloadArgs args,
+  LibdcDescriptor requested,
 ) {
   final all = <Pointer<c.dc_descriptor_t>>[];
   final table = <(String, String, int, int)>[];
+  final transports = <int>[];
   Pointer<c.dc_descriptor_t> chosen = nullptr;
   try {
     using((arena) {
@@ -443,6 +476,7 @@ Pointer<c.dc_descriptor_t> _findDescriptor(
             c.dc_descriptor_get_type(d),
             c.dc_descriptor_get_model(d),
           ));
+          transports.add(c.dc_descriptor_get_transports(d));
         }
       } finally {
         c.dc_iterator_free(it);
@@ -450,13 +484,24 @@ Pointer<c.dc_descriptor_t> _findDescriptor(
     });
     final index = chooseDescriptorIndex(
       table,
-      vendor: args.vendor,
-      product: args.product,
-      family: args.family,
-      model: args.model,
+      vendor: requested.vendor,
+      product: requested.product,
+      family: requested.family,
+      model: requested.model,
     );
-    if (index != null) chosen = all[index];
-    return chosen;
+    if (index == null) return (nullptr, null);
+    chosen = all[index];
+    final row = table[index];
+    return (
+      chosen,
+      LibdcDescriptor(
+        vendor: row.$1,
+        product: row.$2,
+        family: row.$3,
+        model: row.$4,
+        transports: transports[index],
+      ),
+    );
   } finally {
     for (final d in all) {
       if (d != chosen) c.dc_descriptor_free(d);

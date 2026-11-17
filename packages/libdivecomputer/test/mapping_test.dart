@@ -218,6 +218,11 @@ void main() {
       expect(c.dive.dcModelCode, 10);
     });
 
+    test('the mapped dive carries the fingerprint as lower-case hex', () {
+      final c = _map(testDive());
+      expect(c.dive.dcFingerprint, 'deadbeef');
+    });
+
     test('no serial gives dcSerial 0, and the model code falls back to the '
         'descriptor', () {
       final c = _map(testDive(), e: testEnvelope(serial: null));
@@ -358,6 +363,20 @@ void main() {
         ),
         [(20000, 1)],
       );
+    });
+
+    test('a lone OXYGEN mix is kept, so the list is never empty', () {
+      final c = _map(
+        testDive(
+          gasMixes: const [
+            LibdcGasMix(oxygen: 1.0, helium: 0, usage: LibdcUsage.oxygen),
+          ],
+          rows: [row(0, depth: 0, gas: 0), row(10000, depth: 5, gas: 0)],
+        ),
+      );
+      expect(c.dive.gasMixes, hasLength(1));
+      expect(c.dive.gasMixes[0].oxygenPercent, 100);
+      expect(c.samples.gasMixIndex, [0, 0]);
     });
 
     test('diluent and bailout mixes keep their order and isDiluent', () {

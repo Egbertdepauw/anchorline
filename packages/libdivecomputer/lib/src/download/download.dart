@@ -80,7 +80,14 @@ class LibdcDownload {
     required LibdcDescriptor descriptor,
     required LibdcRecording recording,
     Map<int, Uint8List> knownFingerprints = const {},
-  }) {
+  }) => _replay(descriptor, recording, knownFingerprints, false);
+
+  static LibdcDownload _replay(
+    LibdcDescriptor descriptor,
+    LibdcRecording recording,
+    Map<int, Uint8List> knownFingerprints,
+    bool legacyParser,
+  ) {
     final name = recording.advertisedName;
     final download = LibdcDownload._(descriptor, name);
     final native = NativeLink.replay(name, recording.toReplayEvents());
@@ -91,6 +98,7 @@ class LibdcDownload {
       );
     } else {
       download._native = native;
+      download._legacyParser = legacyParser;
       unawaited(download._run(knownFingerprints, record: false));
     }
     return download;
@@ -101,6 +109,7 @@ class LibdcDownload {
   late final StreamController<LibdcDownloadEvent> _controller;
 
   NativeLink? _native;
+  var _legacyParser = false;
   NativeCallable<c.al_request_fnFunction>? _listener;
   LibdcBleLink? _link;
   Duration _writeTimeout = Duration.zero;
@@ -125,11 +134,11 @@ class LibdcDownload {
     if (!_finished) cancel();
   }
 
+  /// The header when the download isolate could not say which descriptor
+  /// it opened.
   List<String> get _header => recordingHeader(
-    vendor: _descriptor.vendor,
-    product: _descriptor.product,
-    family: _descriptor.family,
-    model: _descriptor.model,
+    opened: null,
+    requested: _descriptor,
     advertisedName: _advertisedName,
   );
 
@@ -269,14 +278,12 @@ class LibdcDownload {
         downloadIsolateMain,
         DownloadArgs(
           linkAddress: native.address,
-          vendor: _descriptor.vendor,
-          product: _descriptor.product,
-          family: _descriptor.family,
-          model: _descriptor.model,
+          requested: _descriptor,
           advertisedName: _advertisedName,
           knownFingerprints: Map.of(knownFingerprints),
           record: record,
           port: port.sendPort,
+          debugLegacyParser: _legacyParser,
         ),
         onError: port.sendPort,
         onExit: port.sendPort, // sends null, after everything else
@@ -298,6 +305,11 @@ class LibdcDownload {
     } finally {
       port.close();
     }
+    // The isolate died without its own LibdcFinished: keep what the link
+    // recorded, read before the link is freed.
+    final events = finished == null && record
+        ? _recordedEvents(native)
+        : const <LibdcIoEvent>[];
     _release();
     _finish(
       finished ??
@@ -305,11 +317,20 @@ class LibdcDownload {
             status: LibdcStatus.io,
             recording: LibdcRecording(
               header: _header,
+              events: events,
               log: ['ANCHORLINE: the download isolate stopped: $failure'],
               envelopes: _envelopes,
             ),
           ),
     );
+  }
+
+  static List<LibdcIoEvent> _recordedEvents(NativeLink native) {
+    try {
+      return LibdcIoEvent.unpackAll(native.recording());
+    } on FormatException {
+      return const [];
+    }
   }
 
   /// Cuts off everything that could still call into the link, then frees
@@ -346,3 +367,11 @@ class LibdcDownload {
 
 /// The download's handle on its C link, for tests.
 NativeLink? debugNativeLinkOf(LibdcDownload download) => download._native;
+
+/// Test-only: [LibdcDownload.replay] that also parses every dive with
+/// `dc_parser_new(device)`, reported as
+/// [LibdcDiveDownloaded.debugLegacyConverted]. Not exported from the package.
+LibdcDownload debugReplayWithLegacyParser({
+  required LibdcDescriptor descriptor,
+  required LibdcRecording recording,
+}) => LibdcDownload._replay(descriptor, recording, const {}, true);

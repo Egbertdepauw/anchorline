@@ -49,6 +49,12 @@ class ResampledRows {
 
 const int _maxCells = 4;
 
+/// A grid always may span this long.
+const int _minSpanMs = 24 * 3600 * 1000;
+
+/// The most grid points ever allocated.
+const int _maxPoints = 2000000;
+
 /// The most common positive gap between row times; the smaller one on a
 /// tie. 1000 ms when there is no gap to measure.
 int _interval(List<LibdcSampleRow> rows) {
@@ -109,7 +115,7 @@ List<LibdcSampleRow> rowsInTimeOrder(List<LibdcSampleRow> rows) {
 /// channel's first value (as depth always did), not 0.
 ///
 /// Throws [LibdcParseException] (`dataFormat`) when the grid would exceed
-/// `max(diveTimeSeconds * 1000 / interval * 2, 20000)` points, which means a
+/// `max(2 * diveTimeSeconds, 24 h)` of time or 2,000,000 points, which means a
 /// row time is corrupt.
 ResampledRows resample(
   List<LibdcSampleRow> rows, {
@@ -121,11 +127,14 @@ ResampledRows resample(
   final interval = _interval(sorted);
   final last = sorted.isEmpty ? 0 : sorted.last.timeMs;
   final count = sorted.isEmpty ? 0 : (last + interval - 1) ~/ interval + 1;
-  final limit = [
-    (diveTimeSeconds ?? 0) * 1000 ~/ interval * 2,
-    20000,
-  ].reduce((a, b) => a > b ? a : b);
-  if (count > limit) {
+  // Limit the grid in time, not in points: the dive time is not trusted (it
+  // can be absent, shorter than the rows, or corrupt). Rows may span twice
+  // the reported dive time or a day, whichever is longer, and never more than
+  // an absolute number of points.
+  final spanLimitMs = [(diveTimeSeconds ?? 0) * 2000, _minSpanMs].reduce(
+    (a, b) => a > b ? a : b,
+  );
+  if (last > spanLimitMs || count > _maxPoints) {
     throw const LibdcParseException(LibdcStatus.dataFormat);
   }
   final tankChannel = {
