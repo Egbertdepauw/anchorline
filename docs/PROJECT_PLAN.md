@@ -22,7 +22,7 @@ Listed so scope stays honest:
 - Tissue compartment replay, bailout-from-any-point — Phase 3.
 - Cross-dive statistics dashboards — Phase 3 (the per-cell longitudinal view is Phase 1, but generalized stats are not).
 - Photos / media on dives — Phase 2 at earliest; rabbit hole.
-- Importing from non-Shearwater dive computers — Phase 4 if at all (probably via libdc FFI when we get there).
+- Importing from non-Shearwater dive computers — Phase 4 if at all; designed in `docs/superpowers/specs/2026-11-15-libdivecomputer-brands-design.md` (libdivecomputer through FFI).
 - Public dive sharing, social features — likely never.
 - Web companion app — Phase 4 if at all.
 - Decompression planning (forward-looking, not analysis) — different app, do not merge.
