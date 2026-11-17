@@ -103,7 +103,8 @@ is built from source, as a dynamic library, in every build.
 ## Garmin and FIT
 
 Anchorline imports dives from FIT files written by Garmin and Suunto
-devices. The reader is in `packages/fit_reader/` and is Anchorline's own
+dive computers; only the devices named below have been checked against
+real files. The reader is in `packages/fit_reader/` and is Anchorline's own
 code.
 
 - **No Garmin code:** no Garmin FIT SDK code, port of it, or
@@ -115,9 +116,9 @@ code.
   test data (<https://github.com/subsurface/subsurface> at commit
   `1cf5569`, folder `dives/`), which is under the GNU GPL version 2. They
   were anonymised with `packages/fit_reader/tool/anonymise_fit.dart`.
-- **Trademarks:** Garmin, Descent and FIT are trademarks of their owners.
-  Anchorline uses them only to name the files and devices it reads, and is
-  not affiliated with or endorsed by Garmin or Suunto.
+- **Trademarks:** Garmin, Descent, FIT, Suunto and Ocean are trademarks
+  of their owners. Anchorline uses them only to name the files and the
+  fixtures, and is not affiliated with or endorsed by Garmin or Suunto.
 
 ## Fonts
 
