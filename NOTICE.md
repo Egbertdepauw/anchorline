@@ -103,8 +103,8 @@ is built from source, as a dynamic library, in every build.
 ## Garmin and FIT
 
 Anchorline imports dives from FIT files written by Garmin and Suunto
-dive computers; only the devices named below have been checked against
-real files. The reader is in `packages/fit_reader/` and is Anchorline's own
+dive computers; the devices named below are used as test fixtures; none counts
+as tested yet. The reader is in `packages/fit_reader/` and is Anchorline's own
 code.
 
 - **No Garmin code:** no Garmin FIT SDK code, port of it, or
