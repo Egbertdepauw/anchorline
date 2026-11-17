@@ -840,6 +840,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.2"
+  libdivecomputer:
+    dependency: "direct main"
+    description:
+      path: "packages/libdivecomputer"
+      relative: true
+    source: path
+    version: "0.0.0"
   lints:
     dependency: transitive
     description:

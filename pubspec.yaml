@@ -83,6 +83,10 @@ dependencies:
   # Pure Dart, shared with the server (spec 2026-11-02, section 6).
   subsurface_core:
     path: packages/subsurface_core
+  # Vendored libdivecomputer, built by a native assets hook into one dynamic
+  # library (spec 2026-11-15, section 2).
+  libdivecomputer:
+    path: packages/libdivecomputer
 
   # Crash + unhandled-exception reporting for release / beta builds.
   # Gated by kReleaseMode AND --dart-define=SENTRY_DSN=... at build time
@@ -131,6 +135,14 @@ flutter_launcher_icons:
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
+# Build-hook settings. leave_out_families lists libdivecomputer families to
+# leave out of every build (see NOTICE.md and the package README); it is
+# empty because every build carries every family.
+hooks:
+  user_defines:
+    libdivecomputer:
+      leave_out_families: []
+
 # The following section is specific to Flutter packages.
 flutter:
 
@@ -143,6 +155,8 @@ flutter:
     - test/fixtures/dives/
     - assets/images/watermark.png
     - assets/brand/
+    # libdivecomputer's licence text, shown on the in-app licence page.
+    - packages/libdivecomputer/third_party/libdivecomputer/COPYING
 
   fonts:
     - family: Inter

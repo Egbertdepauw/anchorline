@@ -131,6 +131,27 @@ class CcrlogToSubsurfaceMapper {
     );
   }
 
+  /// The `Dive-NNN` lines of [mapDive] alone. The Divecomputer lines,
+  /// which turn the samples into a Shearwater recording, are not built.
+  /// For a dive whose Divecomputer file is never written.
+  List<SsLine> mapDiveLines({
+    required SubsurfaceDiveInput dive,
+    required SampleSet samples,
+    required DiveAnnotation? annotation,
+    required List<DiveGasMix> gasMixes,
+    required List<DiveTank> tanks,
+    required Map<int, SubsurfaceCylinderInput> cylindersByMixIndex,
+  }) =>
+      _buildDiveLines(
+        dive: dive,
+        samples: samples,
+        annotation: annotation,
+        gasMixes: gasMixes,
+        tanks: tanks,
+        cylindersByMixIndex: cylindersByMixIndex,
+        siteId: annotation == null ? null : _siteIdFor(annotation),
+      );
+
   // ── Site ──────────────────────────────────────────────────────────────
 
   /// Build a Subsurface Site file from a dive annotation. Returns null

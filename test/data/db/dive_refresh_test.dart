@@ -53,6 +53,8 @@ ConvertedDive _rebuild(
   Duration? duration,
   String? vendor,
   bool nullVendor = false,
+  int? family,
+  String? fingerprint,
 }) {
   final d = c.dive;
   final shift = Duration(seconds: shiftSeconds);
@@ -83,8 +85,9 @@ ConvertedDive _rebuild(
       stackRemainingAtEndSeconds: d.stackRemainingAtEndSeconds,
       dcVendor: nullVendor ? null : (vendor ?? d.dcVendor),
       dcProduct: d.dcProduct,
-      dcFamily: d.dcFamily,
+      dcFamily: family ?? d.dcFamily,
       dcModelCode: d.dcModelCode,
+      dcFingerprint: fingerprint ?? d.dcFingerprint,
     ),
     samples: c.samples,
     events: c.events,
@@ -577,6 +580,173 @@ void main() {
       expect(await diveRow(id), dBefore);
       expect(await samplesRow(id), sBefore);
       expect(await layered(), cBefore);
+    });
+  });
+
+  group('libdivecomputer fingerprint', () {
+    // A libdivecomputer dive: fixture 718 as a Suunto download, number 0.
+    ConvertedDive libdc(String id, String fp, {int shift = 0}) => _rebuild(
+          _fx(718),
+          id: id,
+          number: 0,
+          shiftSeconds: shift,
+          vendor: 'Suunto',
+          family: 5,
+          fingerprint: fp,
+        );
+
+    test('two libdc dives from one computer 30 s apart both import',
+        () async {
+      final a = libdc('libdcA', 'aa11aa11');
+      final b = libdc('libdcB', 'bb22bb22', shift: 30);
+      expect(await dao.importDive(
+              converted: a, rawBlob: _raw(718), parserVersion: 1),
+          ImportOutcome.inserted);
+      expect(await dao.importDive(
+              converted: b, rawBlob: _raw(718), parserVersion: 1),
+          ImportOutcome.inserted);
+      expect(await diveCount(), 2);
+      expect((await diveRow('libdcA'))['dc_fingerprint'], 'aa11aa11');
+      expect((await diveRow('libdcB'))['dc_fingerprint'], 'bb22bb22');
+    });
+
+    test('downloading both again changes nothing', () async {
+      final a = libdc('libdcA', 'aa11aa11');
+      final b = libdc('libdcB', 'bb22bb22', shift: 30);
+      for (final c in [a, b]) {
+        await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 1);
+      }
+      // Same ids, and the same fingerprints under other ids.
+      for (final c in [
+        a,
+        b,
+        libdc('libdcA2', 'aa11aa11'),
+        libdc('libdcB2', 'bb22bb22', shift: 30),
+      ]) {
+        expect(await dao.importDive(
+                converted: c, rawBlob: _raw(718), parserVersion: 1),
+            ImportOutcome.unchanged);
+      }
+      expect(await diveCount(), 2);
+    });
+
+    test(
+        'a libdc download refreshes a matching Subsurface copy and stores its '
+        'fingerprint', () async {
+      await storeCopy(_rebuild(_fx(718),
+          id: 'ss1', number: 5, shiftSeconds: 30, nullVendor: true));
+      await ps.execute(
+          'INSERT INTO dive_bailout_carry (id, owner_id, dive_id, version) '
+          "VALUES ('bo1', 'test-user', 'ss1', 1)");
+
+      final out = await dao.importDive(
+          converted: libdc('libdcA', 'aa11aa11'),
+          rawBlob: _raw(718),
+          parserVersion: 1);
+
+      expect(out, ImportOutcome.refreshed);
+      expect(await diveCount(), 1);
+      final row = await diveRow('ss1');
+      expect(row['dc_fingerprint'], 'aa11aa11');
+      expect(row['dc_family'], 5);
+      expect(row['dc_vendor'], 'Suunto');
+      expect((await samplesRow('ss1'))['dc_family'], 5);
+      expect((await ps.get('SELECT dc_family FROM dive_bailout_carry'))['dc_family'], 5);
+      expect((await dao.getDive('ss1'))!.dcFingerprint, 'aa11aa11');
+    });
+
+    test('a refreshed copy is matched again by its fingerprint, not by the '
+        'window alone', () async {
+      await storeCopy(_rebuild(_fx(718),
+          id: 'ss1', number: 5, shiftSeconds: 30, nullVendor: true));
+      await dao.importDive(
+          converted: libdc('libdcA', 'aa11aa11'),
+          rawBlob: _raw(718),
+          parserVersion: 1);
+
+      // Another dive 40 s later is within the window of the refreshed copy.
+      final out = await dao.importDive(
+          converted: libdc('libdcB', 'bb22bb22', shift: 40),
+          rawBlob: _raw(718),
+          parserVersion: 1);
+      expect(out, ImportOutcome.inserted);
+      expect(await diveCount(), 2);
+
+      expect(await dao.importDive(
+              converted: libdc('libdcA2', 'aa11aa11'),
+              rawBlob: _raw(718),
+              parserVersion: 1),
+          ImportOutcome.unchanged);
+      expect(await diveCount(), 2);
+    });
+
+    test('alreadyDownloadedAmong hides only the dive with that fingerprint',
+        () async {
+      await dao.importDive(
+          converted: libdc('libdcA', 'aa11aa11'),
+          rawBlob: _raw(718),
+          parserVersion: 1);
+      final t = libdc('x', 'x').dive.startTime.millisecondsSinceEpoch ~/ 1000;
+      final hidden = await dao.alreadyDownloadedAmong(
+        [
+          (diveId: 'other-a', startTimeSeconds: t, diveNumber: 0),
+          (diveId: 'other-b', startTimeSeconds: t + 30, diveNumber: 0),
+        ],
+        vendor: 'Suunto',
+        serial: _serial,
+        fingerprints: {'other-a': 'aa11aa11', 'other-b': 'bb22bb22'},
+      );
+      expect(hidden, {'other-a'});
+    });
+
+    test('a refresh never changes a set dc_family', () async {
+      final a = libdc('libdcA', 'aa11aa11');
+      await dao.importDive(converted: a, rawBlob: _raw(718), parserVersion: 1);
+      final before = await diveRow('libdcA');
+
+      final out = await dao.importDive(
+          converted: _rebuild(a, family: 6, maxDepth: 77.0),
+          rawBlob: _raw(711),
+          parserVersion: 2);
+
+      expect(out, ImportOutcome.unchanged);
+      expect(await diveRow('libdcA'), before);
+      expect(await dao.getRawBlob('libdcA'), _raw(718));
+    });
+
+    test('an engine mismatch writes no raw blob', () async {
+      final c = _fx(718);
+      await dao.importDive(converted: c, rawBlob: _raw(718), parserVersion: 1);
+      final before = await diveRow(c.dive.id);
+
+      // A libdc parse under a Shearwater id.
+      final out = await dao.importDive(
+          converted: _rebuild(c, family: 5, vendor: 'Suunto', fingerprint: 'aa'),
+          rawBlob: _raw(711),
+          parserVersion: 2);
+
+      expect(out, ImportOutcome.unchanged);
+      expect(await diveRow(c.dive.id), before);
+      expect(await dao.getRawBlob(c.dive.id), _raw(718));
+    });
+
+    test('refreshFromRawBlob keeps the stored fingerprint', () async {
+      await storeCopy(_rebuild(_fx(718),
+          id: 'ss1', number: 5, shiftSeconds: 30, nullVendor: true));
+      await dao.importDive(
+          converted: libdc('libdcA', 'aa11aa11'),
+          rawBlob: _raw(718),
+          parserVersion: 1);
+
+      final out = await dao.refreshFromRawBlob(
+          diveId: 'ss1',
+          converted: _rebuild(libdc('libdcA', 'cc33cc33'), maxDepth: 77.0),
+          parserVersion: 2);
+
+      expect(out, ImportOutcome.refreshed);
+      final row = await diveRow('ss1');
+      expect(row['max_depth_mm'], 77000);
+      expect(row['dc_fingerprint'], 'aa11aa11');
     });
   });
 

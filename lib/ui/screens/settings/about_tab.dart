@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:libdivecomputer/libdivecomputer.dart';
 
 import '../../../build_info.dart';
 import '../../components/hero_stat.dart';
@@ -17,6 +18,7 @@ class AboutTab extends StatelessWidget {
     this.buildDate = BuildInfo.buildDate,
     this.channel = BuildInfo.channel,
     this.hasLicence = false,
+    this.readLibdcVersion,
     this.onLongPressLogo,
     this.onShareBleLog,
   }) : buildNumber = build;
@@ -30,13 +32,27 @@ class AboutTab extends StatelessWidget {
   final String buildDate;
   final String channel;
 
-  /// False until the repository has a LICENSE file.
+  /// Shows the Licence row (GPLv2).
   final bool hasLicence;
+
+  /// Reads the version shown as "libdivecomputer VERSION". Null reads it
+  /// from the native library, so on a real device the line proves the library
+  /// loaded there. A throwing reader shows "libdivecomputer: not available".
+  final String Function()? readLibdcVersion;
 
   /// Long-press on the logo; opens Widgetbook.
   final VoidCallback? onLongPressLogo;
 
   final VoidCallback? onShareBleLog;
+
+  String _libdcTitle() {
+    try {
+      return 'libdivecomputer ${(readLibdcVersion ?? () => Libdc.version)()}';
+    } catch (_) {
+      // The native library failed to load; the rest of the tab still works.
+      return 'libdivecomputer: not available';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -111,12 +127,27 @@ class AboutTab extends StatelessWidget {
               title: 'Channel',
               control: _Value(channelLabel(channel)),
             ),
+            SettingRow(
+              key: const ValueKey('about-libdivecomputer'),
+              title: _libdcTitle(),
+            ),
             if (hasLicence)
               const SettingRow(
                 key: ValueKey('about-licence'),
                 title: 'Licence',
                 control: _Value('GPLv2'),
               ),
+            SettingRow(
+              key: const ValueKey('about-open-source-licences'),
+              title: 'Open-source licences',
+              onTap: () => showLicensePage(
+                context: context,
+                applicationName: 'Anchorline',
+                applicationVersion: isDev ? null : version,
+                applicationLegalese:
+                    'Source code: github.com/Egbertdepauw/anchorline',
+              ),
+            ),
           ],
         ),
         SettingsGroup(

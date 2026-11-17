@@ -1,0 +1,53 @@
+# Regenerates lib/src/bindings.g.dart: `dart run ffigen --config ffigen.yaml`
+# in this directory (tool/update_upstream.sh does it after a pin move).
+name: LibdcBindings
+description: >-
+  Bindings to libdivecomputer's public API and Anchorline's C layer. Every
+  function is an @Native resolved through the code asset of the build hook.
+language: c
+output: lib/src/bindings.g.dart
+ffi-native:
+  asset-id: 'package:libdivecomputer/src/bindings.g.dart'
+headers:
+  entry-points:
+    - third_party/libdivecomputer/include/libdivecomputer/context.h
+    - third_party/libdivecomputer/include/libdivecomputer/descriptor.h
+    - third_party/libdivecomputer/include/libdivecomputer/device.h
+    - third_party/libdivecomputer/include/libdivecomputer/parser.h
+    - third_party/libdivecomputer/include/libdivecomputer/iterator.h
+    - third_party/libdivecomputer/include/libdivecomputer/custom.h
+    - third_party/libdivecomputer/include/libdivecomputer/ble.h
+    - third_party/libdivecomputer/include/libdivecomputer/ioctl.h
+    - third_party/libdivecomputer/include/libdivecomputer/datetime.h
+    - native/include/libdivecomputer/version.h
+    - third_party/libdivecomputer/include/libdivecomputer/common.h
+    - native/anchorline_families.h
+    - native/anchorline_io.h
+  include-directives:
+    - 'third_party/libdivecomputer/include/libdivecomputer/*.h'
+    - 'native/include/libdivecomputer/version.h'
+    - 'native/*.h'
+compiler-opts:
+  # ble.h uses size_t without including <stddef.h>.
+  - '-include'
+  - 'stddef.h'
+  - '-Inative/include'
+  - '-Ithird_party/libdivecomputer/include'
+  - '-Inative'
+functions:
+  include:
+    - 'dc_.*'
+    - 'al_.*'
+# Every dc_*_t enum is 4 bytes on every compiler we build with (all values
+# fit an int or unsigned int); the generated signatures pass them as Int32/Uint32.
+silence-enum-warning: true
+enums:
+  # Plain ints: DC_FAMILY_* are bit-packed values, not an enumeration.
+  as-int:
+    include:
+      - '.*'
+comments:
+  style: any
+  length: full
+preamble: |
+  // ignore_for_file: type=lint, unused_field

@@ -2,7 +2,7 @@ part of 'dive_dao.dart';
 
 /// The `dives` columns [StoredDiveKey.fromRow] reads.
 const _storedKeySelect = 'SELECT id, dc_vendor, dc_serial, dc_dive_number, '
-    'start_time, parser_version, dc_family FROM dives';
+    'start_time, parser_version, dc_family, dc_fingerprint FROM dives';
 
 /// The sample columns shared by the insert and the refresh, in the order of
 /// `sample_count, depth_blob … events_blob`.
@@ -70,11 +70,21 @@ extension _DiveDaoRefresh on DiveDao {
       vendor: c.dive.dcVendor ?? kShearwaterVendor,
       serial: c.dive.dcSerial,
       diveNumber: c.dive.dcDiveNumber,
+      fingerprint: c.dive.dcFingerprint,
       startTimeSeconds: t,
       excludeId: c.dive.id,
       stored: [for (final r in rows) StoredDiveKey.fromRow(r)],
     );
   }
+
+  /// Whether [converted] may touch [stored] at all (see
+  /// [refreshEnginesAgree]); when it may not, not even the raw blob is written.
+  bool _enginesAgree(StoredDiveKey stored, ConvertedDive converted) =>
+      refreshEnginesAgree(
+        storedVersion: stored.parserVersion,
+        storedFamily: stored.dcFamily,
+        incomingFamily: converted.dive.dcFamily,
+      );
 
   /// Step 1 of the import order for [stored]: the version rule decides.
   /// Null when the dive vanished before the write (nothing was written).
@@ -86,11 +96,12 @@ extension _DiveDaoRefresh on DiveDao {
   }) async {
     // A Subsurface copy (-1) never replaces anything, not even another copy.
     final mayWrite = parserVersion != kSubsurfaceImportedParserVersion &&
+        _enginesAgree(stored, converted) &&
         refreshMayWrite(
           storedVersion: stored.parserVersion,
-          storedIsLibdc: stored.dcFamily != null,
+          storedFamily: stored.dcFamily,
           incomingVersion: parserVersion,
-          incomingIsLibdc: converted.dive.dcFamily != null,
+          incomingFamily: converted.dive.dcFamily,
         );
     if (!mayWrite) return ImportOutcome.unchanged;
     if (!isUsableParse(converted)) return ImportOutcome.rejected;
@@ -153,7 +164,8 @@ extension _DiveDaoRefresh on DiveDao {
         'gas_mixes_json = ?, tanks_json = ?, sensor_calibration_json = ?, '
         'configured_stack_seconds = ?, stack_remaining_at_start_seconds = ?, '
         'stack_remaining_at_end_seconds = ?, parser_version = ?'
-        '${fromDownload ? ', dc_serial = ?, dc_dive_number = ?' : ''}, '
+        '${fromDownload ? ', dc_serial = ?, dc_dive_number = ?, '
+            'dc_fingerprint = COALESCE(?, dc_fingerprint)' : ''}, '
         'version = COALESCE(version, 0) + 1 '
         'WHERE id = ?',
         [
@@ -185,7 +197,11 @@ extension _DiveDaoRefresh on DiveDao {
           dive.stackRemainingAtStartSeconds,
           dive.stackRemainingAtEndSeconds,
           parserVersion,
-          if (fromDownload) ...[dive.dcSerial, dive.dcDiveNumber],
+          if (fromDownload) ...[
+            dive.dcSerial,
+            dive.dcDiveNumber,
+            dive.dcFingerprint,
+          ],
           diveId,
         ],
       );

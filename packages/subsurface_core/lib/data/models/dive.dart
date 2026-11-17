@@ -99,6 +99,11 @@ class Dive {
   final int? dcFamily;
   final int? dcModelCode;
 
+  /// Lower-case hex of the libdivecomputer fingerprint of this dive. Set only
+  /// on libdivecomputer dives (`dcFamily != null`); null on Shearwater
+  /// downloads and Subsurface copies.
+  final String? dcFingerprint;
+
   Dive({
     required this.id,
     required this.dcSerial,
@@ -127,6 +132,7 @@ class Dive {
     this.dcProduct,
     this.dcFamily,
     this.dcModelCode,
+    this.dcFingerprint,
   });
 }
 

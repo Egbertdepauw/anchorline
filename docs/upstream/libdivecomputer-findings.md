@@ -3,7 +3,7 @@
 Anchorline's Shearwater parser is a Dart translation of libdivecomputer's
 Shearwater code. Its author, Jef Driesen, allows Anchorline to ship that
 code through the app stores, on the condition that improvements go back to
-libdivecomputer (see [`CONTRIBUTING.md`](../../CONTRIBUTING.md#code-derived-from-libdivecomputer)).
+libdivecomputer (see [`CONTRIBUTING.md`](../../CONTRIBUTING.md#code-from-libdivecomputer)).
 
 This page lists where Anchorline's Shearwater parser and download code
 differ from libdivecomputer. It says which differences libdivecomputer

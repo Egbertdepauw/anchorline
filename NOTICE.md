@@ -30,7 +30,7 @@ Shearwater code. Without libdivecomputer it would not exist.
 - **Changes and improvements:** changes to these files stay public under
   the same licence, and improvements that would help libdivecomputer are
   shared back with its community. See
-  [`CONTRIBUTING.md`](CONTRIBUTING.md#code-derived-from-libdivecomputer).
+  [`CONTRIBUTING.md`](CONTRIBUTING.md#code-from-libdivecomputer).
 - **Findings for libdivecomputer:** what Anchorline has found that
   libdivecomputer could use, with the evidence, is in
   [`docs/upstream/libdivecomputer-findings.md`](docs/upstream/libdivecomputer-findings.md).
@@ -42,6 +42,42 @@ The Bluetooth download code in `lib/shearwater/ble/` and
 `lib/shearwater/parser/slip_decoder.dart` is Anchorline's own
 implementation. It used libdivecomputer's `shearwater_common.c` and
 `shearwater_petrel.c` as its reference for the Shearwater protocol.
+
+## libdivecomputer: the linked library
+
+Anchorline links libdivecomputer itself, to download from dive computers
+of other manufacturers over Bluetooth and to read their logs. The library
+is built from source, as a dynamic library, in every build.
+
+- **Project:** libdivecomputer, <https://www.libdivecomputer.org>,
+  <https://github.com/libdivecomputer/libdivecomputer>
+- **Licence:** GNU Lesser General Public License, version 2.1 or (at your
+  option) any later version (`aes.c` is public domain). The text ships
+  with the source in
+  [`packages/libdivecomputer/third_party/libdivecomputer/COPYING`](packages/libdivecomputer/third_party/libdivecomputer/COPYING)
+  and is listed on the in-app licence page.
+- **Pinned commit:** `0194f09d91c850b18480e73a9fa7b276c926043c`, recorded
+  in [`packages/libdivecomputer/UPSTREAM`](packages/libdivecomputer/UPSTREAM)
+- **Source and patches:** the full source is in
+  [`packages/libdivecomputer/third_party/libdivecomputer/`](packages/libdivecomputer/third_party/libdivecomputer/).
+  It always equals the pinned commit plus the patches in
+  [`packages/libdivecomputer/patches/`](packages/libdivecomputer/patches/).
+  Every patch is also sent to libdivecomputer's maintainer.
+- **Copyright:** with Jef Driesen, the author of most of the library, whose
+  permission to use it in Anchorline covers his code in the whole library.
+  Other authors keep the copyright on their code. Their names are in the
+  source headers. They include Linus Torvalds (Suunto EON Steel, Core and
+  D5, Deepblu Cosmiq, Oceans S1), Jan Matoušek (Divesoft Freedom and
+  Liberty), Anton Lundin (the OSTC 3 and newer download side, `hw_ostc3.c`; the parser is Jef's), Janice McLaughlin (Aqualung
+  i330R, Apeks DSX), Ryan Gardner (Deep Six, Crest, Genesis, Scorpena),
+  John Van Ostrand (Cochran) and David Carron (McLean).
+- **Which families ship:** every build carries every family, the store
+  builds as well as the website builds. If an author asks for a family to
+  be left out of the store builds, it goes on the leave-out list, the
+  `leave_out_families` define in the `hooks: user_defines` block of
+  [`pubspec.yaml`](pubspec.yaml). The list is empty today.
+- **Anchorline's own C layer** in `packages/libdivecomputer/native/` is
+  licensed under the LGPL version 2.1 or later as well.
 
 ## Subsurface: decompression constants and file format
 

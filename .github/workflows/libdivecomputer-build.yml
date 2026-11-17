@@ -1,0 +1,166 @@
+name: libdivecomputer build
+
+# Proves that the vendored libdivecomputer compiles, through the package's
+# native assets hook, on every platform the app ships on, and that each app
+# bundle contains the library. No branch filter on the pull_request trigger,
+# so stacked PRs get the run too.
+
+on:
+  pull_request:
+    paths:
+      - 'packages/libdivecomputer/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/libdivecomputer-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: libdc-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vendor:
+    name: vendored tree matches the pin
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check third_party against UPSTREAM + patches
+        run: packages/libdivecomputer/tool/check_vendor.sh
+
+  macos:
+    name: macOS + iOS
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.0
+          cache: true
+      - name: Package tests
+        working-directory: packages/libdivecomputer
+        run: |
+          dart pub get
+          dart test --reporter expanded
+      - name: flutter pub get
+        run: flutter pub get
+      # The Runner target is set up for the maintainer's team and needs a
+      # provisioning profile, which CI does not have. `flutter build macos`
+      # cannot turn signing off, so Flutter only prepares the project and
+      # xcodebuild builds it unsigned.
+      - name: Build macOS
+        run: |
+          set -euo pipefail
+          flutter build macos --debug --config-only
+          xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner \
+            -configuration Debug -derivedDataPath build/macos \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
+            build
+      - name: macOS bundle contains libdivecomputer
+        run: |
+          set -euo pipefail
+          ls build/macos/Build/Products/Debug/*.app/Contents/Frameworks
+          ls build/macos/Build/Products/Debug/*.app/Contents/Frameworks | grep divecomputer
+      # The macos-15 image has no iOS simulator runtime, so this builds the
+      # device slice (arm64) unsigned, which is also what ships.
+      - name: Build iOS
+        run: flutter build ios --debug --no-codesign
+      - name: iOS bundle contains libdivecomputer
+        run: |
+          set -euo pipefail
+          ls build/ios/iphoneos/Runner.app/Frameworks
+          ls build/ios/iphoneos/Runner.app/Frameworks | grep divecomputer
+
+  windows:
+    name: Windows
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.0
+          cache: true
+      - name: Package tests
+        working-directory: packages/libdivecomputer
+        shell: bash
+        run: |
+          dart pub get
+          dart test --reporter expanded
+      - name: flutter pub get
+        run: flutter pub get
+      - name: Build Windows
+        run: flutter build windows --debug
+      - name: divecomputer.dll is next to the executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls build/windows/x64/runner/Debug
+          test -f build/windows/x64/runner/Debug/divecomputer.dll
+      - name: Exports of divecomputer.dll
+        shell: pwsh
+        run: |
+          $dll = (Get-ChildItem -Recurse -Filter divecomputer.dll build/windows/x64/runner/Debug | Select-Object -First 1).FullName
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $dumpbin = Get-ChildItem -Recurse "$vs\VC\Tools\MSVC" -Filter dumpbin.exe | Where-Object { $_.FullName -match 'Hostx64\\x64' } | Select-Object -First 1
+          $exports = & $dumpbin.FullName /exports $dll | Out-String
+          foreach ($name in 'al_family_present', 'dc_descriptor_iterator_new', 'dc_version') {
+            if ($exports -notmatch "\b$name\b") { Write-Error "missing export $name"; exit 1 }
+            Write-Host "exported: $name"
+          }
+
+  linux-android:
+    name: Linux + Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.0
+          cache: true
+      # The same packages as linux/packaging/install_build_deps.sh installs
+      # for the AppImage build (Flutter's Linux toolchain, plus what the
+      # plugins compile against), minus the AppImage tools.
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libcurl4-openssl-dev zlib1g-dev
+      - name: Package tests
+        working-directory: packages/libdivecomputer
+        run: |
+          dart pub get
+          dart test --reporter expanded
+      - name: flutter pub get
+        run: flutter pub get
+      - name: Build Linux
+        run: flutter build linux --debug
+      - name: Linux bundle contains libdivecomputer.so
+        run: |
+          set -euo pipefail
+          ls build/linux/x64/debug/bundle/lib
+          test -f build/linux/x64/debug/bundle/lib/libdivecomputer.so
+      - name: Build Android APK
+        run: flutter build apk --debug
+      - name: APK contains libdivecomputer.so for every ABI
+        run: |
+          set -euo pipefail
+          apk=build/app/outputs/flutter-apk/app-debug.apk
+          unzip -l "$apk" | grep libdivecomputer
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            unzip -l "$apk" | grep "lib/$abi/libdivecomputer.so"
+          done
