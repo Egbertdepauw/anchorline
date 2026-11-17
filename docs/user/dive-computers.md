@@ -20,6 +20,6 @@ Every dive computer you have imported from appears here by itself, Shearwater or
 ## Good to know
 
 - The list names a Shearwater from its stored hardware ID. If the app does not know that ID, the list shows **Unknown** for the model.
-- For another brand's computer, the brand, model and serial here match each of its dives' **Information** tab. See [Dive information](/manual/dive-information).
+- For another brand's computer, the brand, model and serial here match each of its dives' **Information** tab: for example **Divesoft Liberty**, with the serial in decimal. See [Dive information](/manual/dive-information).
 - You do not add computers here. Import a dive (see [Import](/manual/import)) and the computer appears. For another brand, the computer tells the app its model and serial during the download, and the entry is added then.
 - The nickname and the pressure mapping are the only things you change here.
