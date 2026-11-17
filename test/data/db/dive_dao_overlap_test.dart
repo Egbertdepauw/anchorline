@@ -93,4 +93,23 @@ void main() {
     await ps.execute('UPDATE dives SET deleted_at = 5 WHERE id = ?', [id]);
     expect(await overlap(), isNull);
   });
+
+  test('a pre-brand copy (version -1, NULL vendor) of the watch is not '
+      'another computer, with another serial it is', () async {
+    await ps.execute(
+        'UPDATE dives SET dc_vendor = NULL, dc_serial = 1000000001, '
+        'parser_version = -1 WHERE id = ?',
+        [id]);
+    expect(await overlap(), isNull);
+    expect((await overlap(serial: 7))?.id, id);
+  });
+
+  test('a stored Garmin FIT row with the same serial is not returned',
+      () async {
+    await ps.execute(
+        "UPDATE dives SET dc_vendor = 'Garmin', dc_serial = 1000000001, "
+        'dc_family = -1 WHERE id = ?',
+        [id]);
+    expect(await overlap(), isNull);
+  });
 }

@@ -3,7 +3,8 @@ import 'dart:typed_data';
 import 'package:ccrlogger/data/db/database.dart';
 import 'package:ccrlogger/data/db/dive_dao.dart';
 import 'package:ccrlogger/data/import/fit_reparser.dart';
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart'
+    show ApplyInterceptor, QueryExecutor, QueryInterceptor, Value;
 import 'package:drift/native.dart';
 import 'package:fit_reader/fit_reader.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +17,18 @@ class _Report {
   final List<(Object, String)> calls = [];
   void call(Object error, StackTrace? stack, String where) =>
       calls.add((error, where));
+}
+
+class _Recorder extends QueryInterceptor {
+  _Recorder(this.queries);
+  final List<String> queries;
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+      QueryExecutor e, String statement, List<Object?> args) {
+    queries.add(statement);
+    return super.runSelect(e, statement, args);
+  }
 }
 
 void main() {
@@ -181,5 +194,22 @@ void main() {
     ).run();
     expect((r.refreshed, r.failed, r.skipped), (0, 0, 0));
     expect((await row(id))['parser_version'], 0);
+  });
+
+  test('with no FIT candidates it reads no marks and no raw blobs', () async {
+    final queries = <String>[];
+    final counted = AppDatabase(
+        NativeDatabase.memory().interceptWith(_Recorder(queries)));
+    addTearDown(counted.close);
+    final r = await FitReparser(
+      diveDao: dao,
+      drift: counted,
+      report: report.call,
+      waitUntilSynced: () async => true,
+    ).run();
+    expect((r.refreshed, r.failed, r.skipped), (0, 0, 0));
+    expect(queries.where((q) =>
+        q.contains('dive_import_marks') || q.contains('dive_raw_blobs')),
+        isEmpty);
   });
 }

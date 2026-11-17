@@ -348,9 +348,10 @@ class DiveDao {
   /// overlaps `[startSeconds, endSeconds]` and that was recorded by another
   /// computer than ([vendor], [serial]), or null. A span that only touches a
   /// dive at one end does not overlap it. The brand of a stored row is its
-  /// [effectiveVendor], with unknown (a pre-brand Subsurface copy) read as
-  /// Shearwater; serials compare through [subsurfaceSerialForms], as
-  /// [findSameDive] does.
+  /// [effectiveVendor]; an unknown one (a pre-brand Subsurface copy) matches
+  /// any brand, and serials compare through [subsurfaceSerialForms], exactly
+  /// as [findSameDive] does, so a row the import would refresh is not
+  /// reported as another computer's.
   ///
   /// `label` is the dive's product name, else the Shearwater model name of
   /// its `dc_model`, else its brand.
@@ -368,10 +369,11 @@ class DiveDao {
     );
     final serials = subsurfaceSerialForms(vendor, serial);
     for (final r in rows) {
-      final storedVendor = effectiveVendor(
-              r['dc_vendor'] as String?, (r['parser_version'] as num).toInt()) ??
-          kShearwaterVendor;
-      if (storedVendor == vendor &&
+      final v = effectiveVendor(
+          r['dc_vendor'] as String?, (r['parser_version'] as num).toInt());
+      // The import's same-dive rule: an unknown brand (a pre-brand copy)
+      // matches any brand, so it is the same computer when the serial fits.
+      if ((v ?? vendor) == vendor &&
           serials.contains((r['dc_serial'] as num).toInt())) {
         continue;
       }
@@ -386,7 +388,7 @@ class DiveDao {
         id: r['id'] as String,
         label: product != null && product.isNotEmpty
             ? product
-            : (modelName ?? storedVendor),
+            : (modelName ?? v ?? kShearwaterVendor),
       );
     }
     return null;

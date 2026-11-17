@@ -58,6 +58,8 @@ class FitReparser {
     if (!await _waitUntilSynced()) return (refreshed: 0, failed: 0, skipped: 0);
 
     final candidates = await _dao.fitReparseCandidates(kFitParserVersion);
+    // Nothing to do on most launches: skip the mark and blob scans.
+    if (candidates.isEmpty) return (refreshed: 0, failed: 0, skipped: 0);
     final failedIds = {
       for (final r in await _drift.customSelect(
         'SELECT dive_id FROM dive_import_marks WHERE reparse_failed_version = ?',
