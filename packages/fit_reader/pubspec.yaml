@@ -1,0 +1,17 @@
+name: fit_reader
+description: >-
+  Pure-Dart reader for Garmin Descent dive files (FIT container and dive
+  messages). No Flutter, no I/O.
+publish_to: none
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  subsurface_core:
+    path: ../subsurface_core
+  crypto: ^3.0.6
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0

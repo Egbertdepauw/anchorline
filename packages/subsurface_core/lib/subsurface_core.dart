@@ -3,6 +3,7 @@
 library;
 
 export 'data/models/annotation.dart';
+export 'data/models/dc_engine.dart';
 export 'data/models/dive.dart';
 export 'data/models/dive_event.dart';
 export 'data/models/sample_set.dart';
