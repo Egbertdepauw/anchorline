@@ -67,13 +67,15 @@ jobs:
           set -euo pipefail
           ls build/macos/Build/Products/Debug/*.app/Contents/Frameworks
           ls build/macos/Build/Products/Debug/*.app/Contents/Frameworks | grep divecomputer
-      - name: Build iOS simulator
-        run: flutter build ios --simulator --debug --no-codesign
+      # The macos-15 image has no iOS simulator runtime, so this builds the
+      # device slice (arm64) unsigned, which is also what ships.
+      - name: Build iOS
+        run: flutter build ios --debug --no-codesign
       - name: iOS bundle contains libdivecomputer
         run: |
           set -euo pipefail
-          ls build/ios/iphonesimulator/Runner.app/Frameworks
-          ls build/ios/iphonesimulator/Runner.app/Frameworks | grep divecomputer
+          ls build/ios/iphoneos/Runner.app/Frameworks
+          ls build/ios/iphoneos/Runner.app/Frameworks | grep divecomputer
 
   windows:
     name: Windows

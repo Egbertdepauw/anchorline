@@ -59,7 +59,8 @@ void main(List<String> args) async {
         renderDefFile(symbols, alFunctions),
       );
       flags.addAll(linkerFlagsFor(osName, defFile: def.toFilePath()));
-      libraries.add('ws2_32');
+      // ws2_32: sockets. advapi32: serial_win32.c enumerates ports in the registry.
+      libraries.addAll(['ws2_32', 'advapi32']);
     }
 
     // Windows refuses a command line over 32,767 characters, which the source
