@@ -131,7 +131,7 @@ DART
 if [ -n "${SKIP_FFIGEN:-}" ]; then
   echo "SKIP_FFIGEN set, skipping bindings"
 elif [ -f "$root/ffigen.yaml" ]; then
-  (cd "$root" && dart run ffigen)
+  (cd "$root" && dart run ffigen --config ffigen.yaml)
 else
   echo "ffigen.yaml not found, skipping bindings"
 fi
