@@ -1,4 +1,9 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:ccrlogger/ble/ble_central.dart' show BleScanResult;
+import 'package:ccrlogger/devices/libdc/libdc_download_source.dart'
+    show LibdcRun;
 import 'package:ccrlogger/data/db/dive_dao.dart';
 import 'package:ccrlogger/data/db/equipment_dao.dart';
 import 'package:ccrlogger/data/db/import_state_dao.dart';
@@ -19,6 +24,9 @@ class _Dao implements DiveDao {
 
 class _StateDao implements ImportStateDao {
   @override
+  Future<Map<String, Uint8List>> withPrefix(String prefix) async => {};
+
+  @override
   dynamic noSuchMethod(Invocation i) => throw UnimplementedError('$i');
 }
 
@@ -27,7 +35,22 @@ class _EquipDao implements EquipmentDao {
   dynamic noSuchMethod(Invocation i) => throw UnimplementedError('$i');
 }
 
-const _ostc = LibdcDescriptor(
+class _NoLink implements LibdcBleLink {
+  @override
+  String get advertisedName => 'fake';
+  @override
+  Stream<Uint8List> get notifications => const Stream.empty();
+  @override
+  Future<void> write(Uint8List bytes) async {}
+  @override
+  Future<Uint8List> readCharacteristic(String uuid) async => Uint8List(0);
+  @override
+  Future<void> writeCharacteristic(String uuid, Uint8List bytes) async {}
+  @override
+  Future<void> get disconnected => Completer<void>().future;
+}
+
+const _ostc =LibdcDescriptor(
     vendor: 'Heinrichs Weikamp',
     product: 'OSTC 4',
     family: 11,
@@ -136,6 +159,150 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     // Last step: the named devices seen in the scan.
     expect(find.text('Mystery X'), findsOneWidget);
+  });
+
+  Future<
+      ({
+        String recordingText,
+        List<String> extraHeader,
+        Rect? origin
+      })?> runShareFlow(WidgetTester tester, LibdcStatus status) async {
+    final n = ImportNotifier(
+      dao: _Dao(),
+      importStateDao: _StateDao(),
+      equipmentDao: _EquipDao(),
+      central: central,
+      libdcOpener: (c, r, d) async => LibdcOpened(
+        connection: LibdcBleConnection(_NoLink()),
+        close: () async {},
+        gattSummary: const ['service A', 'char B'],
+      ),
+      libdcStarter: ({
+        required descriptor,
+        required connection,
+        required knownFingerprints,
+        required record,
+      }) =>
+          LibdcRun(
+            events: Stream.fromIterable([
+              const LibdcDeviceInfo(model: 1, firmware: 2, serial: 3),
+              LibdcFinished(
+                  status: status,
+                  recording: LibdcRecording(log: ['recorded log'])),
+            ]),
+            cancel: () {},
+          ),
+    );
+    addTearDown(n.dispose);
+    ({String recordingText, List<String> extraHeader, Rect? origin})? shared;
+    tester.view.physicalSize = const Size(900, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ImportScreen(
+          notifier: n,
+          onViewDives: () {},
+          shareDownloadFn: ({
+            required recordingText,
+            required extraHeader,
+            origin,
+          }) async =>
+              shared = (
+                recordingText: recordingText,
+                extraHeader: extraHeader,
+                origin: origin
+              ),
+        ),
+      ),
+    ));
+    n.recordNextDownload = true;
+    await tester.runAsync(() => n.selectLibdcDevice(
+        const ImportScanResult(
+            id: 'AA', name: 'Twin', kind: ImportDeviceKind.libdc,
+            candidates: [_famA]),
+        _famA));
+    await tester.pump();
+    expect(find.text('Share this download'), findsOneWidget);
+    await tester.tap(find.text('Share this download'));
+    await tester.pump();
+    return shared;
+  }
+
+  testWidgets('Share this download appears after a recorded download',
+      (tester) async {
+    final shared = await runShareFlow(tester, LibdcStatus.done);
+    expect(shared!.recordingText, contains('recorded log'));
+    expect(shared.extraHeader.join('\n'), contains('service A'));
+    expect(shared.extraHeader.join('\n'), contains('char B'));
+    expect(shared.origin, isNotNull);
+  });
+
+  testWidgets('Share this download appears after a failure', (tester) async {
+    final shared = await runShareFlow(tester, LibdcStatus.io);
+    expect(find.text('Download stopped (the connection dropped). 0 dives saved.'),
+        findsOneWidget);
+    expect(shared!.recordingText, contains('recorded log'));
+  });
+
+  testWidgets('a libdc download shows its progress and a Cancel button',
+      (tester) async {
+    final gate = StreamController<LibdcDownloadEvent>();
+    var cancelled = false;
+    final n = ImportNotifier(
+      dao: _Dao(),
+      importStateDao: _StateDao(),
+      equipmentDao: _EquipDao(),
+      central: central,
+      libdcOpener: (c, r, d) async => LibdcOpened(
+        connection: LibdcBleConnection(_NoLink()),
+        close: () async {},
+        gattSummary: const [],
+      ),
+      libdcStarter: ({
+        required descriptor,
+        required connection,
+        required knownFingerprints,
+        required record,
+      }) =>
+          LibdcRun(events: gate.stream, cancel: () => cancelled = true),
+    );
+    addTearDown(n.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: ImportScreen(notifier: n, onViewDives: () {})),
+    ));
+    late Future<void> flow;
+    await tester.runAsync(() async {
+      flow = n.selectLibdcDevice(
+          const ImportScanResult(
+              id: 'AA',
+              name: 'Twin',
+              kind: ImportDeviceKind.libdc,
+              candidates: [_famA]),
+          _famA);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      gate.add(const LibdcDeviceInfo(model: 1, firmware: 2, serial: 3));
+      gate.add(const LibdcProgress(current: 50, maximum: 100));
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    });
+    await tester.pump();
+    expect(find.text('0 dives saved'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+    expect(
+        tester
+            .widget<LinearProgressIndicator>(
+                find.byType(LinearProgressIndicator))
+            .value,
+        0.5);
+    await tester.tap(find.text('Cancel'));
+    expect(cancelled, isTrue);
+    await tester.runAsync(() async {
+      gate.add(LibdcFinished(
+          status: LibdcStatus.cancelled, recording: LibdcRecording(log: [])));
+      await gate.close();
+      await flow;
+    });
   });
 
   testWidgets('the picker leaves out a Shearwater descriptor it is given',

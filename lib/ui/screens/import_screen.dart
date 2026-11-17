@@ -1,9 +1,13 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:intl/intl.dart';
 import 'package:libdivecomputer/libdivecomputer.dart';
 
+import '../../build_info.dart';
 import '../../devices/dive_download_source.dart';
+import '../../devices/libdc/download_share.dart';
 import '../../devices/libdc/libdc_tiers.dart';
 import '../notifiers/import_notifier.dart';
 import '../widgets/libdc_model_picker.dart';
@@ -12,7 +16,19 @@ class ImportScreen extends StatefulWidget {
   final ImportNotifier notifier;
   final VoidCallback onViewDives;
 
-  const ImportScreen({super.key, required this.notifier, required this.onViewDives});
+  /// Shares a libdivecomputer download's recording. A seam for tests.
+  final Future<void> Function({
+    required String recordingText,
+    required List<String> extraHeader,
+    Rect? origin,
+  }) shareDownloadFn;
+
+  const ImportScreen({
+    super.key,
+    required this.notifier,
+    required this.onViewDives,
+    this.shareDownloadFn = shareDownload,
+  });
 
   @override
   State<ImportScreen> createState() => _ImportScreenState();
@@ -365,7 +381,65 @@ class _ImportScreenState extends State<ImportScreen> {
     return DateFormat('yyyy-MM-dd HH:mm').format(dt);
   }
 
+  /// "Share this download": hands the recording to the share sheet,
+  /// anchored at the button (iPad and iOS need it).
+  Widget _buildShareButton(ImportNotifier n) {
+    final text = n.lastRecordingText;
+    if (!n.isLibdcDownload || text == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Builder(
+        builder: (ctx) => OutlinedButton.icon(
+          onPressed: () {
+            final box = ctx.findRenderObject() as RenderBox?;
+            final origin =
+                box != null ? box.localToGlobal(Offset.zero) & box.size : null;
+            widget.shareDownloadFn(
+              recordingText: text,
+              extraHeader: [
+                'app: ${BuildInfo.version.isEmpty ? 'dev' : BuildInfo.version}'
+                    '+${BuildInfo.build}',
+                'platform: ${Platform.operatingSystem} '
+                    '${Platform.operatingSystemVersion}',
+                'gatt:',
+                ...n.lastGattSummary.map((l) => '  $l'),
+              ],
+              origin: origin,
+            );
+          },
+          icon: const Icon(Icons.ios_share),
+          label: const Text('Share this download'),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLibdcDownloading(ImportNotifier n, ThemeData theme) {
+    final fade = theme.colorScheme.onSurface.withValues(alpha: 0.5);
+    return Center(child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text('Downloading from ${n.identity?.modelLabel ?? 'your dive computer'}...',
+            style: const TextStyle(fontSize: 16)),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: LinearProgressIndicator(value: n.currentDiveProgress),
+        ),
+        const SizedBox(height: 8),
+        Text('${n.downloadedCount} dives saved',
+            style: TextStyle(color: fade)),
+        const SizedBox(height: 24),
+        OutlinedButton(
+          onPressed: n.cancelDownload,
+          child: const Text('Cancel'),
+        ),
+      ],
+    ));
+  }
+
   Widget _buildDownloading(ImportNotifier n, ThemeData theme) {
+    if (n.isLibdcDownload) return _buildLibdcDownloading(n, theme);
     // Two progress signals: overall (dives saved / total — drives the
     // big circular ring) and per-dive (compressed bytes received for
     // the dive currently streaming — drives the linear bar). Per-dive
@@ -452,6 +526,7 @@ class _ImportScreenState extends State<ImportScreen> {
           onPressed: () => widget.notifier.reset(),
           child: const Text('Import More'),
         ),
+        _buildShareButton(n),
       ],
     ));
   }
@@ -475,6 +550,7 @@ class _ImportScreenState extends State<ImportScreen> {
           icon: const Icon(Icons.refresh),
           label: const Text('Retry'),
         ),
+        _buildShareButton(n),
       ],
     ));
   }

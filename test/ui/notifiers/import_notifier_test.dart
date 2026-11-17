@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -13,6 +14,8 @@ import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:subsurface_core/subsurface_core.dart'
     show kSubsurfaceImportedParserVersion;
 import 'package:ccrlogger/devices/dive_download_source.dart';
+import 'package:ccrlogger/devices/libdc/libdc_download_source.dart'
+    show LibdcRun;
 import 'package:ccrlogger/shearwater/ble/mock_ble_transport.dart';
 import 'package:ccrlogger/shearwater/ble/shearwater_ble_transport.dart';
 import 'package:ccrlogger/shearwater/ble/shearwater_link.dart';
@@ -557,4 +560,202 @@ void main() {
       expect(scanner.recordNextDownload, isTrue);
     });
   });
+
+  group('libdc download', () {
+    const descriptor = LibdcDescriptor(
+        vendor: 'Divesoft',
+        product: 'Liberty',
+        family: 0x130000,
+        model: 10,
+        transports: 32);
+    const scan = ImportScanResult(
+        id: 'AA:11',
+        name: 'Liberty 1234',
+        kind: ImportDeviceKind.libdc,
+        candidates: [descriptor]);
+    const key = 'libdc:${0x130000}:1234';
+
+    LibdcEnvelope envelope(int n) => LibdcEnvelope(
+          pinnedCommit: '0194f09',
+          vendor: 'Divesoft',
+          product: 'Liberty',
+          family: 0x130000,
+          descriptorModel: 10,
+          devinfoModel: 10,
+          devinfoFirmware: 7,
+          devinfoSerial: 1234,
+          fingerprint: Uint8List.fromList([n & 0xFF, n >> 8, 1, 2]),
+          data: Uint8List.fromList([1, 2, 3]),
+        );
+
+    LibdcDiveDownloaded good(int n) => LibdcDiveDownloaded(
+          envelope: envelope(n),
+          diveId: 'x$n',
+          converted: _copyOfMockDive(n, shiftSeconds: 0, logbookNumber: n),
+        );
+
+    LibdcDiveDownloaded bad(int n) => LibdcDiveDownloaded(
+          envelope: envelope(n),
+          diveId: 'bad$n',
+          parseError: LibdcStatus.dataFormat,
+        );
+
+    LibdcFinished finished(LibdcStatus s) => LibdcFinished(
+        status: s, recording: LibdcRecording(log: ['the log line']));
+
+    const info = LibdcDeviceInfo(model: 10, firmware: 7, serial: 1234);
+
+    var closes = 0;
+    var cancels = 0;
+    Map<int, Uint8List>? passedKnown;
+    bool? passedRecord;
+
+    ImportNotifier libdcNotifier(List<LibdcDownloadEvent> script,
+        {bool failConnect = false}) {
+      closes = 0;
+      cancels = 0;
+      passedKnown = null;
+      passedRecord = null;
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: FakeBleCentral(),
+        libdcOpener: (central, r, d) async {
+          if (failConnect) throw StateError('no gatt');
+          return LibdcOpened(
+            connection: LibdcBleConnection(_NoLink()),
+            close: () async => closes++,
+            gattSummary: const ['service 1', 'char 2'],
+          );
+        },
+        libdcStarter: ({
+          required descriptor,
+          required connection,
+          required knownFingerprints,
+          required record,
+        }) {
+          passedKnown = knownFingerprints;
+          passedRecord = record;
+          return LibdcRun(
+              events: Stream.fromIterable(script), cancel: () => cancels++);
+        },
+      );
+      extra.add(n);
+      return n;
+    }
+
+    test('a libdc download skips the manifest and imports each dive',
+        () async {
+      final n = libdcNotifier(
+          [info, good(711), good(712), finished(LibdcStatus.done)]);
+      final states = <ImportFlowState>[];
+      n.addListener(() => states.add(n.state));
+
+      await n.selectLibdcDevice(scan, descriptor);
+
+      expect(states, isNot(contains(ImportFlowState.readingManifest)));
+      expect(states, contains(ImportFlowState.connecting));
+      expect(states, contains(ImportFlowState.downloading));
+      expect(n.state, ImportFlowState.done);
+      expect(n.downloadedCount, 2);
+      expect(n.failedCount, 0);
+      expect(n.identity!.vendor, 'Divesoft');
+      expect(closes, greaterThan(0));
+      expect(n.lastRecordingText, contains('the log line'));
+      expect(n.lastGattSummary, ['service 1', 'char 2']);
+      expect(n.isLibdcDownload, isTrue);
+    });
+
+    test('the fingerprint is saved after a clean finish with no failures only',
+        () async {
+      final n = libdcNotifier(
+          [info, good(711), good(712), finished(LibdcStatus.done)]);
+      await n.selectLibdcDevice(scan, descriptor);
+      // The computer sends the newest dive first: 711's fingerprint.
+      expect(await importStateDao.getLastFingerprint(key),
+          envelope(711).fingerprint);
+    });
+
+    test('a failed dive keeps the old fingerprint', () async {
+      final old = Uint8List.fromList([9, 9, 9, 9]);
+      await importStateDao.saveLastFingerprint(key, old);
+      final n = libdcNotifier(
+          [info, good(711), bad(712), finished(LibdcStatus.done)]);
+      await n.selectLibdcDevice(scan, descriptor);
+      expect(n.failedCount, 1);
+      expect(n.downloadedCount, 1);
+      expect(await importStateDao.getLastFingerprint(key), old);
+    });
+
+    test('download everything again passes no fingerprints', () async {
+      await importStateDao.saveLastFingerprint(
+          key, Uint8List.fromList([9, 9, 9, 9]));
+
+      final normal = libdcNotifier([info, finished(LibdcStatus.done)]);
+      await normal.selectLibdcDevice(scan, descriptor);
+      expect(passedKnown, {1234: Uint8List.fromList([9, 9, 9, 9])});
+      expect(passedRecord, isFalse);
+
+      final again = libdcNotifier([info, finished(LibdcStatus.done)]);
+      again.forceFullReimport = true;
+      again.recordNextDownload = true;
+      await again.selectLibdcDevice(scan, descriptor);
+      expect(passedKnown, isEmpty);
+      expect(passedRecord, isTrue);
+    });
+
+    test('a failed libdc download says how many dives were saved', () async {
+      final n =
+          libdcNotifier([info, good(711), finished(LibdcStatus.timeout)]);
+      await n.selectLibdcDevice(scan, descriptor);
+      expect(n.state, ImportFlowState.error);
+      expect(n.errorMessage,
+          'Download stopped (the computer stopped answering). 1 dives saved.');
+      expect(n.lastRecordingText, contains('the log line'));
+      expect(await importStateDao.getLastFingerprint(key), isNull);
+    });
+
+    test('the stop reason per status', () {
+      expect(libdcStopReason(LibdcStatus.timeout),
+          'the computer stopped answering');
+      expect(libdcStopReason(LibdcStatus.io), 'the connection dropped');
+      expect(libdcStopReason(LibdcStatus.protocol),
+          'unexpected data from the computer');
+      expect(libdcStopReason(LibdcStatus.cancelled), 'cancelled');
+      expect(libdcStopReason(LibdcStatus.noAccess), 'error noAccess');
+    });
+
+    test('a connect failure ends in the error state, not an exception',
+        () async {
+      final n = libdcNotifier(const [], failConnect: true);
+      await n.selectLibdcDevice(scan, descriptor);
+      expect(n.state, ImportFlowState.error);
+      expect(n.errorMessage, startsWith('Connection failed'));
+      expect(n.lastRecordingText, isNull);
+    });
+
+    test('cancelling stops the running download', () async {
+      final n = libdcNotifier([info, finished(LibdcStatus.cancelled)]);
+      await n.selectLibdcDevice(scan, descriptor);
+      n.cancelDownload();
+      expect(cancels, greaterThan(0));
+    });
+  });
+}
+
+class _NoLink implements LibdcBleLink {
+  @override
+  String get advertisedName => 'fake';
+  @override
+  Stream<Uint8List> get notifications => const Stream.empty();
+  @override
+  Future<void> write(Uint8List bytes) async {}
+  @override
+  Future<Uint8List> readCharacteristic(String uuid) async => Uint8List(0);
+  @override
+  Future<void> writeCharacteristic(String uuid, Uint8List bytes) async {}
+  @override
+  Future<void> get disconnected => Completer<void>().future;
 }

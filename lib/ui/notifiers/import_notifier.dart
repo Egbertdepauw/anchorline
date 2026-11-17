@@ -13,6 +13,9 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../ble/ble_central.dart';
 import '../../ble/ble_central_default.dart';
+import '../../devices/libdc/ble_central_libdc_link.dart';
+import '../../devices/libdc/libdc_ble_profile.dart';
+import '../../devices/libdc/libdc_download_source.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../data/db/import_state_dao.dart';
@@ -74,6 +77,36 @@ class ImportScanResult {
   final List<LibdcDescriptor> candidates;
 }
 
+/// An open connection to a libdivecomputer device.
+class LibdcOpened {
+  const LibdcOpened({
+    required this.connection,
+    required this.close,
+    required this.gattSummary,
+  });
+
+  final LibdcConnection connection;
+  final Future<void> Function() close;
+
+  /// One line per GATT service and characteristic, for the recording.
+  final List<String> gattSummary;
+}
+
+/// Connects to [d]'s device. The default goes through
+/// [BleCentralLibdcLink]; tests pass a stand-in.
+typedef LibdcOpener = Future<LibdcOpened> Function(
+    BleCentral central, ImportScanResult r, LibdcDescriptor d);
+
+/// A short English reason for a libdivecomputer download that stopped with
+/// [status], for the message shown to the diver.
+String libdcStopReason(LibdcStatus status) => switch (status) {
+      LibdcStatus.timeout => 'the computer stopped answering',
+      LibdcStatus.io => 'the connection dropped',
+      LibdcStatus.protocol => 'unexpected data from the computer',
+      LibdcStatus.cancelled => 'cancelled',
+      _ => 'error ${status.name}',
+    };
+
 /// ChangeNotifier driving the BLE import wizard UI.
 ///
 /// When constructed with `useMock: true` a [MockBleTransport] is used
@@ -88,6 +121,14 @@ class ImportNotifier extends ChangeNotifier {
   final bool useMock;
   final BleCentral? _centralOverride;
   final List<LibdcDescriptor> Function(String name) _matchBle;
+  final LibdcOpener? _libdcOpener;
+  final LibdcStarter? _libdcStarter;
+
+  // The libdivecomputer download in progress or just finished.
+  bool _libdc = false;
+  String? _libdcVendor;
+  String? _recordingText;
+  List<String> _gattSummary = const [];
 
   /// The one central the scan runs through, for both engines.
   BleCentral get _central => _centralOverride ?? defaultBleCentral();
@@ -138,7 +179,11 @@ class ImportNotifier extends ChangeNotifier {
     ImportProblemReporter? reporter,
     BleCentral? central,
     List<LibdcDescriptor> Function(String name)? matchBle,
-  })  : _centralOverride = central,
+    LibdcOpener? libdcOpener,
+    LibdcStarter? libdcStarter,
+  })  : _libdcOpener = libdcOpener,
+        _libdcStarter = libdcStarter,
+        _centralOverride = central,
         _matchBle = matchBle ?? Libdc.matchBle,
         _dao = dao,
         _importStateDao = importStateDao,
@@ -205,6 +250,19 @@ class ImportNotifier extends ChangeNotifier {
     _recordNextDownload = value;
     notifyListeners();
   }
+
+  /// Whether the download in progress (or just finished) is a
+  /// libdivecomputer one rather than a Shearwater one.
+  bool get isLibdcDownload => _libdc;
+
+  /// The recording of the last libdivecomputer download: its log and
+  /// envelopes, plus the packets when recording was on. Null before one ends
+  /// and after a failed connect.
+  String? get lastRecordingText => _recordingText;
+
+  /// The GATT services and characteristics of the last libdivecomputer
+  /// device, one line each.
+  List<String> get lastGattSummary => List.unmodifiable(_gattSummary);
 
   /// Devices seen during scanning: Shearwater and libdivecomputer ones, and
   /// named devices nobody recognises ([ImportDeviceKind.unmatched]).
@@ -320,6 +378,7 @@ class ImportNotifier extends ChangeNotifier {
   ///
   /// Transitions: scanning → connecting → readingManifest.
   Future<void> selectMockDevice() async {
+    _libdc = false;
     _stopScan();
     await _enableWakelock();
     _state = ImportFlowState.connecting;
@@ -334,6 +393,7 @@ class ImportNotifier extends ChangeNotifier {
   /// inject a link that misbehaves.
   @visibleForTesting
   Future<void> connectLinkForTest(ShearwaterLink link) async {
+    _libdc = false;
     _stopScan();
     _state = ImportFlowState.connecting;
     notifyListeners();
@@ -363,6 +423,7 @@ class ImportNotifier extends ChangeNotifier {
   ///
   /// Transitions: scanning → connecting → readingManifest.
   Future<void> selectRealDevice(BluetoothDevice device) async {
+    _libdc = false;
     _stopScan();
     await _enableWakelock();
     _state = ImportFlowState.connecting;
@@ -389,14 +450,70 @@ class ImportNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Connects to a libdivecomputer device. [d] is the model the user chose,
-  /// or the first candidate of the chosen family.
+  // ── Connect and download (libdivecomputer) ─────────────────────────────────
+
+  /// Connects to a libdivecomputer device and downloads from it. [d] is the
+  /// model the user chose, or the first candidate of the chosen family: the
+  /// family decides the protocol, and the model comes from the device info.
   ///
-  /// Not built yet: the download half arrives with the libdivecomputer
-  /// download source.
+  /// Transitions: scanning → connecting → downloading → done / error. There
+  /// is no manifest step: libdivecomputer cannot list dives first. Never
+  /// throws; a failure ends in [ImportFlowState.error].
   Future<void> selectLibdcDevice(ImportScanResult r, LibdcDescriptor d) async {
     _stopScan();
-    throw UnimplementedError('12b');
+    _libdc = true;
+    _libdcVendor = d.vendor;
+    _recordingText = null;
+    _gattSummary = const [];
+    await _enableWakelock();
+    _state = ImportFlowState.connecting;
+    notifyListeners();
+
+    try {
+      final opened = await (_libdcOpener ?? _openLibdc)(_central, r, d);
+      _gattSummary = opened.gattSummary;
+      final source = LibdcDownloadSource(
+        descriptor: d,
+        connection: opened.connection,
+        closeConnection: opened.close,
+        fingerprints: _forceFullReimport ? null : _importStateDao,
+        record: _recordNextDownload,
+        starter: _libdcStarter,
+      );
+      _source = source;
+    } catch (e) {
+      // BleException messages are short fixed texts; anything else gets a
+      // generic one, never the raw error.
+      _errorMessage = 'Connection failed: '
+          '${e is BleException ? e.message : 'could not connect'}';
+      _state = ImportFlowState.error;
+      await _disableWakelock();
+      notifyListeners();
+      return;
+    }
+    await downloadAll();
+  }
+
+  static Future<LibdcOpened> _openLibdc(
+      BleCentral central, ImportScanResult r, LibdcDescriptor d) async {
+    final link = await BleCentralLibdcLink.connect(
+      central,
+      r.id,
+      advertisedName: r.name,
+      profile: libdcProfileFor(d),
+    );
+    return LibdcOpened(
+      connection: LibdcBleConnection(link),
+      close: link.close,
+      gattSummary: link.gattSummary,
+    );
+  }
+
+  /// Asks a running libdivecomputer download to stop. The dives that have
+  /// arrived are kept.
+  void cancelDownload() {
+    final s = _source;
+    if (s is LibdcDownloadSource) s.cancel();
   }
 
   /// Records the connected computer in `dive_computers`. Failures are local
@@ -506,8 +623,9 @@ class ImportNotifier extends ChangeNotifier {
     _currentEntry = null;
     notifyListeners();
 
-    final identity = _identity!;
-    final serial = identity.serial;
+    // libdivecomputer learns the computer during the download (see
+    // DiveSourceIdentified), so the serial can change from 0.
+    var serial = _identity?.serial ?? 0;
     Uint8List? lastSuccessfulFingerprint;
 
     // Persist each dive as soon as it lands. The earlier two-phase split
@@ -535,6 +653,7 @@ class ImportNotifier extends ChangeNotifier {
             // during the download announce it here.
             final id = event.identity;
             _identity = id;
+            serial = id.serial;
             await _registerComputer(id);
 
           case DiveSourceDive():
@@ -584,14 +703,22 @@ class ImportNotifier extends ChangeNotifier {
             _flushNotify();
 
           case DiveSourceFinished():
-            // Shearwater never emits this; the libdivecomputer import
-            // handling arrives with its own screen.
-            break;
+            // Shearwater never emits this. Keep the recording for sharing,
+            // and move the fingerprint only when no dive failed: a failed
+            // dive must be fetched again next time.
+            _recordingText = event.recordingText;
+            final key = event.importStateKey;
+            final keep = event.fingerprintToKeep;
+            if (_failedCount == 0 && key != null && keep != null) {
+              await _importStateDao.saveLastFingerprint(key, keep);
+            }
         }
       }
     } catch (e) {
-      _errorMessage =
-          'Connection lost. $_downloadedCount of $_totalToDownload dives downloaded.';
+      _errorMessage = _libdc
+          ? 'Download stopped (${e is LibdcDownloadFailed ? libdcStopReason(e.status) : 'unexpected error'}). '
+              '$_downloadedCount dives saved.'
+          : 'Connection lost. $_downloadedCount of $_totalToDownload dives downloaded.';
       _state = ImportFlowState.error;
     }
 
@@ -611,11 +738,15 @@ class ImportNotifier extends ChangeNotifier {
         'dives': _downloadedCount,
         'total': _totalToDownload,
         'mock': useMock,
+        'engine': _libdc ? 'libdc' : 'shearwater',
+        'vendor': _identity?.vendor ?? _libdcVendor,
       });
     } else if (_state == ImportFlowState.error) {
       _usageTracker?.track('import_failed', {
         'dives': _downloadedCount,
         'total': _totalToDownload,
+        'engine': _libdc ? 'libdc' : 'shearwater',
+        'vendor': _identity?.vendor ?? _libdcVendor,
         // Truncate to keep telemetry rows small and avoid leaking
         // long-string user context in the rare case the error string
         // includes them.
@@ -626,8 +757,9 @@ class ImportNotifier extends ChangeNotifier {
       });
     }
 
-    // Save fingerprint for incremental sync
-    if (lastSuccessfulFingerprint != null) {
+    // Save fingerprint for incremental sync. libdivecomputer saves its own
+    // at DiveSourceFinished, and only after a download without failures.
+    if (!_libdc && lastSuccessfulFingerprint != null) {
       await _importStateDao.saveLastFingerprint(
         _identity!.importStateKey,
         lastSuccessfulFingerprint,
@@ -734,6 +866,10 @@ class ImportNotifier extends ChangeNotifier {
     _mockDeviceAvailable = false;
     _discoveredDevices.clear();
     _forceFullReimport = false;
+    _libdc = false;
+    _libdcVendor = null;
+    _recordingText = null;
+    _gattSummary = const [];
     _currentDiveIndex = null;
     _totalDives = null;
     _diveBytes = null;

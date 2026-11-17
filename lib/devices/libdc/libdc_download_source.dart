@@ -215,6 +215,17 @@ class LibdcDownloadSource implements DiveDownloadSource {
     }
   }
 
+  /// Asks the running download to stop. It then ends with a
+  /// [DiveSourceFinished] for the cancelled status; the connection stays open
+  /// until [close].
+  void cancel() {
+    try {
+      _run?.cancel();
+    } catch (e) {
+      debugPrint('libdivecomputer cancel failed (non-fatal): $e');
+    }
+  }
+
   @override
   Future<void> close() => _closing ??= _close();
 
