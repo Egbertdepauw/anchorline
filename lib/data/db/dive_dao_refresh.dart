@@ -99,9 +99,9 @@ extension _DiveDaoRefresh on DiveDao {
         _enginesAgree(stored, converted) &&
         refreshMayWrite(
           storedVersion: stored.parserVersion,
-          storedIsLibdc: stored.dcFamily != null,
+          storedFamily: stored.dcFamily,
           incomingVersion: parserVersion,
-          incomingIsLibdc: converted.dive.dcFamily != null,
+          incomingFamily: converted.dive.dcFamily,
         );
     if (!mayWrite) return ImportOutcome.unchanged;
     if (!isUsableParse(converted)) return ImportOutcome.rejected;
