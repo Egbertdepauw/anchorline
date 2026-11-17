@@ -1390,6 +1390,98 @@ void main() {
       expect(plan.stats.updatedDives, 1);
     });
 
+    // A libdivecomputer download keys onto Subsurface's own copy of the
+    // same dive (wall-clock start, decimal serial). CCRLog holds no buddy,
+    // suit or divemaster for it, and must not blank Subsurface's.
+    test('a download with no annotation that matches a remote dive writes '
+        'nothing, and its buddy and suit stay', () {
+      final files = _divesoftRepo();
+
+      final plan = _planOn(files, [_divesoftDownload(diveId: _diveIdB)]);
+      final after = {...files, ...plan.filesToWrite};
+
+      expect(plan.filesToWrite, isEmpty);
+      expect(after['$_divesoftFolder/Dive-412'], contains('buddy "Sam"\n'));
+      expect(after['$_divesoftFolder/Dive-412'],
+          contains('suit "Fourth Element Argonaut"\n'));
+      expect(plan.diveIdsPlanned, isEmpty);
+      expect(plan.stats.skippedDives, 1);
+      expect(plan.stats.updatedDives, 0);
+      expect(plan.stats.otherBrandDives, 0);
+    });
+
+    test('a download with a note and no buddy merges the note and keeps '
+        'buddy and suit', () {
+      final now = DateTime.utc(2026, 11, 17);
+      final plan = _planOn(_divesoftRepo(), [
+        _divesoftDownload(
+          diveId: _diveIdB,
+          annotation: DiveAnnotation(
+            diveId: _diveIdB,
+            notes: 'Logged on the boat',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ),
+      ]);
+
+      final diveText = plan.filesToWrite['$_divesoftFolder/Dive-412']!;
+      expect(diveText, contains('notes "Logged on the boat"\n'));
+      expect(diveText, contains('buddy "Sam"\n'));
+      expect(diveText, contains('suit "Fourth Element Argonaut"\n'));
+      expect(diveText, contains('divemaster ""\n'));
+      expect(diveText, contains('rating 3\n'));
+      expect(plan.stats.updatedDives, 1);
+    });
+
+    test("a copy and a download of the same remote dive: the copy's note "
+        'lands and nothing is blanked, in either order', () {
+      final files = _divesoftRepo();
+      final copy = _divesoftCopy(diveId: _diveIdA, dcSerial: 0x1234567);
+      final download = _divesoftDownload(diveId: _diveIdB);
+      final copyAlone = _planOn(files, [copy]);
+
+      for (final bundles in [
+        [copy, download],
+        [download, copy],
+      ]) {
+        final plan = _planOn(files, bundles);
+        final order = bundles.map((b) => b.dive.id.substring(0, 8)).join();
+        expect(plan.filesToWrite, copyAlone.filesToWrite, reason: order);
+        final diveText = plan.filesToWrite['$_divesoftFolder/Dive-412']!;
+        expect(diveText,
+            contains('notes "Cells 1 and 2 swapped after the dive"'),
+            reason: order);
+        expect(diveText, contains('buddy "Sam, Robin"\n'), reason: order);
+        expect(diveText, contains('suit "Fourth Element Argonaut"\n'),
+            reason: order);
+      }
+    });
+
+    test("a Shearwater dive's owned lines are merged as before, empty ones "
+        'included', () {
+      // A buddy or suit cleared in CCRLog still clears it on Subsurface.
+      final plan = _planAgainst(
+        'duration 57:30 min\n'
+        'rating 2\n'
+        'divemaster ""\n'
+        'buddy "Sam"\n'
+        'suit "Fourth Element Argonaut"\n'
+        'notes "Written in Subsurface"\n',
+        _testAnnotation(notes: 'Petrel note'),
+      );
+
+      expect(
+        plan.filesToWrite['2026/04/19-Sun-15=18=45/Dive-42'],
+        'duration 57:30 min\n'
+        'rating 2\n'
+        'divemaster ""\n'
+        'buddy ""\n'
+        'suit ""\n'
+        'notes "Petrel note"\n',
+      );
+    });
+
     test('a dive computer from another brand gets no divecomputerid line', () {
       final plan = SyncPlanner().plan(
         ccrlogDives: [
@@ -1562,6 +1654,32 @@ extension on SampleSet {
         statusFlags: statusFlags,
       );
 }
+
+/// A libdivecomputer download of the [_divesoftRepo] dive that never came
+/// from Subsurface: decimal serial, the same wall-clock start, and an
+/// annotation only when the diver wrote one in CCRLog.
+CcrlogDiveBundle _divesoftDownload({
+  required String diveId,
+  DiveAnnotation? annotation,
+}) =>
+    _bundle(
+      diveId: diveId,
+      startTime: _divesoftStart,
+      dcSerial: 1234567,
+      dcVendor: 'Divesoft',
+      dcProduct: 'Liberty',
+      dcFamily: _libdcFamily,
+      samples: _twoCellSampleSet(diveId: diveId),
+      annotation: annotation,
+      userDiveComputers: [
+        const SubsurfaceDiveComputerInput(
+          serial: 1234567,
+          model: 0,
+          dcVendor: 'Divesoft',
+          dcFamily: _libdcFamily,
+        ),
+      ],
+    );
 
 /// Two cells and a 1.3 bar setpoint, unlike the samples in the
 /// [_divesoftRepo] Divecomputer file.

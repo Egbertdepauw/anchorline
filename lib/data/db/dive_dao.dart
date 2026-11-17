@@ -84,9 +84,9 @@ class DiveDao {
   /// Imports a downloaded dive, in this order:
   ///
   /// 1. The dive's id is already stored: refresh it in place when
-  ///    [refreshMayWrite] and [isUsableParse] allow ([ImportOutcome.refreshed]),
-  ///    [ImportOutcome.rejected] when only the parse is unusable, otherwise
-  ///    [ImportOutcome.unchanged].
+  ///    [refreshEnginesAgree], [refreshMayWrite] and [isUsableParse] allow
+  ///    ([ImportOutcome.refreshed]), [ImportOutcome.rejected] when only the
+  ///    parse is unusable, otherwise [ImportOutcome.unchanged].
   /// 2. Else, with [matchSubsurfaceCopies], look for the same dive under
   ///    another id (a Subsurface Cloud copy, possibly refreshed before). One
   ///    match is handled as step 1 under the match's id; several are not
@@ -95,9 +95,11 @@ class DiveDao {
   /// 3. Else store a new dive ([ImportOutcome.inserted]).
   ///
   /// Whenever the dive is stored or kept, the raw blob is written under the
-  /// stored id. That is a local Drift write that cannot join the PowerSync
-  /// transaction; if it throws, `DiveImportMarks.rawBlobMissing` is set and the
-  /// outcome is returned anyway. A later successful write clears the flag.
+  /// stored id, except on an engine mismatch ([refreshEnginesAgree] false),
+  /// where nothing is written, raw blob included. The blob is a local Drift
+  /// write that cannot join the PowerSync transaction; if it throws,
+  /// `DiveImportMarks.rawBlobMissing` is set and the outcome is returned
+  /// anyway. A later successful write clears the flag.
   ///
   /// Dedup runs against PowerSync, so a dive imported on another device and
   /// synced down counts as stored ("import once").

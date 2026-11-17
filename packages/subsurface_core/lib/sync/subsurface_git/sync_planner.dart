@@ -36,8 +36,9 @@
 ///    its own deviceid/diveid. A dive with `dc_family` set, or with a
 ///    vendor that is set and isn't Shearwater
 ///    ([SubsurfaceDiveInput.isOtherBrand]), that matches a remote dive
-///    gets the merge of the Dive-NNN lines CCRLog owns and its site, and
-///    nothing else: its Divecomputer file and 00-Subsurface are left alone.
+///    gets the merge of the Dive-NNN lines CCRLog owns and holds a value
+///    for, and its site, and nothing else: its Divecomputer file and
+///    00-Subsurface are left alone.
 ///    One that matches no remote dive is left out, unnumbered, and counted
 ///    in [SyncPlanStats.otherBrandDives]. Keeps the user's notes on dives
 ///    already on Subsurface Cloud flowing after a download refreshes them.
@@ -396,6 +397,12 @@ class SyncPlanner {
         // Divecomputer file is never written (below), so its samples don't
         // go through the Shearwater recording builder, which a throw there
         // would turn into a failed sync.
+        //
+        // It also brings only the owned lines CCRLog holds a value for. A
+        // libdivecomputer download keys onto Subsurface's own copy of the
+        // same dive, and the mapper's empty `buddy ""`, `suit ""` and
+        // `divemaster ""` would blank Subsurface's values. The cost: a buddy
+        // cleared in CCRLog on such a dive is not cleared on Subsurface.
         final ours = dive.isOtherBrand
             ? null
             : _mapper.mapDive(
@@ -408,14 +415,17 @@ class SyncPlanner {
                 nextSubsurfaceDiveNumber: diveNumber,
               );
         final ourDiveLines = ours?.diveLines ??
-            _mapper.mapDiveLines(
-              dive: dive,
-              samples: bundle.samples,
-              annotation: bundle.annotation,
-              gasMixes: bundle.gasMixes,
-              tanks: bundle.tanks,
-              cylindersByMixIndex: bundle.cylindersByMixIndex,
-            );
+            [
+              for (final line in _mapper.mapDiveLines(
+                dive: dive,
+                samples: bundle.samples,
+                annotation: bundle.annotation,
+                gasMixes: bundle.gasMixes,
+                tanks: bundle.tanks,
+                cylindersByMixIndex: bundle.cylindersByMixIndex,
+              ))
+                if (!_isEmptyOwnedLine(line)) line,
+            ];
 
         final mergedLines = _mergeDiveLines(
           existing: existing.diveLines,
@@ -834,6 +844,15 @@ class SyncPlanner {
         TagsLine(:final tags) => tags.isEmpty,
         _ => false,
       };
+
+  /// [_isEmptyOwned] for any Dive-NNN line: false for a line CCRLog
+  /// doesn't own.
+  bool _isEmptyOwnedLine(SsLine line) {
+    final key = _lineKey(line);
+    return key != null &&
+        _ownedDiveLineKeys.contains(key) &&
+        _isEmptyOwned(key, line);
+  }
 
   /// `24.0°C` / `24.0 C` / `24.0` → 24.0, as the read mapper parses an
   /// environment temperature. Null when it is not a number.

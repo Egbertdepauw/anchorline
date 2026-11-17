@@ -64,6 +64,7 @@ void main() {
     );
     final i = diveInputFromRow(row);
     expect(i.dcVendor, isNull);
+    expect(i.dcProduct, isNull);
     expect(i.dcFamily, isNull);
     expect(i.isOtherBrand, isFalse);
     expect(i.gfLow, isNull);
@@ -110,6 +111,7 @@ void main() {
     );
     final i = diveInputFromRow(row);
     expect(i.dcVendor, 'Divesoft');
+    expect(i.dcProduct, 'Liberty');
     expect(i.dcFamily, 7);
     expect(i.isOtherBrand, isTrue);
 
