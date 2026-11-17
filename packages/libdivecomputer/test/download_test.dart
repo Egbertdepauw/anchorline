@@ -213,6 +213,80 @@ void main() {
     expect(debugNativeLinkOf(download)!.isFreed, isTrue);
   });
 
+  test('cancelling the subscription mid-download cancels the download and '
+      'frees the link', () async {
+    final third = _diveStarts(trace)[2];
+    late final StreamSubscription<LibdcDownloadEvent> subscription;
+    final link = TraceLink(
+      trace,
+      onWrite: (index, _) async {
+        if (index == third + 5) await subscription.cancel();
+      },
+    );
+    final download = LibdcDownload.start(
+      descriptor: descriptor,
+      connection: LibdcBleConnection(link),
+    );
+    final seen = <LibdcDownloadEvent>[];
+    subscription = download.events.listen(seen.add);
+    final native = debugNativeLinkOf(download)!;
+    final deadline = DateTime.now().add(const Duration(seconds: 30));
+    while (!native.isFreed && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(native.isFreed, isTrue);
+    expect(native.refusedAfterFree, 0, reason: 'nothing ran after the end');
+    expect(_ids(divesOf(seen)), _ids(fullDives).take(2));
+    expect(seen.whereType<LibdcFinished>(), isEmpty, reason: 'nobody listens');
+    // The write the cancel came in was the last; the shutdown at close was
+    // cancelled before it was sent.
+    expect(link.matchedWrites, third + 6);
+    expect(link.received, hasLength(third + 6));
+    expect(link.hasListener, isFalse);
+  });
+
+  test('the envelope, the id and the header carry the descriptor opened, '
+      'not the one asked for', () async {
+    final staleFamily = LibdcDescriptor(
+      vendor: descriptor.vendor,
+      product: descriptor.product,
+      family: descriptor.family + 0x10000,
+      model: descriptor.model,
+      transports: descriptor.transports,
+    );
+    final staleName = LibdcDescriptor(
+      vendor: descriptor.vendor,
+      product: 'Petrel Three',
+      family: descriptor.family,
+      model: descriptor.model,
+      transports: descriptor.transports,
+    );
+    for (final asked in [staleFamily, staleName]) {
+      final events = await collect(
+        LibdcDownload.replay(descriptor: asked, recording: trace),
+      );
+      final finished = finishedOf(events);
+      expect(finished.descriptor?.family, descriptor.family);
+      expect(finished.descriptor?.product, 'Petrel 3');
+      expect(finished.descriptor?.transports, descriptor.transports);
+      final dives = divesOf(events);
+      expect(dives, hasLength(8));
+      for (final d in dives) {
+        expect(d.envelope.family, descriptor.family);
+        expect(d.envelope.product, 'Petrel 3');
+        expect(d.envelope.descriptorModel, descriptor.model);
+      }
+      expect(_ids(dives), _ids(fullDives));
+      expect(finished.recording.header, [
+        'descriptor Shearwater|Petrel 3|${descriptor.family}|${descriptor.model}',
+        'requested ${asked.vendor}|${asked.product}|${asked.family}|'
+            '${asked.model}',
+        'libdivecomputer ${Libdc.pinnedCommit}',
+      ]);
+    }
+    expect(finishedOf(full).descriptor?.family, descriptor.family);
+  });
+
   test('a trace cut halfway ends with an error status and keeps the dives '
       'before it', () async {
     final half = trace.events.length ~/ 2;
@@ -387,9 +461,17 @@ void main() {
     );
     expect(events, hasLength(1));
     expect(finishedOf(events).status, LibdcStatus.unsupported);
+    // Nothing was opened: only what was asked for.
     expect(
       finishedOf(events).recording.header.first,
-      startsWith('descriptor Nobody|Nothing|'),
+      startsWith('requested Nobody|Nothing|'),
     );
+    expect(
+      finishedOf(
+        events,
+      ).recording.header.where((h) => h.startsWith('descriptor ')),
+      isEmpty,
+    );
+    expect(finishedOf(events).descriptor, isNull);
   });
 }

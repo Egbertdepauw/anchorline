@@ -18,14 +18,22 @@ abstract class LibdcBleLink {
   /// Writes [bytes] to the device's serial-style characteristic, split into
   /// as many writes as the link needs, in order. Completes when the last
   /// write has completed.
+  ///
+  /// The download normally waits for each call before it makes the next.
+  /// After a call has taken longer than the download's write timeout, it
+  /// stops waiting, and the next call can begin before that one completed.
+  /// The link must then still carry the calls out in the order they began,
+  /// one after another: never interleave the chunks of two writes.
   Future<void> write(Uint8List bytes);
 
   /// Reads the characteristic [uuid] (an access callback some backends
-  /// use). Throws [UnsupportedError] where the link can't.
+  /// use). Throws [UnsupportedError] where the link can't. Ordered with
+  /// every other call, as [write] describes.
   Future<Uint8List> readCharacteristic(String uuid);
 
   /// Writes [bytes] to the characteristic [uuid]. Throws [UnsupportedError]
-  /// where the link can't.
+  /// where the link can't. Ordered with every other call, as [write]
+  /// describes.
   Future<void> writeCharacteristic(String uuid, Uint8List bytes);
 
   /// Completes when the connection drops, or when the link is closed.

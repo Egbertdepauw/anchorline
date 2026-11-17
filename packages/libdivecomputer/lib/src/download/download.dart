@@ -125,11 +125,11 @@ class LibdcDownload {
     if (!_finished) cancel();
   }
 
+  /// The header when the download isolate could not say which descriptor
+  /// it opened.
   List<String> get _header => recordingHeader(
-    vendor: _descriptor.vendor,
-    product: _descriptor.product,
-    family: _descriptor.family,
-    model: _descriptor.model,
+    opened: null,
+    requested: _descriptor,
     advertisedName: _advertisedName,
   );
 
@@ -269,10 +269,7 @@ class LibdcDownload {
         downloadIsolateMain,
         DownloadArgs(
           linkAddress: native.address,
-          vendor: _descriptor.vendor,
-          product: _descriptor.product,
-          family: _descriptor.family,
-          model: _descriptor.model,
+          requested: _descriptor,
           advertisedName: _advertisedName,
           knownFingerprints: Map.of(knownFingerprints),
           record: record,
@@ -298,6 +295,11 @@ class LibdcDownload {
     } finally {
       port.close();
     }
+    // The isolate died without its own LibdcFinished: keep what the link
+    // recorded, read before the link is freed.
+    final events = finished == null && record
+        ? _recordedEvents(native)
+        : const <LibdcIoEvent>[];
     _release();
     _finish(
       finished ??
@@ -305,11 +307,20 @@ class LibdcDownload {
             status: LibdcStatus.io,
             recording: LibdcRecording(
               header: _header,
+              events: events,
               log: ['ANCHORLINE: the download isolate stopped: $failure'],
               envelopes: _envelopes,
             ),
           ),
     );
+  }
+
+  static List<LibdcIoEvent> _recordedEvents(NativeLink native) {
+    try {
+      return LibdcIoEvent.unpackAll(native.recording());
+    } on FormatException {
+      return const [];
+    }
   }
 
   /// Cuts off everything that could still call into the link, then frees
