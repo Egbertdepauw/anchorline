@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show Rect;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -41,17 +42,34 @@ Future<void> _defaultShare(XFile file, String text, Rect? origin) async {
 /// per line) followed by [recordingText]. Above [gzipAboveBytes] the file is
 /// gzipped to `.txt.gz` instead.
 ///
-/// [now], [tempDir], [share] and [gzipAboveBytes] are test seams.
-Future<void> shareDownload({
+/// Linux has no share sheet (share_plus throws there), so the file is saved to
+/// the user's Downloads folder instead (the temporary directory when there is
+/// none) and its path is returned for the screen to show. Elsewhere the return
+/// value is null. Windows has a share sheet from Windows 10 1809 on.
+///
+/// [now], [tempDir], [downloadsDir], [isLinux], [share] and [gzipAboveBytes]
+/// are test seams.
+Future<String?> shareDownload({
   required String recordingText,
   required List<String> extraHeader,
   Rect? origin,
   DateTime Function()? now,
   Future<Directory> Function()? tempDir,
+  Future<Directory?> Function()? downloadsDir,
+  bool? isLinux,
   ShareFileFn? share,
   int gzipAboveBytes = kShareGzipAboveBytes,
 }) async {
-  final dir = await (tempDir ?? getTemporaryDirectory)();
+  final linux = isLinux ?? (!kIsWeb && Platform.isLinux);
+  Directory? dir;
+  if (linux) {
+    try {
+      dir = await (downloadsDir ?? getDownloadsDirectory)();
+    } catch (_) {
+      dir = null;
+    }
+  }
+  dir ??= await (tempDir ?? getTemporaryDirectory)();
   final stamp = _stamp((now ?? DateTime.now)());
   final name = 'anchorline-download-$stamp.txt';
   final text = StringBuffer('Anchorline dive computer download\n');
@@ -74,11 +92,13 @@ Future<void> shareDownload({
   }
   final sharePath = p.join(dir.path, shareName);
   await File(sharePath).writeAsBytes(payload);
+  if (linux) return sharePath;
   await (share ?? _defaultShare)(
     XFile(sharePath, name: shareName, mimeType: mimeType),
     kDownloadShareText,
     origin,
   );
+  return null;
 }
 
 String _stamp(DateTime t) {

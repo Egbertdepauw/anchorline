@@ -3,6 +3,8 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:libdivecomputer/libdivecomputer.dart';
 
 import '../../build_info.dart';
@@ -17,7 +19,7 @@ class ImportScreen extends StatefulWidget {
   final VoidCallback onViewDives;
 
   /// Shares a libdivecomputer download's recording. A seam for tests.
-  final Future<void> Function({
+  final Future<String?> Function({
     required String recordingText,
     required List<String> extraHeader,
     Rect? origin,
@@ -121,9 +123,20 @@ class _ImportScreenState extends State<ImportScreen> {
     return Center(child: SingleChildScrollView(child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const SizedBox(width: 48, height: 48, child: CircularProgressIndicator()),
-        const SizedBox(height: 24),
-        const Text('Searching for dive computers...', style: TextStyle(fontSize: 16)),
+        if (n.scanEnded) ...[
+          const Text('Scan finished', style: TextStyle(fontSize: 16)),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            key: const ValueKey('scan-again'),
+            onPressed: n.scanAgain,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Scan again'),
+          ),
+        ] else ...[
+          const SizedBox(width: 48, height: 48, child: CircularProgressIndicator()),
+          const SizedBox(height: 24),
+          const Text('Searching for dive computers...', style: TextStyle(fontSize: 16)),
+        ],
         const SizedBox(height: 8),
         Text('Make sure your dive computer is in upload mode',
             style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.4), fontSize: 12)),
@@ -201,17 +214,35 @@ class _ImportScreenState extends State<ImportScreen> {
     );
   }
 
+  /// The row title for the models a name could mean. One product: the vendor
+  /// and product, with the advertised name below. Several: the app does not yet
+  /// know the model (the computer tells it on connect), so it shows the vendor
+  /// and the advertised name and claims no product.
+  ({String title, String? subtitle}) _candidateLabel(
+      List<LibdcDescriptor> candidates, String advertised) {
+    final products = {for (final c in candidates) '${c.vendor} ${c.product}'};
+    if (products.length == 1) {
+      return (title: products.single, subtitle: advertised);
+    }
+    final vendors = {for (final c in candidates) c.vendor};
+    return (
+      title: vendors.length == 1
+          ? '${vendors.single} \u00b7 $advertised'
+          : advertised,
+      subtitle: 'Model found when connected',
+    );
+  }
+
   Widget _buildLibdcRow(
       ImportNotifier n, ThemeData theme, ImportScanResult r) {
-    final first = r.candidates.first;
     final families = {for (final c in r.candidates) c.family};
+    final label = _candidateLabel(r.candidates, r.name);
     // Tested only when every family the name could mean is.
     final tested = families.every(isCheckedLibdcFamily);
     return Card(child: ListTile(
       leading: Icon(Icons.bluetooth, color: theme.colorScheme.primary),
-      title: Text('${first.vendor} ${first.product}'
-          '${families.length > 1 ? ' and others' : ''}'),
-      subtitle: Text(r.name),
+      title: Text(label.title),
+      subtitle: label.subtitle == null ? null : Text(label.subtitle!),
       trailing: tested
           ? null
           : Chip(
@@ -241,7 +272,10 @@ class _ImportScreenState extends State<ImportScreen> {
             for (final d in byFamily.values)
               SimpleDialogOption(
                 onPressed: () => Navigator.of(ctx).pop(d),
-                child: Text('${d.vendor} ${d.product}'),
+                child: Text(_candidateLabel(
+                        r.candidates.where((c) => c.family == d.family).toList(),
+                        r.name)
+                    .title),
               ),
           ],
         ),
@@ -397,7 +431,7 @@ class _ImportScreenState extends State<ImportScreen> {
             final origin =
                 box != null ? box.localToGlobal(Offset.zero) & box.size : null;
             try {
-              await widget.shareDownloadFn(
+              final savedTo = await widget.shareDownloadFn(
                 recordingText: text,
                 extraHeader: [
                   'app: ${BuildInfo.version.isEmpty ? 'dev' : BuildInfo.version}'
@@ -409,6 +443,17 @@ class _ImportScreenState extends State<ImportScreen> {
                 ],
                 origin: origin,
               );
+              if (savedTo != null) {
+                // No share sheet here (Linux): the file was saved instead.
+                messenger?.showSnackBar(SnackBar(
+                  duration: const Duration(seconds: 20),
+                  content: Text('Saved the download to $savedTo'),
+                  action: SnackBarAction(
+                    label: 'Open folder',
+                    onPressed: () => _openFolder(savedTo),
+                  ),
+                ));
+              }
             } catch (e) {
               // Only the error's type: a message could carry a path or text
               // from the file.
@@ -424,6 +469,14 @@ class _ImportScreenState extends State<ImportScreen> {
     );
   }
 
+  Future<void> _openFolder(String file) async {
+    try {
+      await launchUrl(Uri.directory(p.dirname(file)));
+    } catch (e) {
+      debugPrint('Could not open the folder: $e');
+    }
+  }
+
   Widget _buildLibdcDownloading(ImportNotifier n, ThemeData theme) {
     final fade = theme.colorScheme.onSurface.withValues(alpha: 0.5);
     return Center(child: Column(
@@ -437,7 +490,7 @@ class _ImportScreenState extends State<ImportScreen> {
           child: LinearProgressIndicator(value: n.currentDiveProgress),
         ),
         const SizedBox(height: 8),
-        Text('${n.downloadedCount} dives saved',
+        Text('${diveCountLabel(n.downloadedCount)} saved',
             style: TextStyle(color: fade)),
         const SizedBox(height: 24),
         OutlinedButton(

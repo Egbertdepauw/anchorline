@@ -97,6 +97,9 @@ class LibdcOpened {
 typedef LibdcOpener = Future<LibdcOpened> Function(
     BleCentral central, ImportScanResult r, LibdcDescriptor d);
 
+/// "1 dive" or "N dives".
+String diveCountLabel(int n) => n == 1 ? '1 dive' : '$n dives';
+
 /// A short English reason for a libdivecomputer download that stopped with
 /// [status], for the message shown to the diver.
 String libdcStopReason(LibdcStatus status) => switch (status) {
@@ -169,6 +172,11 @@ class ImportNotifier extends ChangeNotifier {
 
   // Mock
   bool _mockDeviceAvailable = false;
+
+  // Whether the scan has ended (its 15 s ran out, or it could not start), so
+  // the screen can offer "Scan again".
+  bool _scanEnded = false;
+  bool _matchFailureLogged = false;
 
   // Real BLE
   final List<ImportScanResult> _discoveredDevices = [];
@@ -283,6 +291,7 @@ class ImportNotifier extends ChangeNotifier {
   void startScan() {
     _scanGeneration++;
     _state = ImportFlowState.scanning;
+    _scanEnded = false;
     _mockDeviceAvailable = false;
     _discoveredDevices.clear();
     notifyListeners();
@@ -298,6 +307,23 @@ class ImportNotifier extends ChangeNotifier {
     unawaited(_startRealScan());
   }
 
+  /// Scans again, keeping the one-scan guarantee: the running scan (if any)
+  /// is stopped first.
+  void scanAgain() {
+    _stopScan();
+    startScan();
+  }
+
+  /// True once the scan has stopped (after 15 s, or because it could not
+  /// start) without the diver having picked a device.
+  bool get scanEnded => _scanEnded;
+
+  void _endScan(int generation) {
+    if (_disposed || generation != _scanGeneration) return;
+    _scanEnded = true;
+    notifyListeners();
+  }
+
   Future<void> _startRealScan() async {
     final generation = _scanGeneration;
     // On macOS the Core Bluetooth manager starts in `unknown` and only
@@ -309,6 +335,7 @@ class ImportNotifier extends ChangeNotifier {
       central = _central;
     } catch (e) {
       debugPrint('BLE central unavailable: $e');
+      _endScan(generation);
       return;
     }
     final adapter =
@@ -318,6 +345,7 @@ class ImportNotifier extends ChangeNotifier {
     if (_disposed || generation != _scanGeneration) return;
     if (adapter != BleAdapterState.on) {
       debugPrint('BLE adapter never reached on state: $adapter');
+      _endScan(generation);
       return;
     }
 
@@ -328,9 +356,14 @@ class ImportNotifier extends ChangeNotifier {
       _scanSubscription = central
           .scan(timeout: const Duration(seconds: 15))
           .listen(_onScanResult,
-              onError: (Object e) => debugPrint('BLE scan error: $e'));
+              onError: (Object e) {
+                debugPrint('BLE scan error: $e');
+                _endScan(generation);
+              },
+              onDone: () => _endScan(generation));
     } catch (e) {
       debugPrint('BLE scan error: $e');
+      _endScan(generation);
     }
   }
 
@@ -341,17 +374,36 @@ class ImportNotifier extends ChangeNotifier {
     final ImportScanResult? result;
     if (r.advertises(shearwaterServiceUuid)) {
       // Shearwater stays unlisted on Windows, as before: its transport is
-      // flutter_blue_plus, which has no Windows support.
-      result = isWindows
-          ? null
-          : ImportScanResult(
+      // flutter_blue_plus, which has no Windows support. An entry listed
+      // from an earlier report without the UUID goes too, or the picker
+      // would offer the Petrel for another brand's model.
+      if (isWindows) {
+        if (_discoveredDevices.any((d) => d.id == r.id)) {
+          _discoveredDevices.removeWhere((d) => d.id == r.id);
+          notifyListeners();
+        }
+        return;
+      }
+      result = ImportScanResult(
               id: r.id, name: r.name, kind: ImportDeviceKind.shearwater);
     } else if (r.name.isEmpty) {
       result = null;
     } else {
       // matchBle walks libdivecomputer's descriptors over FFI; one name is
       // advertised many times.
-      final candidates = _matchCache.putIfAbsent(r.name, () => _matchBle(r.name));
+      final candidates = _matchCache.putIfAbsent(r.name, () {
+        try {
+          return _matchBle(r.name);
+        } catch (e) {
+          // The native library may have failed to load; treat the name as
+          // unrecognised rather than throwing in every advertisement.
+          if (!_matchFailureLogged) {
+            _matchFailureLogged = true;
+            debugPrint('libdivecomputer name matching failed: $e');
+          }
+          return const <LibdcDescriptor>[];
+        }
+      });
       result = ImportScanResult(
         id: r.id,
         name: r.name,
@@ -553,7 +605,7 @@ class ImportNotifier extends ChangeNotifier {
   }
 
   String _libdcStoppedMessage(String reason) =>
-      'Download stopped ($reason). $_downloadedCount dives saved.';
+      'Download stopped ($reason). ${diveCountLabel(_downloadedCount)} saved.';
 
   /// For the log line of a dive that failed to import; libdivecomputer
   /// downloads have no listing to name it by.
@@ -794,9 +846,26 @@ class ImportNotifier extends ChangeNotifier {
     // Release the link. The source caps the wait (see its close()).
     await source.close();
 
+    // Save fingerprint for incremental sync, from what was captured above, so
+    // that a reset or dispose during the close does not skip it.
+    // libdivecomputer saves its own at DiveSourceFinished, and only after a
+    // download without failures.
+    if (!libdc && lastSuccessfulFingerprint != null) {
+      await _importStateDao.saveLastFingerprint(
+        identity!.importStateKey,
+        lastSuccessfulFingerprint,
+      );
+    }
+
     // A Retry or a new import during that wait owns the notifier now.
     if (generation != _downloadGeneration || _disposed) {
-      await _disableWakelock();
+      // Release the wakelock only when no new connection holds it.
+      if (_state == ImportFlowState.idle ||
+          _state == ImportFlowState.scanning ||
+          _state == ImportFlowState.done ||
+          _state == ImportFlowState.error) {
+        await _disableWakelock();
+      }
       return;
     }
 
@@ -830,15 +899,6 @@ class ImportNotifier extends ChangeNotifier {
             : (_errorMessage ?? ''),
         'mock': useMock,
       });
-    }
-
-    // Save fingerprint for incremental sync. libdivecomputer saves its own
-    // at DiveSourceFinished, and only after a download without failures.
-    if (!libdc && lastSuccessfulFingerprint != null) {
-      await _importStateDao.saveLastFingerprint(
-        identity!.importStateKey,
-        lastSuccessfulFingerprint,
-      );
     }
 
     // BLE work is fully done — let the screen sleep again.

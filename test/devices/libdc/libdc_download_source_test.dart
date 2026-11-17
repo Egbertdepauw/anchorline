@@ -151,6 +151,31 @@ Future<(List<DiveSourceEvent>, Object?)> _collect(
 }
 
 void main() {
+  test('the identity is the descriptor the computer reported, not the one '
+      'opened', () async {
+    const reported = LibdcDescriptor(
+      vendor: 'Heinrichs Weikamp',
+      product: 'OSTC 4',
+      family: _family,
+      model: 0x3B,
+      transports: 0,
+    );
+    final h = _Harness([
+      const LibdcDeviceInfo(
+          model: 0x3B, firmware: 7, serial: 1234, descriptor: reported),
+      _finished(LibdcStatus.done),
+    ]);
+    final (events, _) = await _collect(h.source);
+    final id = (events.first as DiveSourceIdentified).identity;
+    expect(id.vendor, 'Heinrichs Weikamp');
+    expect(id.product, 'OSTC 4');
+    expect(id.modelLabel, 'Heinrichs Weikamp OSTC 4');
+    expect(id.family, _family);
+    expect(id.modelCode, 0x3B);
+    // The key's family is the opened one.
+    expect(id.importStateKey, 'libdc:$_family:1234');
+  });
+
   test(
     'device info gives DiveSourceIdentified with the libdc key and labels',
     () async {

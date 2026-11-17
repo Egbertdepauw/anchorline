@@ -157,7 +157,10 @@ class LibdcDownloadSource implements DiveDownloadSource {
       switch (event) {
         case LibdcDeviceInfo():
           serial = event.serial;
-          final d = _descriptor;
+          // The model the computer reported names it, not the sibling the
+          // download opened with (an OSTC 4 opens as "OSTC 2"). The same
+          // family by construction, so the import state key is unchanged.
+          final d = event.descriptor ?? _descriptor;
           final id = DcIdentity(
             vendor: d.vendor,
             product: d.product,

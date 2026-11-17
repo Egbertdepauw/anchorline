@@ -7,15 +7,16 @@ library;
 
 import 'dart:typed_data';
 
+import 'package:libdivecomputer/libdivecomputer.dart' show dc_family_t;
 import 'package:subsurface_core/data/models/dive.dart';
 import 'package:subsurface_core/data/models/sample_set.dart';
 import 'package:subsurface_core/shearwater/parser/constants.dart';
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
 import 'package:subsurface_core/shearwater/parser/hardware.dart';
 
-const int kFixtureFamilyDivesoft = 23 << 16;
-const int kFixtureFamilyRatio = 17 << 16;
-const int kFixtureFamilyOstc = 13 << 16;
+const int kFixtureFamilyDivesoft = dc_family_t.DC_FAMILY_DIVESOFT_FREEDOM;
+const int kFixtureFamilyRatio = dc_family_t.DC_FAMILY_DIVESYSTEM_IDIVE;
+const int kFixtureFamilyOstc = dc_family_t.DC_FAMILY_HW_OSTC3;
 
 /// 10 minutes at 10 s per sample.
 const int _n = 60;

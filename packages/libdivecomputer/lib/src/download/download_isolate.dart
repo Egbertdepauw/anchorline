@@ -118,6 +118,27 @@ final class _Download {
   var _failed = false;
   Pointer<c.dc_device_t> _device = nullptr;
 
+  /// The descriptor the computer is identified by once it has reported
+  /// [model] ([identityDescriptorIndex]): one source of truth for the dives'
+  /// ids and for what the app shows. Null when nothing was opened.
+  LibdcDescriptor? _identityDescriptor(int? model) {
+    final opened = _opened;
+    if (opened == null || _table.isEmpty) return null;
+    final row =
+        _table[identityDescriptorIndex(
+          _table,
+          opened: _openedIndex,
+          devinfoModel: model,
+        )];
+    return LibdcDescriptor(
+      vendor: row.$1,
+      product: row.$2,
+      family: row.$3,
+      model: row.$4,
+      transports: opened.transports,
+    );
+  }
+
   LibdcFinished run() {
     var status = c.dc_status_t.DC_STATUS_IO;
     Pointer<c.dc_context_t> context = nullptr;
@@ -320,6 +341,7 @@ final class _Download {
             model: d.model,
             firmware: d.firmware,
             serial: d.serial,
+            descriptor: _identityDescriptor(d.model),
           );
           _devinfo = info;
           args.port.send(info);

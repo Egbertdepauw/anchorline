@@ -65,4 +65,48 @@ void main() {
             .existsSync(),
         isFalse);
   });
+
+  test('on Linux there is no share sheet: the file is saved to Downloads',
+      () async {
+    final downloads = Directory('${dir.path}/Downloads')..createSync();
+    final path = await shareDownload(
+      recordingText: 'LOG line',
+      extraHeader: ['app 1'],
+      now: () => DateTime(2026, 11, 17, 9, 5, 7),
+      tempDir: () async => dir,
+      downloadsDir: () async => downloads,
+      isLinux: true,
+      share: (file, text, origin) async => shared
+          .add((file: file, text: text, origin: origin)),
+    );
+    expect(shared, isEmpty);
+    expect(path, '${downloads.path}/anchorline-download-20261117-090507.txt');
+    expect(File(path!).readAsStringSync(), contains('LOG line'));
+  });
+
+  test('on Linux without a Downloads folder it falls back to the temp dir',
+      () async {
+    final path = await shareDownload(
+      recordingText: 'LOG line',
+      extraHeader: const [],
+      now: () => DateTime(2026, 11, 17, 9, 5, 7),
+      tempDir: () async => dir,
+      downloadsDir: () async => null,
+      isLinux: true,
+    );
+    expect(path, startsWith(dir.path));
+  });
+
+  test('elsewhere it shares and returns null', () async {
+    final path = await shareDownload(
+      recordingText: 'x',
+      extraHeader: const [],
+      tempDir: () async => dir,
+      isLinux: false,
+      share: (file, text, origin) async => shared
+          .add((file: file, text: text, origin: origin)),
+    );
+    expect(path, isNull);
+    expect(shared, hasLength(1));
+  });
 }

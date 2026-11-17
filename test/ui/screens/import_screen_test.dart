@@ -147,6 +147,102 @@ void main() {
     expect(find.text('Record this download'), findsOneWidget);
   });
 
+  testWidgets('a name matching several products claims none of them',
+      (tester) async {
+    const ostc2 = LibdcDescriptor(
+        vendor: 'Heinrichs Weikamp', product: 'OSTC 2', family: 11, model: 1,
+        transports: 32);
+    const ostc4 = LibdcDescriptor(
+        vendor: 'Heinrichs Weikamp', product: 'OSTC 4', family: 11, model: 2,
+        transports: 32);
+    final n = notifierWith((_) => [ostc2, ostc4]);
+    addTearDown(n.dispose);
+    await show(tester, n);
+    central.advertise(const BleScanResult(id: 'BB:02', name: 'OSTC4-12345'));
+    await tester.pump();
+    expect(find.text('Heinrichs Weikamp \u00b7 OSTC4-12345'), findsOneWidget);
+    expect(find.textContaining('OSTC 2'), findsNothing);
+    expect(find.text('Model found when connected'), findsOneWidget);
+  });
+
+  testWidgets('Scan again appears when the scan ends and starts one scan',
+      (tester) async {
+    final n = notifierWith((_) => const []);
+    addTearDown(n.dispose);
+    await show(tester, n);
+    expect(find.text('Scan again'), findsNothing);
+    expect(find.text('Searching for dive computers...'), findsOneWidget);
+
+    await central.endScan();
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Searching for dive computers...'), findsNothing);
+    expect(find.text('Scan again'), findsOneWidget);
+
+    await tester.tap(find.text('Scan again'));
+    await tester.pump();
+    await tester.pump();
+    expect(central.scans, hasLength(2));
+    expect(find.text('Scan again'), findsNothing);
+    expect(find.text('Searching for dive computers...'), findsOneWidget);
+  });
+
+  testWidgets('a Linux save shows the path with an Open folder action',
+      (tester) async {
+    final n = ImportNotifier(
+      dao: _Dao(),
+      importStateDao: _StateDao(),
+      equipmentDao: _EquipDao(),
+      central: central,
+      libdcOpener: (c, r, d) async => LibdcOpened(
+        connection: LibdcBleConnection(_NoLink()),
+        close: () async {},
+        gattSummary: const [],
+      ),
+      libdcStarter: ({
+        required descriptor,
+        required connection,
+        required knownFingerprints,
+        required record,
+      }) =>
+          LibdcRun(
+              events: Stream.fromIterable([
+                LibdcFinished(
+                    status: LibdcStatus.done,
+                    recording: LibdcRecording(log: ['l']))
+              ]),
+              cancel: () {}),
+    );
+    addTearDown(n.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ImportScreen(
+          notifier: n,
+          onViewDives: () {},
+          shareDownloadFn: ({
+            required recordingText,
+            required extraHeader,
+            origin,
+          }) async =>
+              '/home/me/Downloads/anchorline-download-1.txt',
+        ),
+      ),
+    ));
+    await tester.runAsync(() => n.selectLibdcDevice(
+        const ImportScanResult(
+            id: 'AA', name: 'Twin', kind: ImportDeviceKind.libdc,
+            candidates: [_famA]),
+        _famA));
+    await tester.pump();
+    await tester.tap(find.text('Share this download'));
+    await tester.pump();
+    expect(
+        find.text(
+            'Saved the download to /home/me/Downloads/anchorline-download-1.txt'),
+        findsOneWidget);
+    expect(find.text('Open folder'), findsOneWidget);
+  });
+
   testWidgets('a name matching two families asks which one', (tester) async {
     final n = notifierWith((_) => [_famA, _famB]);
     addTearDown(n.dispose);
@@ -154,7 +250,7 @@ void main() {
 
     central.advertise(const BleScanResult(id: 'CC:03', name: 'Twin 77'));
     await tester.pump();
-    await tester.tap(find.text('Acme Alpha and others'));
+    await tester.tap(find.text('Twin 77').first);
     await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Which of these is your computer?'), findsOneWidget);
@@ -252,6 +348,7 @@ void main() {
               extraHeader: extraHeader,
               origin: origin
             );
+            return null;
           },
         ),
       ),

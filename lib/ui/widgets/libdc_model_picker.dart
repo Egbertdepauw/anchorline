@@ -3,6 +3,22 @@ import 'package:libdivecomputer/libdivecomputer.dart';
 
 import '../notifiers/import_notifier.dart';
 
+bool _descriptorFailureLogged = false;
+
+/// Every model libdivecomputer knows; an empty list when the native library
+/// can't be used (logged once), so the picker still opens.
+List<LibdcDescriptor> _allDescriptors() {
+  try {
+    return Libdc.descriptors();
+  } catch (e) {
+    if (!_descriptorFailureLogged) {
+      _descriptorFailureLogged = true;
+      debugPrint('libdivecomputer descriptors unavailable: $e');
+    }
+    return const [];
+  }
+}
+
 /// What the user picked in [LibdcModelPicker].
 typedef LibdcPick = ({LibdcDescriptor descriptor, ImportScanResult device});
 
@@ -34,7 +50,7 @@ class LibdcModelPicker extends StatefulWidget {
 
 class _LibdcModelPickerState extends State<LibdcModelPicker> {
   late final List<LibdcDescriptor> _all = [
-    for (final d in widget._descriptors ?? Libdc.descriptors())
+    for (final d in widget._descriptors ?? _allDescriptors())
       if (d.supportsBle && !d.isShearwater) d,
   ];
   String? _vendor;

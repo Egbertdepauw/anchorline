@@ -663,6 +663,65 @@ void main() {
       expect(waiting.scans, hasLength(1));
     });
 
+    test('a Windows Petrel listed before its UUID report is removed', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      central.advertise(const BleScanResult(id: 'AA:01', name: 'Petrel 3'));
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.discoveredDevices, hasLength(1));
+      central.advertise(petrel());
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.discoveredDevices, isEmpty);
+    });
+
+    test('a failing name match is treated as unrecognised', () async {
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: central,
+        matchBle: (_) => throw StateError('no native library'),
+      );
+      extra.add(n);
+      n.startScan();
+      await Future<void>.delayed(Duration.zero);
+      central.advertise(const BleScanResult(id: 'FF:06', name: 'Some Dive'));
+      await Future<void>.delayed(Duration.zero);
+      expect(n.discoveredDevices.single.kind, ImportDeviceKind.unmatched);
+    });
+
+    test('the scan ends after its time and Scan again starts exactly one',
+        () async {
+      expect(scanner.scanEnded, isFalse);
+      await central.endScan();
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.scanEnded, isTrue);
+
+      scanner.scanAgain();
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.scanEnded, isFalse);
+      expect(central.scans, hasLength(2));
+      central.advertise(const BleScanResult(id: 'FF:06', name: 'Some Dive'));
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.discoveredDevices, hasLength(1));
+    });
+
+    test('a scan that cannot start ends too', () async {
+      final off = FakeBleCentral()..scanError = StateError("scan failed");
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: off,
+      );
+      extra.add(n);
+      n.startScan();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(n.scanEnded, isTrue);
+    });
+
     test('recordNextDownload defaults to false and can be set', () {
       expect(scanner.recordNextDownload, isFalse);
       scanner.recordNextDownload = true;
@@ -821,7 +880,7 @@ void main() {
       await n.selectLibdcDevice(scan, descriptor);
       expect(n.state, ImportFlowState.error);
       expect(n.errorMessage,
-          'Download stopped (the computer stopped answering). 1 dives saved.');
+          'Download stopped (the computer stopped answering). 1 dive saved.');
       expect(n.lastRecordingText, contains('the log line'));
       expect(await importStateDao.getLastFingerprint(key), isNull);
     });
@@ -896,7 +955,7 @@ void main() {
       expect(cancels, greaterThanOrEqualTo(1));
       expect(closes, greaterThan(0), reason: 'the connection is closed');
       expect(n.state, ImportFlowState.error);
-      expect(n.errorMessage, 'Download stopped (cancelled). 1 dives saved.');
+      expect(n.errorMessage, 'Download stopped (cancelled). 1 dive saved.');
       expect(n.lastRecordingText, contains('the log line'),
           reason: 'the Share button keeps working');
       expect(await importStateDao.getLastFingerprint(key), old);
@@ -904,7 +963,7 @@ void main() {
       final props = tracked.single.$2!;
       expect(props['engine'], 'libdc');
       expect(props['vendor'], 'Divesoft');
-      expect(props['reason'], 'Download stopped (cancelled). 1 dives saved.');
+      expect(props['reason'], 'Download stopped (cancelled). 1 dive saved.');
     });
 
     test('a second select while connecting starts no second connection',

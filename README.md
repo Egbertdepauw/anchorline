@@ -5,7 +5,9 @@ A Swiss army knife for technical divers, especially rebreather divers.
 ## Getting Started
 
 Anchorline is build by and for technical (rebreather) divers.
-It is useable for everyone that uses a Shearwater dive computer.
+Shearwater dive computers are supported first-class. Other brands' Bluetooth
+dive computers work through libdivecomputer and are marked "Not yet tested by
+us" until we have a real recording from them (see below).
 
 ## Main functions
 - Logging dives with O2 and pressure sensor data if available.
