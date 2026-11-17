@@ -22,6 +22,9 @@ void main() {
         origin: const Rect.fromLTWH(1, 2, 3, 4),
         now: () => DateTime(2026, 11, 17, 9, 5, 7),
         tempDir: () async => dir,
+        // The share-sheet path on every host, Linux CI included; the
+        // Linux save-to-Downloads path has its own tests below.
+        isLinux: false,
         share: (file, text, origin) async =>
             shared.add((file: file, text: text, origin: origin)),
         gzipAboveBytes: gzipAbove,
