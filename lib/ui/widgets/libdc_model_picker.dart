@@ -26,7 +26,9 @@ typedef LibdcPick = ({LibdcDescriptor descriptor, ImportScanResult device});
 /// the named devices seen in the scan is the computer.
 ///
 /// Lists every Bluetooth model libdivecomputer knows except Shearwater, which
-/// has its own reader. Pops a [LibdcPick] (or null when dismissed).
+/// has its own reader, and the models whose download needs a PIN
+/// ([LibdcDescriptor.offeredOverBle]). Pops a [LibdcPick] (or null when
+/// dismissed).
 class LibdcModelPicker extends StatefulWidget {
   const LibdcModelPicker({
     super.key,
@@ -51,7 +53,7 @@ class LibdcModelPicker extends StatefulWidget {
 class _LibdcModelPickerState extends State<LibdcModelPicker> {
   late final List<LibdcDescriptor> _all = [
     for (final d in widget._descriptors ?? _allDescriptors())
-      if (d.supportsBle && !d.isShearwater) d,
+      if (d.offeredOverBle) d,
   ];
   String? _vendor;
   LibdcDescriptor? _model;

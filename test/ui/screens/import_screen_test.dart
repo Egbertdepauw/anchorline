@@ -272,7 +272,7 @@ void main() {
     // Every BLE brand but Shearwater, sorted; the first is on screen.
     final vendors = ({
       for (final d in Libdc.descriptors())
-        if (d.supportsBle && !d.isShearwater) d.vendor
+        if (d.offeredOverBle) d.vendor
     }.toList()
       ..sort());
     expect(vendors, isNotEmpty);
@@ -282,7 +282,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     final firstModel = Libdc.descriptors()
         .firstWhere((d) =>
-            d.supportsBle && !d.isShearwater && d.vendor == vendors.first)
+            d.offeredOverBle && d.vendor == vendors.first)
         .product;
     expect(find.text(firstModel), findsOneWidget);
 
@@ -475,11 +475,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     final vendors = ({
       for (final d in Libdc.descriptors())
-        if (d.supportsBle && !d.isShearwater) d.vendor
+        if (d.offeredOverBle) d.vendor
     }.toList()
       ..sort());
     final model = Libdc.descriptors().firstWhere(
-        (d) => d.supportsBle && !d.isShearwater && d.vendor == vendors.first);
+        (d) => d.offeredOverBle && d.vendor == vendors.first);
     await tester.tap(find.text(vendors.first));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.tap(find.text(model.product));
@@ -503,5 +503,25 @@ void main() {
     ));
     expect(find.text('Acme'), findsOneWidget);
     expect(find.text('Shearwater'), findsNothing);
+  });
+
+  testWidgets('the picker leaves out a model whose download needs a PIN',
+      (tester) async {
+    final dsx = LibdcDescriptor(
+        vendor: 'Apeks',
+        product: 'DSX',
+        family: dc_family_t.DC_FAMILY_PELAGIC_I330R,
+        model: 0x4741,
+        transports: 32);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: LibdcModelPicker(
+          devices: const [],
+          descriptors: [dsx, _famA],
+        ),
+      ),
+    ));
+    expect(find.text('Acme'), findsOneWidget);
+    expect(find.text('Apeks'), findsNothing);
   });
 }

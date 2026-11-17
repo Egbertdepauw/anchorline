@@ -97,6 +97,30 @@ void main() {
     expect(Libdc.matchBle('   '), isEmpty);
   });
 
+  test('the Aqualung i330R and Apeks DSX need a PIN and are not offered', () {
+    final pin = Libdc.descriptors().where((d) => d.needsPinCode);
+    expect(
+      pin.map((d) => '${d.vendor} ${d.product}'),
+      unorderedEquals(['Apeks DSX', 'Aqualung i330R', 'Aqualung i330R Console']),
+    );
+    expect(pin.every((d) => !d.offeredOverBle), isTrue);
+    expect(_one('Divesoft', 'Liberty').offeredOverBle, isTrue);
+  });
+
+  test('matchBle hides a computer that needs a PIN', () {
+    // DSX 0x4741 "GA", i330R 0x4744 "GD", i330R Console 0x474D "GM".
+    for (final name in ['GA123456', 'GD123456', 'GM123456']) {
+      expect(Libdc.matchBle(name), isEmpty, reason: name);
+    }
+  });
+
+  test('matchBle of another Pelagic name leaves the PIN models out', () {
+    // Aqualung i300C, 0x4648: "FH".
+    final matches = Libdc.matchBle('FH123456');
+    expect(matches.map((d) => d.product), contains('i300C'));
+    expect(matches.any((d) => d.needsPinCode), isFalse);
+  });
+
   test('every family is present in the default build', () {
     expect(Libdc.familyPresent(dc_family_t.DC_FAMILY_DIVESOFT_FREEDOM), isTrue);
     expect(Libdc.familyPresent(dc_family_t.DC_FAMILY_HW_OSTC3), isTrue);
