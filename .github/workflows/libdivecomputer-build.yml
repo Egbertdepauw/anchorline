@@ -110,7 +110,11 @@ jobs:
           $dll = (Get-ChildItem -Recurse -Filter divecomputer.dll build/windows/x64/runner/Debug | Select-Object -First 1).FullName
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
           $dumpbin = Get-ChildItem -Recurse "$vs\VC\Tools\MSVC" -Filter dumpbin.exe | Where-Object { $_.FullName -match 'Hostx64\\x64' } | Select-Object -First 1
-          & $dumpbin.FullName /exports $dll | Select-String -Pattern 'dc_version|dc_descriptor_iterator_new|al_family_present'
+          $exports = & $dumpbin.FullName /exports $dll | Out-String
+          foreach ($name in 'al_family_present', 'dc_descriptor_iterator_new', 'dc_version') {
+            if ($exports -notmatch "\b$name\b") { Write-Error "missing export $name"; exit 1 }
+            Write-Host "exported: $name"
+          }
 
   linux-android:
     name: Linux + Android

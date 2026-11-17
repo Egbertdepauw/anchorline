@@ -28,14 +28,19 @@ Future<void> _runHook(
   List<String> families,
   void Function(BuildInput input, BuildOutput output) check,
 ) async {
+  var passed = false;
   try {
     await testCodeBuildHook(
       mainMethod: hook.main,
       userDefines: _leaveOut(families),
-      check: (input, output) => check(input, output),
+      check: (input, output) {
+        check(input, output);
+        passed = true;
+      },
     );
   } on PathAccessException {
-    if (!Platform.isWindows) rethrow;
+    // Only the cleanup error, and only after every check passed.
+    if (!(Platform.isWindows && passed)) rethrow;
   }
 }
 
