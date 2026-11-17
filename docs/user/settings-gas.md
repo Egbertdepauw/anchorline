@@ -16,6 +16,8 @@ Defaults for blending and analysing gas: what your fills cost, what a new blend 
   - **Fill order**: the order of steps, one of **He → O₂ → top-off**, **O₂ → He → top-off** or **O₂ → top-off → He**.
   - **Real-gas maths (Z)**: when on, blends use real-gas behaviour. When off, they use the ideal gas law.
   - **Fill / settled temp**: the temperature while filling, then once the cylinder has settled, in °C.
+  - **Settle time (min)**: how long a fill needs to settle before you analyse it. Open blends turn red, orange and green against it. It starts at 60 and takes 0 to 1440 minutes.
+  - **Diluent cylinder up to (L)**: a cylinder with this water capacity or less, and at most 32% oxygen, is guessed as diluent on the Blend tab. It starts at 3 and takes 0.5 to 50 litres.
 - **Analyzer**: **MOD rows at ppO₂** lists the ppO₂ values for which the analyzer shows a maximum operating depth. Remove one with its cross (the last one stays), or tap **+ Add** and enter a ppO₂ in bar. **Fill pressure starts at** sets the pressure a new analysis begins with, in bar.
 
 ## Good to know

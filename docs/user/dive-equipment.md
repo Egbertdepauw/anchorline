@@ -12,6 +12,7 @@ What you carried and wore on this dive. The gas mixes come from the computer; ev
 ## On this screen
 
 - **Gas mixes**: one row per mix the computer logged, for example EAN50 or Tx18/45, with its position number and how long it was active. The drop-down at the right links the mix to one of your cylinders. A dash means none is linked.
+- **Unassigned cylinder**: if a download changed the gas list so that a cylinder you linked no longer has a gas, it is listed under the gas mixes with **No longer matches a gas on this dive**. The delete button (**Remove cylinder**) removes it.
 - **Bailout carry**: the bailout cylinders you carried. **Add cylinder** picks from your cylinders and lets you set the gas mix and fill pressure. Each row has **Remove**.
 - **Suit**, **Undersuit**, **DPV**, **Camera**: free text. Earlier entries are offered as suggestions as you type.
 - **Weights**: **Add weight** records each weight you carried.
