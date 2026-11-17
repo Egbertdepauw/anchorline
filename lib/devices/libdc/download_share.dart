@@ -2,6 +2,7 @@
 /// sheet, so a tester can send it to us.
 library;
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show Rect;
 
@@ -61,19 +62,18 @@ Future<void> shareDownload({
     ..writeln()
     ..write(recordingText);
 
-  final file = File(p.join(dir.path, name));
-  await file.writeAsString(text.toString());
-
+  // Decide from the encoded size before writing, so only one file is made.
+  final bytes = utf8.encode(text.toString());
   var shareName = name;
-  var sharePath = file.path;
   var mimeType = 'text/plain';
-  if (await file.length() > gzipAboveBytes) {
+  List<int> payload = bytes;
+  if (bytes.length > gzipAboveBytes) {
     shareName = '$name.gz';
-    sharePath = '${file.path}.gz';
-    await File(sharePath).writeAsBytes(gzip.encode(await file.readAsBytes()));
-    await file.delete();
+    payload = gzip.encode(bytes);
     mimeType = 'application/gzip';
   }
+  final sharePath = p.join(dir.path, shareName);
+  await File(sharePath).writeAsBytes(payload);
   await (share ?? _defaultShare)(
     XFile(sharePath, name: shareName, mimeType: mimeType),
     kDownloadShareText,

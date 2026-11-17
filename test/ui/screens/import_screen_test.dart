@@ -11,6 +11,7 @@ import 'package:ccrlogger/ui/notifiers/import_notifier.dart';
 import 'package:ccrlogger/ui/screens/import_screen.dart';
 import 'package:ccrlogger/ui/widgets/libdc_model_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart' show BluetoothDevice;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libdivecomputer/libdivecomputer.dart';
 
@@ -33,6 +34,22 @@ class _StateDao implements ImportStateDao {
 class _EquipDao implements EquipmentDao {
   @override
   dynamic noSuchMethod(Invocation i) => throw UnimplementedError('$i');
+}
+
+class _SpyNotifier extends ImportNotifier {
+  _SpyNotifier(FakeBleCentral central)
+      : super(
+          dao: _Dao(),
+          importStateDao: _StateDao(),
+          equipmentDao: _EquipDao(),
+          central: central,
+        );
+
+  String? selected;
+
+  @override
+  Future<void> selectRealDevice(BluetoothDevice device) async =>
+      selected = device.remoteId.str;
 }
 
 class _NoLink implements LibdcBleLink {
@@ -136,7 +153,6 @@ void main() {
     await tester.tap(find.text("My computer isn't listed"));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byType(LibdcModelPicker), findsOneWidget);
-    // The list scrolls; Shearwater would sit among the brands if it were
     // Every BLE brand but Shearwater, sorted; the first is on screen.
     final vendors = ({
       for (final d in Libdc.descriptors())
@@ -303,6 +319,46 @@ void main() {
       await gate.close();
       await flow;
     });
+  });
+
+  testWidgets('a Shearwater row calls selectRealDevice with the scanned id',
+      (tester) async {
+    final n = _SpyNotifier(central);
+    addTearDown(n.dispose);
+    await show(tester, n);
+    central.advertise(const BleScanResult(
+        id: 'AA:01',
+        name: 'Petrel 3',
+        serviceUuids: ['fe25c237-0ece-443c-b0aa-e02033e7029d']));
+    await tester.pump();
+    await tester.tap(find.text('Petrel 3'));
+    await tester.pump();
+    expect(n.selected, 'AA:01');
+  });
+
+  testWidgets('the model picker follows the scan while it is open',
+      (tester) async {
+    final n = notifierWith((_) => const []);
+    addTearDown(n.dispose);
+    await show(tester, n);
+    await tester.tap(find.text("My computer isn't listed"));
+    await tester.pump(const Duration(milliseconds: 500));
+    final vendors = ({
+      for (final d in Libdc.descriptors())
+        if (d.supportsBle && !d.isShearwater) d.vendor
+    }.toList()
+      ..sort());
+    final model = Libdc.descriptors().firstWhere(
+        (d) => d.supportsBle && !d.isShearwater && d.vendor == vendors.first);
+    await tester.tap(find.text(vendors.first));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text(model.product));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Late Arrival'), findsNothing);
+
+    central.advertise(const BleScanResult(id: 'EE:05', name: 'Late Arrival'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Late Arrival'), findsOneWidget);
   });
 
   testWidgets('the picker leaves out a Shearwater descriptor it is given',

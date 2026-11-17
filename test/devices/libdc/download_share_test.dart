@@ -51,7 +51,8 @@ void main() {
     expect(
         text.indexOf('gatt: 1 service'), lessThan(text.indexOf('LOG line')));
 
-    // Above the limit the file is gzipped instead, and the plain one removed.
+    // Above the limit the file is gzipped instead, and no plain one written.
+    File(s.file.path).deleteSync();
     shared.clear();
     await run('x' * 5000, gzipAbove: 1000);
     final gz = shared.single.file;

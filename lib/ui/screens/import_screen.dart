@@ -79,14 +79,14 @@ class _ImportScreenState extends State<ImportScreen> {
 
   Widget _buildIdle(ThemeData theme) {
     final n = widget.notifier;
-    return Center(child: Column(
+    return Center(child: SingleChildScrollView(child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Icon(Icons.bluetooth, size: 64, color: theme.colorScheme.primary),
         const SizedBox(height: 24),
         const Text('Import Dives', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
-        Text('Connect to your Shearwater dive computer',
+        Text('Connect to your dive computer',
             style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
         const SizedBox(height: 24),
         Row(
@@ -114,7 +114,7 @@ class _ImportScreenState extends State<ImportScreen> {
           label: const Text('Start Scan'),
         ),
       ],
-    ));
+    )));
   }
 
   Widget _buildScanning(ImportNotifier n, ThemeData theme) {
@@ -204,8 +204,9 @@ class _ImportScreenState extends State<ImportScreen> {
   Widget _buildLibdcRow(
       ImportNotifier n, ThemeData theme, ImportScanResult r) {
     final first = r.candidates.first;
-    final tested = isCheckedLibdcFamily(first.family);
     final families = {for (final c in r.candidates) c.family};
+    // Tested only when every family the name could mean is.
+    final tested = families.every(isCheckedLibdcFamily);
     return Card(child: ListTile(
       leading: Icon(Icons.bluetooth, color: theme.colorScheme.primary),
       title: Text('${first.vendor} ${first.product}'
@@ -254,7 +255,7 @@ class _ImportScreenState extends State<ImportScreen> {
   Future<void> _pickModel(ImportNotifier n) async {
     final pick = await showDialog<LibdcPick>(
       context: context,
-      builder: (_) => LibdcModelPicker(devices: n.discoveredDevices),
+      builder: (_) => LibdcModelPicker(devices: n.discoveredDevices, notifier: n),
     );
     if (pick == null) return;
     await n.selectLibdcDevice(pick.device, pick.descriptor);

@@ -23,7 +23,10 @@ import 'package:ccrlogger/shearwater/parser/manifest_parser.dart';
 import 'package:ccrlogger/ui/notifiers/import_notifier.dart';
 import 'package:ccrlogger/shearwater/ble/ble_io_impl.dart'
     show shearwaterServiceUuid;
-import 'package:ccrlogger/ble/ble_central.dart' show BleScanResult;
+import 'package:ccrlogger/ble/ble_central.dart'
+    show BleAdapterState, BleScanResult;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libdivecomputer/libdivecomputer.dart';
@@ -552,6 +555,81 @@ void main() {
       expect(scanner.discoveredDevices.map((d) => d.id), ['FF:06']);
       expect(scanner.discoveredDevices.single.kind,
           ImportDeviceKind.unmatched);
+    });
+
+    test('a listed Petrel is not demoted by a later report without the UUID',
+        () async {
+      central.advertise(petrel());
+      await Future<void>.delayed(Duration.zero);
+      central.advertise(const BleScanResult(id: 'AA:01', name: 'Petrel 3'));
+      central.advertise(const BleScanResult(id: 'AA:01', name: ''));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(scanner.discoveredDevices, hasLength(1));
+      expect(scanner.discoveredDevices.single.kind, ImportDeviceKind.shearwater);
+      expect(scanner.discoveredDevices.single.name, 'Petrel 3');
+    });
+
+    test('Shearwater devices stay unlisted on Windows', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      central.advertise(petrel());
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.discoveredDevices, isEmpty);
+    });
+
+    test('the scan stops when a device is selected and on dispose', () async {
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: central,
+        libdcOpener: (c, r, d) async => throw StateError('no gatt'),
+      );
+      n.startScan();
+      await Future<void>.delayed(Duration.zero);
+      final before = central.stopScanCalls;
+      await n.selectLibdcDevice(
+          const ImportScanResult(
+              id: 'AA:11',
+              name: 'X',
+              kind: ImportDeviceKind.libdc,
+              candidates: [
+                LibdcDescriptor(
+                    vendor: 'V', product: 'P', family: 1, model: 1,
+                    transports: 32)
+              ]),
+          const LibdcDescriptor(
+              vendor: 'V', product: 'P', family: 1, model: 1, transports: 32));
+      expect(central.stopScanCalls, greaterThan(before));
+      final beforeDispose = central.stopScanCalls;
+      n.dispose();
+      expect(central.stopScanCalls, greaterThan(beforeDispose));
+    });
+
+    test('a reset during the adapter wait leaves no scan behind', () async {
+      final waiting = FakeBleCentral(adapter: BleAdapterState.off);
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: waiting,
+      );
+      extra.add(n);
+      n.startScan();
+      await Future<void>.delayed(Duration.zero);
+      n.reset();
+      waiting.setAdapter(BleAdapterState.on);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(waiting.scans, isEmpty);
+
+      // A retry during a wait gives one scan, not two.
+      n.startScan();
+      n.startScan();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(waiting.scans, hasLength(1));
     });
 
     test('recordNextDownload defaults to false and can be set', () {

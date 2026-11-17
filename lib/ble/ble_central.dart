@@ -11,9 +11,10 @@
 ///
 /// `defaultBleCentral()` in `ble_central_default.dart` picks one.
 ///
-/// The libdivecomputer import (`lib/devices/libdc/`) uses this seam too. The
-/// Shearwater dive-computer import does not; it still talks to
-/// `flutter_blue_plus` directly.
+/// The libdivecomputer import (`lib/devices/libdc/`) uses this seam too, and
+/// so does the import screen's scan, which finds Shearwater and other
+/// computers in one scan. Connecting to a Shearwater computer still goes
+/// through `flutter_blue_plus` directly.
 library;
 
 import 'dart:async';

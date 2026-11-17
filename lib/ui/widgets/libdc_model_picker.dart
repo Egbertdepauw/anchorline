@@ -15,11 +15,16 @@ class LibdcModelPicker extends StatefulWidget {
   const LibdcModelPicker({
     super.key,
     required this.devices,
+    this.notifier,
     List<LibdcDescriptor>? descriptors,
   }) : _descriptors = descriptors;
 
-  /// The named devices seen in the scan.
+  /// The named devices seen in the scan when the picker opened.
   final List<ImportScanResult> devices;
+
+  /// When given, the device list follows its scan: a computer that starts
+  /// advertising after the picker opened still appears.
+  final ImportNotifier? notifier;
 
   final List<LibdcDescriptor>? _descriptors;
 
@@ -39,7 +44,7 @@ class _LibdcModelPickerState extends State<LibdcModelPicker> {
       ({for (final d in _all) d.vendor}.toList()..sort());
 
   List<ImportScanResult> get _named => [
-        for (final d in widget.devices)
+        for (final d in widget.notifier?.discoveredDevices ?? widget.devices)
           if (d.name.isNotEmpty && d.kind != ImportDeviceKind.shearwater) d,
       ];
 
@@ -53,6 +58,13 @@ class _LibdcModelPickerState extends State<LibdcModelPicker> {
 
   @override
   Widget build(BuildContext context) {
+    final notifier = widget.notifier;
+    if (notifier == null) return _buildDialog(context);
+    return ListenableBuilder(
+        listenable: notifier, builder: (ctx, _) => _buildDialog(ctx));
+  }
+
+  Widget _buildDialog(BuildContext context) {
     final String title;
     final List<Widget> rows;
     if (_vendor == null) {

@@ -121,6 +121,8 @@ class ImportNotifier extends ChangeNotifier {
   final bool useMock;
   final BleCentral? _centralOverride;
   final List<LibdcDescriptor> Function(String name) _matchBle;
+  final Map<String, List<LibdcDescriptor>> _matchCache = {};
+  int _scanGeneration = 0;
   final LibdcOpener? _libdcOpener;
   final LibdcStarter? _libdcStarter;
 
@@ -274,9 +276,10 @@ class ImportNotifier extends ChangeNotifier {
   /// Begin scanning. Transitions immediately to [ImportFlowState.scanning].
   ///
   /// In mock mode, [mockDeviceAvailable] becomes `true` after a short delay.
-  /// Real BLE devices are discovered via [FlutterBluePlus] and collected into
-  /// [discoveredDevices].
+  /// Real BLE devices are discovered through the [BleCentral] and collected
+  /// into [discoveredDevices].
   void startScan() {
+    _scanGeneration++;
     _state = ImportFlowState.scanning;
     _mockDeviceAvailable = false;
     _discoveredDevices.clear();
@@ -294,6 +297,7 @@ class ImportNotifier extends ChangeNotifier {
   }
 
   Future<void> _startRealScan() async {
+    final generation = _scanGeneration;
     // On macOS the Core Bluetooth manager starts in `unknown` and only
     // reaches `on` after the OS finishes initializing the adapter (and the
     // user has answered the Bluetooth permission prompt). Calling scan
@@ -307,7 +311,9 @@ class ImportNotifier extends ChangeNotifier {
     }
     final adapter =
         await waitForAdapterOn(central, const Duration(seconds: 15));
-    if (_disposed) return;
+    // A reset, a new scan or a selection during the wait ends this one;
+    // exactly one scan may run (the same central connects afterwards).
+    if (_disposed || generation != _scanGeneration) return;
     if (adapter != BleAdapterState.on) {
       debugPrint('BLE adapter never reached on state: $adapter');
       return;
@@ -316,6 +322,7 @@ class ImportNotifier extends ChangeNotifier {
     // One scan, no service filter: Shearwater computers are told apart by
     // their service UUID, the others by their advertised name.
     try {
+      unawaited(_scanSubscription?.cancel());
       _scanSubscription = central
           .scan(timeout: const Duration(seconds: 15))
           .listen(_onScanResult,
@@ -340,7 +347,9 @@ class ImportNotifier extends ChangeNotifier {
     } else if (r.name.isEmpty) {
       result = null;
     } else {
-      final candidates = _matchBle(r.name);
+      // matchBle walks libdivecomputer's descriptors over FFI; one name is
+      // advertised many times.
+      final candidates = _matchCache.putIfAbsent(r.name, () => _matchBle(r.name));
       result = ImportScanResult(
         id: r.id,
         name: r.name,
@@ -358,13 +367,24 @@ class ImportNotifier extends ChangeNotifier {
       // The same device again: only a newly learned name or kind changes
       // anything.
       final old = _discoveredDevices[i];
-      if (old.name == result.name && old.kind == result.kind) return;
-      _discoveredDevices[i] = result;
+      if (old.kind == ImportDeviceKind.shearwater &&
+          result.kind != ImportDeviceKind.shearwater) {
+        // A later report without the service UUID (the stack reports the
+        // advertisement and the scan response apart) must not demote a
+        // listed Shearwater; at most it brings a name.
+        if (result.name.isEmpty || result.name == old.name) return;
+        _discoveredDevices[i] = ImportScanResult(
+            id: old.id, name: result.name, kind: ImportDeviceKind.shearwater);
+      } else {
+        if (old.name == result.name && old.kind == result.kind) return;
+        _discoveredDevices[i] = result;
+      }
     }
     notifyListeners();
   }
 
   void _stopScan() {
+    _scanGeneration++;
     _scanSubscription?.cancel();
     _scanSubscription = null;
     try {
