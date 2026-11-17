@@ -1,7 +1,7 @@
 # Multi-dive-computer driver architecture (`LibDartDc`)
 
 **Date:** 2026-06-04
-**Status:** Draft — pending review
+**Status:** Superseded in part by the 2026-11-15 libdivecomputer design
 **Area:** new `lib/devices/` framework; `lib/shearwater/` (wrapped, not moved); `lib/data/models/sample_set.dart`; `lib/data/sample_codec/`; `lib/data/db/dive_dao.dart`; `lib/ui/notifiers/import_notifier.dart`
 
 ## Problem
