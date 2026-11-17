@@ -42,7 +42,7 @@ void main() {
         row(30000, depth: 10, setpoint: 1.3, gas: 1),
         row(40000, depth: 10),
       ],
-      tankCount: 1,
+      tankIndexes: [0],
     );
     expect(r.setpoint, [
       closeTo(0.7, 1e-6),
@@ -72,7 +72,7 @@ void main() {
   test('every column has exactly count entries, also with no values', () {
     final r = resample(
       [row(0), row(5000), row(10000)],
-      tankCount: 2,
+      tankIndexes: [0, 1],
     );
     expect(r.count, 3);
     for (final c in [
@@ -154,5 +154,62 @@ void main() {
     expect(r.decoStopDepth, [0, 6, 0]);
     expect(r.decoTime, [600, 120, 60]);
     expect(r.tts, [0, 900, 60]);
+  });
+
+  test('before the first row every channel holds its first value', () {
+    final r = resample(
+      [
+        row(
+          10000,
+          depth: 1,
+          temp: 21,
+          ppo2: 0.7,
+          setpoint: 0.7,
+          gas: 1,
+          cns: 0.1,
+          cells: {0: 0.7},
+          pressures: {0: 200},
+        ),
+        row(20000, depth: 2),
+      ],
+      tankIndexes: [0],
+    );
+    expect(r.count, 3);
+    expect(r.temperature[0], 21);
+    expect(r.ppo2[0], closeTo(0.7, 1e-6));
+    expect(r.setpoint[0], closeTo(0.7, 1e-6));
+    expect(r.gasMixIndex[0], 1);
+    expect(r.cns[0], closeTo(0.1, 1e-6));
+    expect(r.cellPpo2[0][0], closeTo(0.7, 1e-6));
+    expect(r.tankPressures[0][0], 200);
+    expect(r.depth[0], 1);
+  });
+
+  test('a corrupt row time beyond the dive time is a dataFormat failure', () {
+    expect(
+      () => resample([
+        row(0, depth: 0),
+        row(1000, depth: 1),
+        row(2000, depth: 1),
+        row(1 << 31, depth: 0),
+      ], diveTimeSeconds: 600),
+      throwsA(
+        isA<LibdcParseException>().having(
+          (e) => e.status,
+          'status',
+          LibdcStatus.dataFormat,
+        ),
+      ),
+    );
+  });
+
+  test('rows at the same time keep their delivery order', () {
+    final a = row(10000, depth: 1, temp: 1);
+    final b = row(10000, depth: 1, temp: 2);
+    final out = rowsInTimeOrder([row(20000), a, b, row(0)]);
+    expect(out.indexOf(a) < out.indexOf(b), isTrue);
+    expect(out.map((r) => r.timeMs), [0, 10000, 10000, 20000]);
+    final r = resample([row(0, temp: 0), a, b]);
+    expect(r.temperature[1], 2);
   });
 }

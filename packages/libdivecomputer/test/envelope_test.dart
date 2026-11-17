@@ -96,6 +96,8 @@ void main() {
     final good = _env().encode();
     final badMagic = Uint8List.fromList(good)..[0] = 0x42;
     expect(() => LibdcEnvelope.decode(badMagic), throwsFormatException);
+    final v0 = Uint8List.fromList(good)..[4] = 0;
+    expect(() => LibdcEnvelope.decode(v0), throwsFormatException);
     final v2 = Uint8List.fromList(good)..[4] = 2;
     expect(() => LibdcEnvelope.decode(v2), throwsFormatException);
     expect(

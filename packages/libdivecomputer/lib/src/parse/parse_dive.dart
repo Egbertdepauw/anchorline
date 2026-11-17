@@ -4,8 +4,10 @@ import 'package:ffi/ffi.dart';
 
 import '../bindings.g.dart' as c;
 import '../envelope.dart';
+import 'descriptor_choice.dart';
 import 'parsed_dive.dart';
 import 'status.dart';
+import 'wall_clock.dart';
 
 const int _timezoneNone = -2147483648; // DC_TIMEZONE_NONE (INT_MIN)
 const int _gasmixUnknown = 0xFFFFFFFF; // DC_GASMIX_UNKNOWN
@@ -27,6 +29,8 @@ LibdcParsedDive parseDive(LibdcEnvelope e) {
       final contextOut = arena<Pointer<c.dc_context_t>>();
       _check(c.dc_context_new(contextOut));
       context = contextOut.value;
+      // Parser messages can carry dive values; keep them off stderr.
+      c.dc_context_set_loglevel(context, c.dc_loglevel_t.DC_LOGLEVEL_NONE);
 
       descriptor = _findDescriptor(context, e);
       if (descriptor == nullptr) {
@@ -129,59 +133,60 @@ bool _present(int status) {
   throw LibdcParseException(LibdcStatus.fromCode(status));
 }
 
-/// The descriptor for [e]: by vendor and product name first, since family
-/// numbers can change between libdivecomputer versions, and only then by
-/// family and model. Returns `nullptr` when there is none; the caller owns
-/// the result.
+/// The descriptor for [e], chosen by [chooseDescriptorIndex]. Returns
+/// `nullptr` when there is none; the caller owns the result.
 Pointer<c.dc_descriptor_t> _findDescriptor(
   Pointer<c.dc_context_t> context,
   LibdcEnvelope e,
 ) {
-  Pointer<c.dc_descriptor_t> byFamily = nullptr;
-  Pointer<c.dc_descriptor_t> byName = nullptr;
-  using((arena) {
-    final iterator = arena<Pointer<c.dc_iterator_t>>();
-    final item = arena<Pointer<c.dc_descriptor_t>>();
-    _check(c.dc_descriptor_iterator_new(iterator, context));
-    final it = iterator.value;
-    try {
-      while (byName == nullptr) {
-        final status = c.dc_iterator_next(it, item.cast());
-        if (status == c.dc_status_t.DC_STATUS_DONE) break;
-        _check(status);
-        final d = item.value;
-        final vendor = c.dc_descriptor_get_vendor(d).cast<Utf8>().toDartString();
-        final product = c.dc_descriptor_get_product(d).cast<Utf8>().toDartString();
-        if (vendor == e.vendor && product == e.product) {
-          byName = d;
-        } else if (byFamily == nullptr &&
-            c.dc_descriptor_get_type(d) == e.family &&
-            c.dc_descriptor_get_model(d) == e.descriptorModel) {
-          byFamily = d;
-        } else {
-          c.dc_descriptor_free(d);
+  final all = <Pointer<c.dc_descriptor_t>>[];
+  final table = <(String, String, int, int)>[];
+  Pointer<c.dc_descriptor_t> chosen = nullptr;
+  try {
+    using((arena) {
+      final iterator = arena<Pointer<c.dc_iterator_t>>();
+      final item = arena<Pointer<c.dc_descriptor_t>>();
+      _check(c.dc_descriptor_iterator_new(iterator, context));
+      final it = iterator.value;
+      try {
+        while (true) {
+          final status = c.dc_iterator_next(it, item.cast());
+          if (status == c.dc_status_t.DC_STATUS_DONE) break;
+          _check(status);
+          final d = item.value;
+          all.add(d);
+          table.add((
+            c.dc_descriptor_get_vendor(d).cast<Utf8>().toDartString(),
+            c.dc_descriptor_get_product(d).cast<Utf8>().toDartString(),
+            c.dc_descriptor_get_type(d),
+            c.dc_descriptor_get_model(d),
+          ));
         }
+      } finally {
+        c.dc_iterator_free(it);
       }
-    } catch (_) {
-      if (byName != nullptr) c.dc_descriptor_free(byName);
-      if (byFamily != nullptr) c.dc_descriptor_free(byFamily);
-      rethrow;
-    } finally {
-      c.dc_iterator_free(it);
+    });
+    final index = chooseDescriptorIndex(
+      table,
+      vendor: e.vendor,
+      product: e.product,
+      family: e.family,
+      model: e.descriptorModel,
+    );
+    if (index != null) chosen = all[index];
+    return chosen;
+  } finally {
+    for (final d in all) {
+      if (d != chosen) c.dc_descriptor_free(d);
     }
-  });
-  if (byName != nullptr) {
-    if (byFamily != nullptr) c.dc_descriptor_free(byFamily);
-    return byName;
   }
-  return byFamily;
 }
 
 (DateTime, int?)? _datetime(Arena arena, Pointer<c.dc_parser_t> parser) {
   final dt = arena<c.dc_datetime_t>();
   if (!_present(c.dc_parser_get_datetime(parser, dt))) return null;
   final r = dt.ref;
-  final wall = DateTime.utc(r.year, r.month, r.day, r.hour, r.minute, r.second);
+  final wall = libdcWallClock(r.year, r.month, r.day, r.hour, r.minute, r.second);
   return (wall, r.timezone == _timezoneNone ? null : r.timezone);
 }
 

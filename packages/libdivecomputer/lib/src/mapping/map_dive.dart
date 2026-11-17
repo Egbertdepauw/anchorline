@@ -42,23 +42,70 @@ ConvertedDive mapLibdcDive(
       ),
     );
   }
+  // The deco replay needs at least one mix; a computer with none (gauge or
+  // freedive) gets air, and every sample stays on index 0.
+  if (gasMixes.isEmpty) {
+    gasMixes.add(
+      const DiveGasMix(oxygenPercent: 21, heliumPercent: 0, isDiluent: false),
+    );
+  }
   int? gasIndex(int i) => i >= 0 && i < gasMap.length ? gasMap[i] : null;
 
-  final tanks = <DiveTank>[
-    for (var i = 0; i < p.tanks.length; i++)
-      DiveTank(
-        slot: i,
-        usage: _tankUsage(p.tanks[i].usage),
-        name: '',
-        serial: 0,
-        beginPressureBar: p.tanks[i].beginPressureBar,
-        endPressureBar: p.tanks[i].endPressureBar,
-        pressureMaxBar: p.tanks[i].workPressureBar.round(),
-        pressureReserveBar: 0,
-      ),
-  ];
+  final tanks = <DiveTank>[];
+  final tankIndexes = <int>[];
+  if (p.tanks.isNotEmpty) {
+    for (var i = 0; i < p.tanks.length; i++) {
+      final t = p.tanks[i];
+      tankIndexes.add(i);
+      tanks.add(
+        DiveTank(
+          slot: i,
+          usage: _tankUsage(t.usage),
+          name: '',
+          serial: 0,
+          beginPressureBar: t.beginPressureBar,
+          endPressureBar: t.endPressureBar,
+          pressureMaxBar: t.workPressureBar.round(),
+          pressureReserveBar: 0,
+        ),
+      );
+    }
+  } else {
+    // Some computers log tank pressure samples without any TANK field. Make
+    // a tank for each index seen, with begin and end from the first and last
+    // nonzero readings.
+    final seen = <int>{for (final r in p.rows) ...r.pressures.keys}.toList()
+      ..sort();
+    for (final index in seen) {
+      double begin = 0, end = 0;
+      for (final r in p.rows) {
+        final v = r.pressures[index];
+        if (v == null || v == 0) continue;
+        if (begin == 0) begin = v;
+        end = v;
+      }
+      tankIndexes.add(index);
+      tanks.add(
+        DiveTank(
+          slot: tanks.length,
+          usage: TankUsage.none,
+          name: '',
+          serial: 0,
+          beginPressureBar: begin,
+          endPressureBar: end,
+          pressureMaxBar: 0,
+          pressureReserveBar: 0,
+        ),
+      );
+    }
+  }
 
-  final grid = resample(p.rows, gasIndex: gasIndex, tankCount: tanks.length);
+  final grid = resample(
+    p.rows,
+    gasIndex: gasIndex,
+    tankIndexes: tankIndexes,
+    diveTimeSeconds: p.diveTimeSeconds,
+  );
 
   // Time.
   final lastRowMs = p.rows.isEmpty
