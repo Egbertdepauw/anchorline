@@ -70,6 +70,21 @@ void main() {
     expect(saved, startsWith(dir.path));
   });
 
+  test('a product name that starts with the vendor is not doubled in the '
+      'file name', () async {
+    await shareFitDive(
+      diveId: 'd1',
+      vendor: 'Garmin',
+      product: 'Garmin product 4999',
+      loadRawBlob: (_) async => fitBlob(),
+      now: () => DateTime(2026, 11, 17, 9, 5, 7),
+      tempDir: () async => dir,
+      isLinux: false,
+      share: (f, t, o) async => shared.add((file: f, text: t, origin: o)),
+    );
+    expect(shared.single.file.name, 'garmin-product-4999-20261117-0905.fit');
+  });
+
   test('a dive with no raw blob on this device is an error', () async {
     await expectLater(
       shareFitDive(

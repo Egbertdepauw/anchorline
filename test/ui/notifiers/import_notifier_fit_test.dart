@@ -126,11 +126,12 @@ DcIdentity _identity({String product = 'Descent Mk3', int serial = 111}) =>
 
 /// A source that lists [dives] (all of one watch) and downloads them.
 class _FakeSource implements FitDownloadSource {
-  _FakeSource(this.dives, {this.listGate, this.failList});
+  _FakeSource(this.dives, {this.listGate, this.failList, this.closeGate});
 
   final List<({DiveListing listing, ConvertedDive converted})> dives;
   final Completer<void>? listGate;
   final Object? failList;
+  final Completer<void>? closeGate;
   int closed = 0;
   void Function(FitScanCounts)? onProgress;
 
@@ -170,7 +171,10 @@ class _FakeSource implements FitDownloadSource {
   }
 
   @override
-  Future<void> close() async => closed++;
+  Future<void> close() async {
+    closed++;
+    if (closeGate != null) await closeGate!.future;
+  }
 }
 
 DiveListing _listing(String id, int start, {int number = 0}) => DiveListing(
@@ -207,12 +211,12 @@ void main() {
       usageTracker: tracker,
       reporter: (e, st, where) => reports.add((e, where)),
       tempDir: () async => temp,
-      now: () => DateTime(2026, 11, 17, 9, 5, 7),
       pickedCopyRoots: () async => [temp],
       fitSourceFactory: ({required inputs, required workDir, required onProgress}) {
-        s.onProgress = onProgress;
+        // Tests may swap [source] for a newer import.
+        source.onProgress = onProgress;
         lastWorkDir = workDir;
-        return s;
+        return source;
       },
     );
   }
@@ -245,7 +249,12 @@ void main() {
     expect(n.fitCounts!.filesRead, 1);
     expect(n.fitCounts!.filesTotal, 2);
     expect(n.newDives.every((l) => l.preselected && l.flag == null), isTrue);
-    expect(lastWorkDir.path, '${temp.path}/fit-import-20261117-090507');
+    // A random name inside the temp folder, with the purge prefix.
+    expect(lastWorkDir.parent.path, temp.path);
+    expect(lastWorkDir.uri.pathSegments.where((x) => x.isNotEmpty).last,
+        startsWith('fit-import-'));
+    expect(lastWorkDir.uri.pathSegments.where((x) => x.isNotEmpty).last,
+        isNot(matches(RegExp(r'^fit-import-\d{8}-\d{6}$'))));
   });
 
   test('a stored dive is flagged "Already in Anchorline" and unticked',
@@ -345,7 +354,10 @@ void main() {
     final gate = Completer<void>();
     build(_FakeSource([dive('a', 1000)], listGate: gate));
     final f = n.importFitFiles(inputs);
-    await Future<void>.delayed(Duration.zero);
+    // The work folder is made with real file I/O first.
+    while (source.onProgress == null) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
     expect(n.isFitReading, isTrue);
 
     n.cancelFitImport();
@@ -437,6 +449,50 @@ void main() {
     expect(made, 0);
     expect(n.state, ImportFlowState.idle);
     expect(n.newDives, isEmpty);
+  });
+
+  test('the copies of a finished import are released, a newer import\'s '
+      'are not', () async {
+    final a = File('${temp.path}/file_picker/a.fit')
+      ..createSync(recursive: true);
+    final b = File('${temp.path}/file_picker/b.fit')
+      ..createSync(recursive: true);
+    final closeGate = Completer<void>();
+    build(_FakeSource([dive('a', 1000)], closeGate: closeGate));
+    await n.importFitFiles([FitFileInput(a.path)]);
+    final download = n.downloadAll();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    // A Retry during the source's close starts a newer import.
+    n.reset();
+    source = _FakeSource([dive('b', 2000)]);
+    await n.importFitFiles([FitFileInput(b.path)]);
+    closeGate.complete();
+    await download;
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(a.existsSync(), isFalse);
+    expect(b.existsSync(), isTrue);
+  });
+
+  test('desktop has no copy roots, so a file picked from the temp folder is '
+      'never deleted', () async {
+    expect(await defaultFitCopyRoots(desktop: true), isEmpty);
+
+    final picked = File('${temp.path}/mine.fit')..writeAsBytesSync([1]);
+    n = ImportNotifier(
+      dao: dao,
+      importStateDao: states,
+      equipmentDao: _Equip(),
+      reporter: (e, st, where) {},
+      tempDir: () async => temp,
+      pickedCopyRoots: () => defaultFitCopyRoots(desktop: true),
+      fitSourceFactory: ({required inputs, required workDir, required onProgress}) =>
+          _FakeSource([dive('a', 1000)]),
+    );
+    await n.importFitFiles([FitFileInput(picked.path)]);
+    await n.downloadAll();
+    expect(picked.existsSync(), isTrue);
   });
 
   test('a failed pick goes to the error state', () {

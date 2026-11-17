@@ -7,7 +7,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:path/path.dart' as p;
 
+import '../../devices/fit/fit_disk_errors.dart';
 import '../../devices/fit/fit_inputs.dart';
+
+export '../../devices/fit/fit_disk_errors.dart' show isNoSpaceError;
 
 /// What a pick returned. [partial] is true when the picker dropped some of
 /// the files (Android could not copy them into the cache).
@@ -27,23 +30,6 @@ bool get fitFolderPickIsOffered =>
 const String kFitCopyFailedMessage =
     "Some files couldn't be copied for reading. This usually means the phone "
     'is short of free space.';
-
-/// Whether [e] says the disk is full, with certainty. Error number 28 is
-/// ENOSPC on Linux, macOS and Android; 39 and 112 are Windows disk-full codes
-/// (on Linux 39 is ENOTEMPTY, which is no space problem). [windows] is a test
-/// seam.
-bool isNoSpaceError(Object e, {bool? windows}) {
-  final win = windows ?? Platform.isWindows;
-  if (e is FileSystemException) {
-    final code = e.osError?.errorCode;
-    if (win ? (code == 39 || code == 112) : code == 28) return true;
-  }
-  final text = e is PlatformException
-      ? '${e.code} ${e.message} ${e.details}'
-      : e.toString();
-  final lower = text.toLowerCase();
-  return lower.contains('enospc') || lower.contains('no space');
-}
 
 /// "12 MB" style size for the free-space message.
 String fitSizeLabel(int bytes) {
@@ -83,7 +69,9 @@ FitPick? fitPickFromResult(FilePickerResult? result) {
     for (final f in result.files)
       if (f.path != null) FitFileInput(f.path!),
   ];
-  if (inputs.isEmpty) return null;
+  // Nothing picked at all is a cancel; files that all lost their path are
+  // not: the screen says the copy failed.
+  if (result.files.isEmpty) return null;
   return FitPick(inputs, partial: inputs.length < result.files.length);
 }
 

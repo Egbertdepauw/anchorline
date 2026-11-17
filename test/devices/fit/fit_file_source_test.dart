@@ -424,4 +424,92 @@ void main() {
     expect(counts.last.filesRead, 1);
     await src.close();
   });
+
+  test('a full disk while copying a dive file stops the scan and says so',
+      () async {
+    final a = put('a.fit', diveFile(created: _start));
+    final b = put('b.fit', diveFile(created: _start + 100));
+    final counts = <FitScanCounts>[];
+    var writes = 0;
+    final src = FitFileSource(
+      inputs: [FitFileInput(a.path), FitFileInput(b.path)],
+      workDir: work,
+      onProgress: counts.add,
+      writeFile: (path, bytes) async {
+        writes++;
+        throw FileSystemException(
+            'write failed', path, const OSError('No space left on device', 28));
+      },
+    );
+    final list = await src.listDives();
+
+    expect(list, isEmpty);
+    expect(writes, 1, reason: 'the scan stops at the first full-disk error');
+    expect(counts.last.outOfSpace, isTrue);
+    expect(counts.last.unreadable, 0);
+    await src.close();
+  });
+
+  test('a full disk while copying a dive from a zip stops the scan too',
+      () async {
+    final zip = put(
+        'export.zip',
+        buildZip([
+          ZipSpec('a.fit', diveFile(created: _start)),
+          ZipSpec('b.fit', diveFile(created: _start + 100)),
+        ]));
+    final counts = <FitScanCounts>[];
+    final src = FitFileSource(
+      inputs: [FitFileInput(zip.path)],
+      workDir: work,
+      onProgress: counts.add,
+      writeFile: (path, bytes) async => throw const FileSystemException(
+          'write failed', '', OSError('No space left on device', 28)),
+    );
+    await src.listDives();
+    expect(counts.last.outOfSpace, isTrue);
+    await src.close();
+  });
+
+  test('another write error is one unreadable file, not a full disk',
+      () async {
+    final a = put('a.fit', diveFile());
+    final counts = <FitScanCounts>[];
+    final src = FitFileSource(
+      inputs: [FitFileInput(a.path)],
+      workDir: work,
+      onProgress: counts.add,
+      writeFile: (path, bytes) async => throw const FileSystemException(
+          'write failed', '', OSError('Permission denied', 13)),
+    );
+    await src.listDives();
+    expect(counts.last.outOfSpace, isFalse);
+    expect(counts.last.unreadable, 1);
+    await src.close();
+  });
+
+  test('a loose file above the size cap is unreadable and never read',
+      () async {
+    final big = File('${tmp.path}/in/big.fit')..createSync(recursive: true);
+    final raf = big.openSync(mode: FileMode.write);
+    raf.truncateSync(kFitMaxFileBytes + 1); // sparse: no real data written
+    raf.closeSync();
+    final ok = put('ok.fit', diveFile());
+    final counts = <FitScanCounts>[];
+    final src = sourceOf(
+        [FitFileInput(big.path), FitFileInput(ok.path)], counts);
+    final list = await src.listDives();
+
+    expect(list, hasLength(1));
+    expect(counts.last.unreadable, 1);
+    expect(counts.last.filesRead, 2);
+    await src.close();
+  });
+
+  test('the model label does not double the vendor', () {
+    expect(fitModelLabel('Garmin', 'Descent Mk1'), 'Garmin Descent Mk1');
+    expect(fitModelLabel('Garmin', 'Garmin product 4999'),
+        'Garmin product 4999');
+    expect(fitModelLabel('Garmin', null), 'Garmin');
+  });
 }

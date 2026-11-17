@@ -33,8 +33,13 @@ void main() {
       PlatformFile(name: 'a.fit', size: 1, path: '/c/a.fit'),
     ]));
     expect(whole!.partial, isFalse);
-    expect(fitPickFromResult(FilePickerResult([PlatformFile(name: 'x', size: 1)])),
-        isNull);
+    // Every file lost its path: not a cancel, the screen says the copy failed.
+    final none =
+        fitPickFromResult(FilePickerResult([PlatformFile(name: 'x', size: 1)]));
+    expect(none!.inputs, isEmpty);
+    expect(none.partial, isTrue);
+    expect(fitPickFromResult(FilePickerResult([])), isNull);
+    expect(fitPickFromResult(null), isNull);
   });
 
   test('a confirmed ENOSPC keeps the exact free-space message', () {

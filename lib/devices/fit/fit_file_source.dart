@@ -17,8 +17,12 @@ import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:subsurface_core/subsurface_core.dart' show kFitDcFamily;
 
 import '../dive_download_source.dart';
+import 'fit_disk_errors.dart';
 import 'fit_inputs.dart';
 import 'zip_reader.dart';
+
+/// The largest FIT file read, loose or inside a zip (the zip entries' cap).
+const int kFitMaxFileBytes = 64 << 20;
 
 /// The wall-clock epoch seconds the dive row stores.
 int _seconds(DateTime t) => t.millisecondsSinceEpoch ~/ 1000;
@@ -81,7 +85,7 @@ class _Meta {
   final int serial;
   final int? firmware;
 
-  String get modelLabel => product == null ? vendor : '$vendor $product';
+  String get modelLabel => fitModelLabel(vendor, product);
 }
 
 enum _Kind { dive, apnea, other, unreadable }
@@ -188,18 +192,30 @@ class FitFileSource implements FitDownloadSource {
     required List<FitInput> inputs,
     required Directory workDir,
     void Function(FitScanCounts)? onProgress,
+    Future<void> Function(String path, Uint8List bytes)? writeFile,
   }) : _inputs = inputs,
        _workDir = workDir,
-       _onProgress = onProgress;
+       _onProgress = onProgress,
+       _writeFile = writeFile ?? _writeBytes;
 
   final List<FitInput> _inputs;
   final Directory _workDir;
   final void Function(FitScanCounts)? _onProgress;
 
+  /// Copies a dive file into the work folder. A test seam: a failing one
+  /// stands in for a full disk.
+  final Future<void> Function(String path, Uint8List bytes) _writeFile;
+
+  static Future<void> _writeBytes(String path, Uint8List bytes) =>
+      File(path).writeAsBytes(bytes, flush: false);
+
   final FitScanCounts _counts = FitScanCounts();
   final Map<String, _Entry> _entries = {};
   Future<void>? _scan;
   bool _closed = false;
+
+  /// Set when the disk is full: the scan stops there.
+  bool _halted = false;
   int _copies = 0;
   int _temps = 0;
   DcIdentity? _identity;
@@ -305,6 +321,7 @@ class FitFileSource implements FitDownloadSource {
 
     for (final w in work) {
       if (_closed) return;
+      if (_halted) break;
       if (_isZipName(w.$1)) {
         await _scanTopZip(w.$1, w.$2);
       } else {
@@ -313,6 +330,17 @@ class FitFileSource implements FitDownloadSource {
     }
     _counts.filesTotal = _counts.filesRead;
     _report();
+  }
+
+  /// Counts a failed file: a full disk stops the scan, anything else is one
+  /// unreadable file.
+  void _fail(Object e) {
+    if (isNoSpaceError(e)) {
+      _counts.outOfSpace = true;
+      _halted = true;
+    } else {
+      _counts.unreadable++;
+    }
   }
 
   void _countRead() {
@@ -325,10 +353,16 @@ class FitFileSource implements FitDownloadSource {
 
   Future<void> _scanLooseFile(String path, FitSource source) async {
     try {
-      final bytes = await File(path).readAsBytes();
-      await _take(bytes, _baseName(path), source);
-    } catch (_) {
-      _counts.unreadable++;
+      final file = File(path);
+      // Zip entries are capped; a loose file gets the same cap, unread.
+      if (await file.length() > kFitMaxFileBytes) {
+        _counts.unreadable++;
+      } else {
+        final bytes = await file.readAsBytes();
+        await _take(bytes, _baseName(path), source);
+      }
+    } catch (e) {
+      _fail(e);
     }
     _countRead();
   }
@@ -372,14 +406,14 @@ class FitFileSource implements FitDownloadSource {
     _counts.filesTotal = (_counts.filesTotal ?? 0) + fits.length;
     _report();
     for (final e in zip.entries) {
-      if (_closed) return;
+      if (_closed || _halted) return;
       if (e.isDirectory) continue;
       if (_isFitName(e.name)) {
         try {
           final bytes = await zip.read(e);
           await _take(bytes, _baseName(e.name), source);
-        } catch (_) {
-          _counts.unreadable++;
+        } catch (err) {
+          _fail(err);
         }
         _countRead();
       } else if (_isZipName(e.name) && !_baseName(e.name).startsWith('._')) {
@@ -402,7 +436,7 @@ class FitFileSource implements FitDownloadSource {
     }
 
     if (depth >= 3) return broken();
-    if (_closed) return;
+    if (_closed || _halted) return;
     File? temp;
     RandomAccessFile? ownRaf;
     try {
@@ -426,8 +460,13 @@ class FitFileSource implements FitDownloadSource {
         inner = await ZipReader.open(ownRaf);
       }
       await _scanZip(inner, innerRaf, source, depth + 1);
-    } catch (_) {
-      await broken();
+    } catch (e) {
+      if (isNoSpaceError(e)) {
+        _counts.outOfSpace = true;
+        _halted = true;
+      } else {
+        await broken();
+      }
     } finally {
       await ownRaf?.close();
       if (temp != null) {
@@ -456,7 +495,7 @@ class FitFileSource implements FitDownloadSource {
         if (_closed) return;
         await Directory('${_workDir.path}/dives').create(recursive: true);
         final path = '${_workDir.path}/dives/${_copies++}.fit';
-        await File(path).writeAsBytes(bytes, flush: false);
+        await _writeFile(path, bytes);
         for (final m in fresh) {
           _entries[m.diveId] = _Entry(
             m,

@@ -10,7 +10,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:libdivecomputer/libdivecomputer.dart';
-import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -122,8 +121,13 @@ FitDownloadSource _defaultFitSource({
     FitFileSource(inputs: inputs, workDir: workDir, onProgress: onProgress);
 
 /// The app's cache and temporary folders: the only places a picker's copies
-/// of picked files may be deleted from.
-Future<List<Directory>> _defaultCopyRoots() async {
+/// of picked files may be deleted from. Desktop has none: file_picker copies
+/// files only on Android and iOS, and a file picked from /tmp or %TEMP% is the
+/// user's own. [desktop] is a test seam.
+Future<List<Directory>> defaultFitCopyRoots({bool? desktop}) async {
+  if (desktop ?? (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
+    return const [];
+  }
   final roots = <Directory>[];
   try {
     roots.add(await getTemporaryDirectory());
@@ -169,12 +173,14 @@ class ImportNotifier extends ChangeNotifier {
   final LibdcStarter? _libdcStarter;
   final FitSourceFactory _fitSourceFactory;
   final Future<Directory> Function() _tempDir;
-  final DateTime Function() _now;
   final Future<List<Directory>> Function() _pickedCopyRoots;
   List<FitInput> _fitPicked = const [];
 
   // The FIT file import in progress or just finished.
   bool _fit = false;
+
+  // The wakelock the FIT scan holds; the download holds its own.
+  bool _fitWakelock = false;
   FitScanCounts? _fitCounts;
   bool _fitListed = false;
   final Map<String, String> _untested = {};
@@ -244,12 +250,10 @@ class ImportNotifier extends ChangeNotifier {
     LibdcStarter? libdcStarter,
     FitSourceFactory? fitSourceFactory,
     Future<Directory> Function()? tempDir,
-    DateTime Function()? now,
     Future<List<Directory>> Function()? pickedCopyRoots,
-  })  : _pickedCopyRoots = pickedCopyRoots ?? _defaultCopyRoots,
+  })  : _pickedCopyRoots = pickedCopyRoots ?? defaultFitCopyRoots,
         _fitSourceFactory = fitSourceFactory ?? _defaultFitSource,
         _tempDir = tempDir ?? getTemporaryDirectory,
-        _now = now ?? DateTime.now,
         _libdcOpener = libdcOpener,
         _libdcStarter = libdcStarter,
         _centralOverride = central,
@@ -788,6 +792,8 @@ class ImportNotifier extends ChangeNotifier {
     _state = ImportFlowState.readingManifest;
     final generation = _downloadGeneration;
     notifyListeners();
+    _fitWakelock = true;
+    unawaited(_enableWakelock());
 
     FitDownloadSource? source;
     try {
@@ -795,7 +801,14 @@ class ImportNotifier extends ChangeNotifier {
       // Cancelled or reset while the folder was looked up: no source yet, so
       // nothing may be assigned or scanned.
       if (_disposed || generation != _downloadGeneration) return;
-      final workDir = Directory(p.join(temp.path, 'fit-import-${_stamp(_now())}'));
+      // A random name: another user of the temp folder cannot guess it.
+      final workDir = await temp.createTemp('fit-import-');
+      if (_disposed || generation != _downloadGeneration) {
+        try {
+          await workDir.delete(recursive: true);
+        } catch (_) {}
+        return;
+      }
       source = _fitSourceFactory(
         inputs: inputs,
         workDir: workDir,
@@ -828,15 +841,16 @@ class ImportNotifier extends ChangeNotifier {
       _trackFitFailure(_errorMessage!);
       _source = null;
       unawaited(source?.close());
-      unawaited(_releaseFitPicked());
+      unawaited(_releaseFitPicked(inputs));
+    } finally {
+      // The scan is over: let the screen sleep again, unless a reset or a
+      // newer import took over (the reset let go of this one's lock itself).
+      if (_fitWakelock && generation == _downloadGeneration) {
+        _fitWakelock = false;
+        await _disableWakelock();
+      }
     }
     _flushNotify();
-  }
-
-  static String _stamp(DateTime t) {
-    String two(int v) => v.toString().padLeft(2, '0');
-    return '${t.year.toString().padLeft(4, '0')}${two(t.month)}${two(t.day)}'
-        '-${two(t.hour)}${two(t.minute)}${two(t.second)}';
   }
 
   /// Ends in the error state with [message] after the files could not even be
@@ -863,9 +877,11 @@ class ImportNotifier extends ChangeNotifier {
 
   /// Deletes the picker's cache copies of the files this import was given
   /// (never a picked folder, never anything outside the app's cache).
-  Future<void> _releaseFitPicked() async {
-    final picked = _fitPicked;
-    _fitPicked = const [];
+  ///
+  /// [picked] is the list of the import being finished, never read from
+  /// [_fitPicked] after an await: a newer import's copies must stay.
+  Future<void> _releaseFitPicked(List<FitInput> picked) async {
+    if (identical(_fitPicked, picked)) _fitPicked = const [];
     if (picked.isEmpty) return;
     try {
       await deletePickedCopies(picked, await _pickedCopyRoots());
@@ -920,7 +936,9 @@ class ImportNotifier extends ChangeNotifier {
     // up-to-3 s close below resets the notifier under us.
     final libdc = _libdc;
     final fit = _fit;
+    final fitPicked = _fitPicked;
     final source = _source!;
+    if (fit) unawaited(_enableWakelock());
     // Neither engine saves a fingerprint per dive: libdivecomputer does at its
     // end, FIT files never do.
     final perDiveFingerprints = !libdc && !fit;
@@ -1056,7 +1074,7 @@ class ImportNotifier extends ChangeNotifier {
 
     // Release the link. The source caps the wait (see its close()).
     await source.close();
-    if (fit) await _releaseFitPicked();
+    if (fit) await _releaseFitPicked(fitPicked);
 
     // Save fingerprint for incremental sync, from what was captured above, so
     // that a reset or dispose during the close does not skip it.
@@ -1190,7 +1208,7 @@ class ImportNotifier extends ChangeNotifier {
     _pendingNotify = null;
     _stopScan();
     unawaited(_source?.close());
-    if (_fit) unawaited(_releaseFitPicked());
+    if (_fit) unawaited(_releaseFitPicked(_fitPicked));
     // Best-effort: don't await, the framework expects dispose to be sync.
     unawaited(_disableWakelock());
     super.dispose();
@@ -1229,7 +1247,11 @@ class ImportNotifier extends ChangeNotifier {
     // A FIT import holds a work folder: let go of it.
     if (_fit) {
       unawaited(_source?.close());
-      unawaited(_releaseFitPicked());
+      unawaited(_releaseFitPicked(_fitPicked));
+    }
+    if (_fitWakelock) {
+      _fitWakelock = false;
+      unawaited(_disableWakelock());
     }
     _fit = false;
     _fitCounts = null;

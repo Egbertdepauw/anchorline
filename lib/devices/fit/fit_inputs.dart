@@ -17,6 +17,15 @@ class FitFolderInput extends FitInput {
   const FitFolderInput(super.path);
 }
 
+/// "Garmin Descent Mk1", or the product alone when it already starts with the
+/// vendor ("Garmin product 4999"); just the vendor without a product.
+String fitModelLabel(String vendor, String? product) {
+  if (product == null || product.isEmpty) return vendor;
+  return product.toLowerCase().startsWith(vendor.toLowerCase())
+      ? product
+      : '$vendor $product';
+}
+
 /// How far a scan has come. The total grows while zips are opened.
 class FitScanCounts {
   FitScanCounts({
@@ -26,6 +35,7 @@ class FitScanCounts {
     this.otherActivities = 0,
     this.apnea = 0,
     this.unreadable = 0,
+    this.outOfSpace = false,
   });
 
   int filesRead;
@@ -35,6 +45,9 @@ class FitScanCounts {
   int apnea;
   int unreadable;
 
+  /// The disk filled up while reading, and the scan stopped there.
+  bool outOfSpace;
+
   FitScanCounts copy() => FitScanCounts(
     filesRead: filesRead,
     filesTotal: filesTotal,
@@ -42,5 +55,6 @@ class FitScanCounts {
     otherActivities: otherActivities,
     apnea: apnea,
     unreadable: unreadable,
+    outOfSpace: outOfSpace,
   );
 }

@@ -19,6 +19,23 @@ import '../util/fit_picker.dart';
 import '../widgets/garmin_files_help_sheet.dart';
 import '../widgets/libdc_model_picker.dart';
 
+/// "12 dives, 3 other files skipped, 1 apnea session skipped": zero counts
+/// other than the dives are left out. Numbers carry thousands separators.
+String fitCountsLine(FitScanCounts c) {
+  final n = NumberFormat.decimalPattern();
+  String count(int v, String one, String many) =>
+      '${n.format(v)} ${v == 1 ? one : many}';
+  return [
+    count(c.dives, 'dive', 'dives'),
+    if (c.otherActivities > 0)
+      count(c.otherActivities, 'other file skipped', 'other files skipped'),
+    if (c.apnea > 0)
+      count(c.apnea, 'apnea session skipped', 'apnea sessions skipped'),
+    if (c.unreadable > 0)
+      count(c.unreadable, 'file unreadable', 'files unreadable'),
+  ].join(', ');
+}
+
 class ImportScreen extends StatefulWidget {
   final ImportNotifier notifier;
   final VoidCallback onViewDives;
@@ -200,10 +217,11 @@ class _ImportScreenState extends State<ImportScreen> {
       return;
     }
     if (picked == null) return;
-    if (picked.partial && mounted) {
+    if ((picked.partial || picked.inputs.isEmpty) && mounted) {
       ScaffoldMessenger.maybeOf(context)
           ?.showSnackBar(const SnackBar(content: Text(kFitCopyFailedMessage)));
     }
+    if (picked.inputs.isEmpty) return;
     await n.importFitFiles(picked.inputs);
   }
 
@@ -414,6 +432,7 @@ class _ImportScreenState extends State<ImportScreen> {
         if (c != null) ...[
           const SizedBox(height: 8),
           Text(_fitCountsLine(c), style: TextStyle(fontSize: 12, color: fade)),
+          if (c.outOfSpace) _fitNoSpaceNote(theme),
         ],
         const SizedBox(height: 24),
         OutlinedButton(
@@ -427,12 +446,16 @@ class _ImportScreenState extends State<ImportScreen> {
 
   /// "12 dives, 3 other files skipped, 1 apnea sessions skipped": zero counts
   /// other than the dives are left out.
-  String _fitCountsLine(FitScanCounts c) => [
-        '${c.dives} dives',
-        if (c.otherActivities > 0) '${c.otherActivities} other files skipped',
-        if (c.apnea > 0) '${c.apnea} apnea sessions skipped',
-        if (c.unreadable > 0) '${c.unreadable} files unreadable',
-      ].join(', ');
+  String _fitCountsLine(FitScanCounts c) => fitCountsLine(c);
+
+  /// The "Not enough free space" note, when the scan ran out of disk.
+  Widget _fitNoSpaceNote(ThemeData theme) => Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(fitNoSpaceMessage(),
+            key: const ValueKey('fit-no-space'),
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: theme.colorScheme.error)),
+      );
 
   Widget _buildManifest(ImportNotifier n, ThemeData theme) {
     if (n.isFitReading) return _buildFitReading(n, theme);
@@ -450,6 +473,7 @@ class _ImportScreenState extends State<ImportScreen> {
                 style: TextStyle(
                     fontSize: 12,
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+            if (n.fitCounts!.outOfSpace) _fitNoSpaceNote(theme),
           ],
           const SizedBox(height: 32),
           FilledButton(onPressed: n.reset, child: const Text('Back')),
@@ -531,6 +555,8 @@ class _ImportScreenState extends State<ImportScreen> {
         else if (n.fitCounts != null)
           Text(_fitCountsLine(n.fitCounts!),
               style: TextStyle(fontSize: 12, color: fade)),
+        if (n.isFitImport && (n.fitCounts?.outOfSpace ?? false))
+          _fitNoSpaceNote(theme),
         const SizedBox(height: 8),
         Expanded(
           child: ListView.builder(
@@ -599,8 +625,7 @@ class _ImportScreenState extends State<ImportScreen> {
       {bool withFacts = false}) {
     final dt = DateTime.fromMillisecondsSinceEpoch(
             entry.startTimestamp * 1000,
-            isUtc: true)
-        .toLocal();
+            isUtc: true);
     final date = DateFormat('yyyy-MM-dd HH:mm').format(dt);
     if (!withFacts) return date;
     // Depth, duration and model, where the listing has them (FIT files do).
@@ -726,8 +751,7 @@ class _ImportScreenState extends State<ImportScreen> {
     if (entry != null) {
       final dt = DateTime.fromMillisecondsSinceEpoch(
               entry.startTimestamp * 1000,
-              isUtc: true)
-          .toLocal();
+              isUtc: true);
       // A dive without a number (FIT files) shows only its date.
       subtitle = '${entry.diveNumber > 0 ? '#${entry.diveNumber}  ·  ' : ''}'
           '${DateFormat('yyyy-MM-dd HH:mm').format(dt)}';

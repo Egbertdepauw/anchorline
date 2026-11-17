@@ -20,6 +20,20 @@ import 'package:subsurface_core/shearwater/parser/hardware.dart';
 
 import '../../_helpers/fit_test_support.dart';
 
+/// A temp folder whose createTemp answers at once: real file I/O never
+/// completes inside testWidgets' fake async.
+class _FakeTemp implements Directory {
+  @override
+  String get path => '/fake-temp';
+
+  @override
+  Future<Directory> createTemp([String? prefix]) async =>
+      _FakeTemp();
+
+  @override
+  dynamic noSuchMethod(Invocation i) => throw UnimplementedError('$i');
+}
+
 class _Dao implements DiveDao {
   @override
   Future<Set<String>> existingDiveIdsAmong(List<String> ids) async =>
@@ -175,7 +189,7 @@ void main() {
       dao: _Dao(),
       importStateDao: _States(),
       equipmentDao: _Equip(),
-      tempDir: () async => Directory.systemTemp,
+      tempDir: () async => _FakeTemp(),
       pickedCopyRoots: () async => [],
       fitSourceFactory: ({required inputs, required workDir, required onProgress}) =>
           _Source([_l('stored', 1000), _l('over', 5000), _l('new', 9000)]),
@@ -256,7 +270,7 @@ void main() {
       dao: _Dao(),
       importStateDao: _States(),
       equipmentDao: _Equip(),
-      tempDir: () async => Directory.systemTemp,
+      tempDir: () async => _FakeTemp(),
       pickedCopyRoots: () async => [],
       fitSourceFactory: ({required inputs, required workDir, required onProgress}) => src,
     );
@@ -280,7 +294,7 @@ void main() {
       dao: _Dao(),
       importStateDao: _States(),
       equipmentDao: _Equip(),
-      tempDir: () async => Directory.systemTemp,
+      tempDir: () async => _FakeTemp(),
       pickedCopyRoots: () async => [],
       fitSourceFactory: ({required inputs, required workDir, required onProgress}) => src,
     );
@@ -305,7 +319,7 @@ void main() {
       dao: _Dao(),
       importStateDao: _States(),
       equipmentDao: _Equip(),
-      tempDir: () async => Directory.systemTemp,
+      tempDir: () async => _FakeTemp(),
       pickedCopyRoots: () async => [],
       fitSourceFactory: ({required inputs, required workDir, required onProgress}) {
         onProgress(FitScanCounts(
@@ -324,7 +338,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('Reading 3 of 12 files…'), findsOneWidget);
-    expect(find.text('2 dives, 4 other files skipped, 1 apnea sessions skipped'),
+    expect(find.text('2 dives, 4 other files skipped, 1 apnea session skipped'),
         findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsNothing);
 
@@ -366,6 +380,105 @@ void main() {
         'Not enough free space to read this file. It needs about 12 MB.');
     expect(isNoSpaceError(Exception('ENOSPC')), isTrue);
     expect(isNoSpaceError(Exception('other')), isFalse);
+  });
+
+  ImportNotifier outOfSpaceNotifier(FitDownloadSource Function() make,
+          FitScanCounts counts) =>
+      ImportNotifier(
+        dao: _Dao(),
+        importStateDao: _States(),
+        equipmentDao: _Equip(),
+        tempDir: () async => _FakeTemp(),
+        pickedCopyRoots: () async => [],
+        fitSourceFactory:
+            ({required inputs, required workDir, required onProgress}) {
+          onProgress(counts);
+          return make();
+        },
+      );
+
+  testWidgets('a full disk shows the free-space message while reading',
+      (tester) async {
+    n = outOfSpaceNotifier(
+        () => _HangingSource(), FitScanCounts(filesRead: 1, outOfSpace: true));
+    await show(tester);
+    await tester.tap(find.text('Import Garmin files\u2026'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.byKey(const ValueKey('fit-no-space')), findsOneWidget);
+    expect(find.text('Not enough free space to read this file.'),
+        findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('fit-cancel')));
+    await tester.pump();
+  });
+
+  testWidgets('a full disk shows the free-space message on the empty and the '
+      'manifest screens', (tester) async {
+    n = outOfSpaceNotifier(
+        () => _Source(const []), FitScanCounts(outOfSpace: true));
+    await show(tester);
+    await tester.tap(find.text('Import Garmin files\u2026'));
+    await tester.pumpAndSettle();
+    expect(find.text('No dives found in these files'), findsOneWidget);
+    expect(find.text('Not enough free space to read this file.'),
+        findsOneWidget);
+    await tester.tap(find.text('Back'));
+    await tester.pumpAndSettle();
+
+    n = outOfSpaceNotifier(() => _Source([_l('new', 9000)]),
+        FitScanCounts(dives: 1, outOfSpace: true));
+    await tester.pumpWidget(const SizedBox());
+    await show(tester);
+    await tester.tap(find.text('Import Garmin files\u2026'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 of 1 selected'), findsOneWidget);
+    expect(find.text('Not enough free space to read this file.'),
+        findsOneWidget);
+  });
+
+  testWidgets('the manifest shows the wall-clock time of the dive, whatever '
+      'the device time zone', (tester) async {
+    // The Descent Mk1 fixture's first dive starts at 08:51:59, stored as if
+    // it were UTC.
+    final start = fitDive().dive.startTime.millisecondsSinceEpoch ~/ 1000;
+    n = outOfSpaceNotifier(
+        () => _Source([_l('new', start)]), FitScanCounts(dives: 1));
+    await show(tester);
+    await tester.tap(find.text('Import Garmin files\u2026'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('2023-08-17 08:51'), findsWidgets);
+    expect(find.textContaining('09:51'), findsNothing);
+  });
+
+  testWidgets('a pick whose files all lost their path says the copy failed',
+      (tester) async {
+    await show(tester,
+        pick: () async => const FitPick([], partial: true));
+    await tester.tap(find.text('Import Garmin files\u2026'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.text(kFitCopyFailedMessage), findsOneWidget);
+    expect(n.isFitImport, isFalse);
+  });
+
+  test('the counts line pluralises and separates thousands', () {
+    expect(fitCountsLine(FitScanCounts(dives: 1)), '1 dive');
+    expect(
+        fitCountsLine(FitScanCounts(
+            dives: 2,
+            otherActivities: 1,
+            apnea: 1,
+            unreadable: 1)),
+        '2 dives, 1 other file skipped, 1 apnea session skipped, '
+        '1 file unreadable');
+    expect(
+        fitCountsLine(FitScanCounts(
+            dives: 1234, otherActivities: 12345, apnea: 2, unreadable: 3)),
+        '1,234 dives, 12,345 other files skipped, 2 apnea sessions skipped, '
+        '3 files unreadable');
   });
 }
 

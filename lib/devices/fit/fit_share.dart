@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../libdc/download_share.dart' show ShareFileFn;
+import 'fit_inputs.dart' show fitModelLabel;
 
 /// The text that goes with the file. It says plainly what the file holds.
 const String kFitShareText =
@@ -87,8 +88,7 @@ Future<String?> shareFitDive({
   final stamp = '${t.year.toString().padLeft(4, '0')}${two(t.month)}'
       '${two(t.day)}-${two(t.hour)}${two(t.minute)}';
   final name = [
-    _slug(vendor),
-    if (product != null && product.isNotEmpty) _slug(product),
+    _slug(fitModelLabel(vendor, product)),
     stamp,
   ].join('-');
   final path = p.join(dir.path, '$name.fit');

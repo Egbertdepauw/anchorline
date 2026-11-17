@@ -8,6 +8,9 @@ import 'fit_file_source.dart';
 /// The note on a dive the diver already has.
 const String kFitAlreadyStoredFlag = 'Already in Anchorline';
 
+String _hex(List<int> bytes) =>
+    [for (final b in bytes) b.toRadixString(16).padLeft(2, '0')].join();
+
 /// [listed] as new listings: a dive the diver already has gets
 /// [kFitAlreadyStoredFlag], one that overlaps another computer's dive gets
 /// "Overlaps your <label> dive"; both start unticked.
@@ -39,6 +42,11 @@ Future<List<DiveListing>> markFitListings(
       ],
       vendor: w.vendor,
       serial: w.serial,
+      // Garmin dives mostly share dive number 0: the fingerprint tells two
+      // dives of one watch apart.
+      fingerprints: {
+        for (final l in group) l.diveId: _hex(l.fingerprint),
+      },
     ));
   }
 
