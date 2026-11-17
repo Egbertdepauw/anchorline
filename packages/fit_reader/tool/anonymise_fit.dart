@@ -52,74 +52,6 @@ class AnonymiseReport {
   const AnonymiseReport(this.bytes, this.counts);
 }
 
-class _Field {
-  final int number;
-  final int baseType;
-  final int size;
-  final int offset;
-  const _Field(this.number, this.baseType, this.size, this.offset);
-}
-
-class _Message {
-  final int global;
-  final Endian endian;
-  final List<_Field> fields;
-  const _Message(this.global, this.endian, this.fields);
-}
-
-/// Walks the records and lists every data message's fields with the byte
-/// offset and the byte order they were written in. [decodeFit] has already
-/// vetted the file, so this only follows the layout.
-List<_Message> _walk(Uint8List bytes) {
-  final d = ByteData.sublistView(bytes);
-  final headerSize = bytes[0];
-  final dataEnd = headerSize + d.getUint32(4, Endian.little);
-  final defs = <int, (int, Endian, List<(int, int, int)>, int)>{};
-  final out = <_Message>[];
-  var pos = headerSize;
-
-  void data(int local) {
-    final def = defs[local]!;
-    final fields = <_Field>[];
-    for (final f in def.$3) {
-      fields.add(_Field(f.$1, f.$3, f.$2, pos));
-      pos += f.$2;
-    }
-    pos += def.$4;
-    out.add(_Message(def.$1, def.$2, fields));
-  }
-
-  while (pos < dataEnd) {
-    final rh = bytes[pos++];
-    if (rh & 0x80 != 0) {
-      data((rh >> 5) & 0x03);
-    } else if (rh & 0x40 != 0) {
-      final local = rh & 0x0F;
-      final endian = bytes[pos + 1] == 0 ? Endian.little : Endian.big;
-      final global = d.getUint16(pos + 2, endian);
-      final count = bytes[pos + 4];
-      pos += 5;
-      final fields = <(int, int, int)>[];
-      for (var i = 0; i < count; i++) {
-        fields.add((bytes[pos], bytes[pos + 1], bytes[pos + 2]));
-        pos += 3;
-      }
-      var devSize = 0;
-      if (rh & 0x20 != 0) {
-        final devCount = bytes[pos++];
-        for (var i = 0; i < devCount; i++) {
-          devSize += bytes[pos + 1];
-          pos += 3;
-        }
-      }
-      defs[local] = (global, endian, fields, devSize);
-    } else {
-      data(rh & 0x0F);
-    }
-  }
-  return out;
-}
-
 int _elementSize(int baseType) {
   switch (baseType & 0x1F) {
     case 0x03 || 0x04 || 0x0B:
@@ -134,7 +66,20 @@ int _elementSize(int baseType) {
 }
 
 /// Writes the base type's invalid marker into every element of the field.
-void _setInvalid(ByteData d, _Field f, Endian e) {
+/// Returns whether any byte changed, so a field that already holds its
+/// marker is not counted. This looks at the raw bytes: a string that starts
+/// with a NUL still has what follows it.
+bool _setInvalid(Uint8List out, FitField f, Endian e) {
+  final d = ByteData.sublistView(out);
+  final before = Uint8List.fromList(out.sublist(f.offset, f.offset + f.size));
+  _write(d, f, e);
+  for (var i = 0; i < f.size; i++) {
+    if (out[f.offset + i] != before[i]) return true;
+  }
+  return false;
+}
+
+void _write(ByteData d, FitField f, Endian e) {
   final base = f.baseType & 0x1F;
   if (base == 0x07) {
     for (var i = 0; i < f.size; i++) {
@@ -180,8 +125,13 @@ bool _isInt32(int baseType) {
 /// file. The result has the same length as [input].
 AnonymiseReport anonymiseFit(Uint8List input, {int serial = 1000000001}) {
   final file = decodeFit(input);
-  final messages = _walk(input);
-  assert(messages.length == file.messages.length);
+  final headerSize = input[0];
+  final dataEnd = headerSize + ByteData.sublistView(input).getUint32(4, Endian.little);
+  if (input.length != dataEnd + 2) {
+    throw const FitFormatException(
+      'data after the end of the FIT file (chained files are not supported)',
+    );
+  }
 
   final out = Uint8List.fromList(input);
   final d = ByteData.sublistView(out);
@@ -200,33 +150,29 @@ AnonymiseReport anonymiseFit(Uint8List input, {int serial = 1000000001}) {
     }
   }
 
-  for (var i = 0; i < messages.length; i++) {
-    final msg = messages[i];
-    final decoded = file.messages[i];
-    for (final f in msg.fields) {
-      final valid = decoded.fields[f.number]?.value != null;
-      if (!valid) continue;
+  for (final msg in file.messages) {
+    final e = msg.bigEndian ? Endian.big : Endian.little;
+    for (final f in msg.fields.values) {
       final isString = (f.baseType & 0x1F) == 0x07;
       if (msg.global == _userProfile) {
-        _setInvalid(d, f, msg.endian);
-        count(msg.global, 'profile');
+        if (_setInvalid(out, f, e)) count(msg.global, 'profile');
       } else if (_gpsFields[msg.global]?.contains(f.number) ?? false) {
-        _setInvalid(d, f, msg.endian);
-        count(msg.global, 'gps');
+        if (_setInvalid(out, f, e)) count(msg.global, 'gps');
       } else if (_serialMessages.contains(msg.global) &&
           f.number == _serialField &&
           _isInt32(f.baseType) &&
           f.size == 4) {
-        d.setUint32(f.offset, serial, msg.endian);
-        count(msg.global, 'serial');
+        if (f.value != null) {
+          d.setUint32(f.offset, serial, e);
+          count(msg.global, 'serial');
+        }
       } else if (isString && _stringMessages.contains(msg.global)) {
-        _setInvalid(d, f, msg.endian);
-        count(msg.global, 'string');
+        if (_setInvalid(out, f, e)) count(msg.global, 'string');
       } else if (original != null && _isInt32(f.baseType) && f.size % 4 == 0) {
         var hit = false;
         for (var p = f.offset; p < f.offset + f.size; p += 4) {
-          if (d.getUint32(p, msg.endian) == original) {
-            d.setUint32(p, serial, msg.endian);
+          if (d.getUint32(p, e) == original) {
+            d.setUint32(p, serial, e);
             hit = true;
           }
         }
@@ -235,8 +181,6 @@ AnonymiseReport anonymiseFit(Uint8List input, {int serial = 1000000001}) {
     }
   }
 
-  final headerSize = out[0];
-  final dataEnd = headerSize + d.getUint32(4, Endian.little);
   d.setUint16(dataEnd, fitCrc16(out, 0, dataEnd), Endian.little);
   // Prove the result decodes, CRC included.
   decodeFit(out);

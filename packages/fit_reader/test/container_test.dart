@@ -11,6 +11,17 @@ const _str = 0x07, _f32 = 0x88, _u32z = 0x8C;
 FitMessageSpec _m(int g, Map<int, (int, Object)> f) => FitMessageSpec(g, f);
 
 void main() {
+  test('a message knows the byte order of its definition', () {
+    for (final big in [false, true]) {
+      final f = decodeFit(
+        buildFit([
+          _m(20, {3: (_u8, 7)}),
+        ], bigEndian: big),
+      );
+      expect(f.messages.single.bigEndian, big);
+    }
+  });
+
   test('12- and 14-byte headers both decode', () {
     for (final size in [12, 14]) {
       final f = decodeFit(

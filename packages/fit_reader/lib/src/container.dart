@@ -47,10 +47,14 @@ class FitMessage {
   final int? timestamp;
   final Map<int, FitField> fields;
 
+  /// Whether the definition declared big-endian values.
+  final bool bigEndian;
+
   const FitMessage({
     required this.global,
     required this.timestamp,
     required this.fields,
+    this.bigEndian = false,
   });
 
   int? intField(int n) {
@@ -387,6 +391,7 @@ FitFile decodeFit(Uint8List bytes, {bool Function(FitMessage m)? stopAfter}) {
       global: def.global,
       timestamp: ts is int ? ts : compressedTs,
       fields: fields,
+      bigEndian: def.endian == Endian.big,
     ),
     pos,
   );

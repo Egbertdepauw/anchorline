@@ -215,6 +215,47 @@ void main() {
     expect(report.counts, isEmpty);
   });
 
+  test('a string that starts with a NUL still has its later bytes removed',
+      () {
+    final input = buildFit([
+      FitMessageSpec(FitMesg.fileId, {0: (0x00, 4), 3: (_uint32z, _serial)}),
+      FitMessageSpec(3, {0: (_string, '\u0000Jane Diver'), 1: (_uint8, 1)}),
+      FitMessageSpec(FitMesg.deviceInfo, {
+        253: (_uint32, 1001),
+        17: (_string, '\u0000Jane watch'),
+      }),
+    ]);
+    final needle = 'Jane'.codeUnits;
+    bool contains(Uint8List b) {
+      for (var i = 0; i + 4 <= b.length; i++) {
+        if (b[i] == needle[0] &&
+            b[i + 1] == needle[1] &&
+            b[i + 2] == needle[2] &&
+            b[i + 3] == needle[3]) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    expect(contains(input), isTrue);
+    final out = anonymiseFit(input, serial: _newSerial).bytes;
+    expect(contains(out), isFalse);
+    decodeFit(out);
+  });
+
+  test('a chained file (data after the first CRC) is refused', () {
+    final first = buildFit(_messages());
+    final second = buildFit(_messages());
+    expect(
+      () => anonymiseFit(
+        Uint8List.fromList([...first, ...second]),
+        serial: _newSerial,
+      ),
+      throwsA(isA<FitFormatException>()),
+    );
+  });
+
   test('a corrupt file is refused', () {
     final input = buildFit(_messages(), badCrc: true);
     expect(
