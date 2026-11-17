@@ -132,6 +132,21 @@ void main() {
     expect(m.fields[1]!.size, 6);
   });
 
+  test('array elements holding the invalid marker read as null', () {
+    final m = decodeFit(
+      buildFit([
+        _m(20, {
+          1: (_u8, [1, 0xFF, 3]),
+          2: (0x01, [-1, 0x7F, 2]), // sint8: -1 is real, 0x7F is invalid
+          3: (_u8, [0xFF, 0xFF]),
+        }),
+      ]),
+    ).messages.single;
+    expect(m.fields[1]!.value, [1, null, 3]);
+    expect(m.fields[2]!.value, [-1, null, 2]);
+    expect(m.fields[3]!.value, isNull);
+  });
+
   test('a wrong file CRC throws FitFormatException', () {
     expect(
       () => decodeFit(

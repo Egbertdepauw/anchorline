@@ -23,7 +23,8 @@ class FitField {
   /// Byte offset of the value in the file.
   final int offset;
 
-  /// An `int`, a `double`, a `String`, or a `List` for arrays. Null when the
+  /// An `int`, a `double`, a `String`, or a `List<int?>` (`List<double?>` for
+  /// float types) for arrays, where an invalid element is null. Null when the
   /// field holds its base type's invalid marker.
   final Object? value;
 
@@ -192,14 +193,13 @@ Object? _readValue(ByteData d, int pos, int size, int baseType, Endian e) {
   if (size < es) return null;
   if (size == es) return _readElement(d, pos, baseType, e);
   final n = size ~/ es;
-  final out = <Object>[];
+  final out = <Object?>[];
   var anyValid = false;
   for (var i = 0; i < n; i++) {
     final v = _readElement(d, pos + i * es, baseType, e);
     if (v != null) anyValid = true;
-    // Keep positions in an array; an invalid element reads as its raw
-    // slot filled with -1 for ints so indices stay meaningful.
-    out.add(v ?? -1);
+    // Positions are kept: an invalid element is null in the list.
+    out.add(v);
   }
   return anyValid ? out : null;
 }
