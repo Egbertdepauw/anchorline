@@ -24,5 +24,14 @@ DateTime libdcWallClock(
       second > 60) {
     throw const LibdcParseException(LibdcStatus.dataFormat);
   }
-  return DateTime.utc(year, month, day, hour, minute, second);
+  final wall = DateTime.utc(year, month, day, hour, minute, second);
+  // 2026-06-31 would roll into July; a leap second (60) rolls into the next
+  // minute, which is the one deliberate exception.
+  if (wall.year != year ||
+      wall.month != month ||
+      wall.day != day ||
+      (second < 60 && (wall.hour != hour || wall.minute != minute))) {
+    throw const LibdcParseException(LibdcStatus.dataFormat);
+  }
+  return wall;
 }

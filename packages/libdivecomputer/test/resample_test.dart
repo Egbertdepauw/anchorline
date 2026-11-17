@@ -185,6 +185,39 @@ void main() {
     expect(r.depth[0], 1);
   });
 
+  test('a channel that first appears on a later row holds that value back to '
+      'the start', () {
+    final r = resample([
+      row(0, depth: 0, setpoint: 1.3),
+      row(10000, depth: 1, temp: 18),
+      row(20000, depth: 2),
+      row(30000, depth: 3, temp: 17),
+    ]);
+    expect(r.temperature, [18, 18, 18, 17]);
+    expect(r.setpoint, everyElement(closeTo(1.3, 1e-6)));
+  });
+
+  test('long dives are not rejected: no dive time, or rows longer than it', () {
+    // 6 h at 1 s with no dive time: 21,601 points.
+    final long = [for (var i = 0; i <= 21600; i++) row(i * 1000, depth: 1)];
+    expect(resample(long).count, 21601);
+    // 30 dives of 120 s with 180 s on the surface, at 8 Hz, dive time 120 s.
+    final apnea = [for (var i = 0; i <= 72000; i++) row(i * 125, depth: 1)];
+    expect(resample(apnea, diveTimeSeconds: 120).count, 72001);
+  });
+
+  test('a corrupt dive time does not disable the cap', () {
+    expect(
+      () => resample([
+        row(0, depth: 0),
+        row(1000, depth: 1),
+        row(2000, depth: 1),
+        row(1 << 31, depth: 0),
+      ], diveTimeSeconds: 0xFFFFFFFF),
+      throwsA(isA<LibdcParseException>()),
+    );
+  });
+
   test('a corrupt row time beyond the dive time is a dataFormat failure', () {
     expect(
       () => resample([
