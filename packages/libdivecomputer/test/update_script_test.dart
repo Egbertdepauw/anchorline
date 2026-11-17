@@ -6,6 +6,11 @@ import 'package:test/test.dart';
 /// that patches are applied (and that a stale one fails) wherever the package
 /// lives, including inside another git repository.
 void main() {
+  if (Platform.isWindows) {
+    // A bash script that needs POSIX tools; Linux and macOS jobs cover it.
+    test('update_upstream.sh', () {}, skip: 'bash script, not run on Windows');
+    return;
+  }
   late Directory tmp;
   late String commit;
   late String upstreamUrl;

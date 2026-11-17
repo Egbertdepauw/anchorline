@@ -75,9 +75,10 @@ void main() {
     final suffix = define('suffix');
     final version = '$major.$minor.$micro${suffix.isEmpty ? '' : '-$suffix'}';
 
+    // A Windows checkout may have CRLF line endings.
     final header = File(
       'native/include/libdivecomputer/version.h',
-    ).readAsStringSync();
+    ).readAsStringSync().replaceAll('\r\n', '\n');
     expect(header, contains('#define DC_VERSION "$version"'));
     expect(header, contains('#define DC_VERSION_MAJOR $major\n'));
     expect(header, contains('#define DC_VERSION_MINOR $minor\n'));

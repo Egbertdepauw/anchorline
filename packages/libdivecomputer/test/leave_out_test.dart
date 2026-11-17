@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
@@ -19,14 +20,32 @@ PackageUserDefines _leaveOut(List<String> families) => PackageUserDefines(
   ),
 );
 
+/// Runs the hook for [userDefines] and then [check]. On Windows a loaded DLL
+/// cannot be deleted, so the cleanup of the hook's temporary directory fails
+/// with an access error after the checks have passed; that error is not the
+/// subject of these tests.
+Future<void> _runHook(
+  List<String> families,
+  void Function(BuildInput input, BuildOutput output) check,
+) async {
+  try {
+    await testCodeBuildHook(
+      mainMethod: hook.main,
+      userDefines: _leaveOut(families),
+      check: (input, output) => check(input, output),
+    );
+  } on PathAccessException {
+    if (!Platform.isWindows) rethrow;
+  }
+}
+
 void main() {
   test(
     'leaving out divesoft_freedom still links; the family reports absent',
     () async {
-      await testCodeBuildHook(
-        mainMethod: hook.main,
-        userDefines: _leaveOut(['divesoft_freedom']),
-        check: (input, output) {
+      await _runHook(
+        ['divesoft_freedom'],
+        (input, output) {
           final asset = output.assets.code.single;
           final lib = DynamicLibrary.open(asset.file!.toFilePath());
           final present = lib
@@ -46,10 +65,9 @@ void main() {
   test(
     'leaving out every family still links and reports each absent',
     () async {
-      await testCodeBuildHook(
-        mainMethod: hook.main,
-        userDefines: _leaveOut(kLeaveOutTable.keys.toList()),
-        check: (input, output) {
+      await _runHook(
+        kLeaveOutTable.keys.toList(),
+        (input, output) {
           final lib = DynamicLibrary.open(
             output.assets.code.single.file!.toFilePath(),
           );
