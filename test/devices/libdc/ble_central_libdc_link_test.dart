@@ -312,4 +312,120 @@ void main() {
       await link.disconnected;
     },
   );
+
+  test('the write characteristic is the first writable one, with response '
+      'when it only supports that', () async {
+    final g = FakeGatt();
+    const svc = '22222222-0000-0000-0000-000000000000';
+    g.add(svc, '0001', kNotifyProps);
+    final first = g.add(svc, '0002', kWriteProps);
+    final second = g.add(svc, '0003', kWriteNoRspProps);
+    final link = await _connect(g);
+    await link.write(Uint8List.fromList([1]));
+    expect(first.writes.single.withoutResponse, isFalse);
+    expect(second.writes, isEmpty);
+    await link.close();
+  });
+
+  test('the Broadcom upgrade service is never chosen', () async {
+    final g = FakeGatt();
+    addSerialService(g, 'a86abc2d-d44c-442e-99f7-80059a873e36');
+    await expectLater(_connect(g), throwsA(isA<BleException>()));
+  });
+
+  test('HW: an incomplete Telit layout is not used without credits', () async {
+    final g = FakeGatt();
+    g.add(_telit, _telitWrite, kWriteNoRspProps);
+    g.add(_telit, _telitData, kNotifyProps);
+    // No credit characteristics.
+    await expectLater(
+      _connect(g, profile: _hw()),
+      throwsA(
+        isA<BleException>().having(
+          (e) => e.message,
+          'message',
+          contains('No usable serial service'),
+        ),
+      ),
+    );
+    expect(g.peripheral.isConnected, isFalse);
+  });
+
+  test(
+    'a failed credit refill is taken back and retried on the next packet',
+    () async {
+      final g = FakeGatt();
+      g.add(_ublox, _ubloxData, kNotifyWriteProps);
+      final credits = g.add(_ublox, _ubloxCredit, kNotifyWriteProps);
+      final data = g['$_ublox/$_ubloxData'];
+      final link = await _connect(g, profile: _hw());
+      link.notifications.listen((_) {});
+      credits.writeError = const BleException(kBleErrorWriteFailed, 'x');
+      for (var i = 0; i < 222; i++) {
+        data.notify([1]);
+      }
+      await pumpEventQueue();
+      expect(credits.writes, hasLength(1)); // only the initial grant
+      credits.writeError = null;
+      data.notify([1]);
+      await pumpEventQueue();
+      expect(credits.writes.map((w) => w.value), [
+        [254],
+        [222],
+      ]);
+      await link.close();
+    },
+  );
+
+  test('requestMtu(517) is called, between connect and discovery, and '
+      'notifications come after', () async {
+    final g = FakeGatt();
+    addSerialService(g, '22222222-0000-0000-0000-000000000000');
+    final link = await _connect(g);
+    expect(g.peripheral.mtuRequests, [517]);
+    expect(g.peripheral.calls.take(4), [
+      'connect',
+      'requestMtu',
+      'discoverServices',
+      'setNotify',
+    ]);
+    await link.close();
+  });
+
+  test('a packet emitted during setNotify is kept', () async {
+    final g = FakeGatt();
+    addSerialService(g, '22222222-0000-0000-0000-000000000000');
+    final n = g['22222222-0000-0000-0000-000000000000/0001'];
+    n.onSetNotify = () => n.notify([9]);
+    final link = await _connect(g);
+    expect(await link.notifications.first, [9]);
+    await link.close();
+  });
+
+  test('close returns within 3 s when disconnect hangs', () async {
+    final g = FakeGatt();
+    addSerialService(g, '22222222-0000-0000-0000-000000000000');
+    final link = await _connect(g);
+    g.peripheral.hangOnDisconnect = true;
+    final sw = Stopwatch()..start();
+    await link.close();
+    expect(sw.elapsed, lessThan(const Duration(seconds: 4)));
+    await link.disconnected;
+  });
+
+  test(
+    'the initial credit write failing cleans up with one disconnect',
+    () async {
+      final g = FakeGatt();
+      g.add(_ublox, _ubloxData, kNotifyWriteProps);
+      g.add(_ublox, _ubloxCredit, kNotifyWriteProps).writeError =
+          const BleException(kBleErrorWriteFailed, 'x');
+      await expectLater(
+        _connect(g, profile: _hw()),
+        throwsA(isA<BleException>()),
+      );
+      expect(g.peripheral.calls.where((c) => c == 'disconnect'), hasLength(1));
+      expect(g.peripheral.isConnected, isFalse);
+    },
+  );
 }

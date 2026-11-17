@@ -14,6 +14,7 @@ import 'dart:typed_data';
 import 'package:libdivecomputer/libdivecomputer.dart';
 
 import '../../ble/ble_central.dart';
+import '../../ble/ble_log.dart';
 import 'libdc_ble_profile.dart';
 
 /// The ATT MTU asked for. Only Android lets the app ask.
@@ -21,6 +22,10 @@ const int _kMtu = 517;
 
 const Duration _kConnectTimeout = Duration(seconds: 15);
 const Duration _kCloseTimeout = Duration(seconds: 3);
+
+/// How long discovering services or turning on notifications may take, so a
+/// platform call that hangs (Windows) can't hang the connect.
+const Duration _kStepTimeout = Duration(seconds: 15);
 
 /// Credits granted at connect, and when the device runs low.
 const int _kInitialCredits = 254;
@@ -103,6 +108,7 @@ class BleCentralLibdcLink implements LibdcBleLink {
   }) async {
     final pair = pairOnNotifyFailure ?? Platform.isWindows;
     final device = central.peripheral(deviceId);
+    BleCentralLibdcLink? link;
     try {
       await device.connect(timeout: _kConnectTimeout);
       try {
@@ -110,7 +116,7 @@ class BleCentralLibdcLink implements LibdcBleLink {
       } on Object {
         // A larger MTU is an optimisation; carry on with what we have.
       }
-      final chars = await device.discoverServices();
+      final chars = await device.discoverServices().timeout(_kStepTimeout);
       final gatt = _chooseGatt(chars, profile);
       if (gatt == null) {
         throw const BleException(
@@ -118,21 +124,21 @@ class BleCentralLibdcLink implements LibdcBleLink {
           'No usable serial service on the device',
         );
       }
-      final link = BleCentralLibdcLink._(
+      link = BleCentralLibdcLink._(
         device,
         advertisedName,
         gatt,
         _summarise(chars),
       );
-      try {
-        await link._start(pair);
-      } on Object {
-        await link.close();
-        rethrow;
-      }
+      await link._start(pair);
       return link;
     } on Object {
-      await device.disconnect();
+      // One disconnect (close() does it), the whole cleanup bounded.
+      try {
+        await (link?.close() ?? device.disconnect()).timeout(_kCloseTimeout);
+      } on Object {
+        // Cleanup never masks the real failure.
+      }
       rethrow;
     }
   }
@@ -166,11 +172,11 @@ class BleCentralLibdcLink implements LibdcBleLink {
 
   Future<void> _enableNotify(BleCharacteristic c, bool pairOnFailure) async {
     try {
-      await c.setNotify(true);
+      await c.setNotify(true).timeout(_kStepTimeout);
     } on Object {
       if (!pairOnFailure) rethrow;
       await _device.pair();
-      await c.setNotify(true);
+      await c.setNotify(true).timeout(_kStepTimeout);
     }
   }
 
@@ -179,15 +185,22 @@ class BleCentralLibdcLink implements LibdcBleLink {
     _data.add(Uint8List.fromList(value));
     final credits = _credits;
     if (credits == null) return;
-    // Credits are counted on data packets only.
+    // Credits are counted on data packets only. The credits the device
+    // grants us are deliberately not tracked, as in Subsurface: libdc's
+    // OSTC writes are 20-byte request/response packets, so pacing writes
+    // isn't needed for downloads.
     var left = credits - 1;
     if (left <= _kCreditLowWater) {
       left += _kCreditRefill;
       final out = _gatt.creditOut!;
       _creditChain = _creditChain.then(
-        (_) => out
-            .write([_kCreditRefill], withoutResponse: false)
-            .catchError((Object _) {}),
+        (_) => out.write([_kCreditRefill], withoutResponse: false).catchError((
+          Object _,
+        ) {
+          // Take the grant back, so the next data packet tries again.
+          if (_credits != null) _credits = _credits! - _kCreditRefill;
+          bleLog('libdc: credit grant failed, will retry on the next packet');
+        }),
       );
     }
     _credits = left;
@@ -254,9 +267,11 @@ _Gatt? _chooseGatt(List<BleCharacteristic> chars, LibdcBleProfile profile) {
 
   _Gatt? tryService(String service) {
     final cs = services[service]!;
-    if (profile.flowControl == LibdcFlowControl.telitCredits) {
-      final credit = _creditGatt(service, cs);
-      if (credit != null) return credit;
+    if (profile.flowControl == LibdcFlowControl.telitCredits &&
+        (service == _kTelitService || service == _kUbloxService)) {
+      // An incomplete credit layout is never used without credits: the
+      // device would not send.
+      return _creditGatt(service, cs);
     }
     BleCharacteristic? data;
     BleCharacteristic? write;
@@ -268,13 +283,12 @@ _Gatt? _chooseGatt(List<BleCharacteristic> chars, LibdcBleProfile profile) {
       }
     }
     for (final c in cs) {
-      if (c.properties.canWrite && !profile.ignoreForWrite.contains(c.uuid)) {
-        // Prefer a characteristic that writes without response.
-        if (write == null ||
-            (!write.properties.writeWithoutResponse &&
-                c.properties.writeWithoutResponse)) {
-          write = c;
-        }
+      // The first writable one in discovery order; a control characteristic
+      // must not win over it.
+      if (write == null &&
+          c.properties.canWrite &&
+          !profile.ignoreForWrite.contains(c.uuid)) {
+        write = c;
       }
     }
     if (data == null || write == null) return null;

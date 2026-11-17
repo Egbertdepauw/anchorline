@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../_helpers/fake_ble_central.dart';
 import 'package:ccrlogger/ble/ble_central.dart';
 
@@ -24,17 +26,66 @@ const BleCharacteristicProperties kWriteProps = BleCharacteristicProperties(
 const BleCharacteristicProperties kNotifyWriteProps =
     BleCharacteristicProperties(notify: true, write: true);
 
+/// A [FakeBlePeripheral] that records the order of calls and can hang its
+/// disconnect.
+class RecordingPeripheral extends FakeBlePeripheral {
+  RecordingPeripheral(super.id, super.central);
+
+  /// 'connect', 'requestMtu', 'discoverServices', 'setNotify', 'pair', ...
+  final List<String> calls = [];
+  final List<int> mtuRequests = [];
+
+  /// When true, [disconnect] never completes.
+  bool hangOnDisconnect = false;
+
+  @override
+  Future<void> connect({
+    Duration timeout = const Duration(seconds: 10),
+    bool autoConnect = false,
+  }) {
+    calls.add('connect');
+    return super.connect(timeout: timeout, autoConnect: autoConnect);
+  }
+
+  @override
+  Future<int> requestMtu(int mtu) {
+    calls.add('requestMtu');
+    mtuRequests.add(mtu);
+    return super.requestMtu(mtu);
+  }
+
+  @override
+  Future<List<BleCharacteristic>> discoverServices() {
+    calls.add('discoverServices');
+    return super.discoverServices();
+  }
+
+  @override
+  Future<bool> pair() {
+    calls.add('pair');
+    return super.pair();
+  }
+
+  @override
+  Future<void> disconnect() {
+    calls.add('disconnect');
+    if (hangOnDisconnect) return Completer<void>().future;
+    return super.disconnect();
+  }
+}
+
 /// A fake GATT table: a [FakeBlePeripheral] on a [FakeBleCentral], with
 /// characteristics added service by service. Task 15's stand-in computers
 /// reuse it.
 class FakeGatt {
   FakeGatt({String id = 'AA:BB:CC:DD:EE:FF', int mtu = 23})
     : central = FakeBleCentral() {
-    peripheral = central.peripheral(id)..mtu = mtu;
+    peripheral = RecordingPeripheral(id, central)..mtu = mtu;
+    central.peripherals[id] = peripheral;
   }
 
   final FakeBleCentral central;
-  late final FakeBlePeripheral peripheral;
+  late final RecordingPeripheral peripheral;
 
   /// Adds one characteristic and returns it.
   FakeBleCharacteristic add(
@@ -43,6 +94,7 @@ class FakeGatt {
     BleCharacteristicProperties properties,
   ) {
     final c = FakeBleCharacteristic(service, uuid, properties: properties);
+    c.onSetNotify = () => peripheral.calls.add('setNotify');
     peripheral.characteristics = [...peripheral.characteristics, c];
     return c;
   }

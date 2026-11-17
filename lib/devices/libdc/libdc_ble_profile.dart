@@ -65,6 +65,7 @@ const List<String> kLibdcKnownServices = [
 const List<String> kLibdcUpgradeServices = [
   '00001530-1212-efde-1523-785feabcd123',
   '9e5d1e47-5c13-43a0-8635-82ad38a1386f',
+  'a86abc2d-d44c-442e-99f7-80059a873e36', // Broadcom upgrade #2
 ];
 
 const List<String> _kIgnoreRead = [
