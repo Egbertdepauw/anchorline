@@ -15,7 +15,7 @@ Works out how to fill a cylinder to a target mix. You enter the target and what 
 - **In the cylinder now**: **O₂**, **He**, **Pressure** and **Size** of what is already inside. You enter these.
 - **Top off with**: the gas used for the last step: **Air**, **EAN32**, **EAN50** or **Other…**.
 - **Role**: a control under the plan band, for example **Role Diluent (3 L)** or **Role Bailout (O2 above 32%)**. The app guesses the role: above 32% O₂ it is bailout, otherwise a cylinder up to the diluent size in the Gas settings is diluent, and a larger one is bailout. Tap it to choose **Diluent**, **Bailout**, **Backgas** or **Deco** instead. Your choice counts for this blend only; the next blend guesses again.
-- **Blend mix**: records the blend you just made as an open blend and shows "added to open blends". The Blend tab is then free for the next cylinder.
+- **Blend mix**: records the blend you just made as an open blend and confirms it, for example "Tx18/45 added to open blends". Your entries stay on the Blend tab, ready for the next cylinder.
 - **Not yet analysed (N)**: the open blends, each with a coloured dot, the mix name, the role and target pressure in bar, and how long ago you blended it (for example **1 h 05 min**). The dot is red for the first half of the **Settle time**, orange for the second half and green once it has passed. Tap the menu at the right of a row and choose **Dismiss** for a cylinder you vented or gave up on. The same count shows as a badge on the **Blend** tab.
 - **Fill options**: collapsed to a summary such as "He → O₂ → top-off · real gas · 18 °C". Open it to change the **Fill order**, switch **Real-gas maths (Z)** on or off, and set **Fill temp** and **Settled temp**.
 

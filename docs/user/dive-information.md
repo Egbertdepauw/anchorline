@@ -23,4 +23,5 @@ Your conditions notes for the dive, plus a record of what the dive computer logg
 
 - Notes, buddies, tags and the divemaster are on the **Details** tab, below the chart.
 - A dash means the computer did not log that value.
+- For a Shearwater, **Model** is the Shearwater model and **Serial** is 8 hexadecimal digits. For another brand, **Model** is the brand and model the computer reported, for example **Divesoft Liberty**, and **Serial** is in decimal.
 - Changes are kept when you press **Save** in the top bar.

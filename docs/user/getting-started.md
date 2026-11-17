@@ -6,7 +6,7 @@ Where: Opens when you start the app.
 
 ## What it's for
 
-Anchorline logs dives from your Shearwater computer and shows them in a way that puts closed-circuit data first. This page names the parts of the screen you see on launch.
+Anchorline logs dives from your dive computer (a Shearwater, or another brand's Bluetooth computer) and shows them in a way that puts closed-circuit data first. This page names the parts of the screen you see on launch.
 
 ## On this screen
 
@@ -17,6 +17,6 @@ Anchorline logs dives from your Shearwater computer and shows them in a way that
 
 ## Good to know
 
-- With no dives yet, the list reads "No dives yet". Open the **Import** tab to pair your Shearwater and download them.
+- With no dives yet, the list reads "No dives yet". Open the **Import** tab to connect your dive computer and download them. See [Import](/manual/import).
 - The dark theme is the default. Change it under **Settings**, **General**, **Theme**.
 - Dive data from your computer is never edited. Notes, buddies, ratings and equipment are yours and are layered on top.
