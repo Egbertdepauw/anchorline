@@ -171,6 +171,23 @@ final class NativeLink {
     c.al_link_set_recording(_link, enabled ? 1 : 0);
   }
 
+  /// What the link recorded, in the C layer's packed layout; empty after
+  /// [free].
+  Uint8List recording() {
+    if (_refused()) return Uint8List(0);
+    final size = c.al_link_recording(_link, nullptr, 0);
+    if (size == 0) return Uint8List(0);
+    return using((arena) {
+      final buffer = arena<Uint8>(size);
+      // It only grows, and nothing records any more once the download
+      // isolate is gone; a size that changed anyway gives nothing.
+      if (c.al_link_recording(_link, buffer, size) != size) {
+        return Uint8List(0);
+      }
+      return Uint8List.fromList(buffer.asTypedList(size));
+    });
+  }
+
   /// Frees the link. Only once no iostream of it is open and nothing will
   /// call into it from another isolate; from here on every call is refused.
   void free() {
