@@ -12,7 +12,7 @@
 /// (Phase D, [SubsurfaceSyncOrchestrator]) handles the impure half:
 /// reading DAOs, calling [RemoteSnapshot], writing files, and pushing.
 ///
-/// Two non-obvious behaviours, lifted from
+/// Three non-obvious behaviours, the first two lifted from
 /// `docs/subsurface_format_notes.md`:
 ///
 /// 1. **Top-level `divecomputerid` dedup is keyed on `serial`, not on
@@ -30,6 +30,18 @@
 ///    name and `Dive-NNN` number rather than allocating a fresh NNN. This
 ///    avoids double-emitting the same dive after the user pushes once
 ///    from CCRLog and once via Subsurface itself.
+///
+/// 3. **Dives from other brands are merged, never created.** The mapper
+///    writes Shearwater dives: model names, three cells from millivolts,
+///    its own deviceid/diveid. A dive with `dc_family` set, or with a
+///    vendor that is set and isn't Shearwater
+///    ([SubsurfaceDiveInput.isOtherBrand]), that matches a remote dive
+///    gets the merge of the Dive-NNN lines CCRLog owns and holds a value
+///    for, and its site, and nothing else: its Divecomputer file and
+///    00-Subsurface are left alone.
+///    One that matches no remote dive is left out, unnumbered, and counted
+///    in [SyncPlanStats.otherBrandDives]. Keeps the user's notes on dives
+///    already on Subsurface Cloud flowing after a download refreshes them.
 library;
 
 import 'format/subsurface_format.dart';
@@ -122,6 +134,7 @@ class SyncPlanStats {
     required this.updatedDives,
     required this.skippedDives,
     required this.abortedDives,
+    required this.otherBrandDives,
   });
 
   final int newDives;
@@ -136,6 +149,11 @@ class SyncPlanStats {
   /// Dives the planner declined to write because of a foreign edit on
   /// the Subsurface side. Surfaced to the user as "Skipped".
   final int abortedDives;
+
+  /// Dives from other brands ([SubsurfaceDiveInput.isOtherBrand]) that
+  /// match no dive on the remote. The writer only writes Shearwater dives,
+  /// so nothing is written for these and they get no `Dive-NNN` number.
+  final int otherBrandDives;
 }
 
 /// Why a per-dive plan was aborted. Surfaced to the user in the UI's
@@ -264,6 +282,7 @@ class SyncPlanner {
     final updatedDives = <SubsurfaceDiveInput>[];
     final abortedDives = <AbortedDive>[];
     var skipped = 0;
+    var otherBrand = 0;
 
     // Set of dive numbers already present in the remote. Used both to
     // detect collisions and to compute the next available slot for new
@@ -327,6 +346,14 @@ class SyncPlanner {
       final key = (serial: dive.dcSerial, startTime: dive.startTime);
       final existing = existingDivesBySerialAndStart[key];
 
+      // A dive from another brand that the remote doesn't have is left out
+      // before anything is mapped or numbered: the mapper would write it
+      // as a Shearwater dive. One the remote has is merged below.
+      if (existing == null && dive.isOtherBrand) {
+        otherBrand += 1;
+        continue;
+      }
+
       // The dive's site as CCRLog would write it, and the Site file it
       // goes into (set in the branches below).
       final mappedSite = bundle.annotation == null
@@ -366,19 +393,43 @@ class SyncPlanner {
           );
         }
 
-        final ours = _mapper.mapDive(
-          dive: dive,
-          samples: bundle.samples,
-          annotation: bundle.annotation,
-          gasMixes: bundle.gasMixes,
-          tanks: bundle.tanks,
-          cylindersByMixIndex: bundle.cylindersByMixIndex,
-          nextSubsurfaceDiveNumber: diveNumber,
-        );
+        // A dive from another brand needs only its Dive-NNN lines: its
+        // Divecomputer file is never written (below), so its samples don't
+        // go through the Shearwater recording builder, which a throw there
+        // would turn into a failed sync.
+        //
+        // It also brings only the owned lines CCRLog holds a value for. A
+        // libdivecomputer download keys onto Subsurface's own copy of the
+        // same dive, and the mapper's empty `buddy ""`, `suit ""` and
+        // `divemaster ""` would blank Subsurface's values. The cost: a buddy
+        // cleared in CCRLog on such a dive is not cleared on Subsurface.
+        final ours = dive.isOtherBrand
+            ? null
+            : _mapper.mapDive(
+                dive: dive,
+                samples: bundle.samples,
+                annotation: bundle.annotation,
+                gasMixes: bundle.gasMixes,
+                tanks: bundle.tanks,
+                cylindersByMixIndex: bundle.cylindersByMixIndex,
+                nextSubsurfaceDiveNumber: diveNumber,
+              );
+        final ourDiveLines = ours?.diveLines ??
+            [
+              for (final line in _mapper.mapDiveLines(
+                dive: dive,
+                samples: bundle.samples,
+                annotation: bundle.annotation,
+                gasMixes: bundle.gasMixes,
+                tanks: bundle.tanks,
+                cylindersByMixIndex: bundle.cylindersByMixIndex,
+              ))
+                if (!_isEmptyOwnedLine(line)) line,
+            ];
 
         final mergedLines = _mergeDiveLines(
           existing: existing.diveLines,
-          ours: ours.diveLines,
+          ours: ourDiveLines,
         );
 
         final mergedText = serializeSubsurfaceFile(
@@ -418,12 +469,18 @@ class SyncPlanner {
         // SP-change events on such files: a serial-less `model "Perdix 2"`
         // CCR dive in a real repository carries
         // `event 0:00 type=20 value=1100 name="SP change"`.
+        //
+        // A dive from another brand never takes this path ([ours] is null
+        // for one): CCRLog never wrote its Divecomputer file, and the
+        // mapper's rewrite would be a Shearwater recording. Its decimal
+        // Serial can read as hex, and Subsurface writes SP-change events
+        // for other brands too.
         final ccrlogOriginSignature =
             _hasHexSerial(existing.divecomputerLines) &&
                 existing.divecomputerLines
                     .whereType<EventLine>()
                     .any(_looksLikeSpChangeEvent);
-        if (ccrlogOriginSignature) {
+        if (ours != null && ccrlogOriginSignature) {
           final folderPath = folderSegments.join('/');
           filesToWrite['$folderPath/Divecomputer'] = serializeSubsurfaceFile(
             SubsurfaceFile(lines: ours.divecomputerLines),
@@ -504,8 +561,14 @@ class SyncPlanner {
             MappedSite(hexId: siteHex, lines: mappedSite.lines);
       }
 
-      for (final dc in bundle.userDiveComputers) {
-        dcsBySerial.putIfAbsent(dc.serial, () => dc);
+      // The mapper writes every computer as a Shearwater one, so another
+      // brand's computer gets no `divecomputerid` line, and a dive from
+      // another brand adds none to 00-Subsurface.
+      if (!dive.isOtherBrand) {
+        for (final dc in bundle.userDiveComputers) {
+          if (dc.isOtherBrand) continue;
+          dcsBySerial.putIfAbsent(dc.serial, () => dc);
+        }
       }
     }
 
@@ -533,8 +596,14 @@ class SyncPlanner {
     }
 
     // 00-Subsurface: merge our delta into the existing top-level file.
+    // A dive from another brand gets no fingerprint line: the mapper would
+    // write Shearwater's model, serial and diveid into it.
     final delta = _mapper.topLevelDelta(
-      dives: [...newDives, ...updatedDives],
+      dives: [
+        ...newDives,
+        for (final d in updatedDives)
+          if (!d.isOtherBrand) d,
+      ],
       diveComputers: dcsBySerial.values,
     );
     final mergedTopLevel = _mergeTopLevel(
@@ -559,6 +628,7 @@ class SyncPlanner {
         updatedDives: updatedDives.length,
         skippedDives: skipped,
         abortedDives: abortedDives.length,
+        otherBrandDives: otherBrand,
       ),
       abortedDives: abortedDives,
     );
@@ -774,6 +844,15 @@ class SyncPlanner {
         TagsLine(:final tags) => tags.isEmpty,
         _ => false,
       };
+
+  /// [_isEmptyOwned] for any Dive-NNN line: false for a line CCRLog
+  /// doesn't own.
+  bool _isEmptyOwnedLine(SsLine line) {
+    final key = _lineKey(line);
+    return key != null &&
+        _ownedDiveLineKeys.contains(key) &&
+        _isEmptyOwned(key, line);
+  }
 
   /// `24.0°C` / `24.0 C` / `24.0` → 24.0, as the read mapper parses an
   /// environment temperature. Null when it is not a number.

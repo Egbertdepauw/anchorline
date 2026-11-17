@@ -32,7 +32,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 21;
+  int get schemaVersion => 22;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -192,6 +192,15 @@ class AppDatabase extends _$AppDatabase {
               await m.addColumn(diveComputers, diveComputers.dcModelCode);
             }
             await m.createTable(diveImportMarks);
+          }
+          if (from < 22) {
+            final hasDives = await customSelect(
+              "SELECT 1 FROM sqlite_master "
+              "WHERE type = 'table' AND name = 'dives'",
+            ).get();
+            if (hasDives.isNotEmpty) {
+              await m.addColumn(dives, dives.dcFingerprint);
+            }
           }
         },
       );
