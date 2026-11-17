@@ -582,6 +582,11 @@ class ImportNotifier extends ChangeNotifier {
             _report(event.error, event.stack, 'download');
             await _applyScrubberEvents(serial);
             _flushNotify();
+
+          case DiveSourceFinished():
+            // Shearwater never emits this; the libdivecomputer import
+            // handling arrives with its own screen.
+            break;
         }
       }
     } catch (e) {

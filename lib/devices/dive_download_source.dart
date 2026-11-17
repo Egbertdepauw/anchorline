@@ -125,6 +125,26 @@ class DiveSourceDiveFailed extends DiveSourceEvent {
   });
 }
 
+/// The end of a download, for engines that learn the result of the whole
+/// download only at its end (libdivecomputer). Shearwater never emits it.
+class DiveSourceFinished extends DiveSourceEvent {
+  /// Where the fingerprint is saved, or null when there is none to save.
+  final String? importStateKey;
+
+  /// The newest dive's fingerprint, to save once the import itself had no
+  /// failed dive. Null after a cancel or a failed download.
+  final Uint8List? fingerprintToKeep;
+
+  /// The recording of the download, when one was asked for.
+  final String? recordingText;
+
+  const DiveSourceFinished({
+    this.importStateKey,
+    this.fingerprintToKeep,
+    this.recordingText,
+  });
+}
+
 abstract class DiveDownloadSource {
   /// Null until the computer is known (libdivecomputer learns it during the
   /// download and announces it with [DiveSourceIdentified]).
