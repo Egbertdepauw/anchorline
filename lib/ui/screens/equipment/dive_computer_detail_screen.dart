@@ -4,6 +4,7 @@ import 'package:subsurface_core/shearwater/parser/hardware.dart'
 
 import '../../../data/db/database.dart';
 import '../../../data/db/equipment_dao.dart';
+import '../../util/dive_computer_labels.dart';
 
 class DiveComputerDetailScreen extends StatefulWidget {
   final EquipmentDao dao;
@@ -83,6 +84,35 @@ class _DiveComputerDetailScreenState extends State<DiveComputerDetailScreen> {
     super.dispose();
   }
 
+  /// A Shearwater keeps its hex serial and raw hardware ID. Another brand
+  /// shows the decimal serial and the brand and model it reported, as its
+  /// dives' Information tab does.
+  String get _serialText => isShearwaterComputer(_dc!)
+      ? _dc!.serial.toRadixString(16).toUpperCase()
+      : brandComputerSerialText(_dc!);
+
+  String get _modelText => isShearwaterComputer(_dc!)
+      ? '${_dc!.model}'
+      : brandComputerName(_dc!);
+
+  /// "Dive #" only for a dive that stores the computer's own dive number.
+  /// libdivecomputer dives store 0 (none), so they show the start alone.
+  Widget _recentImportTile(Dive d) {
+    // Real Dives schema field: startTime (NOT startTimeUtc).
+    // startTime is Unix seconds UTC; multiply by 1000 for ms.
+    final start = DateTime.fromMillisecondsSinceEpoch(d.startTime * 1000)
+        .toLocal()
+        .toString();
+    if (d.dcDiveNumber <= 0) {
+      return ListTile(dense: true, title: Text(start));
+    }
+    return ListTile(
+      dense: true,
+      title: Text('Dive #${d.dcDiveNumber}'),
+      subtitle: Text(start),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -92,8 +122,8 @@ class _DiveComputerDetailScreenState extends State<DiveComputerDetailScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Text('Serial: ${_dc!.serial.toRadixString(16).toUpperCase()}'),
-                Text('Model: ${_dc!.model}'),
+                Text('Serial: $_serialText'),
+                Text('Model: $_modelText'),
                 Text('Firmware: ${_dc!.firmwareVersion ?? '?'}'),
                 const SizedBox(height: 16),
                 TextField(
@@ -113,17 +143,7 @@ class _DiveComputerDetailScreenState extends State<DiveComputerDetailScreen> {
                     padding: EdgeInsets.symmetric(vertical: 8),
                     child: Text('No imports yet'),
                   ),
-                for (final d in _recent)
-                  ListTile(
-                    dense: true,
-                    title: Text('Dive #${d.dcDiveNumber}'),
-                    // Real Dives schema field: startTime (NOT startTimeUtc).
-                    // startTime is Unix seconds UTC; multiply by 1000 for ms.
-                    subtitle: Text(DateTime.fromMillisecondsSinceEpoch(
-                            d.startTime * 1000)
-                        .toLocal()
-                        .toString()),
-                  ),
+                for (final d in _recent) _recentImportTile(d),
                 const SizedBox(height: 24),
                 const Text('Pressure mapping',
                     style: TextStyle(fontWeight: FontWeight.bold)),
