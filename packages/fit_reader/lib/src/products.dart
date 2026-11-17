@@ -30,7 +30,7 @@ const Map<int, String> _garminProducts = {
 String fitVendorName(int manufacturer) => switch (manufacturer) {
   kFitManufacturerGarmin => 'Garmin',
   kFitManufacturerSuunto => 'Suunto',
-  _ => 'Manufacturer $manufacturer',
+  _ => 'FIT manufacturer $manufacturer',
 };
 
 /// The product name: the Garmin table first, else the file's own product

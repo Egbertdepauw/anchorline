@@ -131,9 +131,33 @@ int _commonGap(List<int> times) {
   return best;
 }
 
+/// Sorts by timestamp, keeping file order among equal timestamps (Dart's
+/// List.sort is not stable).
 List<FitMessage> _byTime(List<FitMessage> l) {
-  final out = [...l]..sort((a, b) => (a.timestamp ?? 0).compareTo(b.timestamp ?? 0));
-  return out;
+  final idx = [for (var i = 0; i < l.length; i++) i];
+  idx.sort((a, b) {
+    final c = (l[a].timestamp ?? 0).compareTo(l[b].timestamp ?? 0);
+    return c != 0 ? c : a.compareTo(b);
+  });
+  return [for (final i in idx) l[i]];
+}
+
+/// The surface pressure in millibar: the ambient pressure of the earliest
+/// record at the shallowest depth, among records at 0.5 m or shallower that
+/// have one; null when there is none. (Taking merely the first record within
+/// 0.5 m would add up to 50 mbar of water column.)
+int? _surfaceMbar(List<FitMessage> records) {
+  int? bestDepth, bestPa;
+  for (final r in records) {
+    final d = r.intField(FitRecord.depth);
+    final p = r.intField(FitRecord.absPressure);
+    if (d == null || p == null || d > 500) continue;
+    if (bestDepth == null || d < bestDepth) {
+      bestDepth = d;
+      bestPa = p;
+    }
+  }
+  return bestPa == null ? null : (bestPa / 100).round();
 }
 
 /// Maps one dive session to a dive with its samples and events.
@@ -249,6 +273,8 @@ ConvertedDive mapFitSession(FitFileId id, FitDiveSession s, int sessionIndex) {
     final data = e.intField(FitEvent.data);
     if (data == null) return;
     if (kind == FitEvent.diveAlertEvent) {
+      // The events codec holds a uint16; larger codes are not alerts.
+      if (data > 0xFFFF) return;
       int? sp;
       if (_isSetpointAlert(data)) {
         sp = _isLowSetpointAlert(data) ? lowSp : highSp;
@@ -412,7 +438,7 @@ ConvertedDive mapFitSession(FitFileId id, FitDiveSession s, int sessionIndex) {
     decoModel: DecoModel.gf,
     gfLow: settings?.intField(FitDiveSettings.gfLow) ?? 0,
     gfHigh: settings?.intField(FitDiveSettings.gfHigh) ?? 0,
-    atmosphericPressureMbar: _defaultAtmosphericMbar,
+    atmosphericPressureMbar: _surfaceMbar(records) ?? _defaultAtmosphericMbar,
     waterDensityKgM3: waterDensity,
     logVersion: 0,
     dcModel: ShearwaterModel.unknown,

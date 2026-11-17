@@ -485,6 +485,7 @@ void main() {
     expect(d.dcSerial, 0);
     expect(d.diveMode, DiveMode.ocTec);
     expect(fitVendorName(23), 'Suunto');
+    expect(fitVendorName(99), 'FIT manufacturer 99');
     expect(
       fitProductName(
         manufacturer: 23,
@@ -584,6 +585,59 @@ void main() {
     expect(s.tankPressuresBar[0][11], closeTo(149, 1e-4));
     expect(s.depthMeters[0], 0);
     expect(s.depthMeters[5], 5);
+  });
+
+  test('surface pressure is the earliest shallowest record within 0.5 m '
+      'that has an ambient pressure, else 1013', () {
+    FitMessageSpec rec(int i, int mm, int pa) => _m(20, {
+      253: (_u32, _start + i),
+      92: (_u32, mm),
+      91: (_u32, pa),
+    });
+    final b = buildFit([
+      _fileId(),
+      _sport(53),
+      rec(0, 2000, 150000), // too deep to count
+      rec(1, 400, 105000),
+      rec(2, 0, 101960),
+      rec(3, 0, 100000), // later, same depth
+      _session(_start, _start + 3, sub: 53),
+    ]);
+    expect(_one(b).dive.atmosphericPressureMbar, 1020);
+    expect(_one(_ccrFile()).dive.atmosphericPressureMbar, 1013);
+  });
+
+  test('events keep file order within a second, and the trace follows it', () {
+    // 45 setpoint alerts; every group of 5 shares a timestamp and alternates
+    // low/high, so an unstable sort would scramble them.
+    final evs = <FitMessageSpec>[];
+    for (var i = 0; i < 45; i++) {
+      evs.add(_alert(_start + 1 + i ~/ 5, i.isEven ? 25 : 24));
+    }
+    final c = _one(buildFit([
+      _fileId(),
+      _sport(63),
+      _gas(0, 21, 0),
+      _settings(lowSp: 70, highSp: 130),
+      for (var i = 0; i <= 12; i++) _record(_start + i, i * 1000),
+      ...evs,
+      _session(_start, _start + 12),
+    ]));
+    expect(c.events.map((e) => e.rawType).toList(), [
+      for (var i = 0; i < 45; i++) i.isEven ? 25 : 24,
+    ]);
+    // Group at t=9 s is i = 40..44: high, low, high, low, high -> ends high.
+    expect(c.samples.setpointBar[9], closeTo(1.3, 1e-6));
+    // Group at t=8 s is i = 35..39: low, high, low, high, low -> ends low.
+    expect(c.samples.setpointBar[8], closeTo(0.7, 1e-6));
+  });
+
+  test('an alert code above 65535 is dropped', () {
+    final c = _one(_ccrFile(extraEvents: [
+      _alert(_start + 2, 70000),
+      _alert(_start + 3, 9),
+    ]));
+    expect(c.events.map((e) => e.rawType), [9]);
   });
 
   test('a session without records still maps, with no samples', () {

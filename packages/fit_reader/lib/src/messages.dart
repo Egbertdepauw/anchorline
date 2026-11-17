@@ -89,6 +89,9 @@ class FitRecord {
   /// Millimetres.
   static const depth = 92;
 
+  /// Absolute (ambient) pressure, pascal.
+  static const absPressure = 91;
+
   /// Millimetres.
   static const nextStopDepth = 93;
 
