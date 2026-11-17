@@ -477,8 +477,13 @@ checked (section 9).
     marked as a failed libdivecomputer parse);
   - never look it up in libdivecomputer's descriptors (tier badge, labels).
 
-  These requirements were sent to the phase 2 work on 2026-11-17. Builds
-  with the FIT reader keep sending `dc_engines = 2`.
+  Phase 2 adopted these on 2026-11-17: `diveEngineOf(int? dcFamily)` in
+  `lib/data/import/refresh_policy.dart` (null → Shearwater, -1 → FIT,
+  anything else → libdivecomputer) drives the refresh rule and the
+  engine-mismatch rule. Phase 2's re-parse takes `dc_family > 0`, and tiers
+  and labels fall back to the stored vendor and product. Its write-once
+  guard refuses a refresh that would change a set `dc_family`; FIT rows stay
+  at -1. Builds with the FIT reader keep sending `dc_engines = 2`.
 - **Subsurface Cloud.** Phase 2's planner leaves out every dive with
   `dc_family` set, before any matching. Egbert ruled (2026-11-17) that edits
   must keep flowing for dives that are already on Subsurface Cloud: a diver
@@ -489,9 +494,10 @@ checked (section 9).
   time, as today). A matched one gets the existing-dive merge of the lines
   Anchorline owns (notes, buddies, site, rating), never a change to its
   Divecomputer file, and no setpoint trace injected. Never-pushed FIT dives
-  stay off Subsurface Cloud, and the sync screen says why. This changes
-  phase 2's Task 9 and was sent to that work with the requirements above;
-  it applies to libdivecomputer dives the same way.
+  stay off Subsurface Cloud, and the sync screen says why. Phase 2 adopted
+  this in its Task 9, for libdivecomputer dives the same way. There,
+  "other brand" means `dc_family` set, or a vendor that is set and isn't
+  Shearwater.
 
 ### 8. What Garmin divers get
 
