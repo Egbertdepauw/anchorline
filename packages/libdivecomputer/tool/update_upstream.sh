@@ -6,6 +6,7 @@
 # Usage: tool/update_upstream.sh <commit>
 # Environment: SKIP_FFIGEN=1 skips the bindings step (check_vendor.sh).
 set -euo pipefail
+export LC_ALL=C
 
 if [ $# -ne 1 ]; then
   echo "usage: $0 <commit>" >&2
@@ -18,6 +19,8 @@ if ! printf '%s' "$commit" | grep -Eq '^[0-9a-f]{40}$'; then
 fi
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
+# LIBDC_UPSTREAM_URL is only for the script test; UPSTREAM always records the real url.
+fetch_url="${LIBDC_UPSTREAM_URL:-https://github.com/libdivecomputer/libdivecomputer.git}"
 url="https://github.com/libdivecomputer/libdivecomputer.git"
 dest="$root/third_party/libdivecomputer"
 
@@ -28,7 +31,7 @@ for p in "$root"/patches/*.patch; do
   [ -e "$p" ] || continue
   patches+=("$p")
   name="$(basename "$p")"
-  if ! grep -Eq "^patch $name [^ ]+" "$root/UPSTREAM" 2>/dev/null; then
+  if ! awk -v n="$name" '$1 == "patch" && $2 == n && NF >= 3 { f = 1 } END { exit !f }' "$root/UPSTREAM" 2>/dev/null; then
     echo "patch $name has no 'patch $name <upstream status>' line in UPSTREAM" >&2
     exit 1
   fi
@@ -39,7 +42,7 @@ trap 'rm -rf "$tmp"' EXIT
 src="$tmp/src"
 mkdir "$src"
 git -C "$src" init -q
-git -C "$src" fetch -q --depth 1 "$url" "$commit"
+git -C "$src" fetch -q --depth 1 "$fetch_url" "$commit"
 git -C "$src" checkout -q FETCH_HEAD
 actual="$(git -C "$src" rev-parse HEAD)"
 if [ "$actual" != "$commit" ]; then
@@ -47,6 +50,18 @@ if [ "$actual" != "$commit" ]; then
   exit 1
 fi
 date="$(git -C "$src" log -1 --format=%cs)"
+
+# Patches are applied in the upstream clone, so their paths are rooted at the
+# upstream repository, the way a patch sent to Jef is. (Applying inside the
+# Anchorline repo would silently skip them.)
+if [ ${#patches[@]} -gt 0 ]; then
+  for p in "${patches[@]}"; do
+    if ! git -C "$src" apply "$p"; then
+      echo "patch $(basename "$p") no longer applies: if upstream merged it, delete it in this PR" >&2
+      exit 1
+    fi
+  done
+fi
 
 # Keep the patch lines: their status is hand-written.
 patch_lines="$(grep -E '^patch ' "$root/UPSTREAM" 2>/dev/null || true)"
@@ -64,15 +79,6 @@ done
 cp "$src/contrib/android/Android.mk" "$dest/contrib/android/"
 cp "$src/contrib/msvc/libdivecomputer.vcxproj" "$dest/contrib/msvc/"
 
-if [ ${#patches[@]} -gt 0 ]; then
-  for p in "${patches[@]}"; do
-    if ! (cd "$dest" && git apply "$p"); then
-      echo "patch $(basename "$p") no longer applies: if upstream merged it, delete it in this PR" >&2
-      exit 1
-    fi
-  done
-fi
-
 # version.h: the .in file with the version from configure.ac.
 define() {
   sed -n "s/^m4_define(\[dc_version_$1\],\[\([^]]*\)\])\$/\1/p" "$dest/configure.ac"
@@ -81,6 +87,10 @@ major="$(define major)"
 minor="$(define minor)"
 micro="$(define micro)"
 suffix="$(define suffix)"
+if [ -z "$major" ] || [ -z "$minor" ] || [ -z "$micro" ]; then
+  echo "could not read dc_version_major/minor/micro from configure.ac" >&2
+  exit 1
+fi
 version="$major.$minor.$micro"
 if [ -n "$suffix" ]; then
   version="$version-$suffix"
@@ -92,8 +102,8 @@ sed -e "s/@DC_VERSION@/$version/" \
     -e "s/@DC_VERSION_MICRO@/$micro/" \
     "$dest/include/libdivecomputer/version.h.in" \
     > "$root/native/include/libdivecomputer/version.h"
-if grep -q '@' "$root/native/include/libdivecomputer/version.h"; then
-  echo "version.h still has an unsubstituted @...@" >&2
+if grep -Eq '@[A-Z_]*@' "$root/native/include/libdivecomputer/version.h"; then
+  echo "version.h still has an unsubstituted @NAME@" >&2
   exit 1
 fi
 printf '#define DC_VERSION_REVISION "%s"\n' "$(printf '%s' "$commit" | cut -c1-7)" \

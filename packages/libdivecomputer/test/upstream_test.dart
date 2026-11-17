@@ -82,6 +82,6 @@ void main() {
     expect(header, contains('#define DC_VERSION_MAJOR $major\n'));
     expect(header, contains('#define DC_VERSION_MINOR $minor\n'));
     expect(header, contains('#define DC_VERSION_MICRO $micro\n'));
-    expect(header, isNot(contains('@')));
+    expect(header, isNot(matches(RegExp(r'@[A-Z_]*@'))));
   });
 }

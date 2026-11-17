@@ -2,6 +2,7 @@
 # Repeats the vendoring into a temporary copy of the package at the commit in
 # UPSTREAM and fails if third_party/ differs from what is committed.
 set -euo pipefail
+export LC_ALL=C
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 commit="$(awk '$1 == "commit" { print $2 }' "$root/UPSTREAM")"
