@@ -14,11 +14,11 @@ tests (`ShearwaterDiveParser` plus `DiveConverter.convert` over
 holds):
 
 ```sh
-GENERATE_PETREL3_EXPECTED=1 flutter test test/tool/generate_petrel3_expected_test.dart
+flutter test test/tool/generate_petrel3_expected.dart
 ```
 
-The generator stays in the repository as a test that is skipped unless
-`GENERATE_PETREL3_EXPECTED` is set. Regenerate the file only when the Dart
+The generator stays in the repository, outside the suite (its file name has no
+`_test` suffix, so `flutter test` does not run it unless named). Regenerate the file only when the Dart
 reader's output changes on purpose.
 
 `petrel3_cross_check_test.dart` compares libdivecomputer's output on a replay of
@@ -31,8 +31,13 @@ A family that is not Shearwater is "Not yet tested by us" until all of these
 are done:
 
 1. A real recording of a download from that family is made (the app's
-   "share recording" on a real computer) and anonymised the way #191 did it:
-   serial number, dates and position removed or replaced.
+   "share recording" on a real computer, or a Subsurface log of a download,
+   which is how the Petrel 3 fixture was made). The recorded bytes are kept
+   exactly as they are: a packet trace carries checksums, and the serial
+   number and dates feed fingerprints and dive ids, so none of them are
+   rewritten. What #191 did applies here: replace personal names in any text
+   the fixture carries (buddy names and the like) with made-up ones. GPS
+   positions are removed only where the bytes are not under a checksum.
 2. Its expected output is compared by a person with what the computer itself
    (its display or its own app) or Subsurface shows for the same dives, and
    written down as a JSON file here, like `petrel3_expected.json`.

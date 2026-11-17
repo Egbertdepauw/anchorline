@@ -50,6 +50,7 @@ void main() {
     expect(dives, hasLength(8));
     expect(expected, hasLength(8));
     final problems = <String>[];
+    final matched = <int>[];
     for (final d in dives) {
       final c = d.converted!;
       final epoch = c.dive.startTime.millisecondsSinceEpoch ~/ 1000;
@@ -61,6 +62,7 @@ void main() {
         problems.add('no expected dive starts at $epoch');
         continue;
       }
+      matched.add(e['diveNumber'] as int);
       final tag = 'dive ${e['diveNumber']}';
       void check(bool ok, String what) {
         if (!ok) problems.add('$tag: $what');
@@ -104,7 +106,8 @@ void main() {
           var worst = 0.0;
           var at = 0;
           for (var i = 0; i < want.length; i++) {
-            final diff = (got[i + 1] - (want[i] as num)).abs();
+            var diff = (got[i + 1] - (want[i] as num)).abs();
+            if (diff.isNaN) diff = double.infinity; // a NaN never passes
             if (diff > worst) {
               worst = diff;
               at = i;
@@ -113,7 +116,7 @@ void main() {
           check(
             worst <= tol,
             '$name differs by $worst at sample $at '
-            '(${got[at]} vs ${want[at]}, tolerance $tol)',
+            '(${got[at + 1]} vs ${want[at]}, tolerance $tol)',
           );
         }
 
@@ -124,6 +127,11 @@ void main() {
       }
     }
     expect(problems, isEmpty);
+    expect(
+      matched..sort(),
+      [for (final x in expected) x['diveNumber'] as int]..sort(),
+      reason: 'every expected dive is matched exactly once',
+    );
   });
 
   test('dc_parser_new and dc_parser_new2 give the same dive', () async {

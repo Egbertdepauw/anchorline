@@ -1,3 +1,4 @@
+import 'package:meta/meta.dart';
 import 'package:subsurface_core/subsurface_core.dart';
 
 import '../descriptors.dart';
@@ -57,6 +58,7 @@ final class LibdcDiveDownloaded extends LibdcDownloadEvent {
 
   /// Only set by the test-only legacy-parser replay: the same dive parsed
   /// with `dc_parser_new(device)` inside the foreach callback.
+  @visibleForTesting
   final ConvertedDive? debugLegacyConverted;
 
   @override

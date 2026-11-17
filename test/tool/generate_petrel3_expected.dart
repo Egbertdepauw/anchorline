@@ -3,8 +3,9 @@
 // dive files of the Petrel 3 download (test/fixtures/dives, byte-identical to
 // what libdivecomputer decodes from test/fixtures/raw/subsurface2.combined.txt).
 //
-// Skipped unless GENERATE_PETREL3_EXPECTED is set:
-//   GENERATE_PETREL3_EXPECTED=1 flutter test test/tool/generate_petrel3_expected_test.dart
+// Not part of the suite (the name has no _test suffix, so `flutter test`
+// does not pick it up); run it by path:
+//   flutter test test/tool/generate_petrel3_expected.dart
 import 'dart:convert';
 import 'dart:io';
 
@@ -57,8 +58,5 @@ void main() {
             const JsonEncoder.withIndent(null).convert({'dives': dives}),
           );
     },
-    skip: Platform.environment['GENERATE_PETREL3_EXPECTED'] == null
-        ? 'generator: set GENERATE_PETREL3_EXPECTED=1'
-        : false,
   );
 }

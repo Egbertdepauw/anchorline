@@ -15,7 +15,7 @@ String mappingDigest(ConvertedDive c) {
   final d = c.dive;
   final s = c.samples;
   final text = StringBuffer()
-    ..writeln('id=${d.id}')
+    ..writeln('id=${d.id} samplesId=${s.diveId}')
     ..writeln('serial=${d.dcSerial} number=${d.dcDiveNumber}')
     ..writeln('start=${d.startTime.toIso8601String()}')
     ..writeln('end=${d.endTime.toIso8601String()}')
