@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:intl/intl.dart';
+import 'package:libdivecomputer/libdivecomputer.dart';
 
 import '../../devices/dive_download_source.dart';
+import '../../devices/libdc/libdc_tiers.dart';
 import '../notifiers/import_notifier.dart';
+import '../widgets/libdc_model_picker.dart';
 
 class ImportScreen extends StatefulWidget {
   final ImportNotifier notifier;
@@ -87,6 +90,8 @@ class _ImportScreenState extends State<ImportScreen> {
           ],
         ),
         const SizedBox(height: 12),
+        _buildRecordSwitch(n),
+        const SizedBox(height: 12),
         FilledButton.icon(
           onPressed: () => n.startScan(),
           icon: const Icon(Icons.search),
@@ -97,7 +102,7 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   Widget _buildScanning(ImportNotifier n, ThemeData theme) {
-    return Center(child: Column(
+    return Center(child: SingleChildScrollView(child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         const SizedBox(width: 48, height: 48, child: CircularProgressIndicator()),
@@ -123,29 +128,120 @@ class _ImportScreenState extends State<ImportScreen> {
           )),
         ],
 
-        // Real BLE devices
-        for (final BluetoothDevice device in n.discoveredDevices) ...[
-          const SizedBox(height: 8),
-          Card(child: ListTile(
-            leading: Icon(Icons.bluetooth, color: theme.colorScheme.primary),
-            title: Text(device.platformName.isNotEmpty ? device.platformName : 'Shearwater DC'),
-            subtitle: Text(device.remoteId.toString()),
-            onTap: () async {
-              await n.selectRealDevice(device);
-              if (n.state == ImportFlowState.readingManifest) {
-                await n.readManifestAndFilterNew();
-              }
-            },
-          )),
-        ],
+        // Real BLE devices: Shearwater and libdivecomputer ones. Named
+        // devices nobody recognises only show up in the model picker.
+        for (final r in n.discoveredDevices)
+          if (r.kind == ImportDeviceKind.shearwater) ...[
+            const SizedBox(height: 8),
+            Card(child: ListTile(
+              leading: Icon(Icons.bluetooth, color: theme.colorScheme.primary),
+              title: Text(r.name.isNotEmpty ? r.name : 'Shearwater DC'),
+              subtitle: Text(r.id),
+              onTap: () async {
+                await n.selectRealDevice(BluetoothDevice.fromId(r.id));
+                if (n.state == ImportFlowState.readingManifest) {
+                  await n.readManifestAndFilterNew();
+                }
+              },
+            )),
+          ] else if (r.kind == ImportDeviceKind.libdc) ...[
+            const SizedBox(height: 8),
+            _buildLibdcRow(n, theme, r),
+          ],
 
-        if (!n.mockDeviceAvailable && n.discoveredDevices.isEmpty) ...[
+        if (!n.mockDeviceAvailable &&
+            !n.discoveredDevices.any((d) => d.kind != ImportDeviceKind.unmatched)) ...[
           const SizedBox(height: 24),
           Text('No devices found yet...',
               style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.3), fontSize: 12)),
         ],
+
+        const SizedBox(height: 16),
+        _buildRecordSwitch(n),
+        TextButton(
+          onPressed: () => _pickModel(n),
+          child: const Text("My computer isn't listed"),
+        ),
       ],
+    )));
+  }
+
+  /// "Record this download": keeps the packets as well as the log, so the
+  /// download can be shared with us afterwards.
+  Widget _buildRecordSwitch(ImportNotifier n) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 380),
+      child: SwitchListTile(
+        key: const ValueKey('record-download-switch'),
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Record this download'),
+        subtitle: const Text(
+            'Other brands only. Keeps what the computer says so you can '
+            'send it to us.'),
+        value: n.recordNextDownload,
+        onChanged: (v) => n.recordNextDownload = v,
+      ),
+    );
+  }
+
+  Widget _buildLibdcRow(
+      ImportNotifier n, ThemeData theme, ImportScanResult r) {
+    final first = r.candidates.first;
+    final tested = isCheckedLibdcFamily(first.family);
+    final families = {for (final c in r.candidates) c.family};
+    return Card(child: ListTile(
+      leading: Icon(Icons.bluetooth, color: theme.colorScheme.primary),
+      title: Text('${first.vendor} ${first.product}'
+          '${families.length > 1 ? ' and others' : ''}'),
+      subtitle: Text(r.name),
+      trailing: tested
+          ? null
+          : Chip(
+              label: const Text(kNotYetTestedLabel),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+            ),
+      onTap: () => _connectLibdc(n, r),
     ));
+  }
+
+  /// One family connects straight away; a name that several families share
+  /// asks which one first. The family decides the protocol; within it the
+  /// first candidate stands in for the model.
+  Future<void> _connectLibdc(ImportNotifier n, ImportScanResult r) async {
+    var chosen = r.candidates.first;
+    final byFamily = <int, LibdcDescriptor>{};
+    for (final c in r.candidates) {
+      byFamily.putIfAbsent(c.family, () => c);
+    }
+    if (byFamily.length > 1) {
+      final pick = await showDialog<LibdcDescriptor>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: const Text('Which of these is your computer?'),
+          children: [
+            for (final d in byFamily.values)
+              SimpleDialogOption(
+                onPressed: () => Navigator.of(ctx).pop(d),
+                child: Text('${d.vendor} ${d.product}'),
+              ),
+          ],
+        ),
+      );
+      if (pick == null) return;
+      chosen = pick;
+    }
+    await n.selectLibdcDevice(r, chosen);
+  }
+
+  Future<void> _pickModel(ImportNotifier n) async {
+    final pick = await showDialog<LibdcPick>(
+      context: context,
+      builder: (_) => LibdcModelPicker(devices: n.discoveredDevices),
+    );
+    if (pick == null) return;
+    await n.selectLibdcDevice(pick.device, pick.descriptor);
   }
 
   Widget _buildConnecting(ImportNotifier n, ThemeData theme) {

@@ -18,6 +18,20 @@ It is useable for everyone that uses a Shearwater dive computer.
 - Gas analysis label printing via Phomemo M110 label printer
 - Dive decompression and bailout gas planning
 
+## Help us test your dive computer
+
+Besides Shearwater, Anchorline can talk to many other brands' Bluetooth dive
+computers through [libdivecomputer](https://www.libdivecomputer.org), but we
+have only tested Shearwater with real hardware. Every other computer shows
+"Not yet tested by us" on the import screen.
+
+If you own one, switch on "Record this download" on the import screen, run the
+import, then tap "Share this download". The file is a recording of your dive
+computer's download. It contains the dives on the computer, its serial number
+and any GPS positions it logged. Send it to recordings@anchorline.eu or attach
+it to an issue at github.com/Egbertdepauw/anchorline/issues so we can check
+your computer.
+
 ## Future ideas
 - Sharing gas analysis between users
 - Tagging users in dives

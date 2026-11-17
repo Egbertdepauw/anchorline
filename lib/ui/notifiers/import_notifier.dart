@@ -8,8 +8,11 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:libdivecomputer/libdivecomputer.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../ble/ble_central.dart';
+import '../../ble/ble_central_default.dart';
 import '../../data/db/dive_dao.dart';
 import '../../data/db/equipment_dao.dart';
 import '../../data/db/import_state_dao.dart';
@@ -36,6 +39,41 @@ enum ImportFlowState {
   error,
 }
 
+/// What a device seen in the scan is.
+enum ImportDeviceKind {
+  /// Advertises the Shearwater service; goes to the Dart reader.
+  shearwater,
+
+  /// Its advertised name matches at least one libdivecomputer model.
+  libdc,
+
+  /// Has a name, but libdivecomputer doesn't recognise it. Offered to the
+  /// model picker ("My computer isn't listed").
+  unmatched,
+}
+
+/// One device seen in the scan.
+class ImportScanResult {
+  const ImportScanResult({
+    required this.id,
+    required this.name,
+    required this.kind,
+    this.candidates = const [],
+  });
+
+  /// The id [BleCentral.peripheral] takes.
+  final String id;
+
+  /// The advertised name, or '' (a Shearwater device may give none).
+  final String name;
+
+  final ImportDeviceKind kind;
+
+  /// The libdivecomputer models the name matches; empty unless [kind] is
+  /// [ImportDeviceKind.libdc].
+  final List<LibdcDescriptor> candidates;
+}
+
 /// ChangeNotifier driving the BLE import wizard UI.
 ///
 /// When constructed with `useMock: true` a [MockBleTransport] is used
@@ -48,6 +86,11 @@ class ImportNotifier extends ChangeNotifier {
   final UsageTracker? _usageTracker;
   final ImportProblemReporter _report;
   final bool useMock;
+  final BleCentral? _centralOverride;
+  final List<LibdcDescriptor> Function(String name) _matchBle;
+
+  /// The one central the scan runs through, for both engines.
+  BleCentral get _central => _centralOverride ?? defaultBleCentral();
 
   bool _disposed = false;
   ImportFlowState _state = ImportFlowState.idle;
@@ -61,6 +104,7 @@ class ImportNotifier extends ChangeNotifier {
   int _failedCount = 0;
   int _refreshedCount = 0;
   bool _forceFullReimport = false;
+  bool _recordNextDownload = false;
 
   // Per-dive download progress, surfaced live during the bulk BLE
   // transfer so the import screen can show "Downloading dive N of M
@@ -82,8 +126,8 @@ class ImportNotifier extends ChangeNotifier {
   bool _mockDeviceAvailable = false;
 
   // Real BLE
-  final List<BluetoothDevice> _discoveredDevices = [];
-  StreamSubscription<List<ScanResult>>? _scanSubscription;
+  final List<ImportScanResult> _discoveredDevices = [];
+  StreamSubscription<BleScanResult>? _scanSubscription;
 
   ImportNotifier({
     required DiveDao dao,
@@ -92,7 +136,11 @@ class ImportNotifier extends ChangeNotifier {
     UsageTracker? usageTracker,
     this.useMock = false,
     ImportProblemReporter? reporter,
-  })  : _dao = dao,
+    BleCentral? central,
+    List<LibdcDescriptor> Function(String name)? matchBle,
+  })  : _centralOverride = central,
+        _matchBle = matchBle ?? Libdc.matchBle,
+        _dao = dao,
         _importStateDao = importStateDao,
         _equipmentDao = equipmentDao,
         _usageTracker = usageTracker,
@@ -149,8 +197,18 @@ class ImportNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Real BLE devices discovered during scanning.
-  List<BluetoothDevice> get discoveredDevices =>
+  /// When true, the next libdivecomputer download records the packets as
+  /// well as the log, so the file can be shared with us. Off by default.
+  bool get recordNextDownload => _recordNextDownload;
+  set recordNextDownload(bool value) {
+    if (_recordNextDownload == value) return;
+    _recordNextDownload = value;
+    notifyListeners();
+  }
+
+  /// Devices seen during scanning: Shearwater and libdivecomputer ones, and
+  /// named devices nobody recognises ([ImportDeviceKind.unmatched]).
+  List<ImportScanResult> get discoveredDevices =>
       List.unmodifiable(_discoveredDevices);
 
   // ── Scanning ───────────────────────────────────────────────────────────────
@@ -180,51 +238,80 @@ class ImportNotifier extends ChangeNotifier {
   Future<void> _startRealScan() async {
     // On macOS the Core Bluetooth manager starts in `unknown` and only
     // reaches `on` after the OS finishes initializing the adapter (and the
-    // user has answered the Bluetooth permission prompt). Calling startScan
+    // user has answered the Bluetooth permission prompt). Calling scan
     // before that races and fails with CBManagerStateUnknown.
-    if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) {
-      try {
-        await FlutterBluePlus.adapterState
-            .where((s) => s == BluetoothAdapterState.on)
-            .first
-            .timeout(const Duration(seconds: 15));
-      } catch (e) {
-        debugPrint('BLE adapter never reached on state: $e');
-        return;
-      }
-      if (_disposed) return;
-    }
-
-    // Subscribe to results before starting the scan so we don't miss
-    // advertisements that arrive immediately.
+    final BleCentral central;
     try {
-      _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
-        var changed = false;
-        for (final result in results) {
-          if (result.advertisementData.serviceUuids.any((uuid) =>
-              uuid.toString().toLowerCase() ==
-              shearwaterServiceUuid.toLowerCase())) {
-            if (!_discoveredDevices
-                .any((d) => d.remoteId == result.device.remoteId)) {
-              _discoveredDevices.add(result.device);
-              changed = true;
-            }
-          }
-        }
-        if (changed && !_disposed) notifyListeners();
-      });
+      central = _central;
     } catch (e) {
-      debugPrint('BLE scan results subscription error: $e');
+      debugPrint('BLE central unavailable: $e');
+      return;
+    }
+    final adapter =
+        await waitForAdapterOn(central, const Duration(seconds: 15));
+    if (_disposed) return;
+    if (adapter != BleAdapterState.on) {
+      debugPrint('BLE adapter never reached on state: $adapter');
+      return;
     }
 
-    FlutterBluePlus.startScan(timeout: const Duration(seconds: 15))
-        .catchError((Object e) => debugPrint('BLE scan error: $e'));
+    // One scan, no service filter: Shearwater computers are told apart by
+    // their service UUID, the others by their advertised name.
+    try {
+      _scanSubscription = central
+          .scan(timeout: const Duration(seconds: 15))
+          .listen(_onScanResult,
+              onError: (Object e) => debugPrint('BLE scan error: $e'));
+    } catch (e) {
+      debugPrint('BLE scan error: $e');
+    }
+  }
+
+  void _onScanResult(BleScanResult r) {
+    if (_disposed) return;
+    final isWindows =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    final ImportScanResult? result;
+    if (r.advertises(shearwaterServiceUuid)) {
+      // Shearwater stays unlisted on Windows, as before: its transport is
+      // flutter_blue_plus, which has no Windows support.
+      result = isWindows
+          ? null
+          : ImportScanResult(
+              id: r.id, name: r.name, kind: ImportDeviceKind.shearwater);
+    } else if (r.name.isEmpty) {
+      result = null;
+    } else {
+      final candidates = _matchBle(r.name);
+      result = ImportScanResult(
+        id: r.id,
+        name: r.name,
+        kind: candidates.isNotEmpty
+            ? ImportDeviceKind.libdc
+            : ImportDeviceKind.unmatched,
+        candidates: candidates,
+      );
+    }
+    if (result == null) return;
+    final i = _discoveredDevices.indexWhere((d) => d.id == r.id);
+    if (i < 0) {
+      _discoveredDevices.add(result);
+    } else {
+      // The same device again: only a newly learned name or kind changes
+      // anything.
+      final old = _discoveredDevices[i];
+      if (old.name == result.name && old.kind == result.kind) return;
+      _discoveredDevices[i] = result;
+    }
+    notifyListeners();
   }
 
   void _stopScan() {
     _scanSubscription?.cancel();
     _scanSubscription = null;
-    FlutterBluePlus.stopScan().catchError((Object _) {});
+    try {
+      _central.stopScan().catchError((Object _) {});
+    } catch (_) {}
   }
 
   // ── Connect (mock) ─────────────────────────────────────────────────────────
@@ -300,6 +387,16 @@ class ImportNotifier extends ChangeNotifier {
       _source = null;
     }
     notifyListeners();
+  }
+
+  /// Connects to a libdivecomputer device. [d] is the model the user chose,
+  /// or the first candidate of the chosen family.
+  ///
+  /// Not built yet: the download half arrives with the libdivecomputer
+  /// download source.
+  Future<void> selectLibdcDevice(ImportScanResult r, LibdcDescriptor d) async {
+    _stopScan();
+    throw UnimplementedError('12b');
   }
 
   /// Records the connected computer in `dive_computers`. Failures are local

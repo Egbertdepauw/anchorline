@@ -18,10 +18,15 @@ import 'package:ccrlogger/shearwater/ble/shearwater_ble_transport.dart';
 import 'package:ccrlogger/shearwater/ble/shearwater_link.dart';
 import 'package:ccrlogger/shearwater/parser/manifest_parser.dart';
 import 'package:ccrlogger/ui/notifiers/import_notifier.dart';
+import 'package:ccrlogger/shearwater/ble/ble_io_impl.dart'
+    show shearwaterServiceUuid;
+import 'package:ccrlogger/ble/ble_central.dart' show BleScanResult;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:libdivecomputer/libdivecomputer.dart';
 import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 
+import '../../_helpers/fake_ble_central.dart';
 import '../../_helpers/powersync_test_helper.dart';
 
 /// The mock transport with scripted misbehaviour and call recording.
@@ -469,6 +474,87 @@ void main() {
       final numbers = n2.newDives.map((l) => l.diveNumber);
       expect(numbers, isNot(contains(711)));
       expect(numbers, contains(712));
+    });
+  });
+
+  group('scan', () {
+    late FakeBleCentral central;
+    late ImportNotifier scanner;
+
+    setUp(() async {
+      central = FakeBleCentral();
+      scanner = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: central,
+      );
+      extra.add(scanner);
+      scanner.startScan();
+      // The scan starts after the adapter check.
+      await Future<void>.delayed(Duration.zero);
+    });
+
+    BleScanResult petrel() => const BleScanResult(
+        id: 'AA:01',
+        name: 'Petrel 3',
+        serviceUuids: [shearwaterServiceUuid]);
+
+    test('a Petrel and an OSTC in one scan: one shearwater, one libdc result',
+        () async {
+      central.advertise(petrel());
+      central.advertise(const BleScanResult(id: 'BB:02', name: 'OSTC 4-1234'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(central.scans, [<String>[]], reason: 'one scan, no filter');
+      final found = scanner.discoveredDevices;
+      expect(found.map((d) => d.kind),
+          [ImportDeviceKind.shearwater, ImportDeviceKind.libdc]);
+      expect(found[0].id, 'AA:01');
+      expect(found[0].candidates, isEmpty);
+      expect(found[1].id, 'BB:02');
+      expect(found[1].name, 'OSTC 4-1234');
+      expect(found[1].candidates, isNotEmpty);
+      expect(found[1].candidates.every((c) => !c.isShearwater), isTrue);
+
+      // The same device again is not listed twice.
+      central.advertise(petrel());
+      await Future<void>.delayed(Duration.zero);
+      expect(scanner.discoveredDevices, hasLength(2));
+    });
+
+    test('a Shearwater name never becomes a libdc candidate', () async {
+      // No service UUID in the advertisement, so it is not "shearwater" by
+      // kind either; the name must still not match a libdivecomputer model.
+      central.advertise(const BleScanResult(id: 'CC:03', name: 'Petrel 3'));
+      central.advertise(const BleScanResult(id: 'DD:04', name: 'Perdix 2'));
+      await Future<void>.delayed(Duration.zero);
+
+      for (final d in scanner.discoveredDevices) {
+        expect(d.kind, ImportDeviceKind.unmatched, reason: d.name);
+        expect(d.candidates, isEmpty);
+      }
+      expect(Libdc.matchBle('Petrel 3').any((c) => c.isShearwater), isFalse);
+    });
+
+    test(
+        'an unnamed device is not listed; a named unmatched one is offered '
+        'to the picker', () async {
+      central.advertise(const BleScanResult(id: 'EE:05', name: ''));
+      central.advertise(
+          const BleScanResult(id: 'FF:06', name: 'Some Headphones'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(scanner.discoveredDevices.map((d) => d.id), ['FF:06']);
+      expect(scanner.discoveredDevices.single.kind,
+          ImportDeviceKind.unmatched);
+    });
+
+    test('recordNextDownload defaults to false and can be set', () {
+      expect(scanner.recordNextDownload, isFalse);
+      scanner.recordNextDownload = true;
+      expect(scanner.recordNextDownload, isTrue);
     });
   });
 }
