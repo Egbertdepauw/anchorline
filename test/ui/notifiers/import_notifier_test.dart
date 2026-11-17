@@ -27,6 +27,7 @@ import 'package:ccrlogger/ble/ble_central.dart'
     show BleAdapterState, BleScanResult;
 import 'package:flutter/foundation.dart'
     show TargetPlatform, debugDefaultTargetPlatformOverride;
+import 'package:ccrlogger/sync/cloud/usage_tracker.dart' show UsageTracker;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libdivecomputer/libdivecomputer.dart';
@@ -125,6 +126,36 @@ class _RejectingDao extends DiveDao {
     bool matchSubsurfaceCopies = true,
   }) async =>
       ImportOutcome.rejected;
+}
+
+/// A [DiveDao] that records what it is asked to import.
+class _CapturingDao extends DiveDao {
+  _CapturingDao(super.db, super.ps, super.session);
+
+  final rawBlobs = <Uint8List>[];
+  final parserVersions = <int>[];
+
+  @override
+  Future<ImportOutcome> importDive({
+    required ConvertedDive converted,
+    required Uint8List rawBlob,
+    required int parserVersion,
+    bool matchSubsurfaceCopies = true,
+  }) async {
+    rawBlobs.add(rawBlob);
+    parserVersions.add(parserVersion);
+    return ImportOutcome.inserted;
+  }
+}
+
+/// A [UsageTracker] that records its events instead of sending them.
+class _RecordingTracker implements UsageTracker {
+  _RecordingTracker(this.events);
+  final List<(String, Map<String, Object?>?)> events;
+
+  @override
+  void track(String eventName, [Map<String, Object?>? properties]) =>
+      events.add((eventName, properties));
 }
 
 /// The mock dive [n] as a Subsurface copy: Subsurface's own id and logbook
@@ -814,11 +845,125 @@ void main() {
       expect(n.lastRecordingText, isNull);
     });
 
-    test('cancelling stops the running download', () async {
-      final n = libdcNotifier([info, finished(LibdcStatus.cancelled)]);
-      await n.selectLibdcDevice(scan, descriptor);
+    test('cancelling a running download ends as stopped, not as a success',
+        () async {
+      final old = Uint8List.fromList([9, 9, 9, 9]);
+      await importStateDao.saveLastFingerprint(key, old);
+      final gate = StreamController<LibdcDownloadEvent>();
+      final tracked = <(String, Map<String, Object?>?)>[];
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        usageTracker: _RecordingTracker(tracked),
+        reporter: (e, st, where) {},
+        central: FakeBleCentral(),
+        libdcOpener: (c, r, d) async => LibdcOpened(
+          connection: LibdcBleConnection(_NoLink()),
+          close: () async => closes++,
+          gattSummary: const [],
+        ),
+        libdcStarter: ({
+          required descriptor,
+          required connection,
+          required knownFingerprints,
+          required record,
+        }) =>
+            LibdcRun(
+                events: gate.stream,
+                cancel: () {
+                  cancels++;
+                  // libdivecomputer ends a cancelled run with this status.
+                  gate
+                    ..add(finished(LibdcStatus.cancelled))
+                    ..close();
+                }),
+      );
+      extra.add(n);
+      closes = 0;
+      cancels = 0;
+
+      final flow = n.selectLibdcDevice(scan, descriptor);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      gate.add(info);
+      gate.add(good(711));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(n.state, ImportFlowState.downloading);
+
       n.cancelDownload();
-      expect(cancels, greaterThan(0));
+      await flow;
+
+      expect(cancels, greaterThanOrEqualTo(1));
+      expect(closes, greaterThan(0), reason: 'the connection is closed');
+      expect(n.state, ImportFlowState.error);
+      expect(n.errorMessage, 'Download stopped (cancelled). 1 dives saved.');
+      expect(n.lastRecordingText, contains('the log line'),
+          reason: 'the Share button keeps working');
+      expect(await importStateDao.getLastFingerprint(key), old);
+      expect(tracked.map((t) => t.$1), ['import_failed']);
+      final props = tracked.single.$2!;
+      expect(props['engine'], 'libdc');
+      expect(props['vendor'], 'Divesoft');
+      expect(props['reason'], 'Download stopped (cancelled). 1 dives saved.');
+    });
+
+    test('a second select while connecting starts no second connection',
+        () async {
+      var opens = 0;
+      final gate = Completer<LibdcOpened>();
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: FakeBleCentral(),
+        libdcOpener: (c, r, d) {
+          opens++;
+          return gate.future;
+        },
+      );
+      extra.add(n);
+      n.startScan();
+      final first = n.selectLibdcDevice(scan, descriptor);
+      final second = n.selectLibdcDevice(scan, descriptor);
+      await second;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(opens, 1);
+      gate.completeError(StateError('stop'));
+      await first;
+      expect(opens, 1);
+    });
+
+    test('a libdc dive is stored with the envelope as raw blob and the '
+        'libdc parser version', () async {
+      final rig = await openEquipmentDaoForTest(db);
+      final capturing = _CapturingDao(db, rig.ps, rig.session);
+      final n = ImportNotifier(
+        dao: capturing,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        reporter: (e, st, where) {},
+        central: FakeBleCentral(),
+        libdcOpener: (c, r, d) async => LibdcOpened(
+          connection: LibdcBleConnection(_NoLink()),
+          close: () async {},
+          gattSummary: const [],
+        ),
+        libdcStarter: ({
+          required descriptor,
+          required connection,
+          required knownFingerprints,
+          required record,
+        }) =>
+            LibdcRun(
+                events: Stream.fromIterable(
+                    [info, good(711), finished(LibdcStatus.done)]),
+                cancel: () {}),
+      );
+      extra.add(n);
+      await n.selectLibdcDevice(scan, descriptor);
+      expect(capturing.rawBlobs, [envelope(711).encode()]);
+      expect(capturing.parserVersions, [kLibdcParserVersion]);
     });
   });
 }

@@ -123,6 +123,8 @@ class ImportNotifier extends ChangeNotifier {
   final List<LibdcDescriptor> Function(String name) _matchBle;
   final Map<String, List<LibdcDescriptor>> _matchCache = {};
   int _scanGeneration = 0;
+  int _downloadGeneration = 0;
+  bool _cancelRequested = false;
   final LibdcOpener? _libdcOpener;
   final LibdcStarter? _libdcStarter;
 
@@ -480,14 +482,22 @@ class ImportNotifier extends ChangeNotifier {
   /// is no manifest step: libdivecomputer cannot list dives first. Never
   /// throws; a failure ends in [ImportFlowState.error].
   Future<void> selectLibdcDevice(ImportScanResult r, LibdcDescriptor d) async {
+    // A second tap while connecting or downloading must not start a second
+    // connection.
+    if (_state == ImportFlowState.connecting ||
+        _state == ImportFlowState.downloading) {
+      return;
+    }
     _stopScan();
     _libdc = true;
     _libdcVendor = d.vendor;
     _recordingText = null;
     _gattSummary = const [];
-    await _enableWakelock();
+    _cancelRequested = false;
+    // Leave the scanning state before the first await.
     _state = ImportFlowState.connecting;
     notifyListeners();
+    await _enableWakelock();
 
     try {
       final opened = await (_libdcOpener ?? _openLibdc)(_central, r, d);
@@ -502,8 +512,9 @@ class ImportNotifier extends ChangeNotifier {
       );
       _source = source;
     } catch (e) {
-      // BleException messages are short fixed texts; anything else gets a
-      // generic one, never the raw error.
+      // A BleException carries a short English description meant for the
+      // user (see ble_central.dart). Any other error could hold anything, so
+      // it gets a generic text and never the raw error.
       _errorMessage = 'Connection failed: '
           '${e is BleException ? e.message : 'could not connect'}';
       _state = ImportFlowState.error;
@@ -531,10 +542,24 @@ class ImportNotifier extends ChangeNotifier {
 
   /// Asks a running libdivecomputer download to stop. The dives that have
   /// arrived are kept.
+  ///
+  /// The download then ends in the error state with "Download stopped
+  /// (cancelled). N dives saved.", and counts as failed in the telemetry.
   void cancelDownload() {
     final s = _source;
-    if (s is LibdcDownloadSource) s.cancel();
+    if (s is! LibdcDownloadSource) return;
+    _cancelRequested = true;
+    s.cancel();
   }
+
+  String _libdcStoppedMessage(String reason) =>
+      'Download stopped ($reason). $_downloadedCount dives saved.';
+
+  /// For the log line of a dive that failed to import; libdivecomputer
+  /// downloads have no listing to name it by.
+  String _diveLabel(DiveListing? listing) => listing != null
+      ? '${listing.diveNumber}'
+      : 'number ${_downloadedCount + _failedCount + 1} of this download';
 
   /// Records the connected computer in `dive_computers`. Failures are local
   /// and non-fatal.
@@ -617,9 +642,14 @@ class ImportNotifier extends ChangeNotifier {
   /// Each dive is parsed and committed atomically. Failures on individual
   /// dives are counted in [failedCount] and do not abort the stream.
   ///
-  /// On completion (success or connection error), the newest successfully
-  /// imported fingerprint is saved via [ImportStateDao] for incremental sync
-  /// on the next import session.
+  /// Shearwater: on completion (success or connection error), the newest
+  /// successfully imported fingerprint is saved via [ImportStateDao] for
+  /// incremental sync on the next import session.
+  ///
+  /// libdivecomputer: nothing is saved per dive. At the end of the download
+  /// ([DiveSourceFinished]) the newest dive's fingerprint is saved, and only
+  /// when the download finished cleanly and no dive failed.
+  ///
   /// Downloads [subset] (defaults to every new dive) and persists each one.
   ///
   /// Pass [subset] from the UI when the user has unchecked some entries
@@ -643,6 +673,12 @@ class ImportNotifier extends ChangeNotifier {
     _currentEntry = null;
     notifyListeners();
 
+    // What the rest of this method needs is captured now: a Retry during the
+    // up-to-3 s close below resets the notifier under us.
+    final libdc = _libdc;
+    final source = _source!;
+    final generation = ++_downloadGeneration;
+
     // libdivecomputer learns the computer during the download (see
     // DiveSourceIdentified), so the serial can change from 0.
     var serial = _identity?.serial ?? 0;
@@ -657,7 +693,7 @@ class ImportNotifier extends ChangeNotifier {
     // commits leave plenty of headroom — and a mid-batch BLE drop now keeps
     // every dive that already made it to disk.
     try {
-      await for (final event in _source!.download(selection: toDownload)) {
+      await for (final event in source.download(selection: toDownload)) {
         switch (event) {
           case DiveSourceProgress():
             _currentDiveIndex = event.diveIndex;
@@ -688,11 +724,11 @@ class ImportNotifier extends ChangeNotifier {
                 case ImportOutcome.refreshed:
                   _refreshedCount++;
                   _downloadedCount++;
-                  lastSuccessfulFingerprint = event.fingerprint;
+                  if (!libdc) lastSuccessfulFingerprint = event.fingerprint;
                 case ImportOutcome.inserted:
                 case ImportOutcome.insertedFlagged:
                   _downloadedCount++;
-                  lastSuccessfulFingerprint = event.fingerprint;
+                  if (!libdc) lastSuccessfulFingerprint = event.fingerprint;
                 case ImportOutcome.unchanged:
                   break;
                 case ImportOutcome.rejected:
@@ -704,7 +740,7 @@ class ImportNotifier extends ChangeNotifier {
                   );
               }
             } catch (e, st) {
-              debugPrint('Failed to import dive ${event.listing?.diveNumber}');
+              debugPrint('Failed to import dive ${_diveLabel(event.listing)}');
               _failedCount++;
               _report(e, st, 'download');
             }
@@ -716,7 +752,7 @@ class ImportNotifier extends ChangeNotifier {
 
           case DiveSourceDiveFailed():
             _currentDiveNumber = event.listing?.diveNumber;
-            debugPrint('Failed to import dive ${event.listing?.diveNumber}');
+            debugPrint('Failed to import dive ${_diveLabel(event.listing)}');
             _failedCount++;
             _report(event.error, event.stack, 'download');
             await _applyScrubberEvents(serial);
@@ -735,15 +771,34 @@ class ImportNotifier extends ChangeNotifier {
         }
       }
     } catch (e) {
-      _errorMessage = _libdc
-          ? 'Download stopped (${e is LibdcDownloadFailed ? libdcStopReason(e.status) : 'unexpected error'}). '
-              '$_downloadedCount dives saved.'
+      _errorMessage = libdc
+          ? _libdcStoppedMessage(_cancelRequested
+              ? 'cancelled'
+              : e is LibdcDownloadFailed
+                  ? libdcStopReason(e.status)
+                  : 'unexpected error')
           : 'Connection lost. $_downloadedCount of $_totalToDownload dives downloaded.';
       _state = ImportFlowState.error;
     }
+    // A cancelled download ends quietly, but it is not a completed import:
+    // the diver sees why it stopped and the telemetry counts it as failed.
+    if (libdc && _cancelRequested && _state != ImportFlowState.error) {
+      _errorMessage = _libdcStoppedMessage('cancelled');
+      _state = ImportFlowState.error;
+    }
+
+    final engine = libdc ? 'libdc' : 'shearwater';
+    final vendor = _identity?.vendor ?? _libdcVendor;
+    final identity = _identity;
 
     // Release the link. The source caps the wait (see its close()).
-    await _source!.close();
+    await source.close();
+
+    // A Retry or a new import during that wait owns the notifier now.
+    if (generation != _downloadGeneration || _disposed) {
+      await _disableWakelock();
+      return;
+    }
 
     if (_state != ImportFlowState.error) {
       _state = ImportFlowState.done;
@@ -758,15 +813,15 @@ class ImportNotifier extends ChangeNotifier {
         'dives': _downloadedCount,
         'total': _totalToDownload,
         'mock': useMock,
-        'engine': _libdc ? 'libdc' : 'shearwater',
-        'vendor': _identity?.vendor ?? _libdcVendor,
+        'engine': engine,
+        'vendor': vendor,
       });
     } else if (_state == ImportFlowState.error) {
       _usageTracker?.track('import_failed', {
         'dives': _downloadedCount,
         'total': _totalToDownload,
-        'engine': _libdc ? 'libdc' : 'shearwater',
-        'vendor': _identity?.vendor ?? _libdcVendor,
+        'engine': engine,
+        'vendor': vendor,
         // Truncate to keep telemetry rows small and avoid leaking
         // long-string user context in the rare case the error string
         // includes them.
@@ -779,9 +834,9 @@ class ImportNotifier extends ChangeNotifier {
 
     // Save fingerprint for incremental sync. libdivecomputer saves its own
     // at DiveSourceFinished, and only after a download without failures.
-    if (!_libdc && lastSuccessfulFingerprint != null) {
+    if (!libdc && lastSuccessfulFingerprint != null) {
       await _importStateDao.saveLastFingerprint(
-        _identity!.importStateKey,
+        identity!.importStateKey,
         lastSuccessfulFingerprint,
       );
     }
@@ -886,6 +941,8 @@ class ImportNotifier extends ChangeNotifier {
     _mockDeviceAvailable = false;
     _discoveredDevices.clear();
     _forceFullReimport = false;
+    _downloadGeneration++;
+    _cancelRequested = false;
     _libdc = false;
     _libdcVendor = null;
     _recordingText = null;

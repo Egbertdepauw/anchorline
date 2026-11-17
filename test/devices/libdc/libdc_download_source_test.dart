@@ -381,6 +381,23 @@ void main() {
     expect((events.single as DiveSourceFinished).fingerprintToKeep, isNull);
   });
 
+  test('a cancel while the fingerprints load starts nothing', () async {
+    final gate = Completer<Map<String, Uint8List>>();
+    final h = _Harness(
+      [_info, _finished(LibdcStatus.done)],
+      store: _GatedStore(gate.future),
+    );
+    final done = _collect(h.source);
+    await Future<void>.delayed(Duration.zero);
+    h.source.cancel();
+    gate.complete({});
+    final (events, error) = await done;
+    expect(h.started, 0);
+    expect(error, isNull);
+    expect(events.single, isA<DiveSourceFinished>());
+    expect(h.closes, 0, reason: 'cancel leaves the connection to close()');
+  });
+
   test('the real replay of the Petrel 3 trace: 8 dives, then PROTOCOL where '
       'the trace stops', () async {
     final trace = _petrelTrace();

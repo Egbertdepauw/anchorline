@@ -17,7 +17,9 @@ import 'package:libdivecomputer/libdivecomputer.dart';
 
 import '../../_helpers/fake_ble_central.dart';
 
-// The screen tests only scan; the daos are never touched.
+// The daos are stand-ins: a scan never touches them, and the equipment one
+// answers the two calls a libdivecomputer download makes. Anything else
+// fails loudly.
 class _Dao implements DiveDao {
   @override
   dynamic noSuchMethod(Invocation i) => throw UnimplementedError('$i');
@@ -32,6 +34,24 @@ class _StateDao implements ImportStateDao {
 }
 
 class _EquipDao implements EquipmentDao {
+  @override
+  Future<String> upsertDiveComputer({
+    required String vendor,
+    String? product,
+    required int serial,
+    required int model,
+    int? firmwareVersion,
+    int? family,
+    int? modelCode,
+  }) async =>
+      'dc-1';
+
+  @override
+  Future<void> applyScrubberEvents({
+    required DateTime? scrubberResetAt,
+    required int dcSerial,
+  }) async {}
+
   @override
   dynamic noSuchMethod(Invocation i) => throw UnimplementedError('$i');
 }
@@ -182,7 +202,8 @@ void main() {
         String recordingText,
         List<String> extraHeader,
         Rect? origin
-      })?> runShareFlow(WidgetTester tester, LibdcStatus status) async {
+      })?> runShareFlow(WidgetTester tester, LibdcStatus status,
+      {Object? shareError}) async {
     final n = ImportNotifier(
       dao: _Dao(),
       importStateDao: _StateDao(),
@@ -224,12 +245,14 @@ void main() {
             required recordingText,
             required extraHeader,
             origin,
-          }) async =>
-              shared = (
-                recordingText: recordingText,
-                extraHeader: extraHeader,
-                origin: origin
-              ),
+          }) async {
+            if (shareError != null) throw shareError;
+            shared = (
+              recordingText: recordingText,
+              extraHeader: extraHeader,
+              origin: origin
+            );
+          },
         ),
       ),
     ));
@@ -253,6 +276,16 @@ void main() {
     expect(shared.extraHeader.join('\n'), contains('service A'));
     expect(shared.extraHeader.join('\n'), contains('char B'));
     expect(shared.origin, isNotNull);
+  });
+
+  testWidgets('a failing share shows a message without file contents',
+      (tester) async {
+    await runShareFlow(tester, LibdcStatus.done,
+        shareError: StateError('secret path /tmp/x'));
+    await tester.pump();
+    expect(find.text("Couldn't share the download: StateError"),
+        findsOneWidget);
+    expect(find.textContaining('secret'), findsNothing);
   });
 
   testWidgets('Share this download appears after a failure', (tester) async {

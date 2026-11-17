@@ -96,6 +96,7 @@ class LibdcDownloadSource implements DiveDownloadSource {
   DcIdentity? _identity;
   LibdcRun? _run;
   Future<void>? _closing;
+  bool _cancelRequested = false;
 
   @override
   DcIdentity? get identity => _identity;
@@ -135,8 +136,9 @@ class LibdcDownloadSource implements DiveDownloadSource {
     Uint8List? sinceFingerprint,
   }) async* {
     final known = await _known();
-    if (_closing != null) {
-      // Closed while the saved fingerprints were loading: the link is gone.
+    if (_closing != null || _cancelRequested) {
+      // Closed or cancelled while the saved fingerprints were loading: end
+      // without starting the download (after a close the link is gone).
       yield const DiveSourceFinished();
       return;
     }
@@ -224,6 +226,9 @@ class LibdcDownloadSource implements DiveDownloadSource {
   /// [DiveSourceFinished] for the cancelled status; the connection stays open
   /// until [close].
   void cancel() {
+    // Latched: a cancel before the download has started is honoured when it
+    // would start.
+    _cancelRequested = true;
     try {
       _run?.cancel();
     } catch (e) {

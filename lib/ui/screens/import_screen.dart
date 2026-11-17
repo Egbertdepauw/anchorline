@@ -391,22 +391,31 @@ class _ImportScreenState extends State<ImportScreen> {
       padding: const EdgeInsets.only(top: 12),
       child: Builder(
         builder: (ctx) => OutlinedButton.icon(
-          onPressed: () {
+          onPressed: () async {
+            final messenger = ScaffoldMessenger.maybeOf(ctx);
             final box = ctx.findRenderObject() as RenderBox?;
             final origin =
                 box != null ? box.localToGlobal(Offset.zero) & box.size : null;
-            widget.shareDownloadFn(
-              recordingText: text,
-              extraHeader: [
-                'app: ${BuildInfo.version.isEmpty ? 'dev' : BuildInfo.version}'
-                    '+${BuildInfo.build}',
-                'platform: ${Platform.operatingSystem} '
-                    '${Platform.operatingSystemVersion}',
-                'gatt:',
-                ...n.lastGattSummary.map((l) => '  $l'),
-              ],
-              origin: origin,
-            );
+            try {
+              await widget.shareDownloadFn(
+                recordingText: text,
+                extraHeader: [
+                  'app: ${BuildInfo.version.isEmpty ? 'dev' : BuildInfo.version}'
+                      '+${BuildInfo.build}',
+                  'platform: ${Platform.operatingSystem} '
+                      '${Platform.operatingSystemVersion}',
+                  'gatt:',
+                  ...n.lastGattSummary.map((l) => '  $l'),
+                ],
+                origin: origin,
+              );
+            } catch (e) {
+              // Only the error's type: a message could carry a path or text
+              // from the file.
+              messenger?.showSnackBar(SnackBar(
+                  content: Text(
+                      "Couldn't share the download: ${e.runtimeType}")));
+            }
           },
           icon: const Icon(Icons.ios_share),
           label: const Text('Share this download'),
@@ -540,7 +549,8 @@ class _ImportScreenState extends State<ImportScreen> {
         const SizedBox(height: 24),
         Text(n.errorMessage ?? 'An error occurred',
             style: const TextStyle(fontSize: 16), textAlign: TextAlign.center),
-        if (n.downloadedCount > 0) ...[
+        // The libdivecomputer message already says how many dives were saved.
+        if (n.downloadedCount > 0 && !n.isLibdcDownload) ...[
           const SizedBox(height: 8),
           Text('${n.downloadedCount} dives were imported successfully',
               style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
