@@ -20,4 +20,6 @@ Downloads dives from your Shearwater dive computer over Bluetooth. Dives you alr
 
 - If "No devices found yet..." stays, check that the computer is in upload mode and close by, then scan again. After an error, **Retry** restarts; saved dives stay saved.
 - With many dives, import in batches: Petrel log sessions can time out around 60 seconds.
+- If you already imported your logbook from Subsurface Cloud, downloading the same dive from the computer does not add a second copy. The Subsurface copy is updated with the downloaded data and keeps its notes, buddies, cylinders and start time. In the list of dives to import, copies updated by an earlier download are not offered again. After a download that updated dives, **View Dives** returns the Dives tab to its list.
+- When the app improves how it reads Shearwater logs, it re-reads your stored dives from their saved raw data in the background after launch. Your notes and cylinders are kept. On a large log the sync indicator may show "Syncing…" for a few minutes.
 - Recent imports per computer are on its page: see [Dive Computers](/manual/dive-computers). For an existing Subsurface logbook, use **Import from Subsurface** in Settings: see [Sync](/manual/settings-sync).
