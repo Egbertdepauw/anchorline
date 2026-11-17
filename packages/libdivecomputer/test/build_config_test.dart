@@ -174,10 +174,13 @@ al_other(void) {}
       for (final f in Directory('native').listSync())
         if (f is File && f.path.endsWith('.c')) f.readAsStringSync(),
     ];
-    final bound = RegExp(r'external int (al_\w+)\(|external \w+ (al_\w+)\(')
+    // Any return type: `external int al_x(`, `external void al_x(` and
+    // `external ffi.Pointer<al_link_t> al_x(` alike.
+    final bound = RegExp(r'^external .*?\b(al_\w+)\(', multiLine: true)
         .allMatches(File('lib/src/bindings.g.dart').readAsStringSync())
-        .map((m) => m.group(1) ?? m.group(2)!)
+        .map((m) => m.group(1)!)
         .toSet();
+    expect(bound, contains('al_link_new_live'));
     expect(exportedAlFunctions(sources).toSet(), bound);
   });
 
