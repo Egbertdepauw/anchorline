@@ -31,6 +31,30 @@ class LibdcDescriptor {
   /// libdivecomputer.
   bool get isShearwater => vendor == 'Shearwater';
 
+  /// The download asks for a PIN (`DC_IOCTL_BLE_GET_PINCODE`), which the app
+  /// can't take yet: the Pelagic i330R family, that is the Aqualung i330R and
+  /// the Apeks DSX. They stay unlisted until a PIN prompt exists.
+  bool get needsPinCode =>
+      family == c.dc_family_t.DC_FAMILY_PELAGIC_I330R;
+
+  /// Whether the app offers this model for a Bluetooth download: a BLE model
+  /// that is not a Shearwater and needs no PIN.
+  bool get offeredOverBle => supportsBle && !isShearwater && !needsPinCode;
+
+  /// Whether [name] is this model's own advertised name. Only answered for
+  /// [needsPinCode] models: upstream's `dc_match_oceanic` gives a Pelagic
+  /// computer a BLE name of the model number's two ASCII letters followed by
+  /// digits (0x4744 is "GD"), and accepts any family member's name for every
+  /// Pelagic model.
+  bool _advertisesAs(String name) {
+    if (!needsPinCode || name.length < 3) return false;
+    final prefix =
+        String.fromCharCodes([(model >> 8) & 0xFF, model & 0xFF]);
+    return name.startsWith(prefix) && _digit.hasMatch(name[2]);
+  }
+
+  static final _digit = RegExp(r'[0-9]');
+
   @override
   String toString() => '$vendor $product (family $family, model $model)';
 }
@@ -51,12 +75,21 @@ abstract final class Libdc {
   static List<LibdcDescriptor> descriptors() =>
       _all ??= List.unmodifiable(_enumerate(null));
 
-  /// The BLE-capable, non-Shearwater models whose advertised name
-  /// libdivecomputer recognises. A blank name matches nothing:
-  /// `dc_descriptor_filter` matches everything when given no name.
+  /// The models the app offers over Bluetooth ([LibdcDescriptor.offeredOverBle])
+  /// whose advertised name libdivecomputer recognises. A blank name matches
+  /// nothing: `dc_descriptor_filter` matches everything when given no name.
+  ///
+  /// A computer that needs a PIN matches nothing either. Upstream's name
+  /// filter also accepts its name for the other Pelagic models, so leaving
+  /// out only the PIN models would still list it, under the wrong family.
   static List<LibdcDescriptor> matchBle(String name) {
     if (name.trim().isEmpty) return const [];
-    return _enumerate(name);
+    final matches = _enumerate(name);
+    if (matches.any((d) => d._advertisesAs(name))) return const [];
+    return [
+      for (final d in matches)
+        if (!d.needsPinCode) d,
+    ];
   }
 
   /// Whether the build contains [family] (a `dc_family_t` value). False only
@@ -81,8 +114,9 @@ abstract final class Libdc {
 
   /// Walks the descriptor iterator. With a [bleName], keeps only the
   /// non-Shearwater BLE models whose family is present and that
-  /// `dc_descriptor_filter` accepts for that name; without one, every model of
-  /// a present family.
+  /// `dc_descriptor_filter` accepts for that name, PIN models included so
+  /// [matchBle] can recognise one; without one, every model of a present
+  /// family.
   static List<LibdcDescriptor> _enumerate(String? bleName) {
     final result = <LibdcDescriptor>[];
     return using((arena) {
