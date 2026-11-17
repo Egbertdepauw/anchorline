@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:libdivecomputer/libdivecomputer.dart';
 
 import '../../../build_info.dart';
 import '../../components/hero_stat.dart';
@@ -17,6 +18,7 @@ class AboutTab extends StatelessWidget {
     this.buildDate = BuildInfo.buildDate,
     this.channel = BuildInfo.channel,
     this.hasLicence = false,
+    this.libdcVersion,
     this.onLongPressLogo,
     this.onShareBleLog,
   }) : buildNumber = build;
@@ -32,6 +34,10 @@ class AboutTab extends StatelessWidget {
 
   /// False until the repository has a LICENSE file.
   final bool hasLicence;
+
+  /// Shown as "libdivecomputer VERSION". Null reads it from the native
+  /// library, so on a real device the line proves the library loaded there.
+  final String? libdcVersion;
 
   /// Long-press on the logo; opens Widgetbook.
   final VoidCallback? onLongPressLogo;
@@ -110,6 +116,10 @@ class AboutTab extends StatelessWidget {
             SettingRow(
               title: 'Channel',
               control: _Value(channelLabel(channel)),
+            ),
+            SettingRow(
+              key: const ValueKey('about-libdivecomputer'),
+              title: 'libdivecomputer ${libdcVersion ?? Libdc.version}',
             ),
             if (hasLicence)
               const SettingRow(
