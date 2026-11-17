@@ -22,6 +22,7 @@ headers:
     - native/include/libdivecomputer/version.h
     - third_party/libdivecomputer/include/libdivecomputer/common.h
     - native/anchorline_families.h
+    - native/anchorline_io.h
   include-directives:
     - 'third_party/libdivecomputer/include/libdivecomputer/*.h'
     - 'native/include/libdivecomputer/version.h'
