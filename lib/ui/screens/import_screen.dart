@@ -40,8 +40,8 @@ class ImportScreen extends StatefulWidget {
   }) shareFitDiveFn;
 
   /// Pick FIT files / a folder. Seams for tests.
-  final Future<List<FitInput>?> Function() pickFilesFn;
-  final Future<List<FitInput>?> Function() pickFolderFn;
+  final Future<FitPick?> Function() pickFilesFn;
+  final Future<FitPick?> Function() pickFolderFn;
 
   const ImportScreen({
     super.key,
@@ -49,9 +49,11 @@ class ImportScreen extends StatefulWidget {
     required this.onViewDives,
     this.shareDownloadFn = shareDownload,
     this.shareFitDiveFn = _shareFit,
-    this.pickFilesFn = pickFitFiles,
+    this.pickFilesFn = _pickFiles,
     this.pickFolderFn = pickFitFolder,
   });
+
+  static Future<FitPick?> _pickFiles() => pickFitFiles();
 
   static Future<String?> _shareFit({
     required String diveId,
@@ -189,19 +191,20 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   Future<void> _pickAndImportFit(
-      ImportNotifier n, Future<List<FitInput>?> Function() pick) async {
-    final List<FitInput>? inputs;
+      ImportNotifier n, Future<FitPick?> Function() pick) async {
+    final FitPick? picked;
     try {
-      inputs = await pick();
+      picked = await pick();
     } catch (e) {
-      // Only a type and the free-space case: a message could name a file.
-      n.failFitPick(isNoSpaceError(e)
-          ? fitNoSpaceMessage()
-          : "Couldn't open the files you picked.");
+      n.failFitPick(fitPickFailureMessage(e));
       return;
     }
-    if (inputs == null) return;
-    await n.importFitFiles(inputs);
+    if (picked == null) return;
+    if (picked.partial && mounted) {
+      ScaffoldMessenger.maybeOf(context)
+          ?.showSnackBar(const SnackBar(content: Text(kFitCopyFailedMessage)));
+    }
+    await n.importFitFiles(picked.inputs);
   }
 
   Widget _buildScanning(ImportNotifier n, ThemeData theme) {
@@ -580,6 +583,14 @@ class _ImportScreenState extends State<ImportScreen> {
                   ? 'Import ${diveCountLabel(selected.length)}'
                   : 'Import ${selected.length} selected'),
         ),
+        // The way out: the files are no longer wanted (wrong export, or every
+        // dive is already stored).
+        if (n.isFitImport)
+          TextButton(
+            key: const ValueKey('fit-back'),
+            onPressed: n.reset,
+            child: const Text('Back'),
+          ),
       ],
     );
   }
@@ -717,7 +728,8 @@ class _ImportScreenState extends State<ImportScreen> {
               entry.startTimestamp * 1000,
               isUtc: true)
           .toLocal();
-      subtitle = '#${entry.diveNumber}  ·  '
+      // A dive without a number (FIT files) shows only its date.
+      subtitle = '${entry.diveNumber > 0 ? '#${entry.diveNumber}  ·  ' : ''}'
           '${DateFormat('yyyy-MM-dd HH:mm').format(dt)}';
     }
 

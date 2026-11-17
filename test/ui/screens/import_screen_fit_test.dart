@@ -127,8 +127,29 @@ class _Source implements FitDownloadSource {
     yield const DiveSourceFinished();
   }
 
+  int closed = 0;
+
   @override
-  Future<void> close() async {}
+  Future<void> close() async => closed++;
+}
+
+/// Pauses after the first progress event, as a long import does.
+class _SlowSource extends _Source {
+  _SlowSource(super.listings);
+  final gate = Completer<void>();
+
+  @override
+  Stream<DiveSourceEvent> download(
+      {List<DiveListing>? selection, Uint8List? sinceFingerprint}) async* {
+    yield DiveSourceProgress(
+      diveIndex: 0,
+      totalDives: 2,
+      diveBytes: 1,
+      listing: selection!.first,
+    );
+    await gate.future;
+    yield const DiveSourceFinished();
+  }
 }
 
 DiveListing _l(String id, int start, {int number = 0}) => DiveListing(
@@ -155,6 +176,7 @@ void main() {
       importStateDao: _States(),
       equipmentDao: _Equip(),
       tempDir: () async => Directory.systemTemp,
+      pickedCopyRoots: () async => [],
       fitSourceFactory: ({required inputs, required workDir, required onProgress}) =>
           _Source([_l('stored', 1000), _l('over', 5000), _l('new', 9000)]),
     );
@@ -162,7 +184,7 @@ void main() {
   tearDown(() => n.dispose());
 
   Future<void> show(WidgetTester tester,
-      {Future<List<FitInput>?> Function()? pick}) async {
+      {Future<FitPick?> Function()? pick}) async {
     tester.view.physicalSize = const Size(900, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -172,7 +194,8 @@ void main() {
         body: ImportScreen(
           notifier: n,
           onViewDives: () {},
-          pickFilesFn: pick ?? () async => [const FitFileInput('/x/a.fit')],
+          pickFilesFn:
+              pick ?? () async => const FitPick([FitFileInput('/x/a.fit')]),
           shareFitDiveFn: ({
             required diveId,
             required vendor,
@@ -226,12 +249,64 @@ void main() {
     expect(find.text('Import 2 dives'), findsOneWidget);
   });
 
+  testWidgets('Back on the manifest closes the source and returns to idle',
+      (tester) async {
+    final src = _Source([_l('stored', 1000)]);
+    n = ImportNotifier(
+      dao: _Dao(),
+      importStateDao: _States(),
+      equipmentDao: _Equip(),
+      tempDir: () async => Directory.systemTemp,
+      pickedCopyRoots: () async => [],
+      fitSourceFactory: ({required inputs, required workDir, required onProgress}) => src,
+    );
+    await show(tester);
+    await tester.tap(find.text('Import Garmin files\u2026'));
+    await tester.pumpAndSettle();
+    // Every dive is already stored: Import is disabled, Back is the way out.
+    expect(find.text('0 of 1 selected'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('fit-back')));
+    await tester.pumpAndSettle();
+    expect(n.state, ImportFlowState.idle);
+    expect(src.closed, 1);
+    expect(find.text('Import Garmin files\u2026'), findsOneWidget);
+  });
+
+  testWidgets('the download header is 1-based from a 0-based index and a dive '
+      'with no number shows no #0', (tester) async {
+    final src = _SlowSource([_l('new', 9000), _l('new2', 9500)]);
+    n = ImportNotifier(
+      dao: _Dao(),
+      importStateDao: _States(),
+      equipmentDao: _Equip(),
+      tempDir: () async => Directory.systemTemp,
+      pickedCopyRoots: () async => [],
+      fitSourceFactory: ({required inputs, required workDir, required onProgress}) => src,
+    );
+    await show(tester);
+    await tester.tap(find.text('Import Garmin files\u2026'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Import all'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.text('Downloading dive 1 of 2'), findsOneWidget);
+    expect(find.textContaining('#0'), findsNothing);
+    src.gate.complete();
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(n.state, ImportFlowState.done);
+  });
+
   testWidgets('reading shows the file counts as text only', (tester) async {
     n = ImportNotifier(
       dao: _Dao(),
       importStateDao: _States(),
       equipmentDao: _Equip(),
       tempDir: () async => Directory.systemTemp,
+      pickedCopyRoots: () async => [],
       fitSourceFactory: ({required inputs, required workDir, required onProgress}) {
         onProgress(FitScanCounts(
             filesRead: 3,

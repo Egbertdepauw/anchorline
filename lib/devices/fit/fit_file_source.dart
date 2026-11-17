@@ -564,7 +564,8 @@ class FitFileSource implements FitDownloadSource {
         }
         index++;
         yield DiveSourceProgress(
-          diveIndex: index,
+          // 0-based, like the other engines: index counts this dive already.
+          diveIndex: index - 1,
           totalDives: total,
           diveBytes: bytes?.length ?? 0,
           diveTotalBytes: bytes?.length,

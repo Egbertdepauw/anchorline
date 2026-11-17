@@ -248,6 +248,19 @@ void main() {
     await src.close();
   });
 
+  test('progress events count dives from 0, like the other engines',
+      () async {
+    final a = put('a.fit', diveFile(created: _start));
+    final b = put('b.fit', diveFile(created: _start + 100000));
+    final src = sourceOf([FitFileInput(a.path), FitFileInput(b.path)]);
+    final list = await src.listDives();
+    final events = await src.download(selection: list).toList();
+    final progress = events.whereType<DiveSourceProgress>().toList();
+    expect([for (final e in progress) e.diveIndex], [0, 1]);
+    expect(progress.every((e) => e.totalDives == 2), isTrue);
+    await src.close();
+  });
+
   test('a session without samples is a failed dive', () async {
     final f = put('a.fit', diveFile(withRecords: false));
     final src = sourceOf([FitFileInput(f.path)]);

@@ -5,22 +5,38 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart' show PlatformException;
+import 'package:path/path.dart' as p;
 
 import '../../devices/fit/fit_inputs.dart';
+
+/// What a pick returned. [partial] is true when the picker dropped some of
+/// the files (Android could not copy them into the cache).
+class FitPick {
+  const FitPick(this.inputs, {this.partial = false});
+
+  final List<FitInput> inputs;
+  final bool partial;
+}
 
 /// Whether the app runs on a desktop, where a whole folder can be picked.
 bool get fitFolderPickIsOffered =>
     Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
-/// Whether [e] says the disk is full. file_picker copies a picked file into
-/// the cache on Android and iOS; when that fails for lack of space the
-/// platform reports ENOSPC or "No space left".
-bool isNoSpaceError(Object e) {
+/// The text for files the phone could not copy for reading. file_picker on
+/// Android swallows the copy's IOException, so the cause is only guessed.
+const String kFitCopyFailedMessage =
+    "Some files couldn't be copied for reading. This usually means the phone "
+    'is short of free space.';
+
+/// Whether [e] says the disk is full, with certainty. Error number 28 is
+/// ENOSPC on Linux, macOS and Android; 39 and 112 are Windows disk-full codes
+/// (on Linux 39 is ENOTEMPTY, which is no space problem). [windows] is a test
+/// seam.
+bool isNoSpaceError(Object e, {bool? windows}) {
+  final win = windows ?? Platform.isWindows;
   if (e is FileSystemException) {
     final code = e.osError?.errorCode;
-    // 28 is ENOSPC on Linux, macOS and Android; 112 and 39 are the Windows
-    // disk-full codes.
-    if (code == 28 || code == 112 || code == 39) return true;
+    if (win ? (code == 39 || code == 112) : code == 28) return true;
   }
   final text = e is PlatformException
       ? '${e.code} ${e.message} ${e.details}'
@@ -40,33 +56,81 @@ String fitSizeLabel(int bytes) {
   return '${(bytes / 1024).ceil()} KB';
 }
 
-/// The message for a file that could not be copied for lack of space. The
-/// size is added when it is known.
+/// The message for a file that could not be copied for lack of space,
+/// confirmed. The size is added when it is known.
 String fitNoSpaceMessage([int? bytes]) =>
     'Not enough free space to read this file.'
     '${bytes == null ? '' : ' It needs about ${fitSizeLabel(bytes)}.'}';
 
-/// Lets the user pick several `.fit` and `.zip` files. Null when cancelled.
-/// Android's picker cannot filter an extension it does not know (`.fit`), so
-/// there it offers every file and the import sorts them out.
-Future<List<FitInput>?> pickFitFiles() async {
-  final any = Platform.isAndroid;
-  final result = await FilePicker.pickFiles(
-    allowMultiple: true,
-    type: any ? FileType.any : FileType.custom,
-    allowedExtensions: any ? null : const ['fit', 'zip'],
-  );
+/// The text for a pick that threw [e]. Only fixed texts: a message could name
+/// a file. [android] is a test seam.
+String fitPickFailureMessage(Object e, {bool? android, bool? windows}) {
+  if (isNoSpaceError(e, windows: windows)) return fitNoSpaceMessage();
+  // file_picker on Android reports 'unknown_path' when every file failed to
+  // copy into the cache.
+  if ((android ?? Platform.isAndroid) &&
+      e is PlatformException &&
+      e.code == 'unknown_path') {
+    return kFitCopyFailedMessage;
+  }
+  return "Couldn't open the files you picked.";
+}
+
+/// The inputs of [result]. A file with no path is one the picker dropped.
+FitPick? fitPickFromResult(FilePickerResult? result) {
   if (result == null) return null;
   final inputs = [
     for (final f in result.files)
       if (f.path != null) FitFileInput(f.path!),
   ];
-  return inputs.isEmpty ? null : inputs;
+  if (inputs.isEmpty) return null;
+  return FitPick(inputs, partial: inputs.length < result.files.length);
+}
+
+/// Lets the user pick several `.fit` and `.zip` files. Null when cancelled.
+/// Android's picker cannot filter an extension it does not know (`.fit`), so
+/// there it offers every file and the import sorts them out. [pick] is a test
+/// seam.
+Future<FitPick?> pickFitFiles({
+  Future<FilePickerResult?> Function(bool any)? pick,
+}) async {
+  final any = Platform.isAndroid;
+  final result = await (pick ??
+      (bool any) => FilePicker.pickFiles(
+            allowMultiple: true,
+            type: any ? FileType.any : FileType.custom,
+            allowedExtensions: any ? null : const ['fit', 'zip'],
+          ))(any);
+  return fitPickFromResult(result);
 }
 
 /// Lets the user pick a folder (desktop). Null when cancelled.
-Future<List<FitInput>?> pickFitFolder() async {
+Future<FitPick?> pickFitFolder() async {
   final path = await FilePicker.getDirectoryPath();
   if (path == null) return null;
-  return [FitFolderInput(path)];
+  return FitPick([FitFolderInput(path)]);
+}
+
+/// Deletes the picker's cache copies in [inputs]: exactly the picked files,
+/// and only those inside one of [roots] (the app's cache and temp folders).
+/// A picked folder and any file elsewhere stay. Never throws.
+Future<void> deletePickedCopies(
+  List<FitInput> inputs,
+  List<Directory> roots, {
+  Future<void> Function(String path)? delete,
+}) async {
+  for (final input in inputs) {
+    if (input is! FitFileInput) continue;
+    final path = p.normalize(p.absolute(input.path));
+    final inside = roots.any((r) => p.isWithin(p.normalize(p.absolute(r.path)), path));
+    if (!inside) continue;
+    try {
+      if (delete != null) {
+        await delete(path);
+      } else {
+        final f = File(path);
+        if (await f.exists()) await f.delete();
+      }
+    } catch (_) {}
+  }
 }

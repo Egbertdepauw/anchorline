@@ -22,6 +22,7 @@ class _Dao implements DiveDao {
   final Set<String> downloaded = {};
   final Map<String, String> overlaps = {};
   final imported = <(ConvertedDive, Uint8List, int)>[];
+  ImportOutcome outcome = ImportOutcome.inserted;
   final alreadyCalls = <({String vendor, int serial})>[];
 
   @override
@@ -58,7 +59,7 @@ class _Dao implements DiveDao {
     bool matchSubsurfaceCopies = true,
   }) async {
     imported.add((converted, rawBlob, parserVersion));
-    return ImportOutcome.inserted;
+    return outcome;
   }
 
   @override
@@ -207,6 +208,7 @@ void main() {
       reporter: (e, st, where) => reports.add((e, where)),
       tempDir: () async => temp,
       now: () => DateTime(2026, 11, 17, 9, 5, 7),
+      pickedCopyRoots: () async => [temp],
       fitSourceFactory: ({required inputs, required workDir, required onProgress}) {
         s.onProgress = onProgress;
         lastWorkDir = workDir;
@@ -352,6 +354,87 @@ void main() {
 
     gate.complete();
     await f;
+    expect(n.state, ImportFlowState.idle);
+    expect(n.newDives, isEmpty);
+  });
+
+  test('a failure while reading, and a failed pick, report import_failed',
+      () async {
+    build(_FakeSource([], failList: const FormatException('secret.fit')));
+    await n.importFitFiles(inputs);
+    final e = tracker.events.single;
+    expect(e.$1, 'import_failed');
+    expect(e.$2!['engine'], 'fit');
+    expect(e.$2!['reason'], 'Could not read these files.');
+
+    n.failFitPick('Some message');
+    expect(tracker.events.last.$1, 'import_failed');
+    expect(tracker.events.last.$2!['engine'], 'fit');
+    expect(tracker.events, hasLength(2));
+  });
+
+  test('a dive that refreshed a stored copy is no share candidate', () async {
+    dao.outcome = ImportOutcome.refreshed;
+    build(_FakeSource([dive('a', 1000)]));
+    await n.importFitFiles(inputs);
+    await n.downloadAll();
+
+    expect(n.downloadedCount, 1);
+    expect(n.fitShareDive, isNull);
+    // The model still counts as untested.
+    expect(n.untestedModels, ['Garmin Descent Mk3']);
+  });
+
+  test("the picker's cache copies are deleted after the import, and only "
+      'those inside the cache', () async {
+    final copy = File('${temp.path}/file_picker/a.fit')
+      ..createSync(recursive: true);
+    final elsewhere = Directory.systemTemp.createTempSync('fit_keep');
+    addTearDown(() => elsewhere.deleteSync(recursive: true));
+    final kept = File('${elsewhere.path}/b.fit')..writeAsBytesSync([1]);
+    build(_FakeSource([dive('a', 1000)]));
+    await n.importFitFiles([FitFileInput(copy.path), FitFileInput(kept.path)]);
+    expect(copy.existsSync(), isTrue);
+    await n.downloadAll();
+
+    expect(copy.existsSync(), isFalse);
+    expect(kept.existsSync(), isTrue);
+  });
+
+  test('a reset deletes the cache copies too', () async {
+    final copy = File('${temp.path}/file_picker/a.fit')
+      ..createSync(recursive: true);
+    build(_FakeSource([dive('a', 1000)]));
+    await n.importFitFiles([FitFileInput(copy.path)]);
+    n.reset();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(copy.existsSync(), isFalse);
+  });
+
+  test('a cancel before the work folder is known stops the scan and leaves '
+      'no source behind', () async {
+    final gate = Completer<Directory>();
+    var made = 0;
+    final s = _FakeSource([dive('a', 1000)]);
+    n = ImportNotifier(
+      dao: dao,
+      importStateDao: states,
+      equipmentDao: _Equip(),
+      reporter: (e, st, where) {},
+      tempDir: () => gate.future,
+      pickedCopyRoots: () async => [temp],
+      fitSourceFactory: ({required inputs, required workDir, required onProgress}) {
+        made++;
+        return s;
+      },
+    );
+    final f = n.importFitFiles(inputs);
+    await Future<void>.delayed(Duration.zero);
+    n.cancelFitImport();
+    gate.complete(temp);
+    await f;
+
+    expect(made, 0);
     expect(n.state, ImportFlowState.idle);
     expect(n.newDives, isEmpty);
   });
