@@ -237,11 +237,18 @@ FitDiveFile readFitDives(Uint8List bytes) {
       }
       return null;
     }
-    // Position: the first session message after it, else the last one.
-    for (final s in spans) {
-      if (s.messagePos > pos) return s.index;
+    // Position: the first session message after it, else the last one,
+    // among ALL sessions; a message owned by a non-dive session is dropped.
+    if (sessionPos.isEmpty) return null;
+    var owner = sessionPos.length - 1;
+    for (var k = 0; k < sessionPos.length; k++) {
+      if (sessionPos[k] > pos) {
+        owner = k;
+        break;
+      }
     }
-    return spans.isEmpty ? null : spans.last.index;
+    final at = indexOfSpan.indexOf(owner);
+    return at < 0 ? null : at;
   }
 
   for (var p = 0; p < msgs.length; p++) {

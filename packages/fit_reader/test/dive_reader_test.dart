@@ -193,6 +193,26 @@ void main() {
       expect(s.single.records.single.timestamp, 300);
     });
 
+    test('untimed messages before a skipped apnea session do not leak '
+        'into the next dive', () {
+      final b = buildFit([
+        _fileId(),
+        _m(258, {2: (_u8, 99)}),
+        _m(259, {254: (_u16, 0), 0: (_u8, 0), 1: (_u8, 21)}),
+        _session(100, 200, sub: 56),
+        _m(258, {2: (_u8, 40)}),
+        _m(259, {254: (_u16, 0), 0: (_u8, 0), 1: (_u8, 32)}),
+        _session(300, 400, sub: 63),
+      ]);
+      final s = readFitDives(b).sessions.single;
+      expect(s.fileSessionIndex, 1);
+      expect(s.diveSettings?.intField(FitDiveSettings.gfLow), 40);
+      expect(
+        [for (final g in s.diveGases) g.intField(FitDiveGas.oxygen)],
+        [32],
+      );
+    });
+
     test('the local offset comes from the activity; without it from '
         'device settings; else null', () {
       FitMessageSpec activity() =>
