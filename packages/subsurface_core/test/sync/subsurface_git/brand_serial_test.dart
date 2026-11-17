@@ -28,6 +28,20 @@ void main() {
     expect(serial(0x1234567, vendor: null), 0x1234567);
   });
 
+  test('a "Perdix 2" copy (vendor Perdix, product 2) keeps its stored serial',
+      () {
+    expect(
+        brandSerialOf(
+            storedSerial: 0xB89641E4,
+            vendor: 'Perdix',
+            product: '2',
+            parserVersion: kSubsurfaceImportedParserVersion,
+            dcFamily: null),
+        0xB89641E4);
+    expect(isShearwaterByNames('Perdix', '2', null), isTrue);
+    expect(isShearwaterByNames('Divesoft', 'Liberty', null), isFalse);
+  });
+
   test('a download (version >= 0) is unchanged', () {
     expect(serial(0x1234567, parserVersion: 1), 0x1234567);
     expect(serial(0x1234567, parserVersion: 0), 0x1234567);

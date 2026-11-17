@@ -14,10 +14,10 @@ import 'package:subsurface_core/sync/subsurface_git/brand_serial.dart';
 import '../../data/db/database.dart';
 
 /// True for a dive from a Shearwater computer: no libdivecomputer family and
-/// no vendor, or Shearwater as the vendor.
+/// no vendor, Shearwater as the vendor, or names that read as a Shearwater
+/// model (a vendor-less Subsurface copy such as "Perdix 2").
 bool isShearwaterDive(Dive d) =>
-    d.dcFamily == null &&
-    (d.dcVendor == null || d.dcVendor == kShearwaterVendor);
+    isShearwaterByNames(d.dcVendor, d.dcProduct, d.dcFamily);
 
 /// "Divesoft Liberty" for another brand; the existing Shearwater model name
 /// ("Shearwater Petrel 3") for a Shearwater dive.
@@ -44,6 +44,7 @@ String diveComputerSerialText(Dive d) {
   return brandSerialOf(
     storedSerial: d.dcSerial,
     vendor: d.dcVendor,
+    product: d.dcProduct,
     parserVersion: d.parserVersion,
     dcFamily: d.dcFamily,
   ).toString();

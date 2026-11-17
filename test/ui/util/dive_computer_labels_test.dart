@@ -62,6 +62,19 @@ void main() {
     expect(diveComputerSerialText(v), 'b89641e4');
   });
 
+  test(
+      'a "Perdix 2" copy (vendor Perdix, product 2) shows its serial as 8 hex '
+      'digits and the Shearwater name', () {
+    final d = _dive(
+        model: ShearwaterModel.perdix2.index,
+        vendor: 'Perdix',
+        product: '2',
+        parserVersion: kSubsurfaceImportedParserVersion);
+    expect(diveComputerSerialText(d), 'b89641e4');
+    expect(diveComputerName(d), 'Shearwater Perdix 2');
+    expect(diveComputerBadgeName(d), 'perdix2');
+  });
+
   test('a short Shearwater serial is padded to 8 digits as before', () {
     expect(diveComputerSerialText(_dive(serial: 0x1234)), '00001234');
   });

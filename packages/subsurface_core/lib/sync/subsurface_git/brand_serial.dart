@@ -15,13 +15,26 @@ import 'subsurface_model.dart';
 int brandSerialOf({
   required int storedSerial,
   required String? vendor,
+  String? product,
   required int parserVersion,
   required int? dcFamily,
 }) {
-  final legacyHexCopy = vendor != null &&
-      vendor != kShearwaterVendor &&
+  final legacyHexCopy = !isShearwaterByNames(vendor, product, dcFamily) &&
+      vendor != null &&
       dcFamily == null &&
       parserVersion == kSubsurfaceImportedParserVersion;
   if (!legacyHexCopy) return storedSerial;
   return int.tryParse(storedSerial.toRadixString(16)) ?? storedSerial;
+}
+
+/// Whether a dive is a Shearwater dive by its stored names. No
+/// libdivecomputer family, and either no vendor or Shearwater, or a vendor
+/// and product that together name a Shearwater model: a vendor-less
+/// Subsurface copy such as "Perdix 2" is read as vendor "Perdix", product
+/// "2". Shares its rule with the Subsurface writer's `isOtherBrand`.
+bool isShearwaterByNames(String? vendor, String? product, int? dcFamily) {
+  if (dcFamily != null) return false;
+  if (vendor == null || vendor == kShearwaterVendor) return true;
+  return shearwaterModelFromProduct('$vendor ${product ?? ''}'.trim()) !=
+      ShearwaterModel.unknown;
 }
