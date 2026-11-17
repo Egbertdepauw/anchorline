@@ -6,8 +6,6 @@
 library;
 
 import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 import 'package:libdivecomputer/libdivecomputer.dart';
 import 'package:subsurface_core/shearwater/parser/hardware.dart';

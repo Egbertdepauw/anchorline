@@ -7,7 +7,6 @@ import 'package:ccrlogger/devices/fingerprint_store.dart';
 import 'package:ccrlogger/devices/libdc/libdc_download_source.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libdivecomputer/libdivecomputer.dart';
-import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import 'package:subsurface_core/subsurface_core.dart';
 
 const _family = 0x130000;
