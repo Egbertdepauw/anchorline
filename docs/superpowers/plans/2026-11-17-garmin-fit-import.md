@@ -24,7 +24,7 @@
   - the real files.
 
   `packages/fit_reader` code is Anchorline's own (GPL-2.0-only, like the app).
-- **Dive id:** `sha256('fit:<manufacturer>:<serial>:<time created>')`, truncated to 32 hex characters, with the same form as `generateDiveId`. All three are decimal integers taken raw from the file id message. `<time created>` is the raw FIT value (seconds since 1989-12-31 00:00 UTC), not Unix time. A file's second and later dive sessions append `:<n>` (n = 1, 2, …). The id is frozen at first import.
+- **Dive id:** `sha256('fit:<manufacturer>:<serial>:<time created>')`, truncated to 32 hex characters, with the same form as `generateDiveId`. All three are decimal integers taken raw from the file id message. `<time created>` is the raw FIT value (seconds since 1989-12-31 00:00 UTC), not Unix time. `<n>` is the session message's 0-based position among all session messages in the file (apnea and other sports included); when n ≥ 1, the id appends `:<n>`. A file without time created uses `start<raw session start>` in its place (`fit:<manufacturer>:<serial>:start<seconds>`), and the fingerprint uses the raw session start. The id is frozen at first import.
 - **`dc_fingerprint`:** lower-case hex of the serial as `u32` big-endian, followed by the time created as `u32` big-endian (16 hex characters). A session `n ≥ 1` adds one `u8` with n. For example, serial 1 and time 2 give `"0000000100000002"`.
 - **Brand columns:**
   - `dc_family` = `kFitDcFamily` = `-1`.
@@ -521,6 +521,7 @@
   - **`NOTICE.md`:** a "Garmin and FIT" entry. It names the fixtures' provenance (Subsurface, GPL-2.0, anonymised) and says the trademarks Garmin, Descent and FIT are used only to name the files.
   - **`kCheckedFitModels`:** `{'Descent Mk1': 'garmin_mk1_ccr_2023-08-17.fit'}`, added only after Egbert's check 1 passes.
 
+- [ ] **Step 0: Before the first private fixture (a tester's file) is committed, harden `tool/anonymise_fit.dart`:** sweep position values the way serials are swept; zero strings in every message except an allowlist (product names, field descriptions); refuse files with developer fields or repeated field numbers unless a flag is given; decide what to do with heart rate. Until then, only files that are already public may be committed.
 - [ ] **Step 1: Make the document edits.** Edit by hand; don't run `dart format`.
 - [ ] **Step 2: After Egbert's check 1, add the Mk1 to `kCheckedFitModels`, then run `flutter test test/devices/fit`.** Expected: PASS.
 - [ ] **Step 3: Commit and open PR 4.** `git commit -m "docs(fit): CLAUDE.md, NOTICE.md and the Descent Mk1 checked"`
