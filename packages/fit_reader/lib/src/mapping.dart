@@ -235,6 +235,12 @@ ConvertedDive mapFitSession(FitFileId id, FitDiveSession s, int sessionIndex) {
   double curSetpoint = mode == DiveMode.cc && lowSp != null ? lowSp / 100.0 : 0;
   var curGas = 0;
   final curTank = List<double>.filled(sensors.length, 0);
+  // Grid index of the first logged value per carried channel; samples before
+  // it take that first value (see the back-fill after the loop).
+  var tempSeen = false, cnsSeen = false;
+  int? tempAt, cnsAt;
+  final tankSeen = List<bool>.filled(sensors.length, false);
+  final tankAt = List<int?>.filled(sensors.length, null);
 
   void applyEvent(FitMessage e) {
     final ts = e.timestamp ?? s.start;
@@ -280,9 +286,15 @@ ConvertedDive mapFitSession(FitFileId id, FitDiveSession s, int sessionIndex) {
       final d = r.intField(FitRecord.depth);
       if (d != null) curDepth = d / 1000.0;
       final tc = r.intField(FitRecord.temperature);
-      if (tc != null) curTemp = tc.toDouble();
+      if (tc != null) {
+        curTemp = tc.toDouble();
+        tempSeen = true;
+      }
       final c = r.intField(FitRecord.cnsLoad);
-      if (c != null) curCns = c / 100.0;
+      if (c != null) {
+        curCns = c / 100.0;
+        cnsSeen = true;
+      }
       final sd = r.intField(FitRecord.nextStopDepth);
       if (sd != null) curStopDepth = sd / 1000.0;
       final st = r.intField(FitRecord.nextStopTime);
@@ -299,7 +311,15 @@ ConvertedDive mapFitSession(FitFileId id, FitDiveSession s, int sessionIndex) {
       final u = updates[up++];
       final ch = channelOfSensor[u.intField(FitTankUpdate.sensor)];
       final p = u.intField(FitTankUpdate.pressure);
-      if (ch != null && p != null) curTank[ch] = p / 100.0;
+      if (ch != null && p != null) {
+        curTank[ch] = p / 100.0;
+        tankSeen[ch] = true;
+      }
+    }
+    if (tempSeen) tempAt ??= k;
+    if (cnsSeen) cnsAt ??= k;
+    for (var c = 0; c < sensors.length; c++) {
+      if (tankSeen[c]) tankAt[c] ??= k;
     }
     depth[k] = curDepth;
     temp[k] = curTemp;
@@ -312,6 +332,14 @@ ConvertedDive mapFitSession(FitFileId id, FitDiveSession s, int sessionIndex) {
     for (var c = 0; c < sensors.length; c++) {
       tankCh[c][k] = curTank[c];
     }
+  }
+  // A sample before a channel's first logged value takes that first value.
+  final tAt = tempAt, cAt = cnsAt;
+  if (tAt != null) temp.fillRange(0, tAt, temp[tAt]);
+  if (cAt != null) cns.fillRange(0, cAt, cns[cAt]);
+  for (var c = 0; c < sensors.length; c++) {
+    final at = tankAt[c];
+    if (at != null) tankCh[c].fillRange(0, at, tankCh[c][at]);
   }
   // Events after the last grid point still count.
   while (ep < events.length) {

@@ -558,6 +558,34 @@ void main() {
     }
   });
 
+  test('samples before the first temperature, CNS or tank reading take it', () {
+    // 0x7F and 0xFF are the invalid markers of sint8 and uint8, which read
+    // as absent: the first temperature and CNS arrive at t=10 s.
+    final b = buildFit([
+      _fileId(),
+      _sport(53),
+      _gas(0, 21, 0),
+      _sensor(111, name: 'Back gas'),
+      for (var i = 0; i < 10; i++)
+        _record(_start + i, i * 1000, temp: 0x7F, cns: 0xFF),
+      _record(_start + 10, 10000, temp: 17, cns: 9),
+      _record(_start + 11, 11000, temp: 16, cns: 10),
+      _tank(_start + 10, 111, 15000),
+      _tank(_start + 11, 111, 14900),
+      _session(_start, _start + 11, sub: 53),
+    ]);
+    final s = _one(b).samples;
+    for (var i = 0; i <= 10; i++) {
+      expect(s.temperatureCelsius[i], 17, reason: 'sample $i');
+      expect(s.cns[i], closeTo(0.09, 1e-6), reason: 'sample $i');
+      expect(s.tankPressuresBar[0][i], closeTo(150, 1e-4), reason: 'sample $i');
+    }
+    expect(s.temperatureCelsius[11], 16);
+    expect(s.tankPressuresBar[0][11], closeTo(149, 1e-4));
+    expect(s.depthMeters[0], 0);
+    expect(s.depthMeters[5], 5);
+  });
+
   test('a session without records still maps, with no samples', () {
     final b = buildFit([_fileId(), _sport(63), _session(_start, _start + 30)]);
     final c = _one(b);
