@@ -807,6 +807,171 @@ external int dc_version_check(int major, int minor, int micro);
 @ffi.Native<ffi.Int Function(ffi.UnsignedInt)>()
 external int al_family_present(int family);
 
+/// A live link. `advertised_name` (copied; NULL when there is none) answers
+/// DC_IOCTL_BLE_GET_NAME. `request` must stay callable until every iostream
+/// of the link is closed. Returns NULL when `request` is NULL or memory runs
+/// out.
+@ffi.Native<
+  ffi.Pointer<al_link_t> Function(ffi.Pointer<ffi.Char>, al_request_fn)
+>()
+external ffi.Pointer<al_link_t> al_link_new_live(
+  ffi.Pointer<ffi.Char> advertised_name,
+  al_request_fn request,
+);
+
+/// A replay link that serves `events` (copied), in the recording layout.
+/// Returns NULL when the layout runs past `size` or memory runs out.
+@ffi.Native<
+  ffi.Pointer<al_link_t> Function(
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Size,
+  )
+>()
+external ffi.Pointer<al_link_t> al_link_new_replay(
+  ffi.Pointer<ffi.Char> advertised_name,
+  ffi.Pointer<ffi.Uint8> events,
+  int size,
+);
+
+/// Frees the link. Close every iostream of the link first, and make sure
+/// nothing calls any other al_link_* function on it any more.
+@ffi.Native<ffi.Void Function(ffi.Pointer<al_link_t>)>()
+external void al_link_free(ffi.Pointer<al_link_t> link);
+
+/// Opens a DC_TRANSPORT_BLE custom iostream on the link, for dc_device_open.
+/// `context` may be NULL; a replay logs a divergence to it. Closing the
+/// iostream closes the link: later reads and writes return DC_STATUS_IO,
+/// until another al_link_iostream.
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Pointer<al_link_t>,
+    ffi.Pointer<dc_context_t>,
+    ffi.Pointer<ffi.Pointer<dc_iostream_t>>,
+  )
+>()
+external int al_link_iostream(
+  ffi.Pointer<al_link_t> link,
+  ffi.Pointer<dc_context_t> context,
+  ffi.Pointer<ffi.Pointer<dc_iostream_t>> out,
+);
+
+/// Appends one received packet to a live link's inbound queue. Ignored after
+/// a disconnect, a close or an overflow. When the queue would hold more than
+/// AL_LINK_QUEUE_LIMIT bytes, the link drops it, records X "overflow", and
+/// every later read returns DC_STATUS_IO.
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<al_link_t>, ffi.Pointer<ffi.Uint8>, ffi.Size)
+>()
+external void al_link_push(
+  ffi.Pointer<al_link_t> link,
+  ffi.Pointer<ffi.Uint8> data,
+  int size,
+);
+
+/// Takes the request waiting in the pending slot. Copies its bytes (what to
+/// write; nothing for a characteristic read) into `data`, and the UUID of a
+/// characteristic request into `uuid` (36 characters and a NUL; an empty
+/// string for a plain write), and returns the number of bytes.
+///
+/// When the bytes do not fit in `capacity`, copies nothing, takes nothing and
+/// returns the size needed. `data` may be NULL only with `capacity` 0.
+/// `uuid` must hold DC_BLE_UUID_SIZE bytes: with less, a characteristic
+/// request is not taken.
+///
+/// When no request is waiting to be taken (none was made, it was taken
+/// already, or it timed out), returns 0 and stores an empty string in `uuid`.
+/// A write of zero bytes never makes a request, so 0 with an empty `uuid`
+/// always means nothing to do.
+///
+/// A request is taken once. Only a taken request can be completed, so a
+/// completion meant for an earlier request that timed out never completes a
+/// later one, provided the caller completes each request it took before it
+/// takes the next.
+@ffi.Native<
+  ffi.Size Function(
+    ffi.Pointer<al_link_t>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Size,
+    ffi.Pointer<ffi.Char>,
+    ffi.Size,
+  )
+>()
+external int al_link_pending(
+  ffi.Pointer<al_link_t> link,
+  ffi.Pointer<ffi.Uint8> data,
+  int capacity,
+  ffi.Pointer<ffi.Char> uuid,
+  int uuid_capacity,
+);
+
+/// Completes the taken request with `status`, and wakes the blocking thread.
+/// For a characteristic read, `data` is the value: it is copied after the
+/// UUID in the ioctl buffer, and a value that does not fit there turns the
+/// result into DC_STATUS_INVALIDARGS. Ignored when no taken request is
+/// waiting.
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<al_link_t>,
+    ffi.Int,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Size,
+  )
+>()
+external void al_link_complete(
+  ffi.Pointer<al_link_t> link,
+  int status,
+  ffi.Pointer<ffi.Uint8> data,
+  int size,
+);
+
+/// The connection dropped. Wakes the blocking thread: a waiting write returns
+/// DC_STATUS_IO, and a read returns what is still queued, then DC_STATUS_IO.
+@ffi.Native<ffi.Void Function(ffi.Pointer<al_link_t>)>()
+external void al_link_disconnected(ffi.Pointer<al_link_t> link);
+
+/// Cancels the download. Every waiting or later read, write, poll and sleep
+/// returns DC_STATUS_CANCELLED at once, and al_link_cancelled returns 1.
+@ffi.Native<ffi.Void Function(ffi.Pointer<al_link_t>)>()
+external void al_link_cancel(ffi.Pointer<al_link_t> link);
+
+/// 1 after al_link_cancel, otherwise 0. Takes the link as `void *` so that it
+/// can be given to dc_device_set_cancel as it is.
+@ffi.Native<ffi.Int Function(ffi.Pointer<ffi.Void>)>()
+external int al_link_cancelled(ffi.Pointer<ffi.Void> link);
+
+/// How long a write or a characteristic request waits for al_link_complete
+/// before it returns DC_STATUS_TIMEOUT. A negative value waits until the
+/// completion, a cancel or a disconnect. The default is AL_LINK_WRITE_TIMEOUT.
+@ffi.Native<ffi.Void Function(ffi.Pointer<al_link_t>, ffi.Int)>()
+external void al_link_set_write_timeout(
+  ffi.Pointer<al_link_t> link,
+  int milliseconds,
+);
+
+/// Turns recording on (nonzero) or off. While it is off nothing is added; what
+/// was recorded stays.
+@ffi.Native<ffi.Void Function(ffi.Pointer<al_link_t>, ffi.Int)>()
+external void al_link_set_recording(ffi.Pointer<al_link_t> link, int enabled);
+
+/// Copies the recording into `data` and returns its size. When it does not
+/// fit in `capacity`, copies nothing and returns the size needed.
+@ffi.Native<
+  ffi.Size Function(ffi.Pointer<al_link_t>, ffi.Pointer<ffi.Uint8>, ffi.Size)
+>()
+external int al_link_recording(
+  ffi.Pointer<al_link_t> link,
+  ffi.Pointer<ffi.Uint8> data,
+  int capacity,
+);
+
+/// The index of the next event a replay link will serve, counting every event
+/// of the recording from 0. After a divergence (a write that differs, or a
+/// read where the recording has something else) it stays at the event that
+/// diverged. -1 for a live link.
+@ffi.Native<ffi.Int Function(ffi.Pointer<al_link_t>)>()
+external int al_link_replay_position(ffi.Pointer<al_link_t> link);
+
 sealed class dc_status_t {
   static const DC_STATUS_SUCCESS = 0;
   static const DC_STATUS_DONE = 1;
@@ -1674,6 +1839,18 @@ final class dc_version_t extends ffi.Struct {
   external int micro;
 }
 
+final class al_link extends ffi.Opaque {}
+
+typedef al_link_t = al_link;
+typedef al_request_fnFunction =
+    ffi.Void Function(ffi.IntPtr link, ffi.Int32 kind);
+typedef Dartal_request_fnFunction = void Function(int link, int kind);
+
+/// Called from the blocking thread when a request is waiting. `link` is the
+/// al_link_t, `kind` one of AL_REQ_*. It must not block and must not rely on
+/// anything being done when it returns.
+typedef al_request_fn = ffi.Pointer<ffi.NativeFunction<al_request_fnFunction>>;
+
 const int DC_TIMEZONE_NONE = -2147483648;
 
 const int SAMPLE_EVENT_UNKNOWN = 16;
@@ -1713,3 +1890,13 @@ const int DC_VERSION_MAJOR = 0;
 const int DC_VERSION_MINOR = 10;
 
 const int DC_VERSION_MICRO = 0;
+
+const int AL_REQ_WRITE = 1;
+
+const int AL_REQ_CHAR_READ = 2;
+
+const int AL_REQ_CHAR_WRITE = 3;
+
+const int AL_LINK_QUEUE_LIMIT = 8388608;
+
+const int AL_LINK_WRITE_TIMEOUT = 10000;
