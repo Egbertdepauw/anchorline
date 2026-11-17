@@ -19,5 +19,6 @@ Every Shearwater you have imported from appears here by itself. The screen shows
 
 ## Good to know
 
+- The list names a computer from its stored hardware ID. If the app does not know that ID, the list shows **Unknown** for the model.
 - You do not add computers here. Import a dive (see [Import](/manual/import)) and the computer appears.
 - The nickname and the pressure mapping are the only things you change here.

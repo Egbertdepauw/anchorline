@@ -11,6 +11,7 @@ The post-dive view of one dive: the profile and the numbers behind it. Swipe or 
 
 ## On this screen
 
+- **Possible duplicate**: at the top, a notice reading **This dive may be the same as N other dives in your log.** It appears when an import found other dives that look like this one, and lists each with its date and time. Tap one to open it. Deleted dives are not listed.
 - **Header**: site, date, buddies, your star rating and the mode badge with the computer model. **MAX DEPTH**, **RUNTIME** and **AVG DEPTH** are below.
 - **Profile**: depth against time. The crosshair, when you touch the chart, reads out the values at that moment. The expand button opens the chart full screen.
 - **Algorithm**: switches the displayed deco calculation between ZHL-16C and VPM-B.
