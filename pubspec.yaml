@@ -87,6 +87,9 @@ dependencies:
   # library (spec 2026-11-15, section 2).
   libdivecomputer:
     path: packages/libdivecomputer
+  # Garmin FIT dive files. Pure Dart (spec 2026-11-17).
+  fit_reader:
+    path: packages/fit_reader
 
   # Crash + unhandled-exception reporting for release / beta builds.
   # Gated by kReleaseMode AND --dart-define=SENTRY_DSN=... at build time

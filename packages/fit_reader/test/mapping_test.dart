@@ -741,4 +741,20 @@ void main() {
     expect(c.dive.duration, const Duration(seconds: 30));
     expect(c.dive.maxDepthMeters, 0);
   });
+  test('the mapped dive carries the fingerprint built from the same inputs '
+      'as its id', () {
+    final bytes = buildFit([
+      _fileId(),
+      _sport(63),
+      _record(_start, 0),
+      _record(_start + 10, 1000),
+      _session(_start, _start + 10),
+    ]);
+    final d = mapFitFile(bytes).single.dive;
+    expect(
+      d.dcFingerprint,
+      fitFingerprintHex(serial: 1000000001, timeCreated: 1061159483),
+    );
+    expect(d.dcFingerprint, '3b9aca013f40023b');
+  });
 }
