@@ -138,6 +138,13 @@ void main() {
     );
   });
 
+  test('the Windows response file quotes each path and uses slashes', () {
+    expect(
+      renderResponseFile([r'D:\a b\src\x.c', '/tmp/y.c']),
+      '"D:/a b/src/x.c"\n"/tmp/y.c"\n',
+    );
+  });
+
   test('exportedAlFunctions skips static helpers', () {
     const c = '''
 static int

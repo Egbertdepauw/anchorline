@@ -49,8 +49,19 @@ jobs:
           dart test --reporter expanded
       - name: flutter pub get
         run: flutter pub get
+      # The Runner target is set up for the maintainer's team and needs a
+      # provisioning profile, which CI does not have. `flutter build macos`
+      # cannot turn signing off, so Flutter only prepares the project and
+      # xcodebuild builds it unsigned.
       - name: Build macOS
-        run: flutter build macos --debug
+        run: |
+          set -euo pipefail
+          flutter build macos --debug --config-only
+          xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner \
+            -configuration Debug -derivedDataPath build/macos \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
+            build
       - name: macOS bundle contains libdivecomputer
         run: |
           set -euo pipefail

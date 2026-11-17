@@ -62,10 +62,22 @@ void main(List<String> args) async {
       libraries.add('ws2_32');
     }
 
+    // Windows refuses a command line over 32,767 characters, which the source
+    // list is on a CI runner. cl.exe reads the sources from a response file.
+    var compileSources = sources;
+    if (os == OS.windows) {
+      final rsp = await _writeIfChanged(
+        outDir.resolve('sources.rsp'),
+        renderResponseFile(sources),
+      );
+      flags.add('@${rsp.toFilePath()}');
+      compileSources = const [];
+    }
+
     final builder = CBuilder.library(
       name: 'divecomputer',
       assetName: 'src/bindings.g.dart',
-      sources: sources,
+      sources: compileSources,
       includes: [
         root.resolve('native/include/').toFilePath(),
         upstream.resolve('include/').toFilePath(),

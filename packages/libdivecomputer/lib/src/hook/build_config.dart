@@ -215,6 +215,13 @@ List<String> linkerFlagsFor(String os, {String? defFile}) => [
   if (os == 'macos' || os == 'ios') '-Wl,-headerpad_max_install_names',
 ];
 
+/// A cl.exe response file naming [paths], one quoted path per line. Windows
+/// refuses a command line over 32,767 characters, and the full source list
+/// with absolute paths is longer than that on a CI runner. Forward slashes
+/// keep backslash-quote escaping out of the picture; cl.exe accepts them.
+String renderResponseFile(Iterable<String> paths) =>
+    paths.map((p) => '"${p.replaceAll(r'\', '/')}"\n').join();
+
 /// The `src/*.c` files to compile on [os], given every file name found in
 /// `src/` and the families to leave out. Sorted, so builds are reproducible.
 List<String> sourcesFor(
