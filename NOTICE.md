@@ -91,6 +91,14 @@ is built from source, as a dynamic library, in every build.
   Anchorline's own code. It reads and writes Subsurface's git storage
   format so that the two programs can share dives; no Subsurface source
   code was copied.
+- **Bluetooth facts:** the GATT service and characteristic UUIDs that
+  dive computers expose over Bluetooth LE, the characteristics to skip,
+  and the credit numbers for the Telit and u-blox serial bridges (254
+  credits at connect, 32 left as the low-water mark, 222 per refill) in
+  `lib/devices/libdc/libdc_ble_profile.dart` and
+  `lib/devices/libdc/ble_central_libdc_link.dart` are facts taken from
+  Subsurface's `core/qt-ble.cpp`. The code is Anchorline's own; no
+  Subsurface source code was copied.
 
 ## Fonts
 
