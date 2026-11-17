@@ -1,16 +1,16 @@
 import 'package:subsurface_core/subsurface_core.dart'
-    show ConvertedDive, kSubsurfaceImportedParserVersion;
+    show ConvertedDive, kFitDcFamily, kSubsurfaceImportedParserVersion;
 
 /// The reader that produced a dive, told from its `dc_family`.
 enum DiveEngine { shearwater, libdc, fit }
 
 /// The engine of a row or incoming dive with the given `dc_family`: null is
-/// Shearwater, -1 is FIT, any other value is libdivecomputer. A `dc_family` of
-/// -1 is reserved for FIT files (Garmin), not yet written. (Not to be confused
-/// with `parser_version == -1`, the Subsurface copy marker.)
+/// Shearwater, [kFitDcFamily] (-1) is FIT, any other value is
+/// libdivecomputer. (Not to be confused with `parser_version == -1`, the
+/// Subsurface copy marker.)
 DiveEngine diveEngineOf(int? dcFamily) => switch (dcFamily) {
       null => DiveEngine.shearwater,
-      -1 => DiveEngine.fit,
+      kFitDcFamily => DiveEngine.fit,
       _ => DiveEngine.libdc,
     };
 

@@ -29,8 +29,14 @@ import 'package:subsurface_core/data/models/sample_set.dart';
 import 'package:subsurface_core/data/sample_codec/event_codec.dart';
 import 'package:subsurface_core/data/sample_codec/sample_codec.dart';
 import 'package:subsurface_core/shearwater/parser/dive_converter.dart';
+import 'package:subsurface_core/shearwater/parser/hardware.dart'
+    show ShearwaterModel, shearwaterProductName;
 import 'package:subsurface_core/subsurface_core.dart'
-    show kShearwaterVendor, kSubsurfaceImportedParserVersion;
+    show
+        kFitDcFamily,
+        kShearwaterVendor,
+        kSubsurfaceImportedParserVersion,
+        subsurfaceSerialForms;
 import '../../analysis/merge/merged_gas_mixes.dart';
 import '../import/cylinder_remap.dart';
 import '../import/refresh_policy.dart';
@@ -318,6 +324,74 @@ class DiveDao {
           dcDiveNumber: r['dc_dive_number'] as int?,
         ),
     ];
+  }
+
+  /// The PowerSync side of the FIT background re-parse's candidate query: FIT
+  /// dives (`dc_family = -1`) below [belowVersion] that are not deleted,
+  /// newest first. Whether a dive has a local raw blob, or a recorded
+  /// failure, is Drift's to say; the reparser intersects.
+  Future<List<({String id, String? dcFingerprint})>> fitReparseCandidates(
+      int belowVersion) async {
+    final rows = await _ps.getAll(
+      'SELECT id, dc_fingerprint FROM dives '
+      'WHERE dc_family = ? AND parser_version < ? AND deleted_at IS NULL '
+      'ORDER BY start_time DESC',
+      [kFitDcFamily, belowVersion],
+    );
+    return [
+      for (final r in rows)
+        (id: r['id'] as String, dcFingerprint: r['dc_fingerprint'] as String?),
+    ];
+  }
+
+  /// The first live dive (earliest start) whose `[start_time, end_time]`
+  /// overlaps `[startSeconds, endSeconds]` and that was recorded by another
+  /// computer than ([vendor], [serial]), or null. A span that only touches a
+  /// dive at one end does not overlap it. The brand of a stored row is its
+  /// [effectiveVendor]; an unknown one (a pre-brand Subsurface copy) matches
+  /// any brand, and serials compare through [subsurfaceSerialForms], exactly
+  /// as [findSameDive] does, so a row the import would refresh is not
+  /// reported as another computer's.
+  ///
+  /// `label` is the dive's product name, else the Shearwater model name of
+  /// its `dc_model`, else its brand.
+  Future<({String id, String label})?> overlappingDiveFromOtherComputer({
+    required int startSeconds,
+    required int endSeconds,
+    required String vendor,
+    required int serial,
+  }) async {
+    final rows = await _ps.getAll(
+      'SELECT id, dc_vendor, dc_product, dc_model, dc_serial, parser_version '
+      'FROM dives WHERE deleted_at IS NULL '
+      'AND start_time < ? AND end_time > ? ORDER BY start_time, id',
+      [endSeconds, startSeconds],
+    );
+    final serials = subsurfaceSerialForms(vendor, serial);
+    for (final r in rows) {
+      final v = effectiveVendor(
+          r['dc_vendor'] as String?, (r['parser_version'] as num).toInt());
+      // The import's same-dive rule: an unknown brand (a pre-brand copy)
+      // matches any brand, so it is the same computer when the serial fits.
+      if ((v ?? vendor) == vendor &&
+          serials.contains((r['dc_serial'] as num).toInt())) {
+        continue;
+      }
+      final product = r['dc_product'] as String?;
+      final model = (r['dc_model'] as num?)?.toInt();
+      final modelName = model != null &&
+              model >= 0 &&
+              model < ShearwaterModel.values.length
+          ? shearwaterProductName(ShearwaterModel.values[model])
+          : null;
+      return (
+        id: r['id'] as String,
+        label: product != null && product.isNotEmpty
+            ? product
+            : (modelName ?? v ?? kShearwaterVendor),
+      );
+    }
+    return null;
   }
 
   /// Every stored dive's matching columns, soft-deleted rows included.

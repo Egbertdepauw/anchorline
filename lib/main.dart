@@ -13,6 +13,7 @@ import 'data/app_data_folder.dart';
 import 'data/db/database.dart';
 import 'data/db/dive_dao.dart';
 import 'data/db/equipment_dao.dart';
+import 'data/import/fit_reparser.dart';
 import 'data/import/import_problem_reporter.dart';
 import 'data/import/shearwater_reparser.dart';
 import 'dev/fixture_seeder.dart';
@@ -195,15 +196,25 @@ void main() async {
 Future<void> _startReparse(AppDatabase db, PowerSyncDatabase powerSyncDb,
     SessionSource session, AuthService authService, SyncBaseline baseline) async {
   try {
+    final dao = DiveDao(db, powerSyncDb, session);
+    final waitUntilSynced = waitUntilSyncedFor(
+      isSignedIn: () => authService.isSignedIn,
+      status: PowerSyncStatusSource(powerSyncDb),
+      baseline: baseline,
+    );
     await ShearwaterReparser(
-      diveDao: DiveDao(db, powerSyncDb, session),
+      diveDao: dao,
       drift: db,
       report: reportImportProblemToSentry,
-      waitUntilSynced: waitUntilSyncedFor(
-        isSignedIn: () => authService.isSignedIn,
-        status: PowerSyncStatusSource(powerSyncDb),
-        baseline: baseline,
-      ),
+      waitUntilSynced: waitUntilSynced,
+    ).run();
+    // After the Shearwater pass, whose sync wait it shares: once the first
+    // sync has settled, the second wait returns at once.
+    await FitReparser(
+      diveDao: dao,
+      drift: db,
+      report: reportImportProblemToSentry,
+      waitUntilSynced: waitUntilSynced,
     ).run();
   } catch (e, st) {
     // Type only: inside Sentry's zone a printed message becomes a breadcrumb,

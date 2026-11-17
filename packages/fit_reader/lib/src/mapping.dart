@@ -489,6 +489,12 @@ ConvertedDive mapFitSession(FitFileId id, FitDiveSession s) {
     ),
     dcFamily: kFitDcFamily,
     dcModelCode: id.product,
+    dcFingerprint: fitFingerprintHex(
+      serial: id.serial,
+      timeCreated: id.timeCreated,
+      sessionStart: s.start,
+      session: s.fileSessionIndex,
+    ),
   );
 
   final samples = SampleSet(

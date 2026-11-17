@@ -14,11 +14,11 @@ const int _pinnedVersion = 1;
 
 const Map<String, String> _pinnedDigests = {
   'garmin_mk1_ccr_2023-08-17.fit':
-      '87fd9ed3c42a4f38ea726e591629f7bcf4d963e26763daa1c3407365dad8fd43',
+      'aea8d955c0508d4a216418cb61a0d50bf09257d4c662e63c2970fbf962db9bd3',
   'garmin_mk1_ccr_2023-10-21.fit':
-      '26c6c746bd618982890d6fd1efa86d6c4b82b75074452ae98ffce83119b33a0d',
+      'e57b97ff09352a2f20d14b1553402c618fb9e888e0114846c9413aafc8009d8b',
   'suunto_ocean_nitrox.fit':
-      '1d2b7f3dd0bfa00b38ff8aea6b7c6d4a64be92d2b1bf3eb5ad5df3d364e3d4e3',
+      '503f266e097521c8636dc80ceb4ad203bcd2c4a93ef0bbccfa1897b71e81ec2b',
 };
 
 /// SHA-256 over the reader's output for one dive: every scalar field in a
@@ -56,6 +56,7 @@ String fitReaderDigest(ConvertedDive c) {
   line('dcProduct=${d.dcProduct}');
   line('dcFamily=${d.dcFamily}');
   line('dcModelCode=${d.dcModelCode}');
+  line('dcFingerprint=${d.dcFingerprint}');
   line('gasMixes=${jsonEncode([for (final g in d.gasMixes) g.toJson()])}');
   line('tanks=${jsonEncode([for (final t in d.tanks) t.toJson()])}');
 
