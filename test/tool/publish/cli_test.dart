@@ -755,6 +755,7 @@ void main() {
       List<String> args, {
       FakeBucket? bucket,
       Map<String, String> env = _env,
+      Future<String?> Function(String path)? commitDate,
     }) async {
       final out = StringBuffer();
       final err = StringBuffer();
@@ -766,9 +767,35 @@ void main() {
         out: out,
         err: err,
         repoRoot: repo.path,
+        commitDate: commitDate,
       );
       return _Result(code, out.toString(), err.toString());
     }
+
+    test('publishes the manual and reports deletions', () async {
+      Directory('${repo.path}/docs/user').createSync();
+      File('${repo.path}/docs/user/index.md').writeAsStringSync('# Manual\n');
+      final bucket = FakeBucket(texts: {'content/docs/user/old.md': 'old'});
+      final dry = await runContent(
+        ['content', '--dry-run'],
+        bucket: bucket,
+        commitDate: (_) async => '2026-03-05',
+      );
+
+      expect(dry.code, 0, reason: dry.out);
+      expect(dry.out, contains('would write content/docs/user/index.md'));
+      expect(dry.out, contains('would delete content/docs/user/old.md'));
+      expect(bucket.deleteCalls, isEmpty);
+
+      final real = await runContent(
+        ['content'],
+        bucket: bucket,
+        commitDate: (_) async => '2026-03-05',
+      );
+      expect(real.code, 0, reason: real.out);
+      expect(real.out, contains('deleted content/docs/user/old.md'));
+      expect(bucket.deleteCalls, ['delete content/docs/user/old.md']);
+    });
 
     test('--dry-run reports what it would write and writes nothing', () async {
       final bucket = FakeBucket();
