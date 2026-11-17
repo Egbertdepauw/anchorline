@@ -287,6 +287,49 @@ void main() {
     expect(finishedOf(full).descriptor?.family, descriptor.family);
   });
 
+  test('a dive is named and identified by the model the computer reported, '
+      'not the sibling opened', () async {
+    // The Petrel 2 descriptor (model 3, shared with the Petrel) opens the
+    // computer, which reports model 10: a Petrel 3.
+    final petrel2 = Libdc.descriptors().singleWhere(
+      (d) => d.vendor == 'Shearwater' && d.product == 'Petrel 2',
+    );
+    final events = await collect(
+      LibdcDownload.replay(descriptor: petrel2, recording: trace),
+    );
+    final dives = divesOf(events);
+    expect(dives, hasLength(8));
+    expect(finishedOf(events).descriptor?.product, 'Petrel 2');
+    for (final d in dives) {
+      // The envelope records what was opened, and what the computer said.
+      expect(d.envelope.product, 'Petrel 2');
+      expect(d.envelope.descriptorModel, petrel2.model);
+      expect(d.envelope.devinfoModel, descriptor.model);
+      expect(d.converted!.dive.dcProduct, 'Petrel 3');
+      expect(d.converted!.dive.dcVendor, 'Shearwater');
+    }
+    expect(_ids(dives), _ids(fullDives));
+    expect(
+      dives.map((d) => d.converted!.samples.sampleCount),
+      fullDives.map((d) => d.converted!.samples.sampleCount),
+    );
+  });
+
+  test('a write timeout under a millisecond is refused', () {
+    for (final timeout in [Duration.zero, const Duration(microseconds: 500)]) {
+      expect(
+        () => LibdcDownload.start(
+          descriptor: descriptor,
+          connection: LibdcBleConnection(
+            TraceLink(trace),
+            writeTimeout: timeout,
+          ),
+        ),
+        throwsArgumentError,
+      );
+    }
+  });
+
   test('a trace cut halfway ends with an error status and keeps the dives '
       'before it', () async {
     final half = trace.events.length ~/ 2;

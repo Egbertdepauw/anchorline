@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Anchorline: the <stem>.combined.txt this writes is the trace format that
 # LibdcRecording.parse reads (packages/libdivecomputer/lib/src/recording/

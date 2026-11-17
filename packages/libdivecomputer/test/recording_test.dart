@@ -160,6 +160,39 @@ void main() {
         () => LibdcIoEvent.unpackAll(Uint8List.fromList([0x57, 0, 0, 0])),
         throwsA(isA<FormatException>()),
       );
+      // A kind byte that is not ASCII is a FormatException too, not an
+      // ArgumentError.
+      expect(
+        () => LibdcIoEvent.unpackAll(
+          Uint8List.fromList([0xd7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        ),
+        throwsA(isA<FormatException>()),
+      );
     },
   );
+
+  test('a log entry with line breaks or a leading # cannot break the '
+      'text', () {
+    final recording = LibdcRecording(
+      header: ['advertised two\nlines'],
+      log: [
+        'ANCHORLINE: the download isolate stopped: Bad state\n# end\nmore',
+        '# envelope AAAA',
+        '# end',
+        'plain',
+      ],
+      envelopes: [_envelope(1)],
+    );
+    final text = recording.toText();
+    final back = LibdcRecording.parse(text);
+    expect(back.header, ['advertised two lines']);
+    expect(back.log, [
+      'ANCHORLINE: the download isolate stopped: Bad state # end more',
+      ' # envelope AAAA',
+      ' # end',
+      'plain',
+    ]);
+    expect(back.envelopes.map((e) => e.encode()), [_envelope(1).encode()]);
+    expect(text.split('\n').where((l) => l == '# end'), hasLength(1));
+  });
 }

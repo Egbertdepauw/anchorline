@@ -14,8 +14,12 @@ const int _gasmixUnknown = 0xFFFFFFFF; // DC_GASMIX_UNKNOWN
 const int _sensorNone = 0xFFFFFFFF; // DC_SENSOR_NONE
 
 /// Parses the dive stored in [e] with libdivecomputer's `dc_parser_new2`,
-/// using the descriptor found by vendor and product (else by family and
-/// model), and returns what it reported.
+/// and returns what it reported. The descriptor is the dive's identity
+/// descriptor: the one the download opened ([chooseDescriptorIndex] on the
+/// envelope's names, family and model), then the model the computer
+/// reported ([identityDescriptorIndex] with `devinfoModel`), as
+/// libdivecomputer's own `dc_parser_new(device)` does. So a re-parse from
+/// the envelope alone gives the dive the download gave.
 ///
 /// Runs on whichever isolate calls it. Everything native it allocates is
 /// freed on every path. Throws [LibdcParseException] on any failure.
@@ -35,6 +39,7 @@ LibdcParsedDive _parseDive(
 ) {
   Pointer<c.dc_context_t> context = nullptr;
   Pointer<c.dc_descriptor_t> descriptor = nullptr;
+  (String, String)? identity;
   Pointer<c.dc_parser_t> parser = nullptr;
   NativeCallable<c.dc_sample_callback_tFunction>? callable;
   try {
@@ -46,10 +51,12 @@ LibdcParsedDive _parseDive(
         // Parser messages can carry dive values; keep them off stderr.
         c.dc_context_set_loglevel(context, c.dc_loglevel_t.DC_LOGLEVEL_NONE);
 
-        descriptor = _findDescriptor(context, e);
-        if (descriptor == nullptr) {
+        final found = _findDescriptor(context, e);
+        if (found == null) {
           throw const LibdcParseException(LibdcStatus.unsupported);
         }
+        descriptor = found.$1;
+        identity = (found.$2, found.$3);
       }
 
       // A zero-length allocation may be null; always ask for one byte.
@@ -132,6 +139,8 @@ LibdcParsedDive _parseDive(
         diveMode: mode,
         decoModel: deco,
         rows: rows,
+        identityVendor: identity?.$1,
+        identityProduct: identity?.$2,
       );
     });
   } finally {
@@ -155,9 +164,11 @@ bool _present(int status) {
   throw LibdcParseException(LibdcStatus.fromCode(status));
 }
 
-/// The descriptor for [e], chosen by [chooseDescriptorIndex]. Returns
-/// `nullptr` when there is none; the caller owns the result.
-Pointer<c.dc_descriptor_t> _findDescriptor(
+/// The identity descriptor for [e], with its vendor and product: the one
+/// [chooseDescriptorIndex] finds as opened, then [identityDescriptorIndex]
+/// for the reported model. Null when there is none; the caller owns the
+/// pointer.
+(Pointer<c.dc_descriptor_t>, String, String)? _findDescriptor(
   Pointer<c.dc_context_t> context,
   LibdcEnvelope e,
 ) {
@@ -188,15 +199,21 @@ Pointer<c.dc_descriptor_t> _findDescriptor(
         c.dc_iterator_free(it);
       }
     });
-    final index = chooseDescriptorIndex(
+    final opened = chooseDescriptorIndex(
       table,
       vendor: e.vendor,
       product: e.product,
       family: e.family,
       model: e.descriptorModel,
     );
-    if (index != null) chosen = all[index];
-    return chosen;
+    if (opened == null) return null;
+    final index = identityDescriptorIndex(
+      table,
+      opened: opened,
+      devinfoModel: e.devinfoModel,
+    );
+    chosen = all[index];
+    return (chosen, table[index].$1, table[index].$2);
   } finally {
     for (final d in all) {
       if (d != chosen) c.dc_descriptor_free(d);

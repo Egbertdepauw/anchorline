@@ -107,6 +107,11 @@ final class _Download {
   /// The descriptor the device was opened with. Every envelope, dive id and
   /// the header use it, not the caller's.
   LibdcDescriptor? _opened;
+
+  /// The descriptor table and the opened row in it, for the dives'
+  /// identity ([identityDescriptorIndex]).
+  List<(String, String, int, int)> _table = const [];
+  int _openedIndex = 0;
   LibdcDeviceInfo? _devinfo;
   ({int devtime, int systime})? _clock;
   LibdcProgress? _progress;
@@ -144,8 +149,8 @@ final class _Download {
         );
         c.dc_context_set_logfunc(context, logCallable.nativeFunction, nullptr);
 
-        final (found, opened) = _findDescriptor(context, args.requested);
-        descriptor = found;
+        final found = _findDescriptor(context, args.requested);
+        descriptor = found.pointer;
         if (descriptor == nullptr) {
           _note(
             'libdivecomputer has no ${args.requested.vendor} '
@@ -153,7 +158,9 @@ final class _Download {
           );
           return c.dc_status_t.DC_STATUS_UNSUPPORTED;
         }
-        _opened = opened;
+        _opened = found.opened;
+        _table = found.table;
+        _openedIndex = found.index;
 
         final iostreamOut = arena<Pointer<c.dc_iostream_t>>();
         rc = c.al_link_iostream(link, context, iostreamOut);
@@ -201,13 +208,16 @@ final class _Download {
           );
         }
       }
-      if (iostream != nullptr) c.dc_iostream_close(iostream);
-      if (args.record) events = _recording();
-      if (descriptor != nullptr) c.dc_descriptor_free(descriptor);
-      if (context != nullptr) c.dc_context_free(context);
-      diveCallable.close();
-      eventCallable.close();
-      logCallable.close();
+      try {
+        if (iostream != nullptr) c.dc_iostream_close(iostream);
+        if (args.record) events = _recording();
+      } finally {
+        if (descriptor != nullptr) c.dc_descriptor_free(descriptor);
+        if (context != nullptr) c.dc_context_free(context);
+        diveCallable.close();
+        eventCallable.close();
+        logCallable.close();
+      }
     }
     // A callback that threw cancelled the download to stop it: a failure of
     // ours, not the diver's cancel, so IO like a download isolate that died.
@@ -250,7 +260,7 @@ final class _Download {
         return LibdcIoEvent.unpackAll(
           Uint8List.fromList(buffer.asTypedList(size)),
         );
-      } on FormatException {
+      } catch (_) {
         _note('the recorded I/O does not read back.');
         return const <LibdcIoEvent>[];
       }
@@ -390,10 +400,20 @@ final class _Download {
         fingerprint: _copy(fingerprint, fsize),
         data: _copy(data, size),
       );
+      // The vendor of the model the computer reported, so that the id does
+      // not depend on which sibling descriptor was opened.
+      final identity = _table.isEmpty
+          ? null
+          : _table[identityDescriptorIndex(
+              _table,
+              opened: _openedIndex,
+              devinfoModel: info?.model,
+            )];
       final diveId = libdcDiveId(
-        vendor: opened.vendor,
+        vendor: identity?.$1 ?? opened.vendor,
         serial: info?.serial ?? 0,
         fingerprint: envelope.fingerprint,
+        data: envelope.data,
       );
       ConvertedDive? converted;
       LibdcStatus? parseError;
@@ -446,12 +466,16 @@ final class _Download {
 
 /// The descriptor to open the computer with, chosen by
 /// [chooseDescriptorIndex] (vendor, product and model, else family and
-/// model), the rule the parser uses too, and what it is. Returns `nullptr`
-/// and null when there is none; the caller frees the pointer.
-(Pointer<c.dc_descriptor_t>, LibdcDescriptor?) _findDescriptor(
-  Pointer<c.dc_context_t> context,
-  LibdcDescriptor requested,
-) {
+/// model), what it is, and the table with its index there. The pointer is
+/// `nullptr`, and `opened` null, when there is none; the caller frees the
+/// pointer.
+({
+  Pointer<c.dc_descriptor_t> pointer,
+  LibdcDescriptor? opened,
+  List<(String, String, int, int)> table,
+  int index,
+})
+_findDescriptor(Pointer<c.dc_context_t> context, LibdcDescriptor requested) {
   final all = <Pointer<c.dc_descriptor_t>>[];
   final table = <(String, String, int, int)>[];
   final transports = <int>[];
@@ -489,18 +513,22 @@ final class _Download {
       family: requested.family,
       model: requested.model,
     );
-    if (index == null) return (nullptr, null);
+    if (index == null) {
+      return (pointer: nullptr, opened: null, table: table, index: 0);
+    }
     chosen = all[index];
     final row = table[index];
     return (
-      chosen,
-      LibdcDescriptor(
+      pointer: chosen,
+      opened: LibdcDescriptor(
         vendor: row.$1,
         product: row.$2,
         family: row.$3,
         model: row.$4,
         transports: transports[index],
       ),
+      table: table,
+      index: index,
     );
   } finally {
     for (final d in all) {

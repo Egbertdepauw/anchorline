@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:libdivecomputer/libdivecomputer.dart';
 import 'package:subsurface_core/subsurface_core.dart';
 import 'package:test/test.dart';
@@ -221,6 +223,14 @@ void main() {
     test('the mapped dive carries the fingerprint as lower-case hex', () {
       final c = _map(testDive());
       expect(c.dive.dcFingerprint, 'deadbeef');
+    });
+
+    test('an empty fingerprint is null, not an empty string', () {
+      final c = _map(
+        testDive(),
+        e: testEnvelope(fingerprint: Uint8List(0)),
+      );
+      expect(c.dive.dcFingerprint, isNull);
     });
 
     test('no serial gives dcSerial 0, and the model code falls back to the '

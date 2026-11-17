@@ -14,7 +14,8 @@ import 'resample.dart';
 /// `kLibdcParserVersion`.
 ///
 /// Throws [LibdcParseException] (`dataFormat`) when the dive has no start
-/// time. `Dive.dcFingerprint` is the envelope's fingerprint as lower-case hex.
+/// time. `Dive.dcFingerprint` is the envelope's fingerprint as lower-case hex,
+/// or null when it is empty.
 ConvertedDive mapLibdcDive(
   LibdcParsedDive p,
   LibdcEnvelope e, {
@@ -184,11 +185,14 @@ ConvertedDive mapLibdcDive(
     tanks: tanks,
     sampleIntervalMs: grid.intervalMs,
     sensorCalibration: const [],
-    dcVendor: e.vendor,
-    dcProduct: e.product,
+    // The model the computer reported, not the sibling the download opened.
+    dcVendor: p.identityVendor ?? e.vendor,
+    dcProduct: p.identityProduct ?? e.product,
     dcFamily: e.family,
     dcModelCode: e.devinfoModel ?? e.descriptorModel,
-    dcFingerprint: fingerprintHex(e.fingerprint),
+    // Null, not '', without one: the importer reads null as "unknown", and
+    // '' would match every other dive without a fingerprint.
+    dcFingerprint: e.fingerprint.isEmpty ? null : fingerprintHex(e.fingerprint),
   );
 
   final n = grid.count;

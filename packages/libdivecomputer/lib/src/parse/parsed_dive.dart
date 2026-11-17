@@ -153,6 +153,8 @@ class LibdcParsedDive {
     this.diveMode,
     this.decoModel,
     this.rows = const [],
+    this.identityVendor,
+    this.identityProduct,
   });
 
   /// The `dc_datetime_t` fields as a UTC [DateTime]: the computer's wall
@@ -170,4 +172,10 @@ class LibdcParsedDive {
   final LibdcDiveMode? diveMode;
   final LibdcDecoModel? decoModel;
   final List<LibdcSampleRow> rows;
+
+  /// The descriptor the dive was parsed as (`identityDescriptorIndex`): the
+  /// model the computer reported, which can differ from the descriptor the
+  /// download opened. Null when the parse did not choose one.
+  final String? identityVendor;
+  final String? identityProduct;
 }
