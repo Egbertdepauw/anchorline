@@ -144,6 +144,8 @@ class AboutTab extends StatelessWidget {
                 context: context,
                 applicationName: 'Anchorline',
                 applicationVersion: isDev ? null : version,
+                applicationLegalese:
+                    'Source code: github.com/Egbertdepauw/anchorline',
               ),
             ),
           ],
