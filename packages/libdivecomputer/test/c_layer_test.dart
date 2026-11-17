@@ -225,9 +225,12 @@ Future<List<Res>> _onBlockingThread(int iostreamAddress, List<Op> ops) =>
 
 /// A request as al_link_pending handed it out.
 final class Request {
-  Request(this.kind, this.data, this.uuid);
+  Request(this.id, this.kind, this.data, this.uuid);
 
-  /// The kind the request callback gave.
+  /// What al_link_complete takes back; greater than 0.
+  final int id;
+
+  /// The kind al_link_pending gave, not the one the callback announced.
   final int kind;
   final List<int> data;
 
@@ -235,10 +238,12 @@ final class Request {
   final String uuid;
 
   @override
-  String toString() => 'Request($kind, $data, "$uuid")';
+  String toString() => 'Request(#$id, $kind, $data, "$uuid")';
 }
 
-typedef OnRequest = void Function(TestLink link, int kind);
+/// What this isolate does with a request notification. A Future result is
+/// awaited before the link is freed.
+typedef OnRequest = FutureOr<void> Function(TestLink link, int kind);
 
 class TestLink {
   TestLink.live({String? name = 'Liberty 1234', OnRequest? onRequest})
@@ -280,11 +285,13 @@ class TestLink {
   final requests = <Request>[];
 
   final _runs = <Future<void>>[];
+  final _handlers = <Future<void>>[];
   var _running = 0;
   var _disposed = false;
 
   static void _answerSuccess(TestLink link, int kind) {
-    if (link.take(kind) != null) link.complete(_success);
+    final request = link.take();
+    if (request != null) link.complete(request, _success);
   }
 
   void _open() {
@@ -301,40 +308,68 @@ class TestLink {
   void _handle(int address, int kind) {
     if (_disposed) return;
     expect(address, link.address);
-    _onRequest(this, kind);
+    final result = _onRequest(this, kind);
+    if (result is Future<void>) _handlers.add(result);
   }
 
-  /// al_link_pending, first with no room so the size-needed path runs on
-  /// every request that has bytes. Null when nothing is waiting.
-  Request? take(int kind) => using((arena) {
-    final uuid = arena<Char>(DC_BLE_UUID_SIZE);
-    var capacity = 0;
-    var data = arena<Uint8>(1);
-    while (true) {
-      final n = al_link_pending(link, data, capacity, uuid, DC_BLE_UUID_SIZE);
-      if (n > capacity) {
-        capacity = n;
-        data = arena<Uint8>(n);
-        continue;
-      }
-      final uuidText = uuid.cast<Utf8>().toDartString();
-      if (n == 0 && uuidText.isEmpty) return null;
-      final request = Request(kind, List.of(data.asTypedList(n)), uuidText);
-      requests.add(request);
-      return request;
+  /// al_link_pending, first with no room at all, so that the too-small path
+  /// (request id -1, nothing taken) runs on every request: a write always
+  /// has bytes, and a characteristic request always needs a UUID. Then with
+  /// room. Null when nothing is waiting.
+  Request? take() => using((arena) {
+    final id = arena<Int64>();
+    final kind = arena<Int32>();
+    final needed = al_link_pending(link, nullptr, 0, nullptr, 0, id, kind);
+    if (id.value == 0) {
+      expect(needed, 0);
+      expect(kind.value, 0);
+      return null;
     }
+    expect(id.value, -1, reason: 'no room, so nothing is taken');
+    expect(
+      kind.value,
+      isIn([AL_REQ_WRITE, AL_REQ_CHAR_READ, AL_REQ_CHAR_WRITE]),
+    );
+    final data = arena<Uint8>(needed + 1);
+    final uuid = arena<Char>(DC_BLE_UUID_SIZE);
+    final n = al_link_pending(
+      link,
+      data,
+      needed,
+      uuid,
+      DC_BLE_UUID_SIZE,
+      id,
+      kind,
+    );
+    // The request may have finished between the two calls.
+    if (id.value == 0) return null;
+    expect(id.value, greaterThan(0));
+    expect(n, needed);
+    final request = Request(
+      id.value,
+      kind.value,
+      List.of(data.asTypedList(n)),
+      uuid.cast<Utf8>().toDartString(),
+    );
+    requests.add(request);
+    return request;
   });
 
-  void complete(int status, [List<int> data = const []]) => using((arena) {
-    final buffer = arena<Uint8>(data.length + 1);
-    buffer.asTypedList(data.length).setAll(0, data);
-    al_link_complete(
-      link,
-      status,
-      data.isEmpty ? nullptr : buffer,
-      data.length,
-    );
-  });
+  void complete(Request request, int status, [List<int> data = const []]) =>
+      completeId(request.id, status, data);
+
+  void completeId(int id, int status, [List<int> data = const []]) =>
+      using((arena) {
+        final buffer = arena<Uint8>(data.length + 1);
+        buffer.asTypedList(data.length).setAll(0, data);
+        al_link_complete(
+          link,
+          id,
+          status,
+          data.isEmpty ? nullptr : buffer,
+          data.length,
+        );
+      });
 
   void push(List<int> bytes) => using((arena) {
     final buffer = arena<Uint8>(bytes.length + 1);
@@ -367,6 +402,8 @@ class TestLink {
       al_link_disconnected(link);
     }
     await Future.wait(_runs);
+    // A handler that completes later would touch a freed link.
+    await Future.wait(_handlers);
     _disposed = true;
     expect(dc_iostream_close(iostream), _success);
     _callable?.close();
@@ -443,6 +480,9 @@ Uint8List _encode(List<(String, List<int>)> events) {
 
 List<int> _u32(int value) =>
     (ByteData(4)..setUint32(0, value)).buffer.asUint8List();
+
+List<int> _i32(int value) =>
+    (ByteData(4)..setInt32(0, value)).buffer.asUint8List();
 
 int _readU32(List<int> bytes) =>
     ByteData.sublistView(Uint8List.fromList(bytes)).getUint32(0);
@@ -521,21 +561,31 @@ void main() {
   });
 
   test('a write waits for completion and returns the status given', () async {
+    const noAccess = dc_status_t.DC_STATUS_NOACCESS;
     final answers = [_success, _io];
+    Request? previous;
     final l = _live(
       onRequest: (l, kind) {
         expect(kind, AL_REQ_WRITE);
-        // Not taken yet, so not this request's completion: ignored.
-        al_link_complete(l.link, dc_status_t.DC_STATUS_NOACCESS, nullptr, 0);
-        expect(l.take(kind), isNotNull);
-        expect(l.take(kind), isNull, reason: 'a request is taken once');
-        l.complete(answers.removeAt(0));
+        final request = l.take()!;
+        expect(request.kind, AL_REQ_WRITE);
+        expect(l.take(), isNull, reason: 'a request is taken once');
+        // Ids other than this request's: ignored.
+        l.completeId(0, noAccess);
+        l.completeId(-1, noAccess);
+        l.completeId(request.id + 1, noAccess);
+        if (previous != null) {
+          expect(request.id, greaterThan(previous!.id));
+          l.complete(previous!, noAccess);
+        }
+        previous = request;
+        l.complete(request, answers.removeAt(0));
         // A second completion of the same request: ignored.
-        al_link_complete(l.link, dc_status_t.DC_STATUS_NOACCESS, nullptr, 0);
+        l.complete(request, noAccess);
       },
     );
     // Nothing pending: ignored, and the next write still waits.
-    al_link_complete(l.link, dc_status_t.DC_STATUS_NOACCESS, nullptr, 0);
+    l.completeId(1, noAccess);
     final r = await l.run(const [
       Write([0xAA, 0xBB]),
       Write([0xCC]),
@@ -557,20 +607,21 @@ void main() {
 
   test('a write nobody completes times out', () async {
     var seen = 0;
+    Request? second;
     final l = _live(
       onRequest: (l, kind) {
         seen++;
         // The first request is never even taken.
         if (seen == 1) return;
         if (seen == 2) {
-          l.take(kind); // taken, never completed
+          second = l.take(); // taken, never completed in time
           return;
         }
-        // The second write's completion, arriving late, before this request
-        // is taken: ignored.
-        al_link_complete(l.link, _success, nullptr, 0);
-        l.take(kind);
-        l.complete(dc_status_t.DC_STATUS_DATAFORMAT);
+        final third = l.take()!;
+        // The second write's completion, arriving late, after this request
+        // was taken: ignored.
+        if (second case final s?) l.complete(s, _success);
+        l.complete(third, dc_status_t.DC_STATUS_DATAFORMAT);
       },
     );
     al_link_set_write_timeout(l.link, 200);
@@ -582,7 +633,7 @@ void main() {
     expect(untaken[0].elapsed, _within(200, 1500));
     // A notification handled only now finds nothing to do: nobody waits
     // for that write any more.
-    expect(l.take(AL_REQ_WRITE), isNull);
+    expect(l.take(), isNull);
 
     final taken = await l.run(const [
       Write([2]),
@@ -590,7 +641,7 @@ void main() {
     expect(taken[0].status, _timeout);
     expect(taken[0].elapsed, _within(200, 1500));
     // Its completion after the timeout: ignored.
-    al_link_complete(l.link, _success, nullptr, 0);
+    if (second case final s?) l.complete(s, _success);
 
     final next = await l.run(const [
       Write([3]),
@@ -667,7 +718,7 @@ void main() {
 
       final writer = _live(
         onRequest: (l, kind) {
-          l.take(kind);
+          l.take();
           al_link_disconnected(l.link);
         },
       );
@@ -760,20 +811,27 @@ void main() {
     }
   });
 
-  test('GET_NAME copies the advertised name; a buffer too small is '
-      'INVALIDARGS', () async {
+  test('GET_NAME copies the advertised name, truncated to the buffer and '
+      'NUL-terminated', () async {
     final name = [...ascii.encode('Liberty 1234'), 0];
     for (final l in [_live(), _replay(const [])]) {
       final r = await l.run([
         Ioctl(DC_IOCTL_BLE_GET_NAME, List.filled(13, 0xFF)),
         Ioctl(DC_IOCTL_BLE_GET_NAME, List.filled(64, 0xFF)),
-        Ioctl(DC_IOCTL_BLE_GET_NAME, List.filled(12, 0xFF)),
+        // oceanic_atom2.c passes char name[9].
+        Ioctl(DC_IOCTL_BLE_GET_NAME, List.filled(9, 0xFF)),
+        Ioctl(DC_IOCTL_BLE_GET_NAME, List.filled(1, 0xFF)),
+        const Ioctl(DC_IOCTL_BLE_GET_NAME, []),
       ]);
       expect(r[0].status, _success);
       expect(r[0].data, name);
       expect(r[1].status, _success);
       expect(r[1].data.sublist(0, 13), name);
-      expect(r[2].status, _invalidArgs);
+      expect(r[2].status, _success);
+      expect(r[2].data, [...ascii.encode('Liberty '), 0]);
+      expect(r[3].status, _success);
+      expect(r[3].data, [0]);
+      expect(r[4].status, _invalidArgs, reason: 'no room even for the NUL');
     }
     final anonymous = _live(name: null);
     final r = await anonymous.run([
@@ -810,16 +868,18 @@ void main() {
       'UUID', () async {
     final l = _live(
       onRequest: (l, kind) {
-        final request = l.take(kind)!;
+        final request = l.take()!;
+        expect(request.kind, kind);
         expect(request.uuid, _uuidText);
-        if (kind == AL_REQ_CHAR_READ) {
+        if (request.kind == AL_REQ_CHAR_READ) {
           // The second read returns one byte more than fits.
           l.complete(
+            request,
             _success,
             l.requests.length == 1 ? [1, 2, 3, 4, 5] : [1, 2, 3, 4, 5, 6],
           );
         } else {
-          l.complete(_success);
+          l.complete(request, _success);
         }
       },
     );
@@ -846,12 +906,115 @@ void main() {
       [7, 8],
     ]);
     // C: u8 direction, u8 UUID length, the UUID, the value. The read that
-    // failed is not in it.
+    // failed has no value and an E after it; the one without a UUID is not
+    // in it.
     final events = _parse(l.recording());
-    expect(events.map((e) => e.kind), ['C', 'C']);
+    expect(events.map((e) => e.kind), ['C', 'C', 'E', 'C']);
     final uuid = ascii.encode(_uuidText);
     expect(events[0].payload, [DC_IOCTL_DIR_READ, 36, ...uuid, 1, 2, 3, 4, 5]);
-    expect(events[1].payload, [DC_IOCTL_DIR_WRITE, 36, ...uuid, 7, 8]);
+    expect(events[1].payload, [DC_IOCTL_DIR_READ, 36, ...uuid]);
+    expect(_readI32(events[2].payload), _invalidArgs);
+    expect(events[3].payload, [DC_IOCTL_DIR_WRITE, 36, ...uuid, 7, 8]);
+  });
+
+  test('overlapped handlers never complete the wrong request', () async {
+    // Two characteristic reads whose handlers interleave: the first is
+    // taken, outlives its timeout, and its completion arrives only after
+    // the second was taken.
+    Request? first;
+    final l = _live(
+      onRequest: (l, kind) {
+        final request = l.take()!;
+        if (first == null) {
+          first = request;
+          return;
+        }
+        l.complete(first!, _success, [0xAA]);
+        l.complete(request, _success, [0xBB]);
+        // And the first again, out of order after the second: ignored.
+        l.complete(first!, _success, [0xAA]);
+      },
+    );
+    al_link_set_write_timeout(l.link, 150);
+    final r = await l.run(const [
+      Ioctl(DC_IOCTL_BLE_CHARACTERISTIC_READ, [..._uuidBytes, 0]),
+      Ioctl(DC_IOCTL_BLE_CHARACTERISTIC_READ, [..._uuidBytes, 0]),
+    ]);
+    expect(r[0].status, _timeout);
+    expect(r[0].data.last, 0, reason: 'the late value never landed');
+    expect(r[1].status, _success);
+    expect(r[1].data.last, 0xBB);
+    expect(l.requests[1].id, greaterThan(l.requests[0].id));
+  });
+
+  test('a notification handled late takes the newer request with its own '
+      'kind', () async {
+    final announced = <int>[];
+    final l = _live(
+      onRequest: (l, kind) {
+        announced.add(kind);
+        // The write's notification is left alone until it timed out.
+        if (announced.length == 1) return;
+        // Handled now, the write's notification finds the characteristic
+        // read and is told so.
+        final stale = l.take()!;
+        expect(stale.kind, AL_REQ_CHAR_READ);
+        expect(stale.uuid, _uuidText);
+        l.complete(stale, _success, [0x42]);
+        // The read's own notification then finds nothing.
+        expect(l.take(), isNull);
+      },
+    );
+    al_link_set_write_timeout(l.link, 150);
+    final r = await l.run(const [
+      Write([1]),
+      Ioctl(DC_IOCTL_BLE_CHARACTERISTIC_READ, [..._uuidBytes, 0]),
+    ]);
+    expect(announced, [AL_REQ_WRITE, AL_REQ_CHAR_READ]);
+    expect(r[0].status, _timeout);
+    expect(r[1].status, _success);
+    expect(r[1].data.last, 0x42);
+  });
+
+  test('async handlers that finish out of order and late complete only '
+      'their own request', () async {
+    // Each read carries its index in the UUID's last byte; the handler
+    // answers with that byte. Every fourth handler takes longer than the
+    // timeout, so its completion arrives while later requests are taken.
+    const count = 20;
+    final l = _live(
+      onRequest: (l, kind) async {
+        final request = l.take();
+        if (request == null) return;
+        final index = int.parse(request.uuid.substring(34), radix: 16);
+        await Future<void>.delayed(
+          index % 4 == 1 ? const Duration(milliseconds: 250) : Duration.zero,
+        );
+        l.complete(request, _success, [index]);
+      },
+    );
+    al_link_set_write_timeout(l.link, 150);
+    final r = await l.run([
+      for (var i = 0; i < count; i++)
+        Ioctl(DC_IOCTL_BLE_CHARACTERISTIC_READ, [
+          ..._uuidBytes.sublist(0, 15),
+          i,
+          0xEE,
+        ]),
+    ]);
+    var succeeded = 0;
+    for (var i = 0; i < count; i++) {
+      if (i % 4 == 1) {
+        expect(r[i].status, _timeout, reason: 'read $i');
+        expect(r[i].data.last, 0xEE, reason: 'read $i: nothing landed');
+      } else if (r[i].status == _success) {
+        expect(r[i].data.last, i, reason: 'read $i got its own value');
+        succeeded++;
+      } else {
+        expect(r[i].status, _timeout, reason: 'read $i');
+      }
+    }
+    expect(succeeded, greaterThan(0));
   });
 
   test(
@@ -955,17 +1118,90 @@ void main() {
     ]);
     expect(rest[1].data, [8]);
     expect(al_link_replay_position(l.link), 7);
-
-    // A layout that runs past its end is refused.
-    using((arena) {
-      final cut = arena<Uint8>(events.length);
-      cut.asTypedList(events.length).setAll(0, events);
-      expect(al_link_new_replay(nullptr, cut, events.length - 1), nullptr);
-      expect(al_link_new_replay(nullptr, cut, 5), nullptr);
-    });
   });
 
-  test('a live recording replays to the same reads and writes', () async {
+  test('replay gives back what failed live, and stays at a characteristic '
+      'value that does not fit', () async {
+    final uuid = ascii.encode(_uuidText);
+    final events = _encode([
+      ('R', []), // 0: a read that timed out
+      ('R', []), // 1: a read that failed, with
+      ('E', _i32(_io)), // 2
+      ('W', [1]), // 3: a write that timed out, with
+      ('X', ascii.encode('overflow')), // 4: skipped, between the two
+      ('E', _i32(_timeout)), // 5
+      ('C', [DC_IOCTL_DIR_READ, 36, ...uuid, 1, 2, 3]), // 6
+      ('W', [2]), // 7: a write that succeeded
+      ('R', [9]), // 8
+    ]);
+    final l = _replay(events);
+    final r = await l.run([
+      const Poll(0), // the next read times out
+      const Read(16),
+      const Read(16),
+      const Write([1]),
+      Ioctl(DC_IOCTL_BLE_CHARACTERISTIC_READ, [..._uuidBytes, 0, 0]),
+    ]);
+    expect(r[0].status, _timeout);
+    expect(r[1].status, _timeout);
+    expect(r[2].status, _io);
+    expect(r[3].status, _timeout);
+    expect(r[3].value, 0);
+    expect(r[4].status, _invalidArgs, reason: 'three recorded, room for two');
+    expect(al_link_replay_position(l.link), 6, reason: 'stays at the C');
+    final rest = await l.run([
+      Ioctl(DC_IOCTL_BLE_CHARACTERISTIC_READ, [..._uuidBytes, 0, 0, 0]),
+      const Write([2]),
+      const Read(16),
+    ]);
+    expect(rest[0].status, _success);
+    expect(rest[0].data, [..._uuidBytes, 1, 2, 3]);
+    expect(rest[1].status, _success);
+    expect(rest[1].value, 1);
+    expect(rest[2].data, [9]);
+    expect(al_link_replay_position(l.link), 9);
+  });
+
+  test('replay refuses a malformed recording', () {
+    Pointer<al_link_t> replayOf(List<int> bytes) => using((arena) {
+      final buffer = arena<Uint8>(bytes.length + 1);
+      buffer.asTypedList(bytes.length).setAll(0, bytes);
+      return al_link_new_replay(nullptr, buffer, bytes.length);
+    });
+    final uuid = ascii.encode(_uuidText);
+    final good = _encode([
+      ('W', [1, 2]),
+      ('C', [DC_IOCTL_DIR_READ, 36, ...uuid, 7]),
+      ('R', [3]),
+    ]);
+    final link = replayOf(good);
+    expect(link, isNot(nullptr));
+    al_link_free(link);
+    // The last event runs past the end; the header itself is cut.
+    expect(replayOf(good.sublist(0, good.length - 1)), nullptr);
+    expect(replayOf(good.sublist(0, 5)), nullptr);
+    // A C shorter than its direction and UUID-length bytes.
+    expect(
+      replayOf(
+        _encode([
+          ('C', [DC_IOCTL_DIR_READ]),
+        ]),
+      ),
+      nullptr,
+    );
+    // A C whose UUID length runs past its payload.
+    expect(
+      replayOf(
+        _encode([
+          ('C', [DC_IOCTL_DIR_READ, 40, ...uuid]),
+        ]),
+      ),
+      nullptr,
+    );
+  });
+
+  test('a live recording replays to the same reads and writes, failures '
+      'included', () async {
     const ops = [
       SetTimeout(0),
       Write([0x01]),
@@ -973,33 +1209,50 @@ void main() {
       Read(16),
       Write([0x02, 0x03]),
       Read(16),
+      Read(16), // times out: the queue is empty
       Ioctl(DC_IOCTL_BLE_CHARACTERISTIC_READ, [..._uuidBytes, 0, 0]),
       Sleep(1),
       Write([0x04]),
+      Write([0x05]), // never completed: times out
+      Ioctl(DC_IOCTL_BLE_CHARACTERISTIC_READ, [..._uuidBytes, 0, 0]), // IO
     ];
+    var characteristicReads = 0;
     final live = _live(
       onRequest: (l, kind) {
-        if (l.take(kind) == null) return;
-        if (kind == AL_REQ_CHAR_READ) {
-          l.complete(_success, [0x51, 0x52]);
+        final request = l.take();
+        if (request == null) return;
+        if (request.kind == AL_REQ_CHAR_READ) {
+          characteristicReads++;
+          if (characteristicReads == 1) {
+            l.complete(request, _success, [0x51, 0x52]);
+          } else {
+            l.complete(request, _io);
+          }
           return;
         }
+        if (request.data.first == 0x05) return;
         // The computer answers the second write.
-        if (l.requests.length == 2) l.push([0xB1]);
-        l.complete(_success);
+        if (request.data.first == 0x02) l.push([0xB1]);
+        l.complete(request, _success);
       },
     );
+    al_link_set_write_timeout(live.link, 150);
     al_link_set_recording(live.link, 1);
     live.push([0xA1, 0xA2, 0xA3]);
     final first = await live.run(ops);
     final recorded = live.recording();
     final replay = _replay(recorded);
     final second = await replay.run(ops);
-    String describe(Res x) => '${x.status} ${x.data}';
+    String describe(Res x) => '${x.status} ${x.data} ${x.value}';
     expect(second.map(describe), first.map(describe));
     expect(first[2].data, [0xA1, 0xA2]);
     expect(first[5].data, [0xB1]);
-    expect(first[6].data, [..._uuidBytes, 0x51, 0x52]);
+    expect(first[6].status, _timeout);
+    expect(first[7].data, [..._uuidBytes, 0x51, 0x52]);
+    expect(first[10].status, _timeout);
+    expect(first[11].status, _io);
+    // The replay reached the end of the recording.
+    expect(al_link_replay_position(replay.link), _parse(recorded).length);
   });
 
   test('overflowing the queue turns into IO, not a crash', () async {
