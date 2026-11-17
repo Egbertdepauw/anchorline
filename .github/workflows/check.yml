@@ -57,6 +57,18 @@ jobs:
         run: dart test --reporter expanded
         working-directory: packages/subsurface_core
 
+      - name: fit_reader pub get
+        run: dart pub get
+        working-directory: packages/fit_reader
+
+      - name: fit_reader analyze
+        run: dart analyze --fatal-infos
+        working-directory: packages/fit_reader
+
+      - name: fit_reader test
+        run: dart test --reporter expanded
+        working-directory: packages/fit_reader
+
       - name: flutter pub get
         run: flutter pub get
 
