@@ -20,6 +20,7 @@ SubsurfaceDiveInput diveInputFromRow(Dive row) => SubsurfaceDiveInput(
       waterDensity: row.waterDensity,
       dcFirmware: row.dcFirmware,
       dcVendor: row.dcVendor,
+      dcProduct: row.dcProduct,
       dcFamily: row.dcFamily,
       gfLow: row.gfLow,
       gfHigh: row.gfHigh,

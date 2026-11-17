@@ -392,19 +392,34 @@ class SyncPlanner {
           );
         }
 
-        final ours = _mapper.mapDive(
-          dive: dive,
-          samples: bundle.samples,
-          annotation: bundle.annotation,
-          gasMixes: bundle.gasMixes,
-          tanks: bundle.tanks,
-          cylindersByMixIndex: bundle.cylindersByMixIndex,
-          nextSubsurfaceDiveNumber: diveNumber,
-        );
+        // A dive from another brand needs only its Dive-NNN lines: its
+        // Divecomputer file is never written (below), so its samples don't
+        // go through the Shearwater recording builder, which a throw there
+        // would turn into a failed sync.
+        final ours = dive.isOtherBrand
+            ? null
+            : _mapper.mapDive(
+                dive: dive,
+                samples: bundle.samples,
+                annotation: bundle.annotation,
+                gasMixes: bundle.gasMixes,
+                tanks: bundle.tanks,
+                cylindersByMixIndex: bundle.cylindersByMixIndex,
+                nextSubsurfaceDiveNumber: diveNumber,
+              );
+        final ourDiveLines = ours?.diveLines ??
+            _mapper.mapDiveLines(
+              dive: dive,
+              samples: bundle.samples,
+              annotation: bundle.annotation,
+              gasMixes: bundle.gasMixes,
+              tanks: bundle.tanks,
+              cylindersByMixIndex: bundle.cylindersByMixIndex,
+            );
 
         final mergedLines = _mergeDiveLines(
           existing: existing.diveLines,
-          ours: ours.diveLines,
+          ours: ourDiveLines,
         );
 
         final mergedText = serializeSubsurfaceFile(
@@ -445,16 +460,17 @@ class SyncPlanner {
         // CCR dive in a real repository carries
         // `event 0:00 type=20 value=1100 name="SP change"`.
         //
-        // A dive from another brand never takes this path: CCRLog never
-        // wrote its Divecomputer file, and the mapper's rewrite would be a
-        // Shearwater recording. Its decimal Serial can read as hex, and
-        // Subsurface writes SP-change events for other brands too.
-        final ccrlogOriginSignature = !dive.isOtherBrand &&
+        // A dive from another brand never takes this path ([ours] is null
+        // for one): CCRLog never wrote its Divecomputer file, and the
+        // mapper's rewrite would be a Shearwater recording. Its decimal
+        // Serial can read as hex, and Subsurface writes SP-change events
+        // for other brands too.
+        final ccrlogOriginSignature =
             _hasHexSerial(existing.divecomputerLines) &&
                 existing.divecomputerLines
                     .whereType<EventLine>()
                     .any(_looksLikeSpChangeEvent);
-        if (ccrlogOriginSignature) {
+        if (ours != null && ccrlogOriginSignature) {
           final folderPath = folderSegments.join('/');
           filesToWrite['$folderPath/Divecomputer'] = serializeSubsurfaceFile(
             SubsurfaceFile(lines: ours.divecomputerLines),

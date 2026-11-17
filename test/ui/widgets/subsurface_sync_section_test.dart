@@ -506,6 +506,9 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
     expect(find.text('Pushed 1 dive to Subsurface. $why'), findsOneWidget);
+    // Two sentences more to read than the plain result.
+    expect(tester.widget<SnackBar>(find.byType(SnackBar)).duration,
+        const Duration(seconds: 8));
   });
 
   testWidgets('the other-brand line reads right for one dive and is absent '
@@ -544,6 +547,8 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
     expect(find.text('Already up-to-date with Subsurface'), findsOneWidget);
+    expect(tester.widget<SnackBar>(find.byType(SnackBar)).duration,
+        const SnackBar(content: SizedBox()).duration);
   });
 
   testWidgets('Push button re-reads lastSyncedAt so the status row updates '
@@ -642,5 +647,8 @@ SubsurfaceDiveInput _testDive({int diveNumber = 700}) {
     logVersion: 17,
     atmosphericPressureMbar: 1013,
     waterDensity: 1025,
+    dcVendor: 'Shearwater',
+    dcProduct: 'Petrel 3',
+    dcFamily: null,
   );
 }

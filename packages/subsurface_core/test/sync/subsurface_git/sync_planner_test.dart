@@ -683,6 +683,9 @@ void main() {
       final bumped = SubsurfaceDiveInput(
         id: bundle.dive.id,
         dcSerial: bundle.dive.dcSerial,
+        dcVendor: bundle.dive.dcVendor,
+        dcProduct: bundle.dive.dcProduct,
+        dcFamily: bundle.dive.dcFamily,
         dcDiveNumber: 1146,
         startTime: bundle.dive.startTime,
         durationSeconds: bundle.dive.durationSeconds,
@@ -1099,25 +1102,37 @@ void main() {
   group('dives from other brands', () {
     test('another brand is a set dc_family, or a vendor that is set and '
         "isn't Shearwater", () {
-      SubsurfaceDiveInput dive(String? vendor, int? family) => _ccrPetrelDive(
-          diveId: _diveIdA, dcVendor: vendor, dcFamily: family);
+      SubsurfaceDiveInput dive(String? vendor, int? family,
+              [String? product]) =>
+          _ccrPetrelDive(
+              diveId: _diveIdA,
+              dcVendor: vendor,
+              dcProduct: product,
+              dcFamily: family);
       expect(dive(null, null).isOtherBrand, isFalse);
-      expect(dive('Shearwater', null).isOtherBrand, isFalse);
-      expect(dive('Divesoft', null).isOtherBrand, isTrue);
+      expect(dive('Shearwater', null, 'Petrel 3').isOtherBrand, isFalse);
+      expect(dive('Divesoft', null, 'Liberty').isOtherBrand, isTrue);
       expect(dive(null, _libdcFamily).isOtherBrand, isTrue);
       expect(dive('Shearwater', _libdcFamily).isOtherBrand, isTrue);
       expect(dive('Garmin', -1).isOtherBrand, isTrue);
+      // A Shearwater model line without the vendor (`model "Perdix 2"`)
+      // splits as vendor 'Perdix', product '2'. As a copy it is Shearwater.
+      expect(dive('Perdix', null, '2').isOtherBrand, isFalse);
+      expect(dive('Peregrine', null, 'TX').isOtherBrand, isFalse);
+      expect(dive('Perdix', null, 'Mk9').isOtherBrand, isTrue);
+      expect(dive('Perdix', _libdcFamily, '2').isOtherBrand, isTrue);
 
-      expect(const SubsurfaceDiveComputerInput(serial: 1, model: 3)
+      expect(const SubsurfaceDiveComputerInput(
+              serial: 1, model: 3, dcVendor: null, dcFamily: null)
           .isOtherBrand, isFalse);
       expect(const SubsurfaceDiveComputerInput(
-              serial: 1, model: 3, dcVendor: 'Shearwater')
+              serial: 1, model: 3, dcVendor: 'Shearwater', dcFamily: null)
           .isOtherBrand, isFalse);
       expect(const SubsurfaceDiveComputerInput(
-              serial: 1, model: 0, dcVendor: 'Divesoft')
+              serial: 1, model: 0, dcVendor: 'Divesoft', dcFamily: null)
           .isOtherBrand, isTrue);
       expect(const SubsurfaceDiveComputerInput(
-              serial: 1, model: 0, dcFamily: _libdcFamily)
+              serial: 1, model: 0, dcVendor: null, dcFamily: _libdcFamily)
           .isOtherBrand, isTrue);
     });
 
@@ -1279,6 +1294,102 @@ void main() {
       expect(mixed.stats.otherBrandDives, 1);
     });
 
+    test("an unmatched copy with a vendor-less Shearwater model line "
+        "('Perdix 2') is planned exactly as today, not left out", () {
+      // `model "Perdix 2"` splits as vendor 'Perdix', product '2'. Before
+      // brands were read, the planner ignored the vendor.
+      SyncPlan planOf(CcrlogDiveBundle b) => SyncPlanner().plan(
+            ccrlogDives: [b],
+            existingDivesBySerialAndStart: const {},
+            existingMaxDiveNumber: 0,
+            existingTopLevel: const [],
+            existingSites: const {},
+          );
+      final perdix = planOf(_bundle(
+        diveId: _diveIdA,
+        dcSerial: 0,
+        dcVendor: 'Perdix',
+        dcProduct: '2',
+        userDiveComputers: [_diveComputer(serial: 0xb89641e4)],
+      ));
+      final asToday = planOf(_bundle(
+        diveId: _diveIdA,
+        dcSerial: 0,
+        userDiveComputers: [_diveComputer(serial: 0xb89641e4)],
+      ));
+
+      expect(perdix.filesToWrite, isNotEmpty);
+      expect(perdix.filesToWrite, asToday.filesToWrite);
+      expect(perdix.diveIdsPlanned, [_diveIdA]);
+      expect(perdix.stats.newDives, 1);
+      expect(perdix.stats.otherBrandDives, 0);
+    });
+
+    test('an other-brand dive with dcSerial 0 is merged into a serial-less '
+        'remote dive at the same start second, and left out at another', () {
+      // A Divecomputer without a Serial is indexed under serial 0.
+      final files = {
+        ..._divesoftRepo(),
+        '$_divesoftFolder/Divecomputer': 'model "Divesoft Liberty"\n'
+            'dctype CCR\n'
+            'maxdepth 32.4m\n'
+            '  0:00 0.0m 14.0°C sensor1=0.71bar sensor2=0.7bar\n'
+            '  0:10 3.1m sensor1=0.74bar sensor2=0.73bar\n',
+      };
+
+      final same = _planOn(files, [
+        _divesoftCopy(diveId: _diveIdA, dcSerial: 0, dcFamily: _libdcFamily),
+      ]);
+      expect(same.filesToWrite['$_divesoftFolder/Dive-412'],
+          contains('notes "Cells 1 and 2 swapped after the dive"'));
+      expect(same.filesToWrite.keys,
+          isNot(contains('$_divesoftFolder/Divecomputer')));
+      expect(same.stats.updatedDives, 1);
+      expect(same.stats.otherBrandDives, 0);
+
+      final another = _planOn(files, [
+        _divesoftCopy(
+          diveId: _diveIdA,
+          dcSerial: 0,
+          dcFamily: _libdcFamily,
+          startTime: _divesoftStart + 1,
+        ),
+      ]);
+      expect(another.filesToWrite, isEmpty);
+      expect(another.stats.otherBrandDives, 1);
+    });
+
+    test('a matched other-brand dive never runs the Divecomputer line '
+        'builder', () {
+      // Empty cell columns under a sample count of 4: the Divecomputer
+      // line builder reads them and throws. The Dive-NNN lines don't.
+      final broken = _twoCellSampleSet(diveId: _diveIdA).withoutCells();
+      expect(
+        () => CcrlogToSubsurfaceMapper().mapDive(
+          dive: _ccrPetrelDive(diveId: _diveIdA),
+          samples: broken,
+          annotation: null,
+          gasMixes: const [],
+          tanks: const [],
+          cylindersByMixIndex: const {},
+          nextSubsurfaceDiveNumber: 1,
+        ),
+        throwsRangeError,
+      );
+
+      final plan = _planOn(_divesoftRepo(), [
+        _divesoftCopy(
+          diveId: _diveIdA,
+          dcSerial: 1234567,
+          dcFamily: _libdcFamily,
+          samples: broken,
+        ),
+      ]);
+      expect(plan.filesToWrite['$_divesoftFolder/Dive-412'],
+          contains('notes "Cells 1 and 2 swapped after the dive"'));
+      expect(plan.stats.updatedDives, 1);
+    });
+
     test('a dive computer from another brand gets no divecomputerid line', () {
       final plan = SyncPlanner().plan(
         ccrlogDives: [
@@ -1296,6 +1407,7 @@ void main() {
                 serial: 0x7654321,
                 model: 13,
                 dcVendor: 'Heinrichs Weikamp',
+                dcFamily: null,
               ),
             ],
           ),
@@ -1394,6 +1506,7 @@ CcrlogDiveBundle _divesoftCopy({
   required int dcSerial,
   int? dcFamily,
   int startTime = _divesoftStart,
+  SampleSet? samples,
 }) {
   final now = DateTime.utc(2026, 11, 17);
   return _bundle(
@@ -1403,7 +1516,7 @@ CcrlogDiveBundle _divesoftCopy({
     dcVendor: 'Divesoft',
     dcFamily: dcFamily,
     gasMixes: const [],
-    samples: _twoCellSampleSet(diveId: diveId),
+    samples: samples ?? _twoCellSampleSet(diveId: diveId),
     annotation: DiveAnnotation(
       diveId: diveId,
       notes: 'Cells 1 and 2 swapped after the dive',
@@ -1426,6 +1539,28 @@ CcrlogDiveBundle _divesoftCopy({
       ),
     ],
   );
+}
+
+extension on SampleSet {
+  /// This set with empty cell columns, shorter than [SampleSet.sampleCount].
+  SampleSet withoutCells() => SampleSet(
+        diveId: diveId,
+        sampleCount: sampleCount,
+        sampleIntervalMs: sampleIntervalMs,
+        depthMeters: depthMeters,
+        temperatureCelsius: temperatureCelsius,
+        ppo2Bar: ppo2Bar,
+        cellMv0: Float32List(0),
+        cellMv1: Float32List(0),
+        cellMv2: Float32List(0),
+        setpointBar: setpointBar,
+        cns: cns,
+        decoStopDepthMeters: decoStopDepthMeters,
+        decoTimeSeconds: decoTimeSeconds,
+        ttsSeconds: ttsSeconds,
+        gasMixIndex: gasMixIndex,
+        statusFlags: statusFlags,
+      );
 }
 
 /// Two cells and a 1.3 bar setpoint, unlike the samples in the
@@ -1523,6 +1658,7 @@ CcrlogDiveBundle _bundle({
   List<DiveGasMix>? gasMixes,
   int dcSerial = 0xb89641e4,
   String? dcVendor,
+  String? dcProduct,
   int? dcFamily,
   SampleSet? samples,
 }) {
@@ -1531,6 +1667,7 @@ CcrlogDiveBundle _bundle({
       startTime: startTime,
       dcSerial: dcSerial,
       dcVendor: dcVendor,
+      dcProduct: dcProduct,
       dcFamily: dcFamily);
   return CcrlogDiveBundle(
     dive: dive,
@@ -1548,12 +1685,14 @@ SubsurfaceDiveInput _ccrPetrelDive({
   int startTime = 1776611925,
   int dcSerial = 0xb89641e4,
   String? dcVendor,
+  String? dcProduct,
   int? dcFamily,
 }) {
   return SubsurfaceDiveInput(
     id: diveId,
     dcSerial: dcSerial,
     dcVendor: dcVendor,
+    dcProduct: dcProduct,
     dcFamily: dcFamily,
     dcDiveNumber: 705,
     startTime: startTime,
@@ -1578,6 +1717,8 @@ SubsurfaceDiveComputerInput _diveComputer({required int serial}) {
     serial: serial,
     model: 3,
     nickname: 'Petrel 3',
+    dcVendor: 'Shearwater',
+    dcFamily: null,
   );
 }
 

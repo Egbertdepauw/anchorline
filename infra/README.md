@@ -80,12 +80,17 @@ this order:
 4. Fake-row check. In the SQL editor insert a `dives` row for your account
    with `dc_family = 999`. It must **not** appear on an installed store
    build (it sends no params; this is the only live test that old builds are
-   excluded) and **not** on a build of this PR (`dc_engines: 1`). It
-   **must** appear on a debug build with `kSyncConnectionParams` set to
-   `{'dc_engines': 2}`. Then delete the row in SQL and check that it
-   disappears on that debug build. While the row exists, don't push to
-   Subsurface or open the fake dive on that build: phase-1 builds don't skip
-   libdivecomputer dives in the writer.
+   excluded) and **not** on a phase 1 build (`dc_engines: 1`): a build from
+   before the commit that set `kSyncConnectionParams` to `{'dc_engines': 2}`
+   ("skip other brands in the Subsurface writer"), or a store build that has
+   phase 1 but not that commit. A build of the current branch sends
+   `{'dc_engines': 2}`, so it can't be used for that leg. The row **must**
+   appear on a build of the current branch. Then delete the row in SQL and
+   check that it disappears on that build. While the row exists, don't open
+   the fake dive on that build. A Subsurface push from it leaves the row out
+   (another brand, not on Subsurface Cloud); a phase 1 build with the
+   parameter changed by hand would write it as a Shearwater dive, so don't
+   push from one.
 5. Sync goes green and the dive count matches on one device.
 6. This must be live before any phase-2 build exists.
 

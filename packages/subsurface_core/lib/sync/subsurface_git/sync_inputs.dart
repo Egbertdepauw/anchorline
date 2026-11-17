@@ -1,4 +1,6 @@
-import '../../shearwater/parser/hardware.dart' show kShearwaterVendor;
+import '../../shearwater/parser/hardware.dart'
+    show ShearwaterModel, kShearwaterVendor;
+import 'subsurface_model.dart' show shearwaterModelFromProduct;
 
 /// The dive fields the write mapper and the planner read. The app builds
 /// it from the Drift `Dive` row, the server from the `dives` Postgres row.
@@ -17,9 +19,13 @@ final class SubsurfaceDiveInput {
     required this.logVersion,
     required this.atmosphericPressureMbar,
     required this.waterDensity,
+    // Required, though nullable, so a builder (the app's, the server's)
+    // can't leave them out: the planner reads them to keep other brands
+    // from being written as new Shearwater dives.
+    required this.dcVendor,
+    required this.dcProduct,
+    required this.dcFamily,
     this.dcFirmware,
-    this.dcVendor,
-    this.dcFamily,
     this.gfLow,
     this.gfHigh,
     this.sensorCalibrationJson,
@@ -44,13 +50,28 @@ final class SubsurfaceDiveInput {
   /// which are Shearwater.
   final String? dcVendor;
 
-  /// The row's `dc_family`: set on libdivecomputer dives, -1 on FIT dives,
-  /// null on Shearwater dives and on Subsurface copies.
+  /// The row's `dc_product`.
+  final String? dcProduct;
+
+  /// The row's `dc_family`: set on libdivecomputer dives, including
+  /// Subsurface copies a download has refreshed; -1 on FIT dives; null on
+  /// Shearwater dives and on copies no download has refreshed.
   final int? dcFamily;
 
   /// True for a dive from another brand, which the Shearwater-only writer
-  /// never pushes as a new dive (see `SyncPlanner.plan`).
-  bool get isOtherBrand => _isOtherBrand(dcVendor, dcFamily);
+  /// never pushes as a new dive (see `SyncPlanner.plan`): a set
+  /// [dcFamily], or a [dcVendor] that is set and isn't Shearwater.
+  ///
+  /// A copy whose Subsurface `model` line names a Shearwater model without
+  /// the vendor (`model "Perdix 2"`, read as vendor `Perdix`, product `2`)
+  /// is Shearwater.
+  bool get isOtherBrand {
+    if (dcFamily != null) return true;
+    final vendor = dcVendor;
+    if (vendor == null || vendor == kShearwaterVendor) return false;
+    final model = dcProduct == null ? vendor : '$vendor $dcProduct';
+    return shearwaterModelFromProduct(model) == ShearwaterModel.unknown;
+  }
 
   final int? gfLow;
   final int? gfHigh;
@@ -78,8 +99,9 @@ final class SubsurfaceDiveComputerInput {
     required this.serial,
     required this.model, // ShearwaterModel.index
     this.nickname,
-    this.dcVendor,
-    this.dcFamily,
+    // Required, though nullable: see SubsurfaceDiveInput.
+    required this.dcVendor,
+    required this.dcFamily,
   });
   final int serial;
   final int model;
@@ -93,11 +115,9 @@ final class SubsurfaceDiveComputerInput {
   final int? dcFamily;
 
   /// True for a computer from another brand, which gets no
-  /// `divecomputerid` line from the Shearwater-only writer.
-  bool get isOtherBrand => _isOtherBrand(dcVendor, dcFamily);
+  /// `divecomputerid` line from the Shearwater-only writer: a set
+  /// [dcFamily], or a [dcVendor] that is set and isn't Shearwater. Only a
+  /// download registers a computer, so its vendor is always the brand's.
+  bool get isOtherBrand =>
+      dcFamily != null || (dcVendor != null && dcVendor != kShearwaterVendor);
 }
-
-/// Another brand: a set `dc_family` (libdivecomputer or FIT), or a vendor
-/// that is set and isn't Shearwater. A null vendor is Shearwater.
-bool _isOtherBrand(String? vendor, int? family) =>
-    family != null || (vendor != null && vendor != kShearwaterVendor);

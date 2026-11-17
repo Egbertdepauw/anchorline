@@ -219,10 +219,16 @@ class _SubsurfaceSyncSectionState extends State<SubsurfaceSyncSection> {
           ? 'Already up-to-date with Subsurface'
           : 'Pushed ${result.divesPushed} '
               'dive${result.divesPushed == 1 ? '' : 's'} to Subsurface';
-      final msg = result.otherBrandDives > 0
-          ? '$pushed. ${_otherBrandText(result.otherBrandDives)}'
-          : pushed;
-      messenger.showSnackBar(SnackBar(content: Text(msg)));
+      if (result.otherBrandDives > 0) {
+        // Two sentences more to read: give them longer than the default.
+        messenger.showSnackBar(SnackBar(
+          content: Text(
+              '$pushed. ${_otherBrandText(result.otherBrandDives)}'),
+          duration: const Duration(seconds: 8),
+        ));
+      } else {
+        messenger.showSnackBar(SnackBar(content: Text(pushed)));
+      }
     } on NoCredentialsException {
       if (!mounted) return;
       messenger.showSnackBar(const SnackBar(

@@ -371,6 +371,7 @@ SubsurfaceDiveInput _rowInput(Dive d) => SubsurfaceDiveInput(
       diveMode: d.diveMode.value,
       dcModel: d.dcModel.index,
       dcVendor: d.dcVendor,
+      dcProduct: d.dcProduct,
       dcFamily: d.dcFamily,
       logVersion: d.logVersion,
       atmosphericPressureMbar: d.atmosphericPressureMbar,
