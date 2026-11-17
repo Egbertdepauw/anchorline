@@ -142,8 +142,25 @@ void main() {
         }),
       ]),
     ).messages.single;
+    expect(m.fields[1]!.value, isA<List<int?>>());
     expect(m.fields[1]!.value, [1, null, 3]);
     expect(m.fields[2]!.value, [-1, null, 2]);
+    expect(m.fields[3]!.value, isNull);
+  });
+
+  test('float arrays are List<double?>; byte arrays keep real 0xFF bytes', () {
+    final m = decodeFit(
+      buildFit([
+        _m(20, {
+          1: (_f32, [1.5, double.nan]),
+          2: (0x0D, [1, 0xFF, 3]),
+          3: (0x0D, [0xFF, 0xFF]),
+        }),
+      ]),
+    ).messages.single;
+    expect(m.fields[1]!.value, isA<List<double?>>());
+    expect(m.fields[1]!.value, [1.5, null]);
+    expect(m.fields[2]!.value, [1, 255, 3]);
     expect(m.fields[3]!.value, isNull);
   });
 
@@ -220,6 +237,43 @@ void main() {
     patched[end] = crc & 0xFF;
     patched[end + 1] = crc >> 8;
     expect(decodeFit(patched).messages.single.intField(2), 0x0A0B);
+  });
+
+  test('fitCrc16 equals a bit-by-bit CRC-16/ARC', () {
+    int ref(List<int> bytes) {
+      var crc = 0;
+      for (final b in bytes) {
+        crc ^= b;
+        for (var i = 0; i < 8; i++) {
+          crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xA001 : crc >> 1;
+        }
+      }
+      return crc;
+    }
+
+    for (var b = 0; b < 256; b++) {
+      expect(fitCrc16(Uint8List.fromList([b])), ref([b]), reason: 'byte $b');
+    }
+    final long = [for (var i = 0; i < 1000; i++) (i * 37 + 11) & 0xFF];
+    expect(fitCrc16(Uint8List.fromList(long)), ref(long));
+  });
+
+  test('fitCrc16 matches the CRC of a real Garmin header', () {
+    final h = Uint8List.fromList([
+      0x0e,
+      0x10,
+      0x7e,
+      0x08,
+      0xff,
+      0xea,
+      0x03,
+      0x00,
+      0x2e,
+      0x46,
+      0x49,
+      0x54,
+    ]);
+    expect(fitCrc16(h), 0x6263);
   });
 
   test('fitCrc16 matches a known vector and honours the range', () {

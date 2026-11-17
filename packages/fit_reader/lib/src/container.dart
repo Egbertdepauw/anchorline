@@ -24,7 +24,9 @@ class FitField {
   final int offset;
 
   /// An `int`, a `double`, a `String`, or a `List<int?>` (`List<double?>` for
-  /// float types) for arrays, where an invalid element is null. Null when the
+  /// float types) for arrays, where an invalid element is null. Byte (0x0D)
+  /// arrays are exempt: they read as null only if every byte is 0xFF,
+  /// otherwise all bytes are kept. Null when the
   /// field holds its base type's invalid marker.
   final Object? value;
 
@@ -83,7 +85,7 @@ class FitFile {
 
 const _crcTable = <int>[
   0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401, //
-  0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4401,
+  0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400,
 ];
 
 /// FIT's CRC-16 (polynomial 0xA001, nibble-wise) over `bytes[start, end)`.
@@ -193,15 +195,20 @@ Object? _readValue(ByteData d, int pos, int size, int baseType, Endian e) {
   if (size < es) return null;
   if (size == es) return _readElement(d, pos, baseType, e);
   final n = size ~/ es;
-  final out = <Object?>[];
-  var anyValid = false;
-  for (var i = 0; i < n; i++) {
-    final v = _readElement(d, pos + i * es, baseType, e);
-    if (v != null) anyValid = true;
-    // Positions are kept: an invalid element is null in the list.
-    out.add(v);
+  final isFloat = (baseType & 0x1F) == 0x08 || (baseType & 0x1F) == 0x09;
+  final isByte = (baseType & 0x1F) == 0x0D;
+  final raw = <Object?>[
+    for (var i = 0; i < n; i++) _readElement(d, pos + i * es, baseType, e),
+  ];
+  if (raw.every((v) => v == null)) return null;
+  if (isByte) {
+    // Byte arrays are opaque: a real 0xFF byte stays 255.
+    return <int?>[for (var i = 0; i < n; i++) d.getUint8(pos + i)];
   }
-  return anyValid ? out : null;
+  // Positions are kept: an invalid element is null in the list.
+  return isFloat
+      ? <double?>[for (final v in raw) v as double?]
+      : <int?>[for (final v in raw) v as int?];
 }
 
 class _FieldDef {
