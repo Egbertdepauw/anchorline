@@ -4,7 +4,11 @@ import 'package:libdivecomputer/libdivecomputer.dart';
 
 /// An envelope for mapping tests. [serial] null means the computer sent no
 /// device info.
-LibdcEnvelope testEnvelope({int? serial = 1234567, int? model = 10}) =>
+LibdcEnvelope testEnvelope({
+  int? serial = 1234567,
+  int? model = 10,
+  Uint8List? fingerprint,
+}) =>
     LibdcEnvelope(
       pinnedCommit: '0194f09',
       vendor: 'Divesoft',
@@ -14,7 +18,7 @@ LibdcEnvelope testEnvelope({int? serial = 1234567, int? model = 10}) =>
       devinfoModel: serial == null ? null : model,
       devinfoFirmware: serial == null ? null : 1,
       devinfoSerial: serial,
-      fingerprint: Uint8List.fromList([0xde, 0xad, 0xbe, 0xef]),
+      fingerprint: fingerprint ?? Uint8List.fromList([0xde, 0xad, 0xbe, 0xef]),
       data: Uint8List.fromList([1, 2, 3]),
     );
 
