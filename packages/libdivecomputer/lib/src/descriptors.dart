@@ -66,13 +66,11 @@ abstract final class Libdc {
   static Pointer<c.dc_context_t> _ctx() {
     final existing = _context;
     if (existing != null) return existing;
-    final out = calloc<Pointer<c.dc_context_t>>();
-    try {
+    return using((arena) {
+      final out = arena<Pointer<c.dc_context_t>>();
       _check(c.dc_context_new(out), 'dc_context_new');
       return _context = out.value;
-    } finally {
-      calloc.free(out);
-    }
+    });
   }
 
   static void _check(int status, String what) {
@@ -87,55 +85,55 @@ abstract final class Libdc {
   /// a present family.
   static List<LibdcDescriptor> _enumerate(String? bleName) {
     final result = <LibdcDescriptor>[];
-    final iterator = calloc<Pointer<c.dc_iterator_t>>();
-    final item = calloc<Pointer<c.dc_descriptor_t>>();
-    final nameC = bleName?.toNativeUtf8();
-    try {
+    return using((arena) {
+      final iterator = arena<Pointer<c.dc_iterator_t>>();
+      final item = arena<Pointer<c.dc_descriptor_t>>();
+      final nameC = bleName?.toNativeUtf8(allocator: arena);
       _check(
         c.dc_descriptor_iterator_new(iterator, _ctx()),
         'dc_descriptor_iterator_new',
       );
-      while (c.dc_iterator_next(iterator.value, item.cast()) ==
-          c.dc_status_t.DC_STATUS_SUCCESS) {
-        final descriptor = item.value;
-        try {
-          final family = c.dc_descriptor_get_type(descriptor);
-          if (!familyPresent(family)) continue;
-          final parsed = LibdcDescriptor(
-            vendor: c
-                .dc_descriptor_get_vendor(descriptor)
-                .cast<Utf8>()
-                .toDartString(),
-            product: c
-                .dc_descriptor_get_product(descriptor)
-                .cast<Utf8>()
-                .toDartString(),
-            family: family,
-            model: c.dc_descriptor_get_model(descriptor),
-            transports: c.dc_descriptor_get_transports(descriptor),
-          );
-          if (nameC != null) {
-            if (parsed.isShearwater || !parsed.supportsBle) continue;
-            if (c.dc_descriptor_filter(
-                  descriptor,
-                  c.dc_transport_t.DC_TRANSPORT_BLE,
-                  nameC.cast(),
-                ) !=
-                1) {
-              continue;
+      final it = iterator.value;
+      try {
+        while (true) {
+          final status = c.dc_iterator_next(it, item.cast());
+          if (status == c.dc_status_t.DC_STATUS_DONE) break;
+          _check(status, 'dc_iterator_next');
+          final descriptor = item.value;
+          try {
+            final family = c.dc_descriptor_get_type(descriptor);
+            if (!familyPresent(family)) continue;
+            final parsed = LibdcDescriptor(
+              vendor: c
+                  .dc_descriptor_get_vendor(descriptor)
+                  .cast<Utf8>()
+                  .toDartString(),
+              product: c
+                  .dc_descriptor_get_product(descriptor)
+                  .cast<Utf8>()
+                  .toDartString(),
+              family: family,
+              model: c.dc_descriptor_get_model(descriptor),
+              transports: c.dc_descriptor_get_transports(descriptor),
+            );
+            if (nameC != null) {
+              if (parsed.isShearwater || !parsed.supportsBle) continue;
+              final accepted = c.dc_descriptor_filter(
+                descriptor,
+                c.dc_transport_t.DC_TRANSPORT_BLE,
+                nameC.cast(),
+              );
+              if (accepted != 1) continue;
             }
+            result.add(parsed);
+          } finally {
+            c.dc_descriptor_free(descriptor);
           }
-          result.add(parsed);
-        } finally {
-          c.dc_descriptor_free(descriptor);
         }
+      } finally {
+        c.dc_iterator_free(it);
       }
-    } finally {
-      c.dc_iterator_free(iterator.value);
-      if (nameC != null) calloc.free(nameC);
-      calloc.free(item);
-      calloc.free(iterator);
-    }
-    return result;
+      return result;
+    });
   }
 }

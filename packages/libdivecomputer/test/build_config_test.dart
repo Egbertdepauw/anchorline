@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:libdivecomputer/src/hook/build_config.dart';
 import 'package:test/test.dart';
 
@@ -150,5 +152,41 @@ void
 al_other(void) {}
 ''';
     expect(exportedAlFunctions([c]), ['al_family_present', 'al_other']);
+  });
+
+  test('the Windows flags carry the .def path, and no other OS does', () {
+    expect(
+      linkerFlagsFor('windows', defFile: r'C:\out\libdivecomputer.def'),
+      contains(r'C:\out\libdivecomputer.def'),
+    );
+    expect(linkerFlagsFor('macos', defFile: 'x.def'), isNot(contains('x.def')));
+  });
+
+  test('exportedAlFunctions equals the al_ functions of the bindings', () {
+    final sources = [
+      for (final f in Directory('native').listSync())
+        if (f is File && f.path.endsWith('.c')) f.readAsStringSync(),
+    ];
+    final bound = RegExp(r'external int (al_\w+)\(|external \w+ (al_\w+)\(')
+        .allMatches(File('lib/src/bindings.g.dart').readAsStringSync())
+        .map((m) => m.group(1) ?? m.group(2)!)
+        .toSet();
+    expect(exportedAlFunctions(sources).toSet(), bound);
+  });
+
+  test('no compiled file starts with a left-out family prefix', () {
+    final srcNames = [
+      for (final f in Directory('third_party/libdivecomputer/src').listSync())
+        if (f is File) f.uri.pathSegments.last,
+    ];
+    for (final entry in kLeaveOutTable.entries) {
+      final prefix = entry.key;
+      for (final os in ['macos', 'windows']) {
+        final compiled = sourcesFor(os, srcNames, {entry.key});
+        // hw_ostc3: hw_ostc_parser.c is shared with older families and stays.
+        final offenders = compiled.where((n) => n.startsWith(prefix));
+        expect(offenders, isEmpty, reason: '${entry.key} on $os');
+      }
+    }
   });
 }

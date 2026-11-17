@@ -22,12 +22,17 @@ const Map<String, Set<String>> kPlatformExcludes = {
 class LeaveOutFamily {
   const LeaveOutFamily({
     required this.familyConstant,
+    required this.header,
     required this.sources,
     required this.stubs,
   });
 
   /// The `DC_FAMILY_*` name of the family, from `libdivecomputer/common.h`.
   final String familyConstant;
+
+  /// The family's header in `src/`, included by the stub file so a prototype
+  /// that drifts after a pin move is a "conflicting types" build error.
+  final String header;
 
   /// Files of `src/` that exist only for this family.
   final List<String> sources;
@@ -45,6 +50,7 @@ class LeaveOutFamily {
 const Map<String, LeaveOutFamily> kLeaveOutTable = {
   'suunto_eonsteel': LeaveOutFamily(
     familyConstant: 'DC_FAMILY_SUUNTO_EONSTEEL',
+    header: 'suunto_eonsteel.h',
     sources: ['suunto_eonsteel.c', 'suunto_eonsteel_parser.c'],
     stubs: [
       'dc_status_t suunto_eonsteel_device_open(dc_device_t **device, dc_context_t *context, dc_iostream_t *iostream, unsigned int model)',
@@ -53,6 +59,7 @@ const Map<String, LeaveOutFamily> kLeaveOutTable = {
   ),
   'deepblu_cosmiq': LeaveOutFamily(
     familyConstant: 'DC_FAMILY_DEEPBLU_COSMIQ',
+    header: 'deepblu_cosmiq.h',
     sources: ['deepblu_cosmiq.c', 'deepblu_cosmiq_parser.c'],
     stubs: [
       'dc_status_t deepblu_cosmiq_device_open(dc_device_t **device, dc_context_t *context, dc_iostream_t *iostream)',
@@ -61,6 +68,7 @@ const Map<String, LeaveOutFamily> kLeaveOutTable = {
   ),
   'oceans_s1': LeaveOutFamily(
     familyConstant: 'DC_FAMILY_OCEANS_S1',
+    header: 'oceans_s1.h',
     // oceans_s1_common.c is only used by the two Oceans files.
     sources: ['oceans_s1.c', 'oceans_s1_common.c', 'oceans_s1_parser.c'],
     stubs: [
@@ -70,6 +78,7 @@ const Map<String, LeaveOutFamily> kLeaveOutTable = {
   ),
   'divesoft_freedom': LeaveOutFamily(
     familyConstant: 'DC_FAMILY_DIVESOFT_FREEDOM',
+    header: 'divesoft_freedom.h',
     // hdlc.c stays: the Suunto EON Steel backend uses it too.
     sources: ['divesoft_freedom.c', 'divesoft_freedom_parser.c'],
     stubs: [
@@ -79,6 +88,7 @@ const Map<String, LeaveOutFamily> kLeaveOutTable = {
   ),
   'hw_ostc3': LeaveOutFamily(
     familyConstant: 'DC_FAMILY_HW_OSTC3',
+    header: 'hw_ostc3.h',
     // hw_ostc3_parser_create lives in hw_ostc_parser.c, which the older OSTC
     // and Frog families share, so that file and that function stay. The eight
     // hw_ostc3_device_* functions are public API (libdivecomputer.symbols,
@@ -98,6 +108,7 @@ const Map<String, LeaveOutFamily> kLeaveOutTable = {
   ),
   'pelagic_i330r': LeaveOutFamily(
     familyConstant: 'DC_FAMILY_PELAGIC_I330R',
+    header: 'pelagic_i330r.h',
     // The i330R has no parser of its own: it parses with the Oceanic Atom 2
     // parser.
     sources: ['pelagic_i330r.c'],
@@ -107,6 +118,7 @@ const Map<String, LeaveOutFamily> kLeaveOutTable = {
   ),
   'deepsix_excursion': LeaveOutFamily(
     familyConstant: 'DC_FAMILY_DEEPSIX_EXCURSION',
+    header: 'deepsix_excursion.h',
     sources: ['deepsix_excursion.c', 'deepsix_excursion_parser.c'],
     stubs: [
       'dc_status_t deepsix_excursion_device_open(dc_device_t **out, dc_context_t *context, dc_iostream_t *iostream)',
@@ -115,6 +127,7 @@ const Map<String, LeaveOutFamily> kLeaveOutTable = {
   ),
   'cochran_commander': LeaveOutFamily(
     familyConstant: 'DC_FAMILY_COCHRAN_COMMANDER',
+    header: 'cochran_commander.h',
     sources: ['cochran_commander.c', 'cochran_commander_parser.c'],
     stubs: [
       'dc_status_t cochran_commander_device_open(dc_device_t **device, dc_context_t *context, dc_iostream_t *iostream)',
@@ -123,6 +136,7 @@ const Map<String, LeaveOutFamily> kLeaveOutTable = {
   ),
   'mclean_extreme': LeaveOutFamily(
     familyConstant: 'DC_FAMILY_MCLEAN_EXTREME',
+    header: 'mclean_extreme.h',
     sources: ['mclean_extreme.c', 'mclean_extreme_parser.c'],
     stubs: [
       'dc_status_t mclean_extreme_device_open(dc_device_t **device, dc_context_t *context, dc_iostream_t *iostream)',
@@ -191,7 +205,11 @@ Map<String, String?> definesFor(String os, Set<String> leftOut) => {
 };
 
 /// Linker flags for [os].
-List<String> linkerFlagsFor(String os) => [
+List<String> linkerFlagsFor(String os, {String? defFile}) => [
+  // cl.exe hands a bare .def file on its command line to LINK unprocessed;
+  // libdivecomputer has no __declspec(dllexport), so the DLL exports only
+  // what this file lists.
+  if (os == 'windows' && defFile != null) defFile,
   // `flutter test` rewrites install names, and a long worktree path made
   // install_name_tool fail in phase 1 for lack of header room.
   if (os == 'macos' || os == 'ios') '-Wl,-headerpad_max_install_names',
@@ -224,8 +242,11 @@ String renderLeaveOutStubs(Set<String> leftOut) {
     ..writeln('#include <libdivecomputer/context.h>')
     ..writeln('#include <libdivecomputer/iostream.h>')
     ..writeln('#include <libdivecomputer/device.h>')
-    ..writeln('#include <libdivecomputer/parser.h>')
-    ..writeln();
+    ..writeln('#include <libdivecomputer/parser.h>');
+  for (final key in leftOut.toList()..sort()) {
+    out.writeln('#include "${kLeaveOutTable[key]!.header}"');
+  }
+  out.writeln();
   for (final key in leftOut.toList()..sort()) {
     out.writeln('/* ${kLeaveOutTable[key]!.familyConstant} */');
     for (final prototype in kLeaveOutTable[key]!.stubs) {

@@ -30,10 +30,17 @@ void main() {
     expect(ix3m.supportsBle, isTrue);
   });
 
-  test('every Shearwater descriptor is flagged as Shearwater', () {
-    final shearwater = Libdc.descriptors().where((d) => d.isShearwater);
+  test('every Shearwater family descriptor is flagged as Shearwater', () {
+    final shearwater = Libdc.descriptors().where(
+      (d) =>
+          d.family == dc_family_t.DC_FAMILY_SHEARWATER_PREDATOR ||
+          d.family == dc_family_t.DC_FAMILY_SHEARWATER_PETREL,
+    );
     expect(shearwater, isNotEmpty);
-    expect(shearwater.every((d) => d.vendor == 'Shearwater'), isTrue);
+    expect(shearwater.every((d) => d.isShearwater), isTrue);
+    for (final d in shearwater) {
+      expect(Libdc.matchBle(d.product).contains(d), isFalse, reason: '$d');
+    }
   });
 
   test('matchBle never offers a Shearwater', () {

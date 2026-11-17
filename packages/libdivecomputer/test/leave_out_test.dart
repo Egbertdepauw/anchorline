@@ -35,8 +35,8 @@ void main() {
               );
           expect(present(dc_family_t.DC_FAMILY_DIVESOFT_FREEDOM), 0);
           expect(present(dc_family_t.DC_FAMILY_HW_OSTC3), 1);
-          // The stub keeps the symbol, so the rest of the library is intact.
-          expect(lib.providesSymbol('divesoft_freedom_device_open'), isTrue);
+          // The rest of the library is intact (a name on the export list).
+          expect(lib.providesSymbol('dc_descriptor_iterator_new'), isTrue);
         },
       );
     },
