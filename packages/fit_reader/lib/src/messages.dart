@@ -1,5 +1,12 @@
 // Global message numbers and field numbers of the FIT messages a dive file
 // is read from. Units are noted per field; values stay raw here.
+//
+// Where the numbers come from: most are from Subsurface's Garmin parser,
+// `src/garmin_parser.c` in github.com/subsurface/libdc, branch
+// Subsurface-DS9. These were confirmed on the real files rather than taken
+// from Subsurface: session fields 5, 6 and 7, sport field 0, dive summary
+// field 0 and file type 4. No number comes from Garmin's SDK or its
+// `Profile.xlsx`.
 
 /// Global message numbers.
 class FitMesg {
@@ -41,8 +48,11 @@ const fitFileTypeActivity = 4;
 
 /// Device settings (2).
 class FitDeviceSettings {
-  /// Seconds to add to UTC for local time. Stored as uint32 but signed.
+  /// Subsurface describes this as the offset to "convert to UTC"; the reader
+  /// does not use it.
   static const utcOffset = 1;
+
+  /// Seconds to add to UTC for local time. Stored as uint32 but signed.
   static const timeOffset = 2;
 
   const FitDeviceSettings._();

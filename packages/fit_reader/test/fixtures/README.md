@@ -19,15 +19,27 @@ Subsurface is licensed GPL-2.0, and these files were added there on
 ## Anonymisation
 
 Each file was passed through `tool/anonymise_fit.dart`, which patches the
-file in place (same layout, same size) and recomputes the CRC:
+file in place (same layout, same size) and recomputes the CRC. What it does:
 
-- every serial number field (file id, device info) became `1000000001`, and
-  so did any other 4-byte integer that held the file's original serial;
-- every GPS position in the session, lap and record messages was set to its
-  invalid marker;
-- every field of the user profile message was set to its invalid marker;
-- every string in the user profile, device settings, device info and file
-  creator messages was zeroed.
+- clears the serial: every serial number field (file id, device info) became
+  `1000000001`, and so did any other 4-byte integer equal to the file's
+  original serial;
+- clears the position fields Subsurface declares (session, lap and record
+  messages), setting them to the invalid marker;
+- clears every field of the user profile message (set to the invalid marker);
+- zeroes every string in messages 3, 2, 23 and 49 (user profile, device
+  settings, device info, file creator).
+
+What it does NOT do:
+
+- it does not sweep positions by value, so a position in a field Subsurface
+  does not declare stays;
+- it does not clear strings in other messages;
+- it does not inspect developer fields or repeated field numbers;
+- it does not touch heart rate or other physiological messages.
+
+Review its output by hand before committing any file that isn't already
+public.
 
 The Suunto file has no serial, so it keeps serial 0.
 

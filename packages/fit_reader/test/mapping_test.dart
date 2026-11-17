@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -18,13 +19,14 @@ FitMessageSpec _fileId({
   int? product = 2859,
   int? serial = 1000000001,
   int timeCreated = 1061159483,
+  bool withTimeCreated = true,
   String? productName,
 }) => _m(0, {
   0: (_enumT, 4),
   1: (_u16, manufacturer),
   if (product != null) 2: (_u16, product),
   if (serial != null) 3: (_u32z, serial),
-  4: (_u32, timeCreated),
+  if (withTimeCreated) 4: (_u32, timeCreated),
   if (productName != null) 8: (_str, productName),
 });
 
@@ -140,6 +142,86 @@ ConvertedDive _one(Uint8List b) {
 }
 
 void main() {
+  test('without time_created, ids and fingerprints follow the session start',
+      () {
+    Uint8List file(int start) => buildFit([
+      _fileId(withTimeCreated: false),
+      _sport(63),
+      _record(start, 0),
+      _record(start + 5, 1000),
+      _session(start, start + 5),
+    ]);
+    final a = _one(file(_start)).dive;
+    final b = _one(file(_start + 86400)).dive;
+    expect(a.id, isNot(b.id));
+    expect(
+      a.id,
+      sha256
+          .convert(utf8.encode('fit:1:1000000001:start$_start'))
+          .toString()
+          .substring(0, 32),
+    );
+    expect(
+      a.id,
+      fitDiveId(manufacturer: 1, serial: 1000000001, sessionStart: _start),
+    );
+    expect(
+      fitFingerprintHex(serial: 1000000001, sessionStart: _start),
+      isNot(fitFingerprintHex(serial: 1000000001, sessionStart: _start + 1)),
+    );
+    expect(
+      fitFingerprintHex(serial: 1, sessionStart: 2, session: 1),
+      '000000010000000201',
+    );
+    // A file with a time_created ignores the session start.
+    expect(
+      fitDiveId(
+        manufacturer: 1,
+        serial: 1000000001,
+        timeCreated: 1061159483,
+        sessionStart: 5,
+      ),
+      fitDiveId(manufacturer: 1, serial: 1000000001, timeCreated: 1061159483),
+    );
+    expect(
+      () => fitDiveId(manufacturer: 1, serial: 1),
+      throwsArgumentError,
+    );
+  });
+
+  test('a session starting days before its records is refused', () {
+    final bad = buildFit([
+      _fileId(),
+      _sport(63),
+      _record(_start, 0),
+      _record(_start + 5, 1000),
+      _session(_start - 3 * 86400, _start + 5),
+    ]);
+    expect(
+      () => mapFitFile(bad),
+      throwsA(
+        isA<FitFormatException>().having(
+          (e) => e.message,
+          'message',
+          'implausible dive length',
+        ),
+      ),
+    );
+    expect(mapFitFile(_ccrFile()), hasLength(1));
+  });
+
+  test('a grid larger than 10 samples per record plus 3600 is refused', () {
+    // 30 000 s from the start with two records is under 48 h but over the cap.
+    final bad = buildFit([
+      _fileId(),
+      _sport(63),
+      _record(_start + 30000, 0),
+      _record(_start + 30001, 1000),
+      _session(_start, _start + 30001),
+    ]);
+    expect(() => mapFitFile(bad), throwsA(isA<FitFormatException>()));
+  });
+
   test('fitDiveId matches its formula', () {
     final want = sha256
         .convert(utf8.encode('fit:1:1000000001:1061159483'))
@@ -451,6 +533,18 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('the fixtures keep their dive ids; these literals must never change',
+      () {
+    // Ids are frozen at first import. If one of these fails, the code is
+    // wrong: bumping kFitParserVersion is never the fix for an id change.
+    String idOf(String name) => mapFitFile(
+      File('test/fixtures/$name').readAsBytesSync(),
+    ).single.dive.id;
+    expect(idOf('garmin_mk1_ccr_2023-08-17.fit'), '492ce7c10e6586790d49bb164517095a');
+    expect(idOf('garmin_mk1_ccr_2023-10-21.fit'), 'be28c41bb2acadc7d193435cd8ce2e8d');
+    expect(idOf('suunto_ocean_nitrox.fit'), '6b5b5e41a4da9ee6c5c7b43450b46df5');
   });
 
   test('brand fields: Garmin, Descent Mk1, family -1, model code 2859, '

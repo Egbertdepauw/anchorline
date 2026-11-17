@@ -22,6 +22,23 @@ void main() {
     expect(back.fit, fit);
   });
 
+  test('encode writes the documented byte layout', () {
+    final bytes = FitEnvelope(
+      source: FitSource.connectExport,
+      fileName: 'a.fit',
+      fit: Uint8List.fromList([1, 2, 3]),
+    ).encode();
+    expect(bytes, [
+      0x41, 0x4C, 0x46, 0x54, // 'ALFT'
+      0x01, // version
+      0x01, // source: connectExport
+      0x00, 0x05, // name length, u16 big-endian
+      0x61, 0x2E, 0x66, 0x69, 0x74, // 'a.fit'
+      0x00, 0x00, 0x00, 0x03, // payload length, u32 big-endian
+      0x01, 0x02, 0x03, // payload
+    ]);
+  });
+
   test('every source survives a round trip', () {
     for (final s in FitSource.values) {
       final b = FitEnvelope(source: s, fileName: '', fit: fit).encode();

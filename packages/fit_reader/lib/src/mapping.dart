@@ -16,6 +16,9 @@ const int kFitParserVersion = 1;
 /// Seconds from the Unix epoch to the FIT epoch (1989-12-31 00:00:00 UTC).
 const int _fitEpochUnix = 631065600;
 
+/// The longest dive a file may claim, record span from session start, 48 h.
+const int _maxDiveSeconds = 48 * 3600;
+
 /// Atmospheric pressure used when the file gives none, millibar.
 const int _defaultAtmosphericMbar = 1013;
 
@@ -23,28 +26,50 @@ const int _defaultAtmosphericMbar = 1013;
 /// `generateDiveId` (sha256, first 32 hex characters) over
 /// `fit:<manufacturer>:<serial>:<timeCreated>`, with `:<session>` appended
 /// for a session after the first.
+///
+/// A file without a creation time (null [timeCreated]) uses
+/// `fit:<manufacturer>:<serial>:start<sessionStart>` instead, where
+/// [sessionStart] is the raw FIT seconds of that session's start; otherwise
+/// every such file from one watch would share one id. [sessionStart] is
+/// ignored when [timeCreated] is given.
+///
+/// Ids are frozen at first import: never change this formula.
 String fitDiveId({
   required int manufacturer,
   required int serial,
-  required int timeCreated,
+  int? timeCreated,
+  int? sessionStart,
   int session = 0,
 }) {
   final tail = session >= 1 ? ':$session' : '';
-  final input = 'fit:$manufacturer:$serial:$timeCreated$tail';
+  final anchor = timeCreated != null
+      ? '$timeCreated'
+      : 'start${_requireStart(sessionStart)}';
+  final input = 'fit:$manufacturer:$serial:$anchor$tail';
   return sha256.convert(utf8.encode(input)).toString().substring(0, 32);
+}
+
+int _requireStart(int? sessionStart) {
+  if (sessionStart == null) {
+    throw ArgumentError('sessionStart is required without a timeCreated');
+  }
+  return sessionStart;
 }
 
 /// The fingerprint of a session, lower-case hex: the serial and the file's
 /// creation time as big-endian u32s, then one byte with the session number
-/// for a session after the first.
+/// for a session after the first. Without a creation time (null
+/// [timeCreated]) the raw session start [sessionStart] takes its place, in
+/// the same byte layout.
 String fitFingerprintHex({
   required int serial,
-  required int timeCreated,
+  int? timeCreated,
+  int? sessionStart,
   int session = 0,
 }) {
   final b = ByteData(session >= 1 ? 9 : 8)
     ..setUint32(0, serial)
-    ..setUint32(4, timeCreated);
+    ..setUint32(4, timeCreated ?? _requireStart(sessionStart));
   if (session >= 1) b.setUint8(8, session & 0xFF);
   return [
     for (final v in b.buffer.asUint8List()) v.toRadixString(16).padLeft(2, '0'),
@@ -56,7 +81,7 @@ String fitFingerprintHex({
 List<ConvertedDive> mapFitFile(Uint8List bytes) {
   final file = readFitDives(bytes);
   return [
-    for (final s in file.sessions) mapFitSession(file.id, s, s.fileSessionIndex),
+    for (final s in file.sessions) mapFitSession(file.id, s),
   ];
 }
 
@@ -161,13 +186,15 @@ int? _surfaceMbar(List<FitMessage> records) {
 }
 
 /// Maps one dive session to a dive with its samples and events.
-/// [sessionIndex] is the session's [FitDiveSession.fileSessionIndex].
-ConvertedDive mapFitSession(FitFileId id, FitDiveSession s, int sessionIndex) {
+/// The dive id uses the session's [FitDiveSession.fileSessionIndex].
+/// Throws [FitFormatException] for an implausible dive length.
+ConvertedDive mapFitSession(FitFileId id, FitDiveSession s) {
   final diveId = fitDiveId(
     manufacturer: id.manufacturer,
     serial: id.serial,
     timeCreated: id.timeCreated,
-    session: sessionIndex,
+    sessionStart: s.start,
+    session: s.fileSessionIndex,
   );
   final mode = _modeFor(s.subSport);
   final settings = s.diveSettings;
@@ -238,6 +265,12 @@ ConvertedDive mapFitSession(FitFileId id, FitDiveSession s, int sessionIndex) {
   if (records.isNotEmpty) {
     final last = records.last.timestamp ?? s.start;
     n = last <= s.start ? 1 : ((last - s.start + gap - 1) ~/ gap) + 1;
+    // A session start far before the records (a bad start_time) would size
+    // the grid in the millions of samples.
+    if (last - s.start > _maxDiveSeconds ||
+        n > records.length * 10 + 3600) {
+      throw const FitFormatException('implausible dive length');
+    }
   }
 
   final depth = Float32List(n);
@@ -381,6 +414,8 @@ ConvertedDive mapFitSession(FitFileId id, FitDiveSession s, int sessionIndex) {
       ? Duration(seconds: (n - 1) * gap)
       : Duration(seconds: s.end - s.start);
 
+  // A null offset means the file gave none at all, so the wall clock is taken
+  // to equal UTC and the start time is the raw FIT start.
   final offset = s.offsetMinutes;
   final startTime = DateTime.fromMillisecondsSinceEpoch(
     (s.start + _fitEpochUnix + (offset ?? 0) * 60) * 1000,

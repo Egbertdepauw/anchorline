@@ -109,6 +109,12 @@ Uint8List buildFit(
     final key = compress ? m.global + 0x10000 : m.global;
     final isNew = !locals.containsKey(key);
     final local = locals.putIfAbsent(key, () => locals.length);
+    // A local type is 4 bits in a normal header and 2 bits in a compressed
+    // timestamp header; a bigger one would silently corrupt the file.
+    if (local >= 16) throw StateError('local type $local needs 4 bits');
+    if (compressedTimestamps && local >= 4) {
+      throw StateError('local type $local does not fit a compressed header');
+    }
     final encoded = {
       for (final f in fields.entries)
         f.key: (f.value.$1, _encode(f.value.$1, f.value.$2, e)),
@@ -156,7 +162,7 @@ Uint8List buildFit(
   header.setUint8(10, 0x49);
   header.setUint8(11, 0x54);
   final hb = header.buffer.asUint8List();
-  if (headerSize == 14) {
+  if (headerSize >= 14) {
     header.setUint16(12, fitCrc16(hb, 0, 12), Endian.little);
   }
   final all = BytesBuilder()

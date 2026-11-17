@@ -237,7 +237,8 @@ class _Definition {
 FitFile decodeFit(Uint8List bytes, {bool Function(FitMessage m)? stopAfter}) {
   if (bytes.length < 12) throw const FitFormatException('file too short');
   final headerSize = bytes[0];
-  if (headerSize != 12 && headerSize != 14) {
+  // Any header of 12 bytes or more is skipped by its size byte.
+  if (headerSize < 12) {
     throw FitFormatException('bad header size $headerSize');
   }
   if (bytes.length < headerSize + 2) {
@@ -250,7 +251,7 @@ FitFile decodeFit(Uint8List bytes, {bool Function(FitMessage m)? stopAfter}) {
       bytes[11] != 0x54) {
     throw const FitFormatException('missing .FIT tag');
   }
-  if (headerSize == 14) {
+  if (headerSize >= 14) {
     final stored = d.getUint16(12, Endian.little);
     // A zero header CRC means "not computed".
     if (stored != 0 && stored != fitCrc16(bytes, 0, 12)) {

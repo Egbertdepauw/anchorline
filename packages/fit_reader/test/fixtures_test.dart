@@ -110,6 +110,25 @@ void main() {
             expect(m.fields[n]?.value, isNull, reason: '$name: session $n');
           }
         }
+        if (m.global == 19) {
+          for (final n in [3, 4, 5, 6, 27, 28, 29, 30]) {
+            expect(m.fields[n]?.value, isNull, reason: '$name: lap $n');
+          }
+        }
+        if (m.global == FitMesg.deviceSettings ||
+            m.global == FitMesg.deviceInfo ||
+            m.global == 49) {
+          for (final f in m.fields.entries) {
+            final v = f.value.value;
+            if (v is String && v.isNotEmpty) {
+              expect(
+                const {'Descent Mk1', 'Ocean', 'Suunto Ocean'}.contains(v),
+                isTrue,
+                reason: '$name: message ${m.global} field ${f.key} text',
+              );
+            }
+          }
+        }
         if (m.global == FitMesg.record) {
           expect(m.fields[0]?.value, isNull, reason: '$name: record lat');
           expect(m.fields[1]?.value, isNull, reason: '$name: record lon');

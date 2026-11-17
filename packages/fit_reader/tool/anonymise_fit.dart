@@ -1,17 +1,27 @@
-// Strips what identifies a person or a device out of a FIT dive file, in
-// place, so the file keeps its layout and size:
+// Clears known identifying fields of a FIT dive file, in place, so the file
+// keeps its layout and size:
 //
 //   dart run tool/anonymise_fit.dart <in.fit> <out.fit> [--serial 1000000001]
 //
-// * every serial field (file id, device info) becomes --serial, and so does
-//   any other 4-byte integer holding the file's original serial, because
-//   undocumented messages may repeat it;
-// * every position Subsurface declares (session, lap and record) becomes
+// What it does:
+// * the serial: every serial field (file id, device info) becomes --serial,
+//   and so does any other 4-byte integer equal to the file's original serial;
+// * the position fields Subsurface declares (session, lap and record) become
 //   the invalid marker;
 // * every field of the user profile (message 3) becomes its invalid marker;
-// * every string in the user profile, device settings, device info and file
-//   creator messages is zeroed;
+// * every string in messages 3, 2, 23 and 49 (user profile, device settings,
+//   device info, file creator) is zeroed;
 // * the file CRC is recomputed.
+//
+// What it does NOT do:
+// * it does not sweep positions by value, so a position in a field Subsurface
+//   does not declare stays;
+// * it does not clear strings in other messages;
+// * it does not inspect developer fields or repeated field numbers;
+// * it does not touch heart rate or other physiological messages.
+//
+// Review its output by hand before committing any file that is not already
+// public.
 //
 // It prints counts per message type, never values.
 import 'dart:io';

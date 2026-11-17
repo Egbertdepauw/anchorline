@@ -47,8 +47,8 @@ class FitFileId {
   /// 0 when the file has none.
   final int serial;
 
-  /// FIT seconds; 0 when absent.
-  final int timeCreated;
+  /// FIT seconds; null when the file has none.
+  final int? timeCreated;
   final String? productName;
 
   const FitFileId({
@@ -163,7 +163,7 @@ FitDiveFile readFitDives(Uint8List bytes) {
     manufacturer: idMsg?.intField(FitFileIdField.manufacturer) ?? 0,
     product: idMsg?.intField(FitFileIdField.product),
     serial: idMsg?.intField(FitFileIdField.serial) ?? 0,
-    timeCreated: idMsg?.intField(FitFileIdField.timeCreated) ?? 0,
+    timeCreated: idMsg?.intField(FitFileIdField.timeCreated),
     productName: idMsg?.stringField(FitFileIdField.productName),
   );
 
@@ -184,6 +184,9 @@ FitDiveFile readFitDives(Uint8List bytes) {
     );
     if (t != null && t != 0) offsetSeconds = t;
   }
+  // With no offset at all (no activity local time, no usable device
+  // setting), offsetMinutes stays null and the mapper treats the wall clock
+  // as UTC, so the start time is the raw FIT start.
   final offsetMinutes = offsetSeconds == null
       ? null
       : (offsetSeconds / 60).round();

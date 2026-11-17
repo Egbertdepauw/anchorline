@@ -35,6 +35,17 @@ void main() {
     }
   });
 
+  test('a 16-byte header is skipped by its size byte and its CRC is checked',
+      () {
+    final b = buildFit([
+      _m(20, {3: (_u8, 7)}),
+    ], headerSize: 16);
+    expect(b[0], 16);
+    expect(decodeFit(b).messages.single.intField(3), 7);
+    final bad = Uint8List.fromList(b)..[12] ^= 0xFF;
+    expect(() => decodeFit(bad), throwsA(isA<FitFormatException>()));
+  });
+
   test('little- and big-endian definitions give the same values', () {
     final specs = [
       _m(20, {1: (_u16, 0x1234), 2: (_s32, -5), 3: (_u32, 0xDEADBEEF)}),
@@ -192,7 +203,7 @@ void main() {
     ]);
     final badHeaderCrc = Uint8List.fromList(ok)..[12] ^= 0xFF;
     final badTag = Uint8List.fromList(ok)..[9] = 0x00;
-    final badSize = Uint8List.fromList(ok)..[0] = 13;
+    final badSize = Uint8List.fromList(ok)..[0] = 11;
     for (final b in [badHeaderCrc, badTag, badSize]) {
       expect(() => decodeFit(b), throwsA(isA<FitFormatException>()));
     }
