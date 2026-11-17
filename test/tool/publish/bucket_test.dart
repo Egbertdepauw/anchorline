@@ -131,6 +131,100 @@ void main() {
     });
   });
 
+  group('putFile cache control', () {
+    test('passes --cache-control when given', () async {
+      await bucket().putFile(
+        'content/docs/user/images/a.png',
+        '/tmp/a.png',
+        contentType: 'image/png',
+        cacheControl: 'public, max-age=86400',
+      );
+
+      expect(calls.single.option('--cache-control'), 'public, max-age=86400');
+    });
+  });
+
+  group('list', () {
+    test('lists a prefix with s3api list-objects-v2', () async {
+      onRun = (_) async => _ok(
+        jsonEncode({
+          'Contents': [
+            {'Key': 'content/docs/user/a.md', 'Size': 1},
+            {'Key': 'content/docs/user/b.md', 'Size': 2},
+          ],
+        }),
+      );
+
+      final keys = await bucket().list('content/docs/user/');
+
+      expect(keys, ['content/docs/user/a.md', 'content/docs/user/b.md']);
+      final call = calls.single;
+      expect(call.args.take(2), ['s3api', 'list-objects-v2']);
+      expect(call.option('--bucket'), 'anchorline-downloads');
+      expect(call.option('--prefix'), 'content/docs/user/');
+      expect(call.option('--output'), 'json');
+      expect(call.option('--endpoint-url'), _endpoint);
+      expect(call.option('--region'), 'auto');
+      expect(call.args, isNot(contains('--continuation-token')));
+    });
+
+    test('follows the continuation token', () async {
+      onRun = (call) async {
+        if (call.option('--continuation-token') == null) {
+          return _ok(
+            jsonEncode({
+              'Contents': [
+                {'Key': 'p/a'},
+              ],
+              'NextContinuationToken': 'tok1',
+            }),
+          );
+        }
+        return _ok(
+          jsonEncode({
+            'Contents': [
+              {'Key': 'p/b'},
+            ],
+          }),
+        );
+      };
+
+      expect(await bucket().list('p/'), ['p/a', 'p/b']);
+      expect(calls, hasLength(2));
+      expect(calls[1].option('--continuation-token'), 'tok1');
+    });
+
+    test('empty output and {} are an empty list', () async {
+      expect(await bucket().list('p/'), isEmpty);
+      onRun = (_) async => _ok('{}\n');
+      expect(await bucket().list('p/'), isEmpty);
+    });
+
+    test('a failure is a PublishError', () async {
+      onRun = (_) async => _failed('AccessDenied (403)');
+      await expectLater(bucket().list('p/'), _publishError('AccessDenied'));
+    });
+  });
+
+  group('delete', () {
+    test('removes the object with s3 rm', () async {
+      await bucket().delete('content/docs/user/old.md');
+
+      final call = calls.single;
+      expect(call.args.take(3), [
+        's3',
+        'rm',
+        's3://anchorline-downloads/content/docs/user/old.md',
+      ]);
+      expect(call.option('--endpoint-url'), _endpoint);
+    });
+
+    test('a failure is a PublishError', () async {
+      onRun = (_) async => _failed('AccessDenied (403)');
+      await expectLater(bucket().delete('k'), _publishError('deleting k'));
+    });
+  });
+
   group('putText', () {
     test(
       'uploads the text through a temp file that is gone afterwards',

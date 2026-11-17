@@ -33,7 +33,10 @@ afterwards.
 --dry-run reads the bucket and prints the list that would be written; it
 uploads and writes nothing.
 content uploads docs/PRIVACY.md, docs/TERMS.md and docs/ACCOUNT_DELETION.md to
-content/legal/ and rewrites content/index.json.
+content/legal/, docs/user/*.md and docs/user/images/ to content/docs/user/
+(with images.json, the image sizes) and rewrites content/index.json. Manual
+objects that are no longer in the repository are removed. Needs a full git
+history for the manual's dates.
 
 The list is updated by reading, changing and writing it back, without
 locking. Do not run this by hand while a publish job is running (CI runs one
@@ -45,7 +48,8 @@ R2_ACCOUNT_ID, R2_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY.''';
 /// Runs the publish command and returns its exit code. [environment] is the
 /// process environment, [bucketFactory] makes the bucket from it (the AWS CLI
 /// by default), [now] is the clock. [repoRoot] is the checkout the `content`
-/// action reads its texts from (the current directory by default). Output goes
+/// action reads its texts from (the current directory by default) and
+/// [commitDate] answers the manual pages' commit dates (git by default). Output goes
 /// to [out] (stdout) and, for usage mistakes, [err] (stderr).
 Future<int> runPublishCli(
   List<String> args, {
@@ -55,6 +59,7 @@ Future<int> runPublishCli(
   StringSink? out,
   StringSink? err,
   String? repoRoot,
+  Future<String?> Function(String path)? commitDate,
 }) async {
   final stdoutSink = out ?? stdout;
   final stderrSink = err ?? stderr;
@@ -79,6 +84,7 @@ Future<int> runPublishCli(
         bucket,
         repoRoot: repoRoot ?? Directory.current.path,
         dryRun: options.dryRun,
+        commitDate: commitDate,
       ).publish();
       stdoutSink.write(_contentSummary(result, options));
       return 0;
@@ -418,6 +424,9 @@ String _contentSummary(ContentResult result, _Options options) {
   );
   for (final key in result.uploadedKeys) {
     b.writeln('${options.dryRun ? 'would write' : 'wrote'} $key');
+  }
+  for (final key in result.deletedKeys) {
+    b.writeln('${options.dryRun ? 'would delete' : 'deleted'} $key');
   }
   b
     ..writeln('$contentIndexKey ${options.dryRun ? 'would become' : 'is'}:')

@@ -10,7 +10,12 @@ import '../../../tool/publish/lib/bucket.dart';
 import '../../../tool/publish/lib/manifest.dart' show PublishError;
 
 /// One call to [FakeBucket.putFile].
-typedef FilePut = ({String key, String path, String contentType});
+typedef FilePut = ({
+  String key,
+  String path,
+  String contentType,
+  String? cacheControl,
+});
 
 /// One call to [FakeBucket.putText].
 typedef TextPut = ({
@@ -52,6 +57,12 @@ class FakeBucket implements Bucket {
       if (c.startsWith('putFile ') || c.startsWith('putText ')) c,
   ];
 
+  /// The calls that delete.
+  List<String> get deleteCalls => [
+    for (final c in calls)
+      if (c.startsWith('delete ')) c,
+  ];
+
   @override
   Future<String?> getText(String key) async {
     calls.add('getText $key');
@@ -63,9 +74,15 @@ class FakeBucket implements Bucket {
     String key,
     String path, {
     required String contentType,
+    String? cacheControl,
   }) async {
     calls.add('putFile $key');
-    filePuts.add((key: key, path: path, contentType: contentType));
+    filePuts.add((
+      key: key,
+      path: path,
+      contentType: contentType,
+      cacheControl: cacheControl,
+    ));
     if (failPut.contains(key)) throw PublishError('upload of $key failed');
     if (dropUploads.contains(key)) return;
     objects[key] = sha256.convert(File(path).readAsBytesSync()).toString();
@@ -92,5 +109,21 @@ class FakeBucket implements Bucket {
   Future<String?> sha256Of(String key) async {
     calls.add('sha256Of $key');
     return hashOverride[key] ?? objects[key];
+  }
+
+  @override
+  Future<List<String>> list(String prefix) async {
+    calls.add('list $prefix');
+    return {
+      for (final k in [...texts.keys, ...objects.keys])
+        if (k.startsWith(prefix)) k,
+    }.toList()..sort();
+  }
+
+  @override
+  Future<void> delete(String key) async {
+    calls.add('delete $key');
+    texts.remove(key);
+    objects.remove(key);
   }
 }

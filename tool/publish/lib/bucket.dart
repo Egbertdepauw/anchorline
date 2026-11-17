@@ -18,7 +18,12 @@ abstract class Bucket {
   Future<String?> getText(String key);
 
   /// Uploads the local file at [path] to [key], replacing what is there.
-  Future<void> putFile(String key, String path, {required String contentType});
+  Future<void> putFile(
+    String key,
+    String path, {
+    required String contentType,
+    String? cacheControl,
+  });
 
   /// Uploads [text] (UTF-8) to [key], replacing what is there.
   Future<void> putText(
@@ -31,6 +36,13 @@ abstract class Bucket {
   /// Downloads the object at [key] and returns the sha256 of its bytes as
   /// lowercase hex, or null when there is no such object.
   Future<String?> sha256Of(String key);
+
+  /// Every key that starts with [prefix], in the bucket's order (empty when
+  /// there are none).
+  Future<List<String>> list(String prefix);
+
+  /// Deletes the object at [key]. Deleting what is not there is not an error.
+  Future<void> delete(String key);
 }
 
 /// The sha256 of a local file as lowercase hex, read as a stream.
@@ -108,12 +120,14 @@ class AwsCliBucket implements Bucket {
     String key,
     String path, {
     required String contentType,
+    String? cacheControl,
   }) async {
     // Absolute, so that a path that starts with a dash cannot be read as an
     // option.
     final result = await _cp(File(path).absolute.path, _uri(key), [
       '--content-type',
       contentType,
+      if (cacheControl != null) ...['--cache-control', cacheControl],
     ]);
     if (result.exitCode != 0) throw _failure('uploading $key', result);
   }
@@ -141,6 +155,57 @@ class AwsCliBucket implements Bucket {
     if (!await _download(key, path)) return null;
     return sha256OfFile(path);
   });
+
+  @override
+  Future<List<String>> list(String prefix) async {
+    final keys = <String>[];
+    String? token;
+    do {
+      final result = await _aws([
+        's3api',
+        'list-objects-v2',
+        '--bucket',
+        bucket,
+        '--prefix',
+        prefix,
+        '--output',
+        'json',
+        if (token != null) ...['--continuation-token', token],
+      ]);
+      if (result.exitCode != 0) throw _failure('listing $prefix', result);
+      final output = '${result.stdout}'.trim();
+      // aws prints nothing at all when no object matches.
+      if (output.isEmpty) break;
+      final Object? decoded;
+      try {
+        decoded = jsonDecode(output);
+      } on FormatException {
+        throw PublishError('listing $prefix: aws printed no JSON.');
+      }
+      if (decoded is! Map<String, dynamic>) {
+        throw PublishError('listing $prefix: aws printed no JSON object.');
+      }
+      final contents = decoded['Contents'];
+      if (contents is List) {
+        for (final item in contents) {
+          final key = item is Map ? item['Key'] : null;
+          if (key is! String) {
+            throw PublishError('listing $prefix: an entry has no Key.');
+          }
+          keys.add(key);
+        }
+      }
+      final next = decoded['NextContinuationToken'];
+      token = next is String && next.isNotEmpty ? next : null;
+    } while (token != null);
+    return keys;
+  }
+
+  @override
+  Future<void> delete(String key) async {
+    final result = await _aws(['s3', 'rm', _uri(key)]);
+    if (result.exitCode != 0) throw _failure('deleting $key', result);
+  }
 
   /// Downloads [key] to [path] with `s3api get-object`. False when the object
   /// is not there (see [_isMissingObject]); every other failure throws.

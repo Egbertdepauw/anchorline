@@ -1,8 +1,8 @@
 name: Publish content
 
-# Uploads the legal texts to the downloads bucket and rewrites
-# content/index.json. Skipped until the repository variable PUBLISH_CONTENT
-# is set to "on" (and the four secrets below exist).
+# Uploads the legal texts and the user manual (docs/user) to the downloads
+# bucket and rewrites content/index.json. Skipped until the repository
+# variable PUBLISH_CONTENT is set to "on" (and the four secrets below exist).
 
 on:
   push:
