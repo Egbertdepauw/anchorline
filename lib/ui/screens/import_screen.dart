@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -9,9 +10,13 @@ import 'package:libdivecomputer/libdivecomputer.dart';
 
 import '../../build_info.dart';
 import '../../devices/dive_download_source.dart';
+import '../../devices/fit/fit_inputs.dart';
+import '../../devices/fit/fit_share.dart';
 import '../../devices/libdc/download_share.dart';
 import '../../devices/libdc/libdc_tiers.dart';
 import '../notifiers/import_notifier.dart';
+import '../util/fit_picker.dart';
+import '../widgets/garmin_files_help_sheet.dart';
 import '../widgets/libdc_model_picker.dart';
 
 class ImportScreen extends StatefulWidget {
@@ -25,22 +30,54 @@ class ImportScreen extends StatefulWidget {
     Rect? origin,
   }) shareDownloadFn;
 
+  /// Shares one imported FIT dive. A seam for tests.
+  final Future<String?> Function({
+    required String diveId,
+    required String vendor,
+    String? product,
+    required Future<Uint8List?> Function(String diveId) loadRawBlob,
+    Rect? origin,
+  }) shareFitDiveFn;
+
+  /// Pick FIT files / a folder. Seams for tests.
+  final Future<List<FitInput>?> Function() pickFilesFn;
+  final Future<List<FitInput>?> Function() pickFolderFn;
+
   const ImportScreen({
     super.key,
     required this.notifier,
     required this.onViewDives,
     this.shareDownloadFn = shareDownload,
+    this.shareFitDiveFn = _shareFit,
+    this.pickFilesFn = pickFitFiles,
+    this.pickFolderFn = pickFitFolder,
   });
+
+  static Future<String?> _shareFit({
+    required String diveId,
+    required String vendor,
+    String? product,
+    required Future<Uint8List?> Function(String diveId) loadRawBlob,
+    Rect? origin,
+  }) =>
+      shareFitDive(
+        diveId: diveId,
+        vendor: vendor,
+        product: product,
+        loadRawBlob: loadRawBlob,
+        origin: origin,
+      );
 
   @override
   State<ImportScreen> createState() => _ImportScreenState();
 }
 
 class _ImportScreenState extends State<ImportScreen> {
-  /// Dive numbers the user has unchecked in the manifest list. We track
-  /// the *excluded* set so a freshly-loaded manifest defaults to "all
-  /// selected" without us having to backfill the set every time.
-  final Set<int> _excludedDiveNumbers = {};
+  /// Dive ids whose tick the user flipped from its default in the manifest
+  /// list (a listing's default is [DiveListing.preselected]). Tracking the
+  /// flips lets a freshly-loaded manifest start from the defaults without
+  /// backfilling a set every time.
+  final Set<String> _flipped = {};
 
   @override
   void initState() {
@@ -54,10 +91,19 @@ class _ImportScreenState extends State<ImportScreen> {
     super.dispose();
   }
 
-  void _onChanged() => setState(() {});
+  void _onChanged() {
+    // A new manifest starts from the defaults again.
+    if (widget.notifier.state != ImportFlowState.readingManifest) {
+      _flipped.clear();
+    }
+    setState(() {});
+  }
+
+  bool _isSelected(DiveListing e) =>
+      e.preselected != _flipped.contains(e.diveId);
 
   List<DiveListing> _selectedEntries() => widget.notifier.newDives
-      .where((e) => !_excludedDiveNumbers.contains(e.diveNumber))
+      .where(_isSelected)
       .toList(growable: false);
 
   @override
@@ -115,8 +161,47 @@ class _ImportScreenState extends State<ImportScreen> {
           icon: const Icon(Icons.search),
           label: const Text('Start Scan'),
         ),
+        const SizedBox(height: 32),
+        OutlinedButton.icon(
+          key: const ValueKey('import-garmin-files'),
+          onPressed: () => _pickAndImportFit(n, widget.pickFilesFn),
+          icon: const Icon(Icons.folder_open),
+          label: const Text('Import Garmin files\u2026'),
+        ),
+        const SizedBox(height: 4),
+        Text('.fit files, or a Garmin Connect export (.zip)',
+            style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+        if (fitFolderPickIsOffered)
+          TextButton(
+            key: const ValueKey('import-garmin-folder'),
+            onPressed: () => _pickAndImportFit(n, widget.pickFolderFn),
+            child: const Text('Choose a folder\u2026'),
+          ),
+        TextButton(
+          key: const ValueKey('garmin-files-help'),
+          onPressed: () => GarminFilesHelpSheet.show(context),
+          child: const Text('Where do I find them?'),
+        ),
       ],
     )));
+  }
+
+  Future<void> _pickAndImportFit(
+      ImportNotifier n, Future<List<FitInput>?> Function() pick) async {
+    final List<FitInput>? inputs;
+    try {
+      inputs = await pick();
+    } catch (e) {
+      // Only a type and the free-space case: a message could name a file.
+      n.failFitPick(isNoSpaceError(e)
+          ? fitNoSpaceMessage()
+          : "Couldn't open the files you picked.");
+      return;
+    }
+    if (inputs == null) return;
+    await n.importFitFiles(inputs);
   }
 
   Widget _buildScanning(ImportNotifier n, ThemeData theme) {
@@ -307,7 +392,67 @@ class _ImportScreenState extends State<ImportScreen> {
     ));
   }
 
+  /// "Reading 3 of 120 files…", and what the files held so far. Text only:
+  /// the total grows while zips are opened, so a bar would run backwards.
+  Widget _buildFitReading(ImportNotifier n, ThemeData theme) {
+    final c = n.fitCounts;
+    final fade = theme.colorScheme.onSurface.withValues(alpha: 0.5);
+    final total = c?.filesTotal;
+    return Center(child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const SizedBox(width: 48, height: 48, child: CircularProgressIndicator()),
+        const SizedBox(height: 24),
+        Text(
+            total == null
+                ? 'Reading files\u2026'
+                : 'Reading ${c!.filesRead} of $total files\u2026',
+            style: const TextStyle(fontSize: 16)),
+        if (c != null) ...[
+          const SizedBox(height: 8),
+          Text(_fitCountsLine(c), style: TextStyle(fontSize: 12, color: fade)),
+        ],
+        const SizedBox(height: 24),
+        OutlinedButton(
+          key: const ValueKey('fit-cancel'),
+          onPressed: n.cancelFitImport,
+          child: const Text('Cancel'),
+        ),
+      ],
+    ));
+  }
+
+  /// "12 dives, 3 other files skipped, 1 apnea sessions skipped": zero counts
+  /// other than the dives are left out.
+  String _fitCountsLine(FitScanCounts c) => [
+        '${c.dives} dives',
+        if (c.otherActivities > 0) '${c.otherActivities} other files skipped',
+        if (c.apnea > 0) '${c.apnea} apnea sessions skipped',
+        if (c.unreadable > 0) '${c.unreadable} files unreadable',
+      ].join(', ');
+
   Widget _buildManifest(ImportNotifier n, ThemeData theme) {
+    if (n.isFitReading) return _buildFitReading(n, theme);
+    if (n.isFitImport && n.newDives.isEmpty) {
+      return Center(child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.info_outline, size: 64, color: theme.colorScheme.primary),
+          const SizedBox(height: 24),
+          const Text('No dives found in these files',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          if (n.fitCounts != null) ...[
+            const SizedBox(height: 8),
+            Text(_fitCountsLine(n.fitCounts!),
+                style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+          ],
+          const SizedBox(height: 32),
+          FilledButton(onPressed: n.reset, child: const Text('Back')),
+        ],
+      ));
+    }
     if (n.newDives.isEmpty && n.identity != null) {
       return Center(child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -349,47 +494,76 @@ class _ImportScreenState extends State<ImportScreen> {
             ),
           ),
           TextButton(
-            onPressed: _excludedDiveNumbers.isEmpty
+            onPressed: selected.length == n.newDives.length
                 ? null
-                : () => setState(_excludedDiveNumbers.clear),
+                : () => setState(() {
+                      _flipped
+                        ..clear()
+                        ..addAll(n.newDives
+                            .where((e) => !e.preselected)
+                            .map((e) => e.diveId));
+                    }),
             child: const Text('All'),
           ),
           TextButton(
-            onPressed: _excludedDiveNumbers.length == n.newDives.length
+            onPressed: selected.isEmpty
                 ? null
-                : () => setState(() => _excludedDiveNumbers
-                    .addAll(n.newDives.map((e) => e.diveNumber))),
+                : () => setState(() {
+                      _flipped
+                        ..clear()
+                        ..addAll(n.newDives
+                            .where((e) => e.preselected)
+                            .map((e) => e.diveId));
+                    }),
             child: const Text('None'),
           ),
         ]),
         const SizedBox(height: 4),
-        Text(
-          'Tip: import in batches if you have a lot of dives. Petrel '
-          'log-mode sessions can time out around the 60-second mark.',
-          style: TextStyle(fontSize: 12, color: fade),
-        ),
+        if (!n.isFitImport)
+          Text(
+            'Tip: import in batches if you have a lot of dives. Petrel '
+            'log-mode sessions can time out around the 60-second mark.',
+            style: TextStyle(fontSize: 12, color: fade),
+          )
+        else if (n.fitCounts != null)
+          Text(_fitCountsLine(n.fitCounts!),
+              style: TextStyle(fontSize: 12, color: fade)),
         const SizedBox(height: 8),
         Expanded(
           child: ListView.builder(
             itemCount: n.newDives.length,
             itemBuilder: (context, i) {
               final entry = n.newDives[i];
-              final excluded = _excludedDiveNumbers.contains(entry.diveNumber);
+              final ticked = _isSelected(entry);
               return CheckboxListTile(
                 dense: true,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                 controlAffinity: ListTileControlAffinity.leading,
-                value: !excluded,
+                value: ticked,
                 onChanged: (v) => setState(() {
-                  if (v == true) {
-                    _excludedDiveNumbers.remove(entry.diveNumber);
+                  // Flip from the default when the tick differs from it.
+                  if ((v == true) == entry.preselected) {
+                    _flipped.remove(entry.diveId);
                   } else {
-                    _excludedDiveNumbers.add(entry.diveNumber);
+                    _flipped.add(entry.diveId);
                   }
                 }),
-                title: Text('Dive #${entry.diveNumber}'),
-                subtitle: Text(_formatManifestSubtitle(entry),
-                    style: TextStyle(fontSize: 12, color: fade)),
+                title: Text(entry.diveNumber > 0
+                    ? 'Dive #${entry.diveNumber}'
+                    : _formatManifestSubtitle(entry)),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_formatManifestSubtitle(entry, withFacts: true),
+                        style: TextStyle(fontSize: 12, color: fade)),
+                    if (entry.flag != null)
+                      Text(entry.flag!,
+                          key: ValueKey('flag-${entry.diveId}'),
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: theme.colorScheme.tertiary)),
+                  ],
+                ),
               );
             },
           ),
@@ -402,18 +576,31 @@ class _ImportScreenState extends State<ImportScreen> {
           icon: const Icon(Icons.download),
           label: Text(selected.length == n.newDives.length
               ? 'Import all ${selected.length} dives'
-              : 'Import ${selected.length} selected'),
+              : n.isFitImport
+                  ? 'Import ${diveCountLabel(selected.length)}'
+                  : 'Import ${selected.length} selected'),
         ),
       ],
     );
   }
 
-  String _formatManifestSubtitle(DiveListing entry) {
+  String _formatManifestSubtitle(DiveListing entry,
+      {bool withFacts = false}) {
     final dt = DateTime.fromMillisecondsSinceEpoch(
             entry.startTimestamp * 1000,
             isUtc: true)
         .toLocal();
-    return DateFormat('yyyy-MM-dd HH:mm').format(dt);
+    final date = DateFormat('yyyy-MM-dd HH:mm').format(dt);
+    if (!withFacts) return date;
+    // Depth, duration and model, where the listing has them (FIT files do).
+    final depth = entry.maxDepthMeters;
+    final secs = entry.durationSeconds;
+    return [
+      date,
+      if (depth != null) '${depth.toStringAsFixed(1)} m',
+      if (secs != null) '${(secs / 60).round()} min',
+      if (entry.modelLabel != null) entry.modelLabel!,
+    ].join('  \u00b7  ');
   }
 
   /// "Share this download": hands the recording to the share sheet,
@@ -590,8 +777,71 @@ class _ImportScreenState extends State<ImportScreen> {
           child: const Text('Import More'),
         ),
         _buildShareButton(n),
+        _buildFitUntested(n, theme),
       ],
     ));
+  }
+
+  /// "Not yet tested by us: MODELS" and the button that sends us a dive.
+  Widget _buildFitUntested(ImportNotifier n, ThemeData theme) {
+    final share = n.fitShareDive;
+    if (!n.isFitImport || n.untestedModels.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: Column(children: [
+        Text('$kNotYetTestedLabel: ${n.untestedModels.join(', ')}',
+            key: const ValueKey('fit-untested'),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 13,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6))),
+        if (share != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Builder(
+              builder: (ctx) => OutlinedButton.icon(
+                key: const ValueKey('fit-send-dive'),
+                onPressed: () => _shareFitDive(ctx, n, share),
+                icon: const Icon(Icons.ios_share),
+                label: const Text('Send us one of these dives'),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  Future<void> _shareFitDive(BuildContext ctx, ImportNotifier n,
+      ({String diveId, String vendor, String? product}) dive) async {
+    final messenger = ScaffoldMessenger.maybeOf(ctx);
+    final box = ctx.findRenderObject() as RenderBox?;
+    final origin =
+        box != null ? box.localToGlobal(Offset.zero) & box.size : null;
+    try {
+      final savedTo = await widget.shareFitDiveFn(
+        diveId: dive.diveId,
+        vendor: dive.vendor,
+        product: dive.product,
+        loadRawBlob: n.rawBlobOf,
+        origin: origin,
+      );
+      if (savedTo != null) {
+        // No share sheet here (Linux): the file was saved instead.
+        messenger?.showSnackBar(SnackBar(
+          duration: const Duration(seconds: 20),
+          content: Text('Saved the dive to $savedTo'),
+          action: SnackBarAction(
+            label: 'Open folder',
+            onPressed: () => _openFolder(savedTo),
+          ),
+        ));
+      }
+    } catch (e) {
+      messenger?.showSnackBar(SnackBar(
+          content: Text("Couldn't share the dive: ${e.runtimeType}")));
+    }
   }
 
   Widget _buildError(ImportNotifier n, ThemeData theme) {
@@ -603,17 +853,21 @@ class _ImportScreenState extends State<ImportScreen> {
         Text(n.errorMessage ?? 'An error occurred',
             style: const TextStyle(fontSize: 16), textAlign: TextAlign.center),
         // The libdivecomputer message already says how many dives were saved.
-        if (n.downloadedCount > 0 && !n.isLibdcDownload) ...[
+        if (n.downloadedCount > 0 && !n.isLibdcDownload && !n.isFitImport) ...[
           const SizedBox(height: 8),
           Text('${n.downloadedCount} dives were imported successfully',
               style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
         ],
         const SizedBox(height: 32),
-        FilledButton.icon(
-          onPressed: () => n.retry(),
-          icon: const Icon(Icons.refresh),
-          label: const Text('Retry'),
-        ),
+        // A file import has no scan to retry: go back to the start.
+        if (n.isFitImport)
+          FilledButton(onPressed: n.reset, child: const Text('Back'))
+        else
+          FilledButton.icon(
+            onPressed: () => n.retry(),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
         _buildShareButton(n),
       ],
     ));

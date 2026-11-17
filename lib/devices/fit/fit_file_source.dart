@@ -175,7 +175,15 @@ class _Entry {
   final int order;
 }
 
-class FitFileSource implements DiveDownloadSource {
+/// A [DiveDownloadSource] over FIT files, which can say whose watch recorded
+/// a listed dive. The import marks listings per watch with it.
+abstract class FitDownloadSource implements DiveDownloadSource {
+  /// The brand and serial of the watch that recorded [diveId]; null when the
+  /// source never listed it.
+  ({String vendor, int serial})? watchOf(String diveId);
+}
+
+class FitFileSource implements FitDownloadSource {
   FitFileSource({
     required List<FitInput> inputs,
     required Directory workDir,
@@ -202,6 +210,12 @@ class FitFileSource implements DiveDownloadSource {
 
   @override
   bool get canListDives => true;
+
+  @override
+  ({String vendor, int serial})? watchOf(String diveId) {
+    final m = _entries[diveId]?.meta;
+    return m == null ? null : (vendor: m.vendor, serial: m.serial);
+  }
 
   void _report() => _onProgress?.call(_counts.copy());
 

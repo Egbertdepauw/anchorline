@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -17,6 +18,7 @@ import 'data/import/fit_reparser.dart';
 import 'data/import/import_problem_reporter.dart';
 import 'data/import/shearwater_reparser.dart';
 import 'dev/fixture_seeder.dart';
+import 'devices/fit/fit_file_source.dart';
 import 'diagnostics/sentry_redaction.dart';
 import 'sync/cloud/auth_service.dart';
 import 'sync/cloud/ccrlogger_backend_connector.dart';
@@ -48,6 +50,14 @@ void main() async {
   } catch (e, st) {
     debugPrint('configureGitSslCerts failed: $e\n$st');
   }
+
+  // Leftover work folders of FIT imports that never closed. Never awaited and
+  // never fatal: it must not delay the first frame.
+  unawaited(() async {
+    try {
+      await purgeStaleFitWorkDirs(await getTemporaryDirectory());
+    } catch (_) {}
+  }());
 
   await Supabase.initialize(
     url: CloudConfig.supabaseUrl,
