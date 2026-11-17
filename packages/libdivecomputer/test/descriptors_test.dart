@@ -39,7 +39,9 @@ void main() {
     expect(shearwater, isNotEmpty);
     expect(shearwater.every((d) => d.isShearwater), isTrue);
     for (final d in shearwater) {
-      expect(Libdc.matchBle(d.product).contains(d), isFalse, reason: '$d');
+      final matched = Libdc.matchBle(d.product)
+          .any((m) => m.family == d.family && m.model == d.model);
+      expect(matched, isFalse, reason: '$d');
     }
   });
 

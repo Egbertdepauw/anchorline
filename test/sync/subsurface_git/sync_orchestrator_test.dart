@@ -249,6 +249,44 @@ void main() {
       final showHead = _git(bareDir, ['log', branch, '--format=%s']);
       expect(showHead.stdout.toString(), contains('CCRLog sync'));
     });
+
+    test('the orchestrator reports otherBrandDives', () async {
+      final remoteUrl = _seedBareRemote(branch: branch);
+      final clones = _tempDir('clones');
+      final ds = _FakeDataSource()
+        ..diveComputers.add(_petrelComputer())
+        ..diveComputers.add(_divesoftComputer())
+        ..addBundle(_diveA())
+        ..addBundle(_libdcDive());
+
+      final orch = SubsurfaceSyncOrchestrator(
+        dataSource: ds,
+        credentials: _FakeCredentials(),
+        localCloneRoot: clones,
+      );
+      orch.remoteUrlOverride = remoteUrl;
+
+      final first = await orch.syncNow();
+      expect(first.divesPushed, 1);
+      expect(first.otherBrandDives, 1);
+      expect(ds.uploadStamps.map((s) => s.diveId), [_diveIdA]);
+
+      // Nothing of the libdivecomputer dive or its computer reached the
+      // remote: no folder, no fingerprint, no divecomputerid line.
+      final bareDir = remoteUrl.replaceFirst('file://', '');
+      final tree =
+          _git(bareDir, ['ls-tree', '-r', '--name-only', branch]).stdout;
+      expect(tree.toString(), isNot(contains('2025/06/14-')));
+      final topLevel =
+          _git(bareDir, ['show', '$branch:00-Subsurface']).stdout.toString();
+      expect(topLevel, isNot(contains('0012d687')));
+      expect(topLevel, contains('serial="b89641e4"'));
+
+      // A run with nothing new to push still reports it.
+      final second = await orch.syncNow();
+      expect(second.commitSha, isNull);
+      expect(second.otherBrandDives, 1);
+    });
   });
 
   // Smoke test the post-safety-hold result shape. Task 7 un-skips the
@@ -345,6 +383,57 @@ _Bundle _diveA() {
   // ignore: unused_local_variable
   final _ = DiveGasMix(oxygenPercent: 18, heliumPercent: 23, isDiluent: true);
   return _Bundle(dive: dive, samples: _smallSampleSet(diveId: dive.id));
+}
+
+/// A Divesoft Liberty registered by a libdivecomputer download.
+DiveComputer _divesoftComputer() {
+  return const DiveComputer(
+    id: 'dc_divesoft_12d687',
+    serial: 1234567,
+    model: 0,
+    dcVendor: 'Divesoft',
+    dcProduct: 'Liberty',
+    dcFamily: 7,
+    createdAt: 0,
+    updatedAt: 0,
+    deletedAt: null,
+    version: 1,
+    syncStatus: 0,
+    ownerId: null,
+  );
+}
+
+/// A libdivecomputer download from [_divesoftComputer] that Subsurface
+/// Cloud doesn't have.
+_Bundle _libdcDive() {
+  const id = 'bbbbbbbb-1111-2222-3333-444444444444';
+  final dive = Dive(
+    id: id,
+    dcSerial: 1234567,
+    dcDiveNumber: 0,
+    startTime: 1749895950, // 2025-06-14T10:12:30Z
+    endTime: 1749895950 + 2900,
+    utcOffsetMinutes: null,
+    durationSeconds: 2900,
+    maxDepthMm: 32400,
+    diveMode: 0,
+    decoModel: 0,
+    atmosphericPressureMbar: 1012,
+    waterDensity: 1030,
+    logVersion: 0,
+    dcModel: 13,
+    dcVendor: 'Divesoft',
+    dcProduct: 'Liberty',
+    dcFamily: 7,
+    dcFingerprint: '5a1c33e0',
+    sampleIntervalMs: 10000,
+    gasMixesJson: '[{"o2":21,"he":35,"dil":true}]',
+    tanksJson: null,
+    rawBlob: Uint8List(0),
+    parserVersion: 1,
+    importedAt: 1776591525,
+  );
+  return _Bundle(dive: dive, samples: _smallSampleSet(diveId: id));
 }
 
 SampleSet _smallSampleSet({required String diveId}) {

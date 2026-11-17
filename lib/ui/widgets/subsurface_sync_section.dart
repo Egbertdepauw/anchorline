@@ -215,11 +215,20 @@ class _SubsurfaceSyncSectionState extends State<SubsurfaceSyncSection> {
     try {
       final result = await widget.onSync();
       if (!mounted) return;
-      final msg = result.divesPushed == 0
+      final pushed = result.divesPushed == 0
           ? 'Already up-to-date with Subsurface'
           : 'Pushed ${result.divesPushed} '
               'dive${result.divesPushed == 1 ? '' : 's'} to Subsurface';
-      messenger.showSnackBar(SnackBar(content: Text(msg)));
+      if (result.otherBrandDives > 0) {
+        // Two sentences more to read: give them longer than the default.
+        messenger.showSnackBar(SnackBar(
+          content: Text(
+              '$pushed. ${_otherBrandText(result.otherBrandDives)}'),
+          duration: const Duration(seconds: 8),
+        ));
+      } else {
+        messenger.showSnackBar(SnackBar(content: Text(pushed)));
+      }
     } on NoCredentialsException {
       if (!mounted) return;
       messenger.showSnackBar(const SnackBar(
@@ -385,6 +394,14 @@ class _SubsurfaceSyncSectionState extends State<SubsurfaceSyncSection> {
             'Pushed ${r.divesPushed} ${r.divesPushed == 1 ? 'dive' : 'dives'}',
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
+          if (r.otherBrandDives > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              _otherBrandText(r.otherBrandDives),
+              style: TextStyle(
+                  fontSize: 12, color: context.palette.textSecondary),
+            ),
+          ],
           if (r.abortedDives.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
@@ -405,6 +422,16 @@ class _SubsurfaceSyncSectionState extends State<SubsurfaceSyncSection> {
         ],
       ),
     );
+  }
+
+  /// Why [n] dives from other brands are not on Subsurface Cloud
+  /// ([SubsurfaceSyncResult.otherBrandDives]).
+  String _otherBrandText(int n) {
+    final dives = n == 1
+        ? "1 dive from another brand isn't"
+        : "$n dives from other brands aren't";
+    return '$dives sent to Subsurface Cloud yet. '
+        'Anchorline only writes Shearwater dives there for now.';
   }
 
   String _reasonText(AbortedDive ab) {

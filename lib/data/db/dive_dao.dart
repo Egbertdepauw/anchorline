@@ -84,9 +84,9 @@ class DiveDao {
   /// Imports a downloaded dive, in this order:
   ///
   /// 1. The dive's id is already stored: refresh it in place when
-  ///    [refreshMayWrite] and [isUsableParse] allow ([ImportOutcome.refreshed]),
-  ///    [ImportOutcome.rejected] when only the parse is unusable, otherwise
-  ///    [ImportOutcome.unchanged].
+  ///    [refreshEnginesAgree], [refreshMayWrite] and [isUsableParse] allow
+  ///    ([ImportOutcome.refreshed]), [ImportOutcome.rejected] when only the
+  ///    parse is unusable, otherwise [ImportOutcome.unchanged].
   /// 2. Else, with [matchSubsurfaceCopies], look for the same dive under
   ///    another id (a Subsurface Cloud copy, possibly refreshed before). One
   ///    match is handled as step 1 under the match's id; several are not
@@ -95,9 +95,11 @@ class DiveDao {
   /// 3. Else store a new dive ([ImportOutcome.inserted]).
   ///
   /// Whenever the dive is stored or kept, the raw blob is written under the
-  /// stored id. That is a local Drift write that cannot join the PowerSync
-  /// transaction; if it throws, `DiveImportMarks.rawBlobMissing` is set and the
-  /// outcome is returned anyway. A later successful write clears the flag.
+  /// stored id, except on an engine mismatch ([refreshEnginesAgree] false),
+  /// where nothing is written, raw blob included. The blob is a local Drift
+  /// write that cannot join the PowerSync transaction; if it throws,
+  /// `DiveImportMarks.rawBlobMissing` is set and the outcome is returned
+  /// anyway. A later successful write clears the flag.
   ///
   /// Dedup runs against PowerSync, so a dive imported on another device and
   /// synced down counts as stored ("import once").
@@ -122,7 +124,7 @@ class DiveDao {
       final outcome = await _refreshStored(sameId, converted, parserVersion,
           fromDownload: true);
       if (outcome == null) return ImportOutcome.unchanged;
-      await keepBlob(sameId.id);
+      if (_enginesAgree(sameId, converted)) await keepBlob(sameId.id);
       return outcome;
     }
 
@@ -140,7 +142,7 @@ class DiveDao {
         final outcome = await _refreshStored(chosen, converted, parserVersion,
             fromDownload: true);
         if (outcome == null) return ImportOutcome.unchanged;
-        await keepBlob(chosen.id);
+        if (_enginesAgree(chosen, converted)) await keepBlob(chosen.id);
         return outcome;
       }
       if (matches.isNotEmpty) {
@@ -195,7 +197,7 @@ class DiveDao {
         'utc_offset_minutes, duration_seconds, max_depth_mm, dive_mode, '
         'deco_model, gf_low, gf_high, atmospheric_pressure_mbar, '
         'water_density, log_version, dc_model, dc_firmware, '
-        'dc_vendor, dc_product, dc_family, dc_model_code, '
+        'dc_vendor, dc_product, dc_family, dc_model_code, dc_fingerprint, '
         'sample_interval_ms, gas_mixes_json, tanks_json, '
         'sensor_calibration_json, '
         'configured_stack_seconds, stack_remaining_at_start_seconds, '
@@ -203,7 +205,7 @@ class DiveDao {
         'subsurface_uploaded_at, deleted_at, match_candidates_json, version, '
         'sync_status) '
         'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-        '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           dive.id,
           _ownerId,
@@ -227,6 +229,7 @@ class DiveDao {
           dive.dcProduct,
           dive.dcFamily,
           dive.dcModelCode,
+          dive.dcFingerprint,
           dive.sampleIntervalMs,
           gasMixesJson,
           tanksJson,
@@ -327,11 +330,13 @@ class DiveDao {
   /// is stored, or exactly one stored dive with `parser_version >= 0` is the
   /// same dive (a Subsurface copy refreshed by an earlier download). Ids whose
   /// stored dive is marked `rawBlobMissing` are left out, so the next download
-  /// stores the raw blob again.
+  /// stores the raw blob again. [fingerprints] maps a listing's id to its
+  /// libdivecomputer fingerprint (lower-case hex) where it has one.
   Future<Set<String>> alreadyDownloadedAmong(
     List<({String diveId, int startTimeSeconds, int diveNumber})> listings, {
     required String vendor,
     required int serial,
+    Map<String, String> fingerprints = const {},
   }) async {
     if (listings.isEmpty) return const <String>{};
     final stored = await storedDiveKeys();
@@ -352,6 +357,7 @@ class DiveDao {
         serial: serial,
         startTimeSeconds: l.startTimeSeconds,
         diveNumber: l.diveNumber,
+        fingerprint: fingerprints[l.diveId],
         excludeId: l.diveId,
         stored: stored,
       ).where((k) => k.parserVersion >= 0).toList();
@@ -654,6 +660,7 @@ class DiveDao {
         dcProduct: r['dc_product'] as String?,
         dcFamily: r['dc_family'] as int?,
         dcModelCode: r['dc_model_code'] as int?,
+        dcFingerprint: r['dc_fingerprint'] as String?,
         matchCandidatesJson: r['match_candidates_json'] as String?,
         sampleIntervalMs: r['sample_interval_ms'] as int,
         gasMixesJson: r['gas_mixes_json'] as String,

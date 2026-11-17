@@ -113,6 +113,14 @@ void main() {
       expect(col('dive_bailout_carry', 'dc_family').type, ColumnType.integer);
     });
 
+    test('appSchema has dives.dc_fingerprint as text', () {
+      final c = appSchema.tables
+          .firstWhere((t) => t.name == 'dives')
+          .columns
+          .firstWhere((c) => c.name == 'dc_fingerprint');
+      expect(c.type, ColumnType.text);
+    });
+
     test('no raw tables (everything is PowerSync-managed)', () {
       expect(appSchema.rawTables, isEmpty);
     });

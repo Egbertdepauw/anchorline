@@ -63,8 +63,9 @@ void main(List<String> args) async {
       libraries.addAll(['ws2_32', 'advapi32']);
     }
 
-    // Windows refuses a command line over 32,767 characters, which the source
-    // list is on a CI runner. cl.exe reads the sources from a response file.
+    // native_toolchain_c starts cl.exe through cmd.exe, which cuts a command
+    // line at 8,191 characters; the compile line is about 14,000. cl.exe reads
+    // the sources from a response file instead.
     var compileSources = sources;
     if (os == OS.windows) {
       final rsp = await _writeIfChanged(

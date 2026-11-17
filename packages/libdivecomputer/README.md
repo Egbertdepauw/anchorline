@@ -37,7 +37,8 @@ the pin deletes it. See `patches/README.md`.
 
 A pin move is its own PR. It bumps `kLibdcParserVersion`, keeps every replay
 test passing, and its description has a "Known changes" part that lists the
-upstream commits between the two pins that touch a checked family.
+upstream commits between the two pins that touch a checked family. It also
+updates the pinned commit in the repository's `NOTICE.md`.
 
 ## Tests
 

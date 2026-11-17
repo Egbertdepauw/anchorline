@@ -68,7 +68,7 @@ is built from source, as a dynamic library, in every build.
   Other authors keep the copyright on their code. Their names are in the
   source headers. They include Linus Torvalds (Suunto EON Steel, Core and
   D5, Deepblu Cosmiq, Oceans S1), Jan Matoušek (Divesoft Freedom and
-  Liberty), Anton Lundin (OSTC 3 and newer), Janice McLaughlin (Aqualung
+  Liberty), Anton Lundin (the OSTC 3 and newer download side, `hw_ostc3.c`; the parser is Jef's), Janice McLaughlin (Aqualung
   i330R, Apeks DSX), Ryan Gardner (Deep Six, Crest, Genesis, Scorpena),
   John Van Ostrand (Cochran) and David Carron (McLean).
 - **Which families ship:** every build carries every family, the store

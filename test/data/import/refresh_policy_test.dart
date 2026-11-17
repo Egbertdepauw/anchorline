@@ -57,9 +57,9 @@ void main() {
       expect(
         refreshMayWrite(
           storedVersion: -1,
-          storedIsLibdc: false,
+          storedFamily: null,
           incomingVersion: 1,
-          incomingIsLibdc: true,
+          incomingFamily: 5,
         ),
         isTrue,
       );
@@ -69,9 +69,9 @@ void main() {
       expect(
         refreshMayWrite(
           storedVersion: 1,
-          storedIsLibdc: false,
+          storedFamily: null,
           incomingVersion: 2,
-          incomingIsLibdc: false,
+          incomingFamily: null,
         ),
         isTrue,
       );
@@ -81,18 +81,18 @@ void main() {
       expect(
         refreshMayWrite(
           storedVersion: 2,
-          storedIsLibdc: true,
+          storedFamily: 5,
           incomingVersion: 2,
-          incomingIsLibdc: true,
+          incomingFamily: 5,
         ),
         isFalse,
       );
       expect(
         refreshMayWrite(
           storedVersion: 3,
-          storedIsLibdc: true,
+          storedFamily: 5,
           incomingVersion: 2,
-          incomingIsLibdc: true,
+          incomingFamily: 5,
         ),
         isFalse,
       );
@@ -102,9 +102,9 @@ void main() {
       expect(
         refreshMayWrite(
           storedVersion: 1,
-          storedIsLibdc: false,
+          storedFamily: null,
           incomingVersion: -1,
-          incomingIsLibdc: false,
+          incomingFamily: null,
         ),
         isFalse,
       );
@@ -114,9 +114,9 @@ void main() {
       expect(
         refreshMayWrite(
           storedVersion: 1,
-          storedIsLibdc: false,
+          storedFamily: null,
           incomingVersion: 5,
-          incomingIsLibdc: true,
+          incomingFamily: 5,
         ),
         isFalse,
       );
@@ -143,5 +143,45 @@ void main() {
         isFalse,
       );
     });
+  });
+
+  test('diveEngineOf: null is Shearwater, -1 is FIT, a libdivecomputer '
+      'family is libdc', () {
+    expect(diveEngineOf(null), DiveEngine.shearwater);
+    expect(diveEngineOf(-1), DiveEngine.fit);
+    expect(diveEngineOf(0), DiveEngine.libdc);
+    expect(diveEngineOf(5), DiveEngine.libdc);
+  });
+
+  test('a FIT row and a libdc row never refresh each other', () {
+    for (final (stored, incoming) in [(-1, 5), (5, -1)]) {
+      expect(
+        refreshMayWrite(
+          storedVersion: 1,
+          storedFamily: stored,
+          incomingVersion: 9,
+          incomingFamily: incoming,
+        ),
+        isFalse,
+      );
+      expect(
+        refreshEnginesAgree(
+          storedVersion: 1,
+          storedFamily: stored,
+          incomingFamily: incoming,
+        ),
+        isFalse,
+      );
+    }
+    // A FIT row refreshes from a newer FIT parse.
+    expect(
+      refreshMayWrite(
+        storedVersion: 1,
+        storedFamily: -1,
+        incomingVersion: 2,
+        incomingFamily: -1,
+      ),
+      isTrue,
+    );
   });
 }
