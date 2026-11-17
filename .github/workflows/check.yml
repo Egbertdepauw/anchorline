@@ -57,6 +57,20 @@ jobs:
         run: dart test --reporter expanded
         working-directory: packages/subsurface_core
 
+      # libdivecomputer wraps a vendored C library. Its tests build it with
+      # the package's native assets hook, so they need a C toolchain.
+      - name: libdivecomputer pub get
+        run: dart pub get
+        working-directory: packages/libdivecomputer
+
+      - name: libdivecomputer analyze
+        run: dart analyze --fatal-infos
+        working-directory: packages/libdivecomputer
+
+      - name: libdivecomputer test
+        run: dart test --reporter expanded
+        working-directory: packages/libdivecomputer
+
       - name: flutter pub get
         run: flutter pub get
 

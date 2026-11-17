@@ -30,11 +30,13 @@ import 'sync/cloud/upload_permission_report.dart';
 import 'sync/cloud/usage_tracker.dart';
 import 'sync/subsurface_git/ssl_certs.dart';
 import 'ui/app_shell.dart';
+import 'ui/licences.dart';
 import 'ui/notifiers/settings_notifier.dart';
 import 'ui/theme/active_theme_builder.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerLicences();
 
   // Point libgit2 (Subsurface Cloud sync) at a CA bundle on the platforms
   // that need it — Android and macOS. Without it every HTTPS git operation

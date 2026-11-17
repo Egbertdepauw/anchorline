@@ -33,21 +33,38 @@ pull request, keep that project's copyright and licence notices, and add
 it to [`NOTICE.md`](NOTICE.md). Code from libdivecomputer (LGPL 2.1 or
 later) and Subsurface (GPL version 2) is welcome on those terms.
 
-### Code derived from libdivecomputer
+### Code from libdivecomputer
 
-The Shearwater parser files listed in [`NOTICE.md`](NOTICE.md) are
-translated from libdivecomputer and keep its licence, the LGPL version 2.1
-or later. Anchorline ships them through the app stores because its source
-is open, and in that spirit two rules apply to them:
+Two kinds of libdivecomputer code are in this repository, and both keep
+its licence, the LGPL version 2.1 or later:
+
+- the Shearwater parser files listed in [`NOTICE.md`](NOTICE.md), which
+  are translated from libdivecomputer into Dart, and
+- the whole library, vendored in `packages/libdivecomputer/third_party/`
+  and linked into the app, together with Anchorline's own C layer in
+  `packages/libdivecomputer/native/`.
+
+Anchorline ships them through the app stores because its source is open
+and the library's maintainer has given his permission. Other authors keep
+the copyright on their own code in the library (see
+[`NOTICE.md`](NOTICE.md)). In that spirit these rules apply:
 
 - **Changes stay open.** A change to one of these files stays public in
   this repository, under the same licence. Keep the copyright and licence
   header at the top of the file.
+- **The vendored tree is "pinned commit + patches".** Never edit files in
+  `packages/libdivecomputer/third_party/` by hand. A change goes in as a
+  patch in `packages/libdivecomputer/patches/`, applied by
+  `tool/update_upstream.sh`.
 - **Improvements go back upstream.** If your change fixes or adds
   something that libdivecomputer lacks (a parsing bug, a new field, a
   firmware quirk), say so in the pull request. It will be shared with
   libdivecomputer's maintainer or mailing list, so every program that
   uses libdivecomputer benefits.
+- **Every build carries every family.** If a library author asks for a
+  family to be left out of the store builds, it goes on the leave-out list
+  (`leave_out_families` in `pubspec.yaml`). Don't add a family to that list
+  for any other reason.
 
 The name "Anchorline" and its logo stay with the project; contributing
 code doesn't change that. See [`LICENSING.md`](LICENSING.md).

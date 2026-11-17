@@ -184,6 +184,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
               ),
               AboutTab(
+                hasLicence: true,
                 onShareBleLog: _shareBleDebugLog,
                 onLongPressLogo: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const WidgetbookScreen()),
