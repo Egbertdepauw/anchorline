@@ -18,6 +18,21 @@ bool refreshMayWrite({
   return storedIsLibdc == incomingIsLibdc && incomingVersion > storedVersion;
 }
 
+/// Whether an incoming dive of family [incomingFamily] may write to a stored
+/// row at all, raw blob included. A set `dc_family` never changes, so it must
+/// equal the incoming one. A row without a family is either a Subsurface copy
+/// (which a download may give a family) or a Shearwater download (which only a
+/// Shearwater dive may touch).
+bool refreshEnginesAgree({
+  required int storedVersion,
+  required int? storedFamily,
+  required int? incomingFamily,
+}) {
+  if (storedFamily != null) return incomingFamily == storedFamily;
+  if (storedVersion == kSubsurfaceImportedParserVersion) return true;
+  return incomingFamily == null;
+}
+
 /// A parse worth writing over stored data: it has samples and a duration.
 bool isUsableParse(ConvertedDive c) =>
     c.samples.sampleCount > 0 && c.dive.duration > Duration.zero;

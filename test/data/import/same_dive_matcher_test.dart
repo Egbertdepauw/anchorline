@@ -9,6 +9,7 @@ StoredDiveKey _key({
   int startTime = 1000000,
   int parserVersion = -1,
   int? family,
+  String? fingerprint,
 }) =>
     StoredDiveKey(
       id: id,
@@ -18,6 +19,7 @@ StoredDiveKey _key({
       startTime: startTime,
       parserVersion: parserVersion,
       dcFamily: family,
+      dcFingerprint: fingerprint,
     );
 
 List<StoredDiveKey> _find(
@@ -27,6 +29,7 @@ List<StoredDiveKey> _find(
   int start = 1000000,
   String excludeId = 'incoming',
   int? diveNumber,
+  String? fingerprint,
 }) =>
     findSameDive(
       vendor: vendor,
@@ -34,6 +37,7 @@ List<StoredDiveKey> _find(
       startTimeSeconds: start,
       excludeId: excludeId,
       diveNumber: diveNumber,
+      fingerprint: fingerprint,
       stored: stored,
     );
 
@@ -134,5 +138,62 @@ void main() {
     });
     expect(n.dcVendor, isNull);
     expect(n.dcFamily, isNull);
+  });
+
+  group('fingerprint', () {
+    test('a stored download with another fingerprint is not matched', () {
+      final stored = _key(
+          vendor: 'Suunto',
+          parserVersion: 1,
+          diveNumber: 0,
+          family: 3,
+          startTime: 1000000,
+          fingerprint: 'aa11');
+      expect(
+          _find([stored],
+              vendor: 'Suunto',
+              start: 1000030,
+              diveNumber: 0,
+              fingerprint: 'bb22'),
+          isEmpty);
+    });
+
+    test('a stored download with the same fingerprint is matched', () {
+      final stored = _key(
+          vendor: 'Suunto',
+          parserVersion: 1,
+          diveNumber: 0,
+          family: 3,
+          fingerprint: 'aa11');
+      expect(
+          _find([stored], vendor: 'Suunto', diveNumber: 0, fingerprint: 'aa11'),
+          hasLength(1));
+    });
+
+    test('a stored row without a fingerprint keeps the old rule', () {
+      // A Subsurface copy and a Shearwater download.
+      expect(
+          _find([_key(vendor: 'Suunto')],
+              vendor: 'Suunto', fingerprint: 'aa11'),
+          hasLength(1));
+      expect(
+          _find([_key(parserVersion: 1, diveNumber: 5)],
+              diveNumber: 5, fingerprint: 'aa11'),
+          hasLength(1));
+    });
+
+    test('an incoming dive without a fingerprint ignores a stored one', () {
+      final stored = _key(parserVersion: 1, diveNumber: 5, fingerprint: 'aa11');
+      expect(_find([stored], diveNumber: 5), hasLength(1));
+    });
+
+    test('the other rules still apply with an equal fingerprint', () {
+      final stored = _key(
+          parserVersion: 1,
+          diveNumber: 0,
+          startTime: 1000061,
+          fingerprint: 'aa11');
+      expect(_find([stored], diveNumber: 0, fingerprint: 'aa11'), isEmpty);
+    });
   });
 }
