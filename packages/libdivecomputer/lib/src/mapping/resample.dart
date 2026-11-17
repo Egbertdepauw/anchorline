@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../parse/parsed_dive.dart';
+import '../parse/status.dart';
 
 /// Anchorline's samples sit on a fixed grid; libdivecomputer's rows do not
 /// (some computers log on change, some skip samples). This puts the rows onto
@@ -75,22 +76,62 @@ double _median(List<double> values) {
       : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+/// [rows] in time order. libdivecomputer delivers them in order, so that is
+/// the common case and the list is returned as is; otherwise a stable sort
+/// keeps the delivery order of rows with the same time.
+List<LibdcSampleRow> rowsInTimeOrder(List<LibdcSampleRow> rows) {
+  var ordered = true;
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i].timeMs < rows[i - 1].timeMs) {
+      ordered = false;
+      break;
+    }
+  }
+  if (ordered) return rows;
+  final indexed = [for (var i = 0; i < rows.length; i++) (i, rows[i])];
+  indexed.sort((a, b) {
+    final c = a.$2.timeMs.compareTo(b.$2.timeMs);
+    return c != 0 ? c : a.$1.compareTo(b.$1);
+  });
+  return [for (final r in indexed) r.$2];
+}
+
 /// Puts [rows] on a grid from 0 ms to the last row's time.
 ///
 /// Depth is interpolated linearly between the nearest rows that have one;
 /// every other channel carries its last value forward. [gasIndex] translates
 /// a row's gas mix index; null means "this row names no usable gas" and the
-/// previous index stays. Tank pressures for tank indexes at or above
-/// [tankCount] are dropped.
+/// previous index stays. [tankIndexes] are the parser's tank indexes; tank
+/// channel `i` carries the pressures of `tankIndexes[i]`, other tanks are
+/// dropped.
+///
+/// Before the first row that carries a channel, the grid holds that
+/// channel's first value (as depth always did), not 0.
+///
+/// Throws [LibdcParseException] (`dataFormat`) when the grid would exceed
+/// `max(diveTimeSeconds * 1000 / interval * 2, 20000)` points, which means a
+/// row time is corrupt.
 ResampledRows resample(
   List<LibdcSampleRow> rows, {
   int? Function(int index)? gasIndex,
-  int tankCount = 0,
+  List<int> tankIndexes = const [],
+  int? diveTimeSeconds,
 }) {
-  final sorted = [...rows]..sort((a, b) => a.timeMs.compareTo(b.timeMs));
+  final sorted = rowsInTimeOrder(rows);
   final interval = _interval(sorted);
   final last = sorted.isEmpty ? 0 : sorted.last.timeMs;
   final count = sorted.isEmpty ? 0 : (last + interval - 1) ~/ interval + 1;
+  final limit = [
+    (diveTimeSeconds ?? 0) * 1000 ~/ interval * 2,
+    20000,
+  ].reduce((a, b) => a > b ? a : b);
+  if (count > limit) {
+    throw const LibdcParseException(LibdcStatus.dataFormat);
+  }
+  final tankChannel = {
+    for (var i = 0; i < tankIndexes.length; i++) tankIndexes[i]: i,
+  };
+  final tankCount = tankIndexes.length;
 
   var cellChannels = 0;
   for (final r in sorted) {
@@ -122,7 +163,8 @@ ResampledRows resample(
     }
   }
 
-  // Carried-forward state.
+  // Carried-forward state, starting from each channel's first value so the
+  // grid before the first row is not zero.
   var j = 0;
   var dj = 0; // index of the last depth row at or before t
   double temp = 0, voted = double.nan, sp = 0, cn = 0;
@@ -130,6 +172,44 @@ ResampledRows resample(
   var gasNow = 0;
   final cellNow = <int, double>{};
   final pressureNow = <int, double>{};
+  var haveTemp = false,
+      haveVoted = false,
+      haveSp = false,
+      haveCns = false,
+      haveGas = false;
+  for (final r in sorted) {
+    if (!haveTemp && r.temperatureC != null) {
+      temp = r.temperatureC!;
+      haveTemp = true;
+    }
+    if (!haveVoted && r.ppo2Voted != null) {
+      voted = r.ppo2Voted!;
+      haveVoted = true;
+    }
+    if (!haveSp && r.setpoint != null) {
+      sp = r.setpoint!;
+      haveSp = true;
+    }
+    if (!haveCns && r.cns != null) {
+      cn = r.cns!;
+      haveCns = true;
+    }
+    deco ??= r.deco;
+    if (!haveGas && r.gasMix != null) {
+      final mapped = gasIndex == null ? r.gasMix : gasIndex(r.gasMix!);
+      if (mapped != null) {
+        gasNow = mapped;
+        haveGas = true;
+      }
+    }
+    r.cells.forEach((k, v) {
+      if (k >= 0 && k < _maxCells) cellNow.putIfAbsent(k, () => v);
+    });
+    r.pressures.forEach((k, v) {
+      final ch = tankChannel[k];
+      if (ch != null) pressureNow.putIfAbsent(ch, () => v);
+    });
+  }
 
   for (var g = 0; g < count; g++) {
     final t = g * interval;
@@ -148,7 +228,8 @@ ResampledRows resample(
         if (mapped != null) gasNow = mapped;
       }
       r.pressures.forEach((k, v) {
-        if (k >= 0 && k < tankCount) pressureNow[k] = v;
+        final ch = tankChannel[k];
+        if (ch != null) pressureNow[ch] = v;
       });
     }
 

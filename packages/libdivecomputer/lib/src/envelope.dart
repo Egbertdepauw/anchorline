@@ -102,8 +102,8 @@ class LibdcEnvelope {
     return out.toBytes();
   }
 
-  /// Throws [FormatException] on a bad magic, a newer version or truncated
-  /// input.
+  /// Throws [FormatException] on a bad magic, version 0, a newer version or
+  /// truncated input. Bytes after the data are accepted and ignored.
   static LibdcEnvelope decode(Uint8List bytes) {
     final view = ByteData.sublistView(bytes);
     var pos = 0;
@@ -156,8 +156,8 @@ class LibdcEnvelope {
     }
     pos = _magic.length;
     final version = u8();
-    if (version > _version) {
-      throw FormatException('Envelope version $version is newer than we know');
+    if (version < 1 || version > _version) {
+      throw FormatException('Unsupported envelope version $version');
     }
     final pinnedCommit = str();
     final vendor = str();

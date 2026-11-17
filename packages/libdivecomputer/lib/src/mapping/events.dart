@@ -1,6 +1,7 @@
 import 'package:subsurface_core/subsurface_core.dart';
 
 import '../parse/parsed_dive.dart';
+import 'resample.dart';
 
 /// libdivecomputer's `parser_sample_event_t` numbers that Anchorline names.
 const int _evDecostop = 1;
@@ -26,22 +27,24 @@ DiveEventType eventTypeFor(int rawType) => switch (rawType) {
 /// carried them, in row order. [gasIndex] translates a row's gas mix index
 /// as in `resample`; the switch value is the translated index.
 ///
-/// The baselines for "change" are the sample columns' own starting values,
-/// gas index 0 and setpoint 0, so a dive that opens on a setpoint gets an
-/// event for it.
+/// The baselines for "change" are the first values the dive reports, so a dive
+/// that opens on a setpoint or a gas gets no event for it; only later
+/// differences do.
 List<DiveEvent> buildEvents(
   List<LibdcSampleRow> rows, {
   int? Function(int index)? gasIndex,
 }) {
-  final sorted = [...rows]..sort((a, b) => a.timeMs.compareTo(b.timeMs));
+  final sorted = rowsInTimeOrder(rows);
   final events = <DiveEvent>[];
-  var gas = 0;
-  var setpoint = 0.0;
+  int? gas;
+  double? setpoint;
   for (final r in sorted) {
     final g = r.gasMix;
     if (g != null) {
       final mapped = gasIndex == null ? g : gasIndex(g);
-      if (mapped != null && mapped != gas) {
+      if (mapped != null && gas == null) {
+        gas = mapped;
+      } else if (mapped != null && mapped != gas) {
         gas = mapped;
         events.add(
           DiveEvent(
@@ -54,7 +57,8 @@ List<DiveEvent> buildEvents(
     }
     final sp = r.setpoint;
     if (sp != null) {
-      if ((sp - setpoint).abs() >= _setpointStepBar - 1e-9) {
+      if (setpoint != null &&
+          (sp - setpoint).abs() >= _setpointStepBar - 1e-9) {
         events.add(
           DiveEvent(
             timeMs: r.timeMs,

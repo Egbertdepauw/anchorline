@@ -101,6 +101,29 @@ void main() {
       expect(c.dive.tanks[1].serial, 0);
     });
 
+    test('pressures without TANK fields make a tank per index seen', () {
+      final c = _map(
+        testDive(
+          rows: [
+            row(0, depth: 0, pressures: {2: 0, 0: 200}),
+            row(10000, depth: 5, pressures: {2: 150, 0: 180}),
+            row(20000, depth: 5, pressures: {2: 100}),
+          ],
+        ),
+      );
+      expect(c.dive.tanks, hasLength(2));
+      expect(c.dive.tanks.map((t) => t.slot), [0, 1]);
+      expect(c.dive.tanks[0].beginPressureBar, 200);
+      expect(c.dive.tanks[0].endPressureBar, 180);
+      expect(c.dive.tanks[1].beginPressureBar, 150);
+      expect(c.dive.tanks[1].endPressureBar, 100);
+      expect(c.dive.tanks[1].usage, TankUsage.none);
+      expect(c.dive.tanks[1].pressureMaxBar, 0);
+      expect(c.samples.tankPressuresBar, hasLength(2));
+      expect(c.samples.tankPressuresBar[0], [200, 180, 180]);
+      expect(c.samples.tankPressuresBar[1], [0, 150, 100]);
+    });
+
     test('CNS stays a fraction and deco and TTS are in seconds', () {
       final c = _map(
         testDive(
@@ -295,6 +318,22 @@ void main() {
   });
 
   group('gas', () {
+    test('a dive with no gas mixes gets one air mix and index 0 everywhere',
+        () {
+      final c = _map(
+        testDive(
+          diveMode: LibdcDiveMode.gauge,
+          rows: [row(0, depth: 0), row(10000, depth: 5, gas: 3)],
+        ),
+      );
+      expect(c.dive.gasMixes, hasLength(1));
+      expect(c.dive.gasMixes[0].oxygenPercent, 21);
+      expect(c.dive.gasMixes[0].heliumPercent, 0);
+      expect(c.dive.gasMixes[0].isDiluent, isFalse);
+      expect(c.samples.gasMixIndex, [0, 0]);
+      expect(c.events, isEmpty);
+    });
+
     test('an OXYGEN-usage mix is left out and the gas indexes skip it', () {
       final c = _map(
         testDive(
@@ -365,10 +404,25 @@ void main() {
           .map((e) => (e.timeMs, e.type, e.value))
           .toList();
       expect(summary, [
-        (0, DiveEventType.setpointChange, 70),
         (20000, DiveEventType.setpointChange, 130),
         (30000, DiveEventType.gasSwitch, 1),
       ]);
+    });
+
+    test('a dive that opens on a setpoint or a gas gets no event for it', () {
+      final c = _map(
+        testDive(
+          gasMixes: const [
+            LibdcGasMix(oxygen: 0.21, helium: 0, usage: LibdcUsage.diluent),
+            LibdcGasMix(oxygen: 0.5, helium: 0, usage: LibdcUsage.none),
+          ],
+          rows: [
+            row(0, depth: 0, setpoint: 1.3, gas: 1),
+            row(10000, depth: 5, setpoint: 1.3, gas: 1),
+          ],
+        ),
+      );
+      expect(c.events, isEmpty);
     });
 
     test('a bookmark keeps rawType; an event value beyond int32 becomes null',
