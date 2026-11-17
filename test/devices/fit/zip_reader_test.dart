@@ -219,6 +219,22 @@ void main() {
       }
     });
 
+    test('a bad local header fails only that stored entry', () async {
+      final zip = buildZip([
+        ZipSpec('good.txt', bytesOf('good')),
+        ZipSpec('b.txt', bytesOf('bad one')),
+      ]);
+      // Zero the second entry's local header signature.
+      final at = 30 + 'good.txt'.length + 4;
+      zip.fillRange(at, at + 4, 0);
+      final r = await openBytes(zip);
+      expect(await r.read(r.entries[0]), bytesOf('good'));
+      expect(() => r.storedSpan(r.entries[1]),
+          throwsA(isA<ZipFormatException>()));
+      await expectLater(
+          r.read(r.entries[1]), throwsA(isA<ZipFormatException>()));
+    });
+
     test('an unsupported method throws', () async {
       final zip = buildZip([ZipSpec('a', bytesOf('abc'), method: 12)]);
       final r = await openBytes(zip);

@@ -201,7 +201,14 @@ class ZipReader {
     // Stored entries get their data offset now so [storedSpan] can stay
     // synchronous; deflated ones are resolved when first read.
     for (final e in entries) {
-      if (e.isStored && !e.isDirectory) await reader._resolve(e);
+      if (e.isStored && !e.isDirectory) {
+        try {
+          await reader._resolve(e);
+        } on ZipFormatException {
+          // Leave it unresolved: storedSpan, read and extractTo throw for
+          // this one entry, the rest of the archive stays readable.
+        }
+      }
     }
     return reader;
   }
@@ -210,8 +217,11 @@ class ZipReader {
   /// inner zip can be opened in place with [ZipReader.open].
   ({int base, int length}) storedSpan(ZipEntryInfo e) {
     final start = _dataStart[e];
-    if (!e.isStored || start == null) {
+    if (!e.isStored) {
       throw ZipFormatException('Entry "${e.name}" is not stored');
+    }
+    if (start == null) {
+      throw ZipFormatException('Entry "${e.name}" has a bad local header');
     }
     return (base: _base + start, length: e.compressedSize);
   }
