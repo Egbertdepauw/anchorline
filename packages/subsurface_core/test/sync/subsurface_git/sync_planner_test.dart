@@ -1091,6 +1091,365 @@ void main() {
       );
     });
   });
+
+  // The writer only knows how to write Shearwater dives. A dive from
+  // another brand (dc_family set, or a vendor that is set and isn't
+  // Shearwater) is written only as the merge of CCRLog's own lines into a
+  // dive Subsurface Cloud already has; one it doesn't have is left out.
+  group('dives from other brands', () {
+    test('another brand is a set dc_family, or a vendor that is set and '
+        "isn't Shearwater", () {
+      SubsurfaceDiveInput dive(String? vendor, int? family) => _ccrPetrelDive(
+          diveId: _diveIdA, dcVendor: vendor, dcFamily: family);
+      expect(dive(null, null).isOtherBrand, isFalse);
+      expect(dive('Shearwater', null).isOtherBrand, isFalse);
+      expect(dive('Divesoft', null).isOtherBrand, isTrue);
+      expect(dive(null, _libdcFamily).isOtherBrand, isTrue);
+      expect(dive('Shearwater', _libdcFamily).isOtherBrand, isTrue);
+      expect(dive('Garmin', -1).isOtherBrand, isTrue);
+
+      expect(const SubsurfaceDiveComputerInput(serial: 1, model: 3)
+          .isOtherBrand, isFalse);
+      expect(const SubsurfaceDiveComputerInput(
+              serial: 1, model: 3, dcVendor: 'Shearwater')
+          .isOtherBrand, isFalse);
+      expect(const SubsurfaceDiveComputerInput(
+              serial: 1, model: 0, dcVendor: 'Divesoft')
+          .isOtherBrand, isTrue);
+      expect(const SubsurfaceDiveComputerInput(
+              serial: 1, model: 0, dcFamily: _libdcFamily)
+          .isOtherBrand, isTrue);
+    });
+
+    test('the planner leaves out an other-brand dive that matches no remote '
+        'dive, and counts it', () {
+      for (final (vendor, family) in const [
+        ('Divesoft', _libdcFamily),
+        ('Garmin', -1),
+      ]) {
+        final plan = SyncPlanner().plan(
+          ccrlogDives: [
+            _bundle(
+              diveId: _diveIdA,
+              dcSerial: 1234567,
+              dcVendor: vendor,
+              dcFamily: family,
+              annotation: _annotation(
+                diveId: _diveIdA,
+                siteName: 'Quarry North',
+                siteLatitude: 52.12345,
+                siteLongitude: 4.56789,
+              ),
+              userDiveComputers: [_diveComputer(serial: 0xb89641e4)],
+            ),
+          ],
+          existingDivesBySerialAndStart: const {},
+          existingMaxDiveNumber: 0,
+          existingTopLevel: const [],
+          existingSites: const {},
+        );
+
+        // Nothing at all: no Dive-NNN, Divecomputer, Site or 00-Subsurface.
+        expect(plan.filesToWrite, isEmpty, reason: vendor);
+        expect(plan.diveIdsPlanned, isEmpty, reason: vendor);
+        expect(plan.stats.newDives, 0, reason: vendor);
+        expect(plan.stats.updatedDives, 0, reason: vendor);
+        expect(plan.stats.otherBrandDives, 1, reason: vendor);
+      }
+    });
+
+    test('a refreshed other-brand copy that matches a remote dive gets its '
+        'CCRLog-owned lines merged, and its Divecomputer file is '
+        'byte-identical', () {
+      final files = _divesoftRepo();
+      // A download refresh stores the decimal serial and sets dc_family;
+      // its samples are libdivecomputer's, not the ones Subsurface wrote.
+      final bundle = _divesoftCopy(
+        diveId: _diveIdA,
+        dcSerial: 1234567,
+        dcFamily: _libdcFamily,
+      );
+
+      final plan = _planOn(files, [bundle]);
+      final after = {...files, ...plan.filesToWrite};
+
+      expect(plan.filesToWrite.keys,
+          isNot(contains('$_divesoftFolder/Divecomputer')));
+      expect(after['$_divesoftFolder/Divecomputer'],
+          files['$_divesoftFolder/Divecomputer']);
+
+      final diveText = plan.filesToWrite['$_divesoftFolder/Dive-412']!;
+      expect(diveText,
+          contains('notes "Cells 1 and 2 swapped after the dive"'));
+      expect(diveText, contains('buddy "Sam, Robin"'));
+      expect(diveText, isNot(contains('Written in Subsurface')));
+      // The lines CCRLog doesn't own stay as Subsurface wrote them.
+      expect(diveText, startsWith('duration 48:20 min\nrating 3\n'
+          'divesiteid $_divesoftSiteHex\n'));
+      expect(diveText, contains('o2=100.0% use="oxygen"'));
+      // The site it points to takes CCRLog's name.
+      expect(plan.filesToWrite['01-Divesites/Site-$_divesoftSiteHex'],
+          contains('name "Quarry North - Shore entry"'));
+      // No Shearwater fingerprint or divecomputerid line for it.
+      expect(after['00-Subsurface'], files['00-Subsurface']);
+
+      expect(plan.stats.updatedDives, 1);
+      expect(plan.stats.newDives, 0);
+      expect(plan.stats.otherBrandDives, 0);
+      expect(plan.diveIdsPlanned, [_diveIdA]);
+    });
+
+    test("an unrefreshed non-Shearwater copy (vendor 'Divesoft', dcFamily "
+        'null) is treated by the same rule', () {
+      final files = _divesoftRepo();
+      // The bootstrap stores the legacy hex reading of the Serial text.
+      final matched = _divesoftCopy(diveId: _diveIdA, dcSerial: 0x1234567);
+      final unmatched = _divesoftCopy(
+        diveId: _diveIdB,
+        dcSerial: 0x1234567,
+        startTime: _divesoftStart + 86400,
+      );
+
+      final plan = _planOn(files, [matched, unmatched]);
+      final after = {...files, ...plan.filesToWrite};
+
+      expect(after['$_divesoftFolder/Divecomputer'],
+          files['$_divesoftFolder/Divecomputer']);
+      expect(plan.filesToWrite['$_divesoftFolder/Dive-412'],
+          contains('notes "Cells 1 and 2 swapped after the dive"'));
+      expect(after['00-Subsurface'], files['00-Subsurface']);
+      // Nothing for the dive Subsurface Cloud doesn't have.
+      expect(
+        plan.filesToWrite.keys.where((k) => k.startsWith('2025/06/15-')),
+        isEmpty,
+      );
+      expect(plan.diveIdsPlanned, [_diveIdA]);
+      expect(plan.stats.updatedDives, 1);
+      expect(plan.stats.newDives, 0);
+      expect(plan.stats.otherBrandDives, 1);
+    });
+
+    test('a Shearwater dive next to them is planned as before', () {
+      final files = _divesoftRepo();
+      final petrel = _bundle(
+        diveId: _diveIdC,
+        annotation: _testAnnotation(rating: 4, notes: 'Petrel dive'),
+        userDiveComputers: [_diveComputer(serial: 0xb89641e4)],
+      );
+
+      final alone = _planOn(files, [petrel]);
+      final mixed = _planOn(files, [
+        // Earlier than the Petrel dive: if it were numbered, it would take
+        // the Petrel dive's Dive-NNN.
+        _divesoftCopy(
+          diveId: _diveIdB,
+          dcSerial: 1234567,
+          dcFamily: _libdcFamily,
+          startTime: _divesoftStart + 86400,
+        ),
+        petrel,
+        _divesoftCopy(
+          diveId: _diveIdA,
+          dcSerial: 1234567,
+          dcFamily: _libdcFamily,
+        ),
+      ]);
+
+      expect(alone.filesToWrite.keys,
+          contains('2026/04/19-Sun-15=18=45/Dive-413'));
+      expect(alone.filesToWrite.keys, contains('00-Subsurface'));
+      // Every file the Petrel dive writes is the same, byte for byte,
+      // 00-Subsurface included.
+      for (final entry in alone.filesToWrite.entries) {
+        expect(mixed.filesToWrite[entry.key], entry.value, reason: entry.key);
+      }
+      // The only other writes are the matched copy's Dive-NNN and Site.
+      expect(
+        mixed.filesToWrite.keys
+            .toSet()
+            .difference(alone.filesToWrite.keys.toSet()),
+        {
+          '$_divesoftFolder/Dive-412',
+          '01-Divesites/Site-$_divesoftSiteHex',
+        },
+      );
+      expect(mixed.diveIdsPlanned, [_diveIdA, _diveIdC]);
+      expect(mixed.stats.newDives, 1);
+      expect(mixed.stats.updatedDives, 1);
+      expect(mixed.stats.otherBrandDives, 1);
+    });
+
+    test('a dive computer from another brand gets no divecomputerid line', () {
+      final plan = SyncPlanner().plan(
+        ccrlogDives: [
+          _bundle(
+            diveId: _diveIdA,
+            userDiveComputers: [
+              _diveComputer(serial: 0xb89641e4),
+              const SubsurfaceDiveComputerInput(
+                serial: 1234567,
+                model: 0,
+                dcVendor: 'Divesoft',
+                dcFamily: _libdcFamily,
+              ),
+              const SubsurfaceDiveComputerInput(
+                serial: 0x7654321,
+                model: 13,
+                dcVendor: 'Heinrichs Weikamp',
+              ),
+            ],
+          ),
+        ],
+        existingDivesBySerialAndStart: const {},
+        existingMaxDiveNumber: 0,
+        existingTopLevel: const [],
+        existingSites: const {},
+      );
+
+      final idLines = plan.filesToWrite['00-Subsurface']!
+          .split('\n')
+          .where((l) => l.startsWith('divecomputerid'))
+          .toList();
+      expect(idLines, hasLength(1));
+      expect(idLines.single, contains('serial="b89641e4"'));
+    });
+  });
+}
+
+/// Plan [bundles] against the remote repository [files].
+SyncPlan _planOn(Map<String, String> files, List<CcrlogDiveBundle> bundles) {
+  final snap = RemoteSnapshot.fromFiles(files);
+  return SyncPlanner().plan(
+    ccrlogDives: bundles,
+    existingDivesBySerialAndStart: snap.existingDivesBySerialAndStart,
+    existingMaxDiveNumber: snap.existingMaxDiveNumber,
+    existingTopLevel: snap.existingTopLevel,
+    existingSites: snap.existingSites,
+  );
+}
+
+// ── other-brand fixture ──────────────────────────────────────────────
+
+/// Any set `dc_family`; the planner only reads whether one is set.
+const _libdcFamily = 7;
+
+/// A Divesoft Liberty dive on Subsurface Cloud, written out in the form
+/// Subsurface's git writer gives one (there is no real Divesoft repository
+/// among the fixtures yet). Its `Serial` is decimal text that also reads as
+/// hex, and it has `SP change` events: the two things the planner's
+/// Divecomputer rewrite for CCRLog-written files looks for.
+const _divesoftFolder = '2025/06/14-Sat-10=12=30';
+const _divesoftStart = 1749895950; // 2025-06-14T10:12:30Z
+const _divesoftSiteHex = '5e1f0a77';
+
+Map<String, String> _divesoftRepo() => {
+      '00-Subsurface': 'version 3\n'
+          'divecomputerid "Divesoft Liberty" deviceid=7a3c91e2 '
+          'serial="1234567"\n'
+          'fingerprint model=3b9f4a21 serial=0012d687 deviceid=7a3c91e2 '
+          'diveid=4f2b8d10 data="5a1c33e0"\n',
+      '01-Divesites/Site-$_divesoftSiteHex': 'name "Quarry North"\n'
+          'description ""\n'
+          'notes ""\n'
+          'gps 52.123450 4.567890\n',
+      '$_divesoftFolder/Dive-412': 'duration 48:20 min\n'
+          'rating 3\n'
+          'divesiteid $_divesoftSiteHex\n'
+          'divemaster ""\n'
+          'buddy "Sam"\n'
+          'suit "Fourth Element Argonaut"\n'
+          'notes "Written in Subsurface"\n'
+          'cylinder vol=3.0l workpressure=200.0bar description="3ℓ 200 bar" '
+          'o2=21.0% he=35.0% use="diluent"\n'
+          'cylinder vol=3.0l workpressure=200.0bar description="3ℓ 200 bar" '
+          'o2=100.0% use="oxygen"\n',
+      '$_divesoftFolder/Divecomputer': 'model "Divesoft Liberty"\n'
+          'deviceid 7a3c91e2\n'
+          'diveid 4f2b8d10\n'
+          'dctype CCR\n'
+          'numberofoxygensensors 2\n'
+          'maxdepth 32.4m\n'
+          'meandepth 18.712m\n'
+          'watertemp 9.0°C\n'
+          'surfacepressure 1.012bar\n'
+          'salinity 1030g/l\n'
+          'keyvalue "Serial" "1234567"\n'
+          'keyvalue "FW Version" "1.11.6"\n'
+          'event 0:00 type=25 flags=6 name="gaschange" cylinder=0 '
+          'o2=21.0% he=35.0%\n'
+          'event 0:00 type=20 value=700 name="SP change"\n'
+          'event 0:30 type=20 value=1300 name="SP change"\n'
+          '  0:00 0.0m 14.0°C sensor1=0.71bar sensor2=0.7bar po2=0.7bar\n'
+          '  0:10 3.1m sensor1=0.74bar sensor2=0.73bar\n'
+          '  0:20 6.4m 13.0°C sensor1=0.78bar sensor2=0.77bar\n'
+          '  0:30 9.8m sensor1=1.21bar sensor2=1.2bar po2=1.3bar\n'
+          '  0:40 12.0m sensor1=1.29bar sensor2=1.3bar\n',
+    };
+
+/// CCRLog's copy of the [_divesoftRepo] dive with a new note, a second
+/// buddy and a renamed site. Its samples are not the ones in the remote
+/// Divecomputer file.
+CcrlogDiveBundle _divesoftCopy({
+  required String diveId,
+  required int dcSerial,
+  int? dcFamily,
+  int startTime = _divesoftStart,
+}) {
+  final now = DateTime.utc(2026, 11, 17);
+  return _bundle(
+    diveId: diveId,
+    startTime: startTime,
+    dcSerial: dcSerial,
+    dcVendor: 'Divesoft',
+    dcFamily: dcFamily,
+    gasMixes: const [],
+    samples: _twoCellSampleSet(diveId: diveId),
+    annotation: DiveAnnotation(
+      diveId: diveId,
+      notes: 'Cells 1 and 2 swapped after the dive',
+      buddies: const ['Sam', 'Robin'],
+      rating: 3,
+      suit: 'Fourth Element Argonaut',
+      siteName: 'Quarry North - Shore entry',
+      siteLatitude: 52.12345,
+      siteLongitude: 4.56789,
+      createdAt: now,
+      updatedAt: now,
+    ),
+    userDiveComputers: [
+      _diveComputer(serial: 0xb89641e4),
+      SubsurfaceDiveComputerInput(
+        serial: dcSerial,
+        model: 0,
+        dcVendor: 'Divesoft',
+        dcFamily: dcFamily,
+      ),
+    ],
+  );
+}
+
+/// Two cells and a 1.3 bar setpoint, unlike the samples in the
+/// [_divesoftRepo] Divecomputer file.
+SampleSet _twoCellSampleSet({required String diveId}) {
+  const n = 4;
+  return SampleSet(
+    diveId: diveId,
+    sampleCount: n,
+    sampleIntervalMs: 5000,
+    depthMeters: Float32List.fromList([0.0, 4.2, 8.9, 13.5]),
+    temperatureCelsius: Float32List.fromList(List.filled(n, 11.0)),
+    ppo2Bar: Float32List.fromList(List.filled(n, 1.28)),
+    cellMv0: Float32List.fromList(List.filled(n, 61.0)),
+    cellMv1: Float32List.fromList(List.filled(n, 60.5)),
+    cellMv2: Float32List(n),
+    setpointBar: Float32List.fromList(List.filled(n, 1.3)),
+    cns: Float32List(n),
+    decoStopDepthMeters: Float32List(n),
+    decoTimeSeconds: Int32List(n),
+    ttsSeconds: Int32List(n),
+    gasMixIndex: Uint8List(n),
+    statusFlags: Uint8List(n),
+  );
 }
 
 /// Two distinct Subsurface sites at the exact same coordinates, as a real
@@ -1154,6 +1513,7 @@ SyncPlan _planAgainst(
 // with the same prefix collapse into one fingerprint.
 const _diveIdA = 'aaaaaaaa-1111-2222-3333-444444444444';
 const _diveIdB = 'bbbbbbbb-1111-2222-3333-444444444444';
+const _diveIdC = 'cccccccc-1111-2222-3333-444444444444';
 
 CcrlogDiveBundle _bundle({
   required String diveId,
@@ -1162,12 +1522,19 @@ CcrlogDiveBundle _bundle({
   List<SubsurfaceDiveComputerInput>? userDiveComputers,
   List<DiveGasMix>? gasMixes,
   int dcSerial = 0xb89641e4,
+  String? dcVendor,
+  int? dcFamily,
+  SampleSet? samples,
 }) {
   final dive = _ccrPetrelDive(
-      diveId: diveId, startTime: startTime, dcSerial: dcSerial);
+      diveId: diveId,
+      startTime: startTime,
+      dcSerial: dcSerial,
+      dcVendor: dcVendor,
+      dcFamily: dcFamily);
   return CcrlogDiveBundle(
     dive: dive,
-    samples: _smallSampleSet(diveId: diveId),
+    samples: samples ?? _smallSampleSet(diveId: diveId),
     annotation: annotation,
     gasMixes: gasMixes ?? _threeGasMixes(),
     tanks: const [],
@@ -1180,10 +1547,14 @@ SubsurfaceDiveInput _ccrPetrelDive({
   required String diveId,
   int startTime = 1776611925,
   int dcSerial = 0xb89641e4,
+  String? dcVendor,
+  int? dcFamily,
 }) {
   return SubsurfaceDiveInput(
     id: diveId,
     dcSerial: dcSerial,
+    dcVendor: dcVendor,
+    dcFamily: dcFamily,
     dcDiveNumber: 705,
     startTime: startTime,
     durationSeconds: 3450,

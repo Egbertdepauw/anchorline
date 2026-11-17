@@ -475,6 +475,77 @@ void main() {
     expect(find.textContaining('cylinder'), findsOneWidget);
   });
 
+  testWidgets('the sync section says why other-brand dives are not sent',
+      (tester) async {
+    const why = "3 dives from other brands aren't sent to Subsurface Cloud "
+        'yet. Anchorline only writes Shearwater dives there for now.';
+    final creds = _InMemoryCredentials()
+      ..email = 'e@x'
+      ..password = 'p';
+    await tester.pumpWidget(_harness(
+      creds: creds,
+      onSync: () async => SubsurfaceSyncResult(
+        divesPushed: 1,
+        divesSkipped: 0,
+        abortedDives: const [],
+        otherBrandDives: 3,
+        commitSha: 'abc1234',
+        completedAt: DateTime.utc(2026, 11, 17, 14, 30),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Push to Subsurface: under the result in the status block.
+    await tester.tap(find.text('Push to Subsurface'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pushed 1 dive'), findsOneWidget);
+    expect(find.text(why), findsOneWidget);
+
+    // Sync now: in the SnackBar, after the result.
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.sync));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Pushed 1 dive to Subsurface. $why'), findsOneWidget);
+  });
+
+  testWidgets('the other-brand line reads right for one dive and is absent '
+      'for none', (tester) async {
+    var otherBrand = 1;
+    final creds = _InMemoryCredentials()
+      ..email = 'e@x'
+      ..password = 'p';
+    await tester.pumpWidget(_harness(
+      creds: creds,
+      onSync: () async => SubsurfaceSyncResult(
+        divesPushed: 0,
+        divesSkipped: 0,
+        abortedDives: const [],
+        otherBrandDives: otherBrand,
+        commitSha: null,
+        completedAt: DateTime.utc(2026, 11, 17, 14, 30),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Push to Subsurface'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text("1 dive from another brand isn't sent to Subsurface Cloud "
+          'yet. Anchorline only writes Shearwater dives there for now.'),
+      findsOneWidget,
+    );
+
+    otherBrand = 0;
+    await tester.tap(find.text('Push to Subsurface'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Subsurface Cloud yet'), findsNothing);
+
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.sync));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Already up-to-date with Subsurface'), findsOneWidget);
+  });
+
   testWidgets('Push button re-reads lastSyncedAt so the status row updates '
       'after a push', (tester) async {
     final creds = _InMemoryCredentials()

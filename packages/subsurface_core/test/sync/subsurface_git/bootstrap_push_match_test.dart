@@ -370,6 +370,8 @@ SubsurfaceDiveInput _rowInput(Dive d) => SubsurfaceDiveInput(
       maxDepthMm: (d.maxDepthMeters * 1000).round(),
       diveMode: d.diveMode.value,
       dcModel: d.dcModel.index,
+      dcVendor: d.dcVendor,
+      dcFamily: d.dcFamily,
       logVersion: d.logVersion,
       atmosphericPressureMbar: d.atmosphericPressureMbar,
       waterDensity: d.waterDensityKgM3,

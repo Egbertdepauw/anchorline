@@ -63,6 +63,9 @@ void main() {
       rawBlob: Uint8List(0), parserVersion: 1, importedAt: 0,
     );
     final i = diveInputFromRow(row);
+    expect(i.dcVendor, isNull);
+    expect(i.dcFamily, isNull);
+    expect(i.isOtherBrand, isFalse);
     expect(i.gfLow, isNull);
     expect(i.gfHigh, isNull);
     expect(i.dcFirmware, isNull);
@@ -93,5 +96,30 @@ void main() {
     expect(diveComputerInputFromRow(DiveComputer(
       id: 'dc2', serial: 7, model: 3, createdAt: 0, updatedAt: 0, version: 1, syncStatus: 0,
     )).nickname, isNull);
+  });
+
+  test('the brand fields are copied, so the planner can tell other brands',
+      () {
+    final row = Dive(
+      id: 'x', dcSerial: 1234567, dcDiveNumber: 0, startTime: 3, endTime: 4,
+      durationSeconds: 1, maxDepthMm: 1, diveMode: 0, decoModel: 0,
+      atmosphericPressureMbar: 1013, waterDensity: 1030, logVersion: 0,
+      dcModel: 13, sampleIntervalMs: 5000, gasMixesJson: '',
+      dcVendor: 'Divesoft', dcProduct: 'Liberty', dcFamily: 7,
+      rawBlob: Uint8List(0), parserVersion: 1, importedAt: 0,
+    );
+    final i = diveInputFromRow(row);
+    expect(i.dcVendor, 'Divesoft');
+    expect(i.dcFamily, 7);
+    expect(i.isOtherBrand, isTrue);
+
+    final d = diveComputerInputFromRow(DiveComputer(
+      id: 'dc_divesoft_12d687', serial: 1234567, model: 0,
+      dcVendor: 'Divesoft', dcFamily: 7,
+      createdAt: 0, updatedAt: 0, version: 1, syncStatus: 0,
+    ));
+    expect(d.dcVendor, 'Divesoft');
+    expect(d.dcFamily, 7);
+    expect(d.isOtherBrand, isTrue);
   });
 }

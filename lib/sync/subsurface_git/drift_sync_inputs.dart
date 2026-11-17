@@ -19,6 +19,8 @@ SubsurfaceDiveInput diveInputFromRow(Dive row) => SubsurfaceDiveInput(
       atmosphericPressureMbar: row.atmosphericPressureMbar,
       waterDensity: row.waterDensity,
       dcFirmware: row.dcFirmware,
+      dcVendor: row.dcVendor,
+      dcFamily: row.dcFamily,
       gfLow: row.gfLow,
       gfHigh: row.gfHigh,
       sensorCalibrationJson: row.sensorCalibrationJson,
@@ -39,4 +41,6 @@ SubsurfaceDiveComputerInput diveComputerInputFromRow(DiveComputer row) =>
       serial: row.serial,
       model: row.model,
       nickname: row.nickname,
+      dcVendor: row.dcVendor,
+      dcFamily: row.dcFamily,
     );

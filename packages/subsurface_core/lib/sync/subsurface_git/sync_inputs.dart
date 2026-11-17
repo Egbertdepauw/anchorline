@@ -1,3 +1,5 @@
+import '../../shearwater/parser/hardware.dart' show kShearwaterVendor;
+
 /// The dive fields the write mapper and the planner read. The app builds
 /// it from the Drift `Dive` row, the server from the `dives` Postgres row.
 /// Encodings are the row's: epoch seconds, millimetres, raw enum codes
@@ -16,6 +18,8 @@ final class SubsurfaceDiveInput {
     required this.atmosphericPressureMbar,
     required this.waterDensity,
     this.dcFirmware,
+    this.dcVendor,
+    this.dcFamily,
     this.gfLow,
     this.gfHigh,
     this.sensorCalibrationJson,
@@ -35,6 +39,19 @@ final class SubsurfaceDiveInput {
   final int atmosphericPressureMbar;
   final int waterDensity; // kg/m³
   final int? dcFirmware;
+
+  /// The row's `dc_vendor`. Null on rows from before vendors were stored,
+  /// which are Shearwater.
+  final String? dcVendor;
+
+  /// The row's `dc_family`: set on libdivecomputer dives, -1 on FIT dives,
+  /// null on Shearwater dives and on Subsurface copies.
+  final int? dcFamily;
+
+  /// True for a dive from another brand, which the Shearwater-only writer
+  /// never pushes as a new dive (see `SyncPlanner.plan`).
+  bool get isOtherBrand => _isOtherBrand(dcVendor, dcFamily);
+
   final int? gfLow;
   final int? gfHigh;
   final String? sensorCalibrationJson;
@@ -61,8 +78,26 @@ final class SubsurfaceDiveComputerInput {
     required this.serial,
     required this.model, // ShearwaterModel.index
     this.nickname,
+    this.dcVendor,
+    this.dcFamily,
   });
   final int serial;
   final int model;
   final String? nickname;
+
+  /// The row's `dc_vendor`; null is Shearwater.
+  final String? dcVendor;
+
+  /// The row's `dc_family`; set for a computer read through
+  /// libdivecomputer.
+  final int? dcFamily;
+
+  /// True for a computer from another brand, which gets no
+  /// `divecomputerid` line from the Shearwater-only writer.
+  bool get isOtherBrand => _isOtherBrand(dcVendor, dcFamily);
 }
+
+/// Another brand: a set `dc_family` (libdivecomputer or FIT), or a vendor
+/// that is set and isn't Shearwater. A null vendor is Shearwater.
+bool _isOtherBrand(String? vendor, int? family) =>
+    family != null || (vendor != null && vendor != kShearwaterVendor);
