@@ -808,9 +808,10 @@ external int dc_version_check(int major, int minor, int micro);
 external int al_family_present(int family);
 
 /// A live link. `advertised_name` (copied; NULL when there is none) answers
-/// DC_IOCTL_BLE_GET_NAME. `request` must stay callable until every iostream
-/// of the link is closed. Returns NULL when `request` is NULL or memory runs
-/// out.
+/// DC_IOCTL_BLE_GET_NAME, truncated to the caller's buffer and always
+/// NUL-terminated; with no name that ioctl is DC_STATUS_UNSUPPORTED.
+/// `request` must stay callable until every iostream of the link is closed.
+/// Returns NULL when `request` is NULL or memory runs out.
 @ffi.Native<
   ffi.Pointer<al_link_t> Function(ffi.Pointer<ffi.Char>, al_request_fn)
 >()
@@ -869,25 +870,32 @@ external void al_link_push(
   int size,
 );
 
-/// Takes the request waiting in the pending slot. Copies its bytes (what to
-/// write; nothing for a characteristic read) into `data`, and the UUID of a
-/// characteristic request into `uuid` (36 characters and a NUL; an empty
-/// string for a plain write), and returns the number of bytes.
+/// Takes the request waiting in the pending slot, for the main isolate to
+/// carry out. Three outcomes, told apart by `*request_id`:
 ///
-/// When the bytes do not fit in `capacity`, copies nothing, takes nothing and
-/// returns the size needed. `data` may be NULL only with `capacity` 0.
-/// `uuid` must hold DC_BLE_UUID_SIZE bytes: with less, a characteristic
-/// request is not taken.
+/// - Taken: `*request_id` is the request's id, greater than 0, and `*kind` its
+/// AL_REQ_* kind. Its bytes (what to write; nothing for a characteristic
+/// read) are copied into `data`, and the UUID of a characteristic request
+/// into `uuid` (36 lower-case characters and a NUL; an empty string for a
+/// plain write). Returns the number of bytes copied, which may be 0 for a
+/// characteristic request.
 ///
-/// When no request is waiting to be taken (none was made, it was taken
-/// already, or it timed out), returns 0 and stores an empty string in `uuid`.
-/// A write of zero bytes never makes a request, so 0 with an empty `uuid`
-/// always means nothing to do.
+/// - A buffer is too small: `data` cannot hold the bytes, or `uuid` holds less
+/// than DC_BLE_UUID_SIZE bytes for a characteristic request. Nothing is
+/// copied or taken. `*request_id` is -1 and `*kind` the request's kind.
+/// Returns the number of bytes `data` must hold; call again with that, and
+/// with DC_BLE_UUID_SIZE bytes of `uuid`.
 ///
-/// A request is taken once. Only a taken request can be completed, so a
-/// completion meant for an earlier request that timed out never completes a
-/// later one, provided the caller completes each request it took before it
-/// takes the next.
+/// - Nothing to take: no request is waiting, it was taken already, or it
+/// finished. `*request_id` and `*kind` are 0, `uuid` is an empty string,
+/// and it returns 0.
+///
+/// `data` may be NULL only with `capacity` 0. `request_id` must not be NULL:
+/// without it nothing is taken. `kind` may be NULL. A request is taken once.
+///
+/// Use this kind, not the one the request callback announced: a notification
+/// handled after its own request timed out can take a newer request of
+/// another kind.
 @ffi.Native<
   ffi.Size Function(
     ffi.Pointer<al_link_t>,
@@ -895,6 +903,8 @@ external void al_link_push(
     ffi.Size,
     ffi.Pointer<ffi.Char>,
     ffi.Size,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int32>,
   )
 >()
 external int al_link_pending(
@@ -903,16 +913,24 @@ external int al_link_pending(
   int capacity,
   ffi.Pointer<ffi.Char> uuid,
   int uuid_capacity,
+  ffi.Pointer<ffi.Int64> request_id,
+  ffi.Pointer<ffi.Int32> kind,
 );
 
-/// Completes the taken request with `status`, and wakes the blocking thread.
-/// For a characteristic read, `data` is the value: it is copied after the
-/// UUID in the ioctl buffer, and a value that does not fit there turns the
-/// result into DC_STATUS_INVALIDARGS. Ignored when no taken request is
-/// waiting.
+/// Completes request `request_id` (from al_link_pending) with `status`, and
+/// wakes the blocking thread. For a characteristic read, `data` is the value:
+/// it is copied after the UUID in the ioctl buffer, and a value that does not
+/// fit there turns the result into DC_STATUS_INVALIDARGS.
+///
+/// Applies only when `request_id` is the request the blocking thread waits
+/// for, taken and not yet completed. Anything else is ignored: an id of 0 or
+/// -1, a request that timed out or was completed already, or one that is not
+/// the current request because handlers finished out of order. Ids never
+/// repeat, so a completion can never land on another request.
 @ffi.Native<
   ffi.Void Function(
     ffi.Pointer<al_link_t>,
+    ffi.Int64,
     ffi.Int,
     ffi.Pointer<ffi.Uint8>,
     ffi.Size,
@@ -920,6 +938,7 @@ external int al_link_pending(
 >()
 external void al_link_complete(
   ffi.Pointer<al_link_t> link,
+  int request_id,
   int status,
   ffi.Pointer<ffi.Uint8> data,
   int size,
@@ -966,9 +985,11 @@ external int al_link_recording(
 );
 
 /// The index of the next event a replay link will serve, counting every event
-/// of the recording from 0. After a divergence (a write that differs, or a
-/// read where the recording has something else) it stays at the event that
-/// diverged. -1 for a live link.
+/// of the recording from 0. After a divergence it stays at the event that
+/// diverged: a write that differs (DC_STATUS_PROTOCOL), a read or a request
+/// where the recording has something else (DC_STATUS_PROTOCOL), or a
+/// recorded characteristic value longer than the caller's buffer
+/// (DC_STATUS_INVALIDARGS). -1 for a live link.
 @ffi.Native<ffi.Int Function(ffi.Pointer<al_link_t>)>()
 external int al_link_replay_position(ffi.Pointer<al_link_t> link);
 

@@ -26,16 +26,21 @@
 //
 // A write, a characteristic read and a characteristic write are requests.
 // Each gets a sequence number, `req_seq`, nonzero while it is in the pending
-// slot. al_link_pending takes it by setting `taken_seq` to that number, and
-// al_link_complete only completes a request whose number is taken and that
-// is not done. When the request finishes (completed, timed out, cancelled or
-// disconnected), the blocking thread empties the slot. So:
+// slot, which is also its request id. al_link_pending takes it by setting
+// `taken_seq` to that number and hands the id out with the request's kind;
+// al_link_complete takes the id back and completes the request only when the
+// id is the request in the slot, taken and not done. When the request
+// finishes (completed, timed out, cancelled or disconnected), the blocking
+// thread empties the slot. Ids never repeat, so however the main isolate's
+// handlers interleave:
 // - a completion with nothing pending finds req_seq 0 and is ignored;
-// - a late completion of a request that timed out finds either an empty slot
-//   or a newer request that was not taken yet, and is ignored;
+// - a late completion of a request that timed out carries an id that is no
+//   longer in the slot, and is ignored, even when a newer request was taken
+//   in the meantime;
 // - a duplicate completion finds the request done, and is ignored;
 // - a notification for a request that already timed out finds nothing to
-//   take.
+//   take, or takes the newer request together with that request's own kind
+//   and id.
 // The blocking thread is the only one that fills or empties the slot, and it
 // does so with the lock held.
 //
@@ -256,6 +261,22 @@ record_characteristic (al_link_t *link, unsigned int direction, const char *uuid
 	record (link, 'C', prefix, sizeof (prefix), value, size);
 }
 
+// After the R, W or C of a call that failed: E with its status.
+static void
+record_result (al_link_t *link, dc_status_t status)
+{
+	if (status != DC_STATUS_SUCCESS)
+		record_u32 (link, 'E', (uint32_t) status);
+}
+
+// A read that returned nothing: an R of length 0, then its status.
+static void
+record_failed_read (al_link_t *link, dc_status_t status)
+{
+	record (link, 'R', NULL, 0, NULL, 0);
+	record_result (link, status);
+}
+
 // ---------------------------------------------------------------------------
 // The live link. All of these run with the lock held.
 
@@ -442,6 +463,35 @@ replay_advance (al_link_t *link, const event_t *event)
 	link->rp_consumed = 0;
 }
 
+// After replay_advance past a W, a C or an R of length 0: what that call
+// returned live. An E that follows it, past events a replay skips (an X
+// overflow can land between the two), gives the status, and is consumed;
+// without one the call returned `otherwise`. Recordings made before E
+// existed have none, so their writes succeed and their empty reads time out.
+static dc_status_t
+replay_result (al_link_t *link, dc_status_t otherwise)
+{
+	size_t offset = link->rp_offset;
+	int index = link->rp_index;
+	while (offset < link->events_size) {
+		const unsigned char *p = link->events + offset;
+		size_t length = get_u32 (p + 9);
+		if (p[0] == 'E') {
+			// A malformed E (not 4 bytes) still counts as a failure.
+			dc_status_t status = length == 4 ?
+				(dc_status_t) (int32_t) get_u32 (p + EVENT_HEADER) : DC_STATUS_IO;
+			link->rp_offset = offset + EVENT_HEADER + length;
+			link->rp_index = index + 1;
+			return status == DC_STATUS_SUCCESS ? otherwise : status;
+		}
+		if (p[0] == 'R' || p[0] == 'W' || p[0] == 'C')
+			break;
+		offset += EVENT_HEADER + length;
+		index++;
+	}
+	return otherwise;
+}
+
 // Whether `events` holds whole events, well-formed C payloads, and few
 // enough events for an int index.
 static int
@@ -575,8 +625,10 @@ link_poll (void *userdata, int timeout)
 	if (link->replay) {
 		event_t event;
 		status = replay_gate (link);
+		// An R of length 0 is a read that timed out: nothing to poll.
 		if (status == DC_STATUS_SUCCESS)
-			status = replay_next (link, &event) && event.kind == 'R' ?
+			status = replay_next (link, &event) && event.kind == 'R' &&
+				event.size > link->rp_consumed ?
 				DC_STATUS_SUCCESS : DC_STATUS_TIMEOUT;
 	} else {
 		status = wait_for_packet (link, timeout);
@@ -591,6 +643,7 @@ link_read (void *userdata, void *data, size_t size, size_t *actual)
 	al_link_t *link = (al_link_t *) userdata;
 	unsigned char *out = (unsigned char *) data;
 	dc_status_t status;
+	size_t n = 0;
 	int diverged = -1;
 
 	*actual = 0;
@@ -610,22 +663,25 @@ link_read (void *userdata, void *data, size_t size, size_t *actual)
 		} else if (event.kind != 'R') {
 			diverged = link->rp_index;
 			status = DC_STATUS_PROTOCOL;
+		} else if (event.size == 0) {
+			// A read that returned nothing live: what it returned, by
+			// default a timeout.
+			replay_advance (link, &event);
+			status = replay_result (link, DC_STATUS_TIMEOUT);
 		} else {
-			size_t n = event.size - link->rp_consumed;
+			n = event.size - link->rp_consumed;
 			if (n > size)
 				n = size;
 			memcpy (out, event.payload + link->rp_consumed, n);
 			link->rp_consumed += n;
 			if (link->rp_consumed == event.size)
 				replay_advance (link, &event);
-			*actual = n;
-			record (link, 'R', out, n, NULL, 0);
 		}
 	} else {
 		status = wait_for_packet (link, link->timeout);
 		if (status == DC_STATUS_SUCCESS) {
 			packet_t *packet = link->head;
-			size_t n = packet->size - packet->offset;
+			n = packet->size - packet->offset;
 			if (n > size)
 				n = size;
 			memcpy (out, packet->data + packet->offset, n);
@@ -637,9 +693,13 @@ link_read (void *userdata, void *data, size_t size, size_t *actual)
 					link->tail = NULL;
 				free (packet);
 			}
-			*actual = n;
-			record (link, 'R', out, n, NULL, 0);
 		}
+	}
+	if (status == DC_STATUS_SUCCESS) {
+		*actual = n;
+		record (link, 'R', out, n, NULL, 0);
+	} else {
+		record_failed_read (link, status);
 	}
 	al_mutex_unlock (&link->lock);
 
@@ -659,27 +719,31 @@ link_write (void *userdata, const void *data, size_t size, size_t *actual)
 
 	al_mutex_lock (&link->lock);
 	dc_context_t *context = link->context;
-	if (link->replay) {
+	status = link->replay ? replay_gate (link) : request_gate (link);
+	if (size == 0) {
+		// A write of nothing has nothing to send: no request, no event.
+	} else if (link->replay) {
 		event_t event;
-		status = replay_gate (link);
-		if (status == DC_STATUS_SUCCESS && size > 0) {
-			if (!replay_next (link, &event) || event.kind != 'W' ||
-				event.size != size || memcmp (event.payload, bytes, size) != 0) {
-				// Stay at this event: a retry with the right bytes matches.
-				diverged = link->rp_index;
-				status = DC_STATUS_PROTOCOL;
-			} else {
-				replay_advance (link, &event);
-				record (link, 'W', bytes, size, NULL, 0);
-			}
+		if (status != DC_STATUS_SUCCESS) {
+			// Cancelled or disconnected.
+		} else if (!replay_next (link, &event) || event.kind != 'W' ||
+			event.size != size || memcmp (event.payload, bytes, size) != 0) {
+			// Stay at this event: a retry with the right bytes matches.
+			diverged = link->rp_index;
+			status = DC_STATUS_PROTOCOL;
+		} else {
+			replay_advance (link, &event);
+			status = replay_result (link, DC_STATUS_SUCCESS);
 		}
+		record (link, 'W', bytes, size, NULL, 0);
+		record_result (link, status);
 	} else {
-		status = request_gate (link);
-		// A write of nothing has nothing to send: no request.
-		if (status == DC_STATUS_SUCCESS && size > 0) {
-			record (link, 'W', bytes, size, NULL, 0);
+		// W when the write is issued, so that it shows even if it fails;
+		// E with the result when it did.
+		record (link, 'W', bytes, size, NULL, 0);
+		if (status == DC_STATUS_SUCCESS)
 			status = live_request (link, AL_REQ_WRITE, bytes, size, NULL, NULL, 0, NULL);
-		}
+		record_result (link, status);
 	}
 	if (status == DC_STATUS_SUCCESS)
 		*actual = size;
@@ -689,15 +753,21 @@ link_write (void *userdata, const void *data, size_t size, size_t *actual)
 	return status;
 }
 
+// Copies the advertised name, truncated to `size` and always NUL-terminated,
+// like strncpy plus a terminator. oceanic_atom2.c passes a fixed 9-byte
+// buffer and forces the NUL itself.
 static dc_status_t
 link_get_name (al_link_t *link, void *data, size_t size)
 {
 	if (link->name == NULL)
 		return DC_STATUS_UNSUPPORTED;
-	size_t n = strlen (link->name) + 1;
-	if (data == NULL || size < n)
+	if (data == NULL || size == 0)
 		return DC_STATUS_INVALIDARGS;
+	size_t n = strlen (link->name);
+	if (n > size - 1)
+		n = size - 1;
 	memcpy (data, link->name, n);
+	((char *) data)[n] = '\0';
 	return DC_STATUS_SUCCESS;
 }
 
@@ -710,6 +780,7 @@ link_characteristic (al_link_t *link, int read, void *data, size_t size)
 	char uuid[DC_BLE_UUID_SIZE];
 	dc_status_t status;
 	int diverged = -1;
+	const char *what = "characteristic request";
 
 	if (bytes == NULL || size < sizeof (dc_ble_uuid_t))
 		return DC_STATUS_INVALIDARGS;
@@ -718,55 +789,62 @@ link_characteristic (al_link_t *link, int read, void *data, size_t size)
 	unsigned char *value = bytes + sizeof (dc_ble_uuid_t);
 	size_t value_size = size - sizeof (dc_ble_uuid_t);
 	unsigned int direction = read ? DC_IOCTL_DIR_READ : DC_IOCTL_DIR_WRITE;
+	// What a characteristic read put in `value`.
+	size_t got = 0;
 
 	al_mutex_lock (&link->lock);
 	dc_context_t *context = link->context;
 	if (link->replay) {
 		event_t event;
 		status = replay_gate (link);
-		if (status == DC_STATUS_SUCCESS) {
-			if (!replay_next (link, &event) || event.kind != 'C' ||
-				event.payload[0] != direction ||
-				event.payload[1] != UUID_LENGTH ||
-				!ascii_equal_ignoring_case (event.payload + 2, uuid, UUID_LENGTH)) {
+		if (status != DC_STATUS_SUCCESS) {
+			// Cancelled or disconnected.
+		} else if (!replay_next (link, &event) || event.kind != 'C' ||
+			event.payload[0] != direction ||
+			event.payload[1] != UUID_LENGTH ||
+			!ascii_equal_ignoring_case (event.payload + 2, uuid, UUID_LENGTH)) {
+			diverged = link->rp_index;
+			status = DC_STATUS_PROTOCOL;
+		} else {
+			const unsigned char *recorded = event.payload + 2 + UUID_LENGTH;
+			size_t recorded_size = event.size - 2 - UUID_LENGTH;
+			if (read && recorded_size > value_size) {
+				// Stay at this event, as for any divergence.
+				diverged = link->rp_index;
+				what = "characteristic read, longer than the buffer,";
+				status = DC_STATUS_INVALIDARGS;
+			} else if (!read && (recorded_size != value_size ||
+				memcmp (recorded, value, value_size) != 0)) {
 				diverged = link->rp_index;
 				status = DC_STATUS_PROTOCOL;
 			} else {
-				const unsigned char *recorded = event.payload + 2 + UUID_LENGTH;
-				size_t recorded_size = event.size - 2 - UUID_LENGTH;
 				if (read) {
-					replay_advance (link, &event);
-					if (recorded_size > value_size) {
-						status = DC_STATUS_INVALIDARGS;
-					} else {
-						memcpy (value, recorded, recorded_size);
-						record_characteristic (link, direction, uuid, value, recorded_size);
-					}
-				} else if (recorded_size != value_size ||
-					memcmp (recorded, value, value_size) != 0) {
-					diverged = link->rp_index;
-					status = DC_STATUS_PROTOCOL;
-				} else {
-					replay_advance (link, &event);
-					record_characteristic (link, direction, uuid, value, value_size);
+					memcpy (value, recorded, recorded_size);
+					got = recorded_size;
 				}
+				replay_advance (link, &event);
+				status = replay_result (link, DC_STATUS_SUCCESS);
 			}
 		}
 	} else if (read) {
-		size_t got = 0;
 		status = live_request (link, AL_REQ_CHAR_READ, NULL, 0, uuid, value, value_size, &got);
-		if (status == DC_STATUS_SUCCESS)
-			record_characteristic (link, direction, uuid, value, got);
 	} else {
+		// C when the write is issued, so that it shows even if it fails.
+		record_characteristic (link, direction, uuid, value, value_size);
 		status = request_gate (link);
-		if (status == DC_STATUS_SUCCESS) {
-			record_characteristic (link, direction, uuid, value, value_size);
+		if (status == DC_STATUS_SUCCESS)
 			status = live_request (link, AL_REQ_CHAR_WRITE, value, value_size, uuid, NULL, 0, NULL);
-		}
 	}
+	if (read || link->replay) {
+		// A read is recorded with what it returned: nothing when it failed.
+		if (read && status != DC_STATUS_SUCCESS)
+			got = 0;
+		record_characteristic (link, direction, uuid, value, read ? got : value_size);
+	}
+	record_result (link, status);
 	al_mutex_unlock (&link->lock);
 
-	log_divergence (context, "characteristic request", diverged);
+	log_divergence (context, what, diverged);
 	return status;
 }
 
@@ -1016,31 +1094,39 @@ al_link_push (al_link_t *link, const uint8_t *data, size_t size)
 }
 
 size_t
-al_link_pending (al_link_t *link, uint8_t *data, size_t capacity, char *uuid, size_t uuid_capacity)
+al_link_pending (al_link_t *link, uint8_t *data, size_t capacity, char *uuid, size_t uuid_capacity, int64_t *request_id, int32_t *kind)
 {
 	size_t size = 0;
 
 	if (uuid != NULL && uuid_capacity > 0)
 		uuid[0] = '\0';
-	if (link == NULL)
+	if (request_id != NULL)
+		*request_id = 0;
+	if (kind != NULL)
+		*kind = 0;
+	// Without somewhere to put the id, nothing could complete the request.
+	if (link == NULL || request_id == NULL)
 		return 0;
 
 	al_mutex_lock (&link->lock);
 	if (link->req_seq != 0 && link->taken_seq != link->req_seq && !link->req_done) {
 		int characteristic = link->req_kind != AL_REQ_WRITE;
 		size_t needed = link->req_data.size;
-		if (needed > capacity || (needed > 0 && data == NULL)) {
-			// Not taken: the caller asks again with room for `needed`.
+		if (kind != NULL)
+			*kind = link->req_kind;
+		if (needed > capacity || (needed > 0 && data == NULL) ||
+			(characteristic && (uuid == NULL || uuid_capacity < DC_BLE_UUID_SIZE))) {
+			// Not taken: the caller asks again with room for `needed`
+			// bytes and a whole UUID.
+			*request_id = -1;
 			size = needed;
-		} else if (characteristic && (uuid == NULL || uuid_capacity < DC_BLE_UUID_SIZE)) {
-			// Not taken, and reported as nothing to do.
-			size = 0;
 		} else {
 			if (needed > 0)
 				memcpy (data, link->req_data.data, needed);
 			if (characteristic)
 				memcpy (uuid, link->req_uuid, DC_BLE_UUID_SIZE);
 			link->taken_seq = link->req_seq;
+			*request_id = (int64_t) link->req_seq;
 			size = needed;
 		}
 	}
@@ -1049,12 +1135,16 @@ al_link_pending (al_link_t *link, uint8_t *data, size_t capacity, char *uuid, si
 }
 
 void
-al_link_complete (al_link_t *link, dc_status_t status, const uint8_t *data, size_t size)
+al_link_complete (al_link_t *link, int64_t request_id, dc_status_t status, const uint8_t *data, size_t size)
 {
-	if (link == NULL)
+	if (link == NULL || request_id <= 0)
 		return;
 	al_mutex_lock (&link->lock);
-	if (link->req_seq != 0 && link->taken_seq == link->req_seq && !link->req_done) {
+	// Only the request in the slot, by its id: a completion for one that
+	// timed out, a duplicate, or one from an interleaved handler that
+	// finished out of order does nothing.
+	if (link->req_seq == (uint64_t) request_id &&
+		link->taken_seq == link->req_seq && !link->req_done) {
 		if (status == DC_STATUS_SUCCESS && link->req_kind == AL_REQ_CHAR_READ) {
 			// The blocking thread waits in the slot until it is emptied,
 			// so its ioctl buffer, `req_value`, is still there.

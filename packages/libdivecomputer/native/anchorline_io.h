@@ -17,7 +17,9 @@
 //   it in a pending slot, calls the request callback (in the app a
 //   NativeCallable.listener, which posts to the main isolate and returns at
 //   once) and waits for al_link_complete. The main isolate takes the request
-//   with al_link_pending, does it, and completes it.
+//   with al_link_pending, which hands out its id and kind, does it, and
+//   completes it by that id. Handlers may interleave: an id that is no longer
+//   the waiting request completes nothing.
 // - al_link_cancel and al_link_disconnected wake whatever waits.
 //
 // A replay link serves a recording instead, in order, on demand.
@@ -25,18 +27,28 @@
 // Recording layout. Big-endian events, one after another, each
 //   u8 kind, u64 microseconds since the link was created (monotonic clock),
 //   u32 length, then length bytes of payload:
-//   'W' a write: the bytes written.
-//   'R' a read: the bytes it returned.
+//   'W' a write, when it is issued: the bytes written.
+//   'R' a read: the bytes it returned. Length 0: the read returned nothing,
+//       because it timed out or failed.
 //   'P' a purge of the input: u32 number of bytes dropped.
 //   'C' a characteristic read or write: u8 direction (DC_IOCTL_DIR_READ or
 //       DC_IOCTL_DIR_WRITE), u8 UUID length, the UUID as text (36 lower-case
-//       characters), then the value read or written.
+//       characters), then the value read (nothing when the read failed) or
+//       written. A write is recorded when it is issued, a read when it ends.
+//   'E' the read, write or characteristic request just before it failed:
+//       i32 its dc_status_t (DC_STATUS_TIMEOUT is -7). A call that succeeded
+//       has no E. Only skipped events (an X overflow, say) can come between.
 //   'I' an ioctl the link does not support: u32 the request.
 //   'S' a sleep: u32 milliseconds.
 //   'T' libdivecomputer set the read timeout: i32 milliseconds.
 //   'X' anything else, as ASCII text: "configure 115200 8N1", "set_dtr 1",
 //       "set_rts 0", "set_break 0", "overflow".
-// A replay reads only R, W and C and skips the rest.
+// A replay serves R, W and C in order and skips the rest, except that the E
+// after a W, a C or an empty R gives that call's status: a read that timed
+// out live times out again, and so does a write. An empty R without an E
+// times out. E and the empty R were added before any recording left the
+// project; recordings without them replay as before, and a replayer that
+// does not know them sees an empty read and skips the E.
 //
 // Threads. The iostream's callbacks run on one thread at a time, as
 // libdivecomputer calls them. The functions for the main isolate (push,
@@ -81,9 +93,10 @@ typedef void (*al_request_fn) (intptr_t link, int32_t kind);
 
 /*
  * A live link. `advertised_name` (copied; NULL when there is none) answers
- * DC_IOCTL_BLE_GET_NAME. `request` must stay callable until every iostream
- * of the link is closed. Returns NULL when `request` is NULL or memory runs
- * out.
+ * DC_IOCTL_BLE_GET_NAME, truncated to the caller's buffer and always
+ * NUL-terminated; with no name that ioctl is DC_STATUS_UNSUPPORTED.
+ * `request` must stay callable until every iostream of the link is closed.
+ * Returns NULL when `request` is NULL or memory runs out.
  */
 al_link_t *
 al_link_new_live (const char *advertised_name, al_request_fn request);
@@ -121,38 +134,50 @@ void
 al_link_push (al_link_t *link, const uint8_t *data, size_t size);
 
 /*
- * Takes the request waiting in the pending slot. Copies its bytes (what to
- * write; nothing for a characteristic read) into `data`, and the UUID of a
- * characteristic request into `uuid` (36 characters and a NUL; an empty
- * string for a plain write), and returns the number of bytes.
+ * Takes the request waiting in the pending slot, for the main isolate to
+ * carry out. Three outcomes, told apart by `*request_id`:
  *
- * When the bytes do not fit in `capacity`, copies nothing, takes nothing and
- * returns the size needed. `data` may be NULL only with `capacity` 0.
- * `uuid` must hold DC_BLE_UUID_SIZE bytes: with less, a characteristic
- * request is not taken.
+ * - Taken: `*request_id` is the request's id, greater than 0, and `*kind` its
+ *   AL_REQ_* kind. Its bytes (what to write; nothing for a characteristic
+ *   read) are copied into `data`, and the UUID of a characteristic request
+ *   into `uuid` (36 lower-case characters and a NUL; an empty string for a
+ *   plain write). Returns the number of bytes copied, which may be 0 for a
+ *   characteristic request.
  *
- * When no request is waiting to be taken (none was made, it was taken
- * already, or it timed out), returns 0 and stores an empty string in `uuid`.
- * A write of zero bytes never makes a request, so 0 with an empty `uuid`
- * always means nothing to do.
+ * - A buffer is too small: `data` cannot hold the bytes, or `uuid` holds less
+ *   than DC_BLE_UUID_SIZE bytes for a characteristic request. Nothing is
+ *   copied or taken. `*request_id` is -1 and `*kind` the request's kind.
+ *   Returns the number of bytes `data` must hold; call again with that, and
+ *   with DC_BLE_UUID_SIZE bytes of `uuid`.
  *
- * A request is taken once. Only a taken request can be completed, so a
- * completion meant for an earlier request that timed out never completes a
- * later one, provided the caller completes each request it took before it
- * takes the next.
+ * - Nothing to take: no request is waiting, it was taken already, or it
+ *   finished. `*request_id` and `*kind` are 0, `uuid` is an empty string,
+ *   and it returns 0.
+ *
+ * `data` may be NULL only with `capacity` 0. `request_id` must not be NULL:
+ * without it nothing is taken. `kind` may be NULL. A request is taken once.
+ *
+ * Use this kind, not the one the request callback announced: a notification
+ * handled after its own request timed out can take a newer request of
+ * another kind.
  */
 size_t
-al_link_pending (al_link_t *link, uint8_t *data, size_t capacity, char *uuid, size_t uuid_capacity);
+al_link_pending (al_link_t *link, uint8_t *data, size_t capacity, char *uuid, size_t uuid_capacity, int64_t *request_id, int32_t *kind);
 
 /*
- * Completes the taken request with `status`, and wakes the blocking thread.
- * For a characteristic read, `data` is the value: it is copied after the
- * UUID in the ioctl buffer, and a value that does not fit there turns the
- * result into DC_STATUS_INVALIDARGS. Ignored when no taken request is
- * waiting.
+ * Completes request `request_id` (from al_link_pending) with `status`, and
+ * wakes the blocking thread. For a characteristic read, `data` is the value:
+ * it is copied after the UUID in the ioctl buffer, and a value that does not
+ * fit there turns the result into DC_STATUS_INVALIDARGS.
+ *
+ * Applies only when `request_id` is the request the blocking thread waits
+ * for, taken and not yet completed. Anything else is ignored: an id of 0 or
+ * -1, a request that timed out or was completed already, or one that is not
+ * the current request because handlers finished out of order. Ids never
+ * repeat, so a completion can never land on another request.
  */
 void
-al_link_complete (al_link_t *link, dc_status_t status, const uint8_t *data, size_t size);
+al_link_complete (al_link_t *link, int64_t request_id, dc_status_t status, const uint8_t *data, size_t size);
 
 /*
  * The connection dropped. Wakes the blocking thread: a waiting write returns
@@ -199,9 +224,11 @@ al_link_recording (al_link_t *link, uint8_t *data, size_t capacity);
 
 /*
  * The index of the next event a replay link will serve, counting every event
- * of the recording from 0. After a divergence (a write that differs, or a
- * read where the recording has something else) it stays at the event that
- * diverged. -1 for a live link.
+ * of the recording from 0. After a divergence it stays at the event that
+ * diverged: a write that differs (DC_STATUS_PROTOCOL), a read or a request
+ * where the recording has something else (DC_STATUS_PROTOCOL), or a
+ * recorded characteristic value longer than the caller's buffer
+ * (DC_STATUS_INVALIDARGS). -1 for a live link.
  */
 int
 al_link_replay_position (al_link_t *link);
