@@ -134,6 +134,8 @@ _Analysis _analyse(Uint8List bytes) {
         ),
       );
     }
+    // A dive file with no dive session in it is as good as unreadable.
+    if (metas.isEmpty) return _Analysis(_Kind.unreadable);
     return _Analysis(_Kind.dive, metas);
   } catch (_) {
 
@@ -252,9 +254,16 @@ class FitFileSource implements DiveDownloadSource {
       try {
         if (input is FitFolderInput) {
           final found = <String>[];
-          await for (final e in Directory(
-            input.path,
-          ).list(recursive: true, followLinks: false)) {
+          // An entry that cannot be listed (a volume's .Trashes, say) counts
+          // as one unreadable file and the listing goes on.
+          await for (final e
+              in Directory(input.path)
+                  .list(recursive: true, followLinks: false)
+                  .handleError((Object _) {
+            _counts.filesTotal = (_counts.filesTotal ?? 0) + 1;
+            _counts.filesRead++;
+            _counts.unreadable++;
+          })) {
             if (e is File &&
                 (_isFitName(e.path) || _isZipName(e.path))) {
               found.add(e.path);
@@ -379,6 +388,7 @@ class FitFileSource implements DiveDownloadSource {
     }
 
     if (depth >= 3) return broken();
+    if (_closed) return;
     File? temp;
     RandomAccessFile? ownRaf;
     try {
@@ -393,6 +403,7 @@ class FitFileSource implements DiveDownloadSource {
           length: span.length,
         );
       } else {
+        if (_closed) return;
         await _workDir.create(recursive: true);
         temp = File('${_workDir.path}/inner-${_temps++}.zip');
         await zip.extractTo(e, temp);
@@ -417,6 +428,7 @@ class FitFileSource implements DiveDownloadSource {
   /// a copy in the work folder.
   Future<void> _take(Uint8List bytes, String fileName, FitSource source) async {
     final a = await _analyseInIsolate(bytes);
+    if (_closed) return;
     switch (a.kind) {
       case _Kind.unreadable:
         _counts.unreadable++;
@@ -427,6 +439,7 @@ class FitFileSource implements DiveDownloadSource {
       case _Kind.dive:
         final fresh = a.dives.where((m) => !_entries.containsKey(m.diveId));
         if (fresh.isEmpty) return;
+        if (_closed) return;
         await Directory('${_workDir.path}/dives').create(recursive: true);
         final path = '${_workDir.path}/dives/${_copies++}.fit';
         await File(path).writeAsBytes(bytes, flush: false);
@@ -497,8 +510,9 @@ class FitFileSource implements DiveDownloadSource {
     for (final group in watches.values) {
       group.sort((a, b) => a.meta.start.compareTo(b.meta.start));
       int? firmware;
+      // The newest dive's firmware wins: the group is oldest first.
       for (final e in group) {
-        firmware ??= e.meta.firmware;
+        firmware = e.meta.firmware ?? firmware;
       }
       final id = _identityOf(group.first.meta, firmware);
       if (_closed) return;
@@ -573,6 +587,10 @@ class FitFileSource implements DiveDownloadSource {
   @override
   Future<void> close() async {
     _closed = true;
+    // Let a running scan stop first, or it could recreate the folder.
+    try {
+      await _scan;
+    } catch (_) {}
     try {
       if (await _workDir.exists()) await _workDir.delete(recursive: true);
     } catch (_) {

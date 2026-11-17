@@ -315,4 +315,100 @@ void main() {
     await src.close();
     expect(work.existsSync(), isFalse);
   });
+
+  test('an unlistable subfolder does not discard the rest of the folder',
+      () async {
+    put('d/ok.fit', diveFile());
+    final locked = Directory('${tmp.path}/in/d/locked')..createSync();
+    File('${locked.path}/x.fit').writeAsBytesSync(diveFile(created: 5));
+    Process.runSync('chmod', ['000', locked.path]);
+    addTearDown(() => Process.runSync('chmod', ['755', locked.path]));
+    final src = sourceOf([FitFolderInput('${tmp.path}/in/d')]);
+    final counts = <FitScanCounts>[];
+    final src2 = FitFileSource(
+      inputs: [FitFolderInput('${tmp.path}/in/d')],
+      workDir: work,
+      onProgress: counts.add,
+    );
+    expect(await src.listDives(), hasLength(1));
+    await src.close();
+    await src2.listDives();
+    expect(counts.last.unreadable, 1);
+    expect(counts.last.filesRead, 2);
+    await src2.close();
+  },
+      skip: Platform.isWindows || Process.runSync('id', ['-u']).stdout
+              .toString()
+              .trim() ==
+          '0'
+          ? 'chmod is not reliable here'
+          : false);
+
+  test('close during a running scan removes the work folder and listDives '
+      'finishes', () async {
+    for (var i = 0; i < 6; i++) {
+      put('c$i.fit', diveFile(created: _start + i * 1000));
+    }
+    final src = sourceOf([FitFolderInput('${tmp.path}/in')]);
+    final listing = src.listDives();
+    await Future<void>.delayed(Duration.zero);
+    await src.close();
+    await listing;
+    expect(work.existsSync(), isFalse);
+  });
+
+  test('the watch firmware is the newest dive\'s', () async {
+    Uint8List withFirmware(int created, int fw) {
+      final base = diveFile(created: created);
+      final f = readFitDives(base);
+      expect(f.sessions, hasLength(1));
+      return buildFit([
+        _m(0, {
+          0: (_enumT, 4),
+          1: (_u16, 1),
+          2: (_u16, 2859),
+          3: (_u32z, 1000000001),
+          4: (_u32, created),
+        }),
+        _m(23, {253: (_u32, created), 0: (_enumT, 0), 5: (_u32, fw)}),
+        _m(12, {0: (_enumT, 53), 1: (_enumT, 53)}),
+        for (var i = 0; i <= 6; i++)
+          _m(20, {253: (_u32, created + i), 92: (_u32, i * 1000)}),
+        _m(18, {
+          253: (_u32, created + 6),
+          2: (_u32, created),
+          5: (_enumT, 53),
+          6: (_enumT, 53),
+          7: (_u32, 6000),
+        }),
+        _m(268, {253: (_u32, created + 6), 0: (_u16, 18), 3: (_u32, 6000)}),
+      ]);
+    }
+
+    final a = put('old.fit', withFirmware(_start, 1000));
+    final b = put('new.fit', withFirmware(_start + 86400, 1234));
+    final src = sourceOf([FitFileInput(b.path), FitFileInput(a.path)]);
+    await src.listDives();
+    final events = await src.download().toList();
+    final id = events.whereType<DiveSourceIdentified>().single.identity;
+    expect(id.firmware, 1234);
+    expect(id.firmwareLabel, '12.34');
+    await src.close();
+  });
+
+  test('a dive file without any dive session counts as unreadable', () async {
+    final f = put(
+      'empty.fit',
+      buildFit([
+        _m(0, {0: (_enumT, 4), 1: (_u16, 1), 3: (_u32z, 7), 4: (_u32, 5)}),
+        _m(12, {0: (_enumT, 53), 1: (_enumT, 53)}),
+      ]),
+    );
+    final counts = <FitScanCounts>[];
+    final src = sourceOf([FitFileInput(f.path)], counts);
+    expect(await src.listDives(), isEmpty);
+    expect(counts.last.unreadable, 1);
+    expect(counts.last.filesRead, 1);
+    await src.close();
+  });
 }
