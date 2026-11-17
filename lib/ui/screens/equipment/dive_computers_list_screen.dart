@@ -4,6 +4,7 @@ import '../../../data/db/database.dart';
 import '../../../data/db/equipment_dao.dart';
 import 'package:subsurface_core/shearwater/parser/hardware.dart';
 import '../../notifiers/equipment_notifiers.dart';
+import '../../util/dive_computer_labels.dart';
 import 'dive_computer_detail_screen.dart';
 
 class DiveComputersListScreen extends StatefulWidget {
@@ -70,6 +71,15 @@ class _DiveComputersListScreenState extends State<DiveComputersListScreen> {
 
   String _displayName(DiveComputer dc) {
     if (dc.nickname != null && dc.nickname!.isNotEmpty) return dc.nickname!;
+    if (!isShearwaterComputer(dc)) {
+      // Another brand has no Shearwater hardware ID (model 0): name it by
+      // the stored descriptor and end with its decimal serial.
+      final serial = brandComputerSerialText(dc);
+      final tail = serial.length > 4
+          ? '…${serial.substring(serial.length - 4)}'
+          : serial;
+      return '${brandComputerName(dc)} · $tail';
+    }
     final model = modelFromHardware(dc.model).displayName;
     final hex = dc.serial.toRadixString(16).padLeft(8, '0');
     final tail = hex.substring(hex.length - 4);

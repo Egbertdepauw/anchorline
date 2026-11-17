@@ -1,11 +1,13 @@
-/// What the dive screens call a dive's computer: its model name and serial.
+/// What the dive and dive computer screens call a computer: its model name
+/// and serial.
 ///
 /// A Shearwater dive keeps the names and the 8-digit hex serial the screens
 /// always showed. Any other brand shows the stored vendor and product, and
 /// its serial in decimal. The name never depends on the engine family being
 /// known to this build: it reads only `dcVendor` and `dcProduct`, so a dive
 /// from a family a later build adds, or a Garmin FIT dive (`dcFamily` -1),
-/// shows the same way.
+/// shows the same way. The `DiveComputer` helpers apply the same rules to a
+/// row of `dive_computers`.
 library;
 
 import 'package:subsurface_core/shearwater/parser/hardware.dart';
@@ -50,10 +52,31 @@ String diveComputerSerialText(Dive d) {
   ).toString();
 }
 
-String _brandName(Dive d) {
-  final vendor = d.dcVendor?.trim() ?? '';
-  final product = d.dcProduct?.trim() ?? '';
-  final name = [vendor, product].where((s) => s.isNotEmpty).join(' ');
+/// True for a Shearwater row in `dive_computers`, by the same rule as
+/// [isShearwaterDive]. Rows written before libdivecomputer have no vendor
+/// and count as Shearwater; a libdivecomputer download always stores its
+/// family.
+bool isShearwaterComputer(DiveComputer dc) =>
+    isShearwaterByNames(dc.dcVendor, dc.dcProduct, dc.dcFamily);
+
+/// Another brand's computer by the vendor and product of the identity
+/// descriptor stored at import ("Divesoft Liberty"), the name its dives'
+/// Information tab shows.
+String brandComputerName(DiveComputer dc) =>
+    _joinNames(dc.dcVendor, dc.dcProduct);
+
+/// Another brand's serial in decimal, as its dives' Information tab shows
+/// it. Only downloads write `dive_computers`, and they store the serial the
+/// computer reported, so the legacy hex reading [diveComputerSerialText]
+/// undoes for Subsurface copies never applies to a computer row.
+String brandComputerSerialText(DiveComputer dc) => dc.serial.toString();
+
+String _brandName(Dive d) => _joinNames(d.dcVendor, d.dcProduct);
+
+String _joinNames(String? vendor, String? product) {
+  final name = [vendor?.trim() ?? '', product?.trim() ?? '']
+      .where((s) => s.isNotEmpty)
+      .join(' ');
   return name.isEmpty ? 'Unknown' : name;
 }
 
