@@ -32,7 +32,10 @@ final class LibdcBleConnection extends LibdcConnection {
   final LibdcBleLink link;
 
   /// How long one write or characteristic request may take before
-  /// libdivecomputer is told it timed out. Negative: no limit.
+  /// libdivecomputer is told it timed out: at least a millisecond, or
+  /// negative for no limit (the C layer then waits for the completion, a
+  /// cancel or a disconnect). [LibdcDownload.start] refuses anything
+  /// between.
   final Duration writeTimeout;
 }
 
@@ -64,7 +67,16 @@ class LibdcDownload {
     bool record = false,
   }) {
     switch (connection) {
-      case LibdcBleConnection():
+      case LibdcBleConnection(:final writeTimeout):
+        if (!writeTimeout.isNegative && writeTimeout.inMilliseconds < 1) {
+          // Zero, or under a millisecond (the C layer counts whole ones):
+          // every request would time out at once.
+          throw ArgumentError.value(
+            writeTimeout,
+            'writeTimeout',
+            'must be at least 1 ms, or negative for no limit',
+          );
+        }
         final download = LibdcDownload._(
           descriptor,
           connection.link.advertisedName,
@@ -305,30 +317,39 @@ class LibdcDownload {
     } finally {
       port.close();
     }
-    // The isolate died without its own LibdcFinished: keep what the link
-    // recorded, read before the link is freed.
-    final events = finished == null && record
-        ? _recordedEvents(native)
-        : const <LibdcIoEvent>[];
-    _release();
-    _finish(
-      finished ??
-          LibdcFinished(
-            status: LibdcStatus.io,
-            recording: LibdcRecording(
-              header: _header,
-              events: events,
-              log: ['ANCHORLINE: the download isolate stopped: $failure'],
-              envelopes: _envelopes,
-            ),
-          ),
-    );
+    // LibdcFinished always comes, and only after the link is released.
+    var events = const <LibdcIoEvent>[];
+    try {
+      // The isolate died without its own LibdcFinished: keep what the link
+      // recorded, read before the link is freed.
+      if (finished == null && record) events = _recordedEvents(native);
+    } finally {
+      try {
+        _release();
+      } finally {
+        _finish(
+          finished ??
+              LibdcFinished(
+                status: LibdcStatus.io,
+                recording: LibdcRecording(
+                  header: _header,
+                  events: events,
+                  log: [
+                    'ANCHORLINE: the download isolate stopped: '
+                        '${oneLogLine('$failure')}',
+                  ],
+                  envelopes: _envelopes,
+                ),
+              ),
+        );
+      }
+    }
   }
 
   static List<LibdcIoEvent> _recordedEvents(NativeLink native) {
     try {
       return LibdcIoEvent.unpackAll(native.recording());
-    } on FormatException {
+    } catch (_) {
       return const [];
     }
   }

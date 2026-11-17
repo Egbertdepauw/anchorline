@@ -52,8 +52,8 @@ const int _maxCells = 4;
 /// A grid always may span this long.
 const int _minSpanMs = 24 * 3600 * 1000;
 
-/// The most grid points ever allocated.
-const int _maxPoints = 2000000;
+/// The most grid points ever allocated. A day at 8 Hz is 691,200.
+const int _maxPoints = 1000000;
 
 /// The most common positive gap between row times; the smaller one on a
 /// tie. 1000 ms when there is no gap to measure.

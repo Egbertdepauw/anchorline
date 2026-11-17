@@ -22,6 +22,33 @@ void main() {
     expect(id, matches(RegExp(r'^[0-9a-f]{32}$')));
   });
 
+  test('a dive without a fingerprint takes its id from its bytes', () {
+    final a = Uint8List.fromList([1, 2, 3]);
+    final b = Uint8List.fromList([1, 2, 4]);
+    String id(Uint8List data) => libdcDiveId(
+      vendor: 'Ratio',
+      serial: 77,
+      fingerprint: Uint8List(0),
+      data: data,
+    );
+    final expected = sha256
+        .convert(utf8.encode('libdc:Ratio:77:${sha256.convert(a)}'))
+        .toString()
+        .substring(0, 32);
+    expect(id(a), expected);
+    expect(id(a), isNot(id(b)), reason: 'two such dives, two ids');
+    // With a fingerprint the bytes play no part.
+    final fingerprint = Uint8List.fromList([9, 9]);
+    expect(
+      libdcDiveId(vendor: 'Ratio', serial: 77, fingerprint: fingerprint, data: a),
+      libdcDiveId(vendor: 'Ratio', serial: 77, fingerprint: fingerprint),
+    );
+    expect(
+      () => libdcDiveId(vendor: 'Ratio', serial: 77, fingerprint: Uint8List(0)),
+      throwsArgumentError,
+    );
+  });
+
   test('fingerprintHex is lower case and zero padded', () {
     expect(
       fingerprintHex(Uint8List.fromList([0x00, 0x0a, 0xFF])),

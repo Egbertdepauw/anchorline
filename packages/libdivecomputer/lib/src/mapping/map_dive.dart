@@ -184,8 +184,9 @@ ConvertedDive mapLibdcDive(
     tanks: tanks,
     sampleIntervalMs: grid.intervalMs,
     sensorCalibration: const [],
-    dcVendor: e.vendor,
-    dcProduct: e.product,
+    // The model the computer reported, not the sibling the download opened.
+    dcVendor: p.identityVendor ?? e.vendor,
+    dcProduct: p.identityProduct ?? e.product,
     dcFamily: e.family,
     dcModelCode: e.devinfoModel ?? e.descriptorModel,
     dcFingerprint: fingerprintHex(e.fingerprint),

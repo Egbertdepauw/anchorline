@@ -218,6 +218,25 @@ void main() {
     );
   });
 
+  test('more than a million grid points is a dataFormat failure', () {
+    // 1 ms apart over 1,000 s: well inside a day, but 1,000,002 points.
+    expect(
+      () => resample([
+        row(0, depth: 0),
+        row(1, depth: 1),
+        row(2, depth: 1),
+        row(1000001, depth: 0),
+      ], diveTimeSeconds: 1001),
+      throwsA(
+        isA<LibdcParseException>().having(
+          (e) => e.status,
+          'status',
+          LibdcStatus.dataFormat,
+        ),
+      ),
+    );
+  });
+
   test('a corrupt row time beyond the dive time is a dataFormat failure', () {
     expect(
       () => resample([

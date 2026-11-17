@@ -49,6 +49,9 @@ final class LibdcIoEvent {
       if (length > packed.length - offset - _header) {
         throw const FormatException('A recording event runs past the end');
       }
+      if (packed[offset] > 0x7f) {
+        throw const FormatException('A recording event has no ASCII kind');
+      }
       events.add(
         LibdcIoEvent(
           String.fromCharCode(packed[offset]),
@@ -315,17 +318,20 @@ class LibdcRecording {
     return null;
   }
 
+  /// The text form. Every header and log entry is written as one line
+  /// ([oneLogLine]), so that no entry can end the log or pass for an
+  /// envelope; the others read back as they are.
   String toText() {
     final out = StringBuffer()..writeln('# $_magic $_version');
     for (final h in header) {
-      out.writeln('# $h');
+      out.writeln('# ${_flat(h)}');
     }
     for (final e in events) {
       out.writeln(e.toLine());
     }
     out.writeln('# log');
     for (final line in log) {
-      out.writeln(line);
+      out.writeln(oneLogLine(line));
     }
     for (final e in envelopes) {
       out.writeln('# envelope ${base64.encode(e.encode())}');
@@ -400,4 +406,16 @@ class LibdcRecording {
 
   /// [events] in the C layer's packed layout, for `al_link_new_replay`.
   Uint8List toReplayEvents() => LibdcIoEvent.packAll(events);
+}
+
+final _breaks = RegExp(r'\s*[\r\n]+\s*');
+
+String _flat(String text) => text.replaceAll(_breaks, ' ');
+
+/// [text] as one line of a recording's log: line breaks become spaces, and
+/// a line that would start with `#` (and so could end the log, or pass for
+/// an envelope) gets a space in front.
+String oneLogLine(String text) {
+  final flat = _flat(text);
+  return flat.startsWith('#') ? ' $flat' : flat;
 }
