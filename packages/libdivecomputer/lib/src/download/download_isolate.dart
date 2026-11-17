@@ -39,6 +39,7 @@ final class DownloadArgs {
     required this.knownFingerprints,
     required this.record,
     required this.port,
+    this.debugLegacyParser = false,
   });
 
   /// The `al_link_t`; the main isolate keeps it alive until this isolate
@@ -59,6 +60,9 @@ final class DownloadArgs {
   /// Gets every [LibdcDownloadEvent]; [LibdcFinished] comes last, with the
   /// isolate's exit.
   final SendPort port;
+
+  /// Test-only: also parse each dive with `dc_parser_new(device)`.
+  final bool debugLegacyParser;
 }
 
 /// The isolate's entry point.
@@ -100,6 +104,7 @@ final class _Download {
   ({int devtime, int systime})? _clock;
   LibdcProgress? _progress;
   var _failed = false;
+  Pointer<c.dc_device_t> _device = nullptr;
 
   LibdcFinished run() {
     var status = c.dc_status_t.DC_STATUS_IO;
@@ -147,6 +152,7 @@ final class _Download {
         rc = c.dc_device_open(deviceOut, context, descriptor, iostream);
         if (rc != c.dc_status_t.DC_STATUS_SUCCESS) return rc;
         device = deviceOut.value;
+        _device = device;
 
         c.dc_device_set_cancel(
           device,
@@ -385,6 +391,18 @@ final class _Download {
       } catch (_) {
         parseError = LibdcStatus.dataFormat;
       }
+      ConvertedDive? legacy;
+      if (args.debugLegacyParser && _device != nullptr) {
+        try {
+          legacy = mapLibdcDive(
+            debugParseDiveWithDevice(envelope, _device),
+            envelope,
+            diveId: diveId,
+          );
+        } catch (_) {
+          legacy = null;
+        }
+      }
       if (parseError != null) {
         _note(
           'dive ${envelopes.length + 1} did not parse (${parseError.name}).',
@@ -397,6 +415,7 @@ final class _Download {
           diveId: diveId,
           converted: converted,
           parseError: parseError,
+          debugLegacyConverted: legacy,
         ),
       );
       return 1;

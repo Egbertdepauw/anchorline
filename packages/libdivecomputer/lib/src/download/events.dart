@@ -46,12 +46,17 @@ final class LibdcDiveDownloaded extends LibdcDownloadEvent {
     required this.diveId,
     this.converted,
     this.parseError,
+    this.debugLegacyConverted,
   });
 
   final LibdcEnvelope envelope;
   final String diveId;
   final ConvertedDive? converted;
   final LibdcStatus? parseError;
+
+  /// Only set by the test-only legacy-parser replay: the same dive parsed
+  /// with `dc_parser_new(device)` inside the foreach callback.
+  final ConvertedDive? debugLegacyConverted;
 
   @override
   String toString() =>

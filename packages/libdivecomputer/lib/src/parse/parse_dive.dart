@@ -19,22 +19,37 @@ const int _sensorNone = 0xFFFFFFFF; // DC_SENSOR_NONE
 ///
 /// Runs on whichever isolate calls it. Everything native it allocates is
 /// freed on every path. Throws [LibdcParseException] on any failure.
-LibdcParsedDive parseDive(LibdcEnvelope e) {
+LibdcParsedDive parseDive(LibdcEnvelope e) => _parseDive(e, nullptr);
+
+/// Test-only: the same parse, but made with the old `dc_parser_new(device)`
+/// of the open [device], to check that it and `dc_parser_new2` agree. Not
+/// exported from the package.
+LibdcParsedDive debugParseDiveWithDevice(
+  LibdcEnvelope e,
+  Pointer<c.dc_device_t> device,
+) => _parseDive(e, device);
+
+LibdcParsedDive _parseDive(
+  LibdcEnvelope e,
+  Pointer<c.dc_device_t> legacyDevice,
+) {
   Pointer<c.dc_context_t> context = nullptr;
   Pointer<c.dc_descriptor_t> descriptor = nullptr;
   Pointer<c.dc_parser_t> parser = nullptr;
   NativeCallable<c.dc_sample_callback_tFunction>? callable;
   try {
     return using((arena) {
-      final contextOut = arena<Pointer<c.dc_context_t>>();
-      _check(c.dc_context_new(contextOut));
-      context = contextOut.value;
-      // Parser messages can carry dive values; keep them off stderr.
-      c.dc_context_set_loglevel(context, c.dc_loglevel_t.DC_LOGLEVEL_NONE);
+      if (legacyDevice == nullptr) {
+        final contextOut = arena<Pointer<c.dc_context_t>>();
+        _check(c.dc_context_new(contextOut));
+        context = contextOut.value;
+        // Parser messages can carry dive values; keep them off stderr.
+        c.dc_context_set_loglevel(context, c.dc_loglevel_t.DC_LOGLEVEL_NONE);
 
-      descriptor = _findDescriptor(context, e);
-      if (descriptor == nullptr) {
-        throw const LibdcParseException(LibdcStatus.unsupported);
+        descriptor = _findDescriptor(context, e);
+        if (descriptor == nullptr) {
+          throw const LibdcParseException(LibdcStatus.unsupported);
+        }
       }
 
       // A zero-length allocation may be null; always ask for one byte.
@@ -43,13 +58,20 @@ LibdcParsedDive parseDive(LibdcEnvelope e) {
 
       final parserOut = arena<Pointer<c.dc_parser_t>>();
       _check(
-        c.dc_parser_new2(
-          parserOut,
-          context,
-          descriptor,
-          buffer.cast(),
-          e.data.length,
-        ),
+        legacyDevice == nullptr
+            ? c.dc_parser_new2(
+                parserOut,
+                context,
+                descriptor,
+                buffer.cast(),
+                e.data.length,
+              )
+            : c.dc_parser_new(
+                parserOut,
+                legacyDevice,
+                buffer.cast(),
+                e.data.length,
+              ),
       );
       parser = parserOut.value;
 
