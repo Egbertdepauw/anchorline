@@ -47,10 +47,14 @@ class _ScriptedLink implements ShearwaterLink {
   /// Throw after this many dives have been emitted.
   final int? errorAfterDives;
 
+  /// Dive numbers the computer refuses to send (NAK on the init).
+  final Set<int> refuse;
+
   final List<Uint8List?> manifestFingerprints = [];
   int disconnects = 0;
 
-  _ScriptedLink({this.corrupt = const {}, this.errorAfterDives});
+  _ScriptedLink(
+      {this.corrupt = const {}, this.errorAfterDives, this.refuse = const {}});
 
   @override
   Future<DeviceInfo> readDeviceInfo() => _inner.readDeviceInfo();
@@ -66,7 +70,9 @@ class _ScriptedLink implements ShearwaterLink {
   Stream<DownloadEvent> downloadDives(List<ManifestEntry> entries) async* {
     var emitted = 0;
     await for (final e in _inner.downloadDives(entries)) {
-      if (e is DownloadedDive) {
+      if (e is DownloadedDive && refuse.contains(e.manifest.diveNumber)) {
+        yield DownloadRefusedDive(manifest: e.manifest, errorCode: 0x31);
+      } else if (e is DownloadedDive) {
         if (errorAfterDives != null && emitted >= errorAfterDives!) {
           throw StateError('link dropped');
         }
@@ -370,6 +376,63 @@ void main() {
     expect(notifier.downloadedCount, 1);
     expect(await importStateDao.getLastFingerprint('B89641E4'), fpOf(711));
     expect(link.disconnects, 1);
+  });
+
+  group('a dive the computer refuses (#261)', () {
+    test('is skipped and listed, the rest still import', () async {
+      final tracked = <(String, Map<String, Object?>?)>[];
+      final n = ImportNotifier(
+        dao: dao,
+        importStateDao: importStateDao,
+        equipmentDao: equipmentDao,
+        useMock: true,
+        usageTracker: _RecordingTracker(tracked),
+        reporter: (e, st, where) => fail('a refusal is not reported: $e'),
+      );
+      extra.add(n);
+      final all = await listAll(n, _ScriptedLink(refuse: {711}));
+      await n.downloadAll(pick(all, [711, 712, 713]));
+
+      expect(n.state, ImportFlowState.done);
+      expect(n.downloadedCount, 2);
+      expect(n.failedCount, 0);
+      expect(n.refusedDiveNumbers, [711]);
+      expect(await importStateDao.getLastFingerprint('B89641E4'), fpOf(713));
+      final completed =
+          tracked.singleWhere((t) => t.$1 == 'import_completed').$2!;
+      expect(completed['refused'], 1);
+    });
+
+    test('a refusal before a lost connection is still listed', () async {
+      final all = await listAll(
+          notifier, _ScriptedLink(refuse: {711}, errorAfterDives: 1));
+      await notifier.downloadAll(pick(all, [711, 712, 713]));
+
+      expect(notifier.state, ImportFlowState.error);
+      expect(notifier.downloadedCount, 1);
+      expect(notifier.refusedDiveNumbers, [711]);
+    });
+
+    test('a new download starts with no refused dives', () async {
+      final all = await listAll(notifier, _ScriptedLink(refuse: {711}));
+      await notifier.downloadAll(pick(all, [711]));
+      expect(notifier.refusedDiveNumbers, [711]);
+
+      final all2 = await listAll(notifier, _ScriptedLink());
+      await notifier.downloadAll(pick(all2, [712]));
+      expect(notifier.refusedDiveNumbers, isEmpty);
+    });
+
+    test('refusedDivesLabel names the dives, at most ten', () {
+      expect(refusedDivesLabel([1]),
+          'Skipped dive #1: the dive computer would not send it.');
+      expect(refusedDivesLabel([9, 1, 4]),
+          'Skipped 3 dives the dive computer would not send: #1, #4, #9.');
+      expect(
+          refusedDivesLabel([for (var i = 1; i <= 12; i++) i]),
+          'Skipped 12 dives the dive computer would not send: '
+          '#1, #2, #3, #4, #5, #6, #7, #8, #9, #10 and 2 more.');
+    });
   });
 
   test('readManifest receives the saved fingerprint, and null under forceFullReimport',
