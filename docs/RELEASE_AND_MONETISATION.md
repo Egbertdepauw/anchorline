@@ -153,11 +153,13 @@ an hour of paid legal advice is worthwhile before the public release.
 
 Every service is on its free tier. The only running cost is Hetzner,
 € 19.07 a month, which is shared with De Spaankamer's website and
-would be paid anyway. Apple's developer programme is $ 99 a year.
+would be paid anyway. Apple's developer programme is €99 a year;
+Google Play's $25 registration fee is paid once, not yearly.
 
 ### Where the free tiers end
 
-Limits and prices as published on 2026-10-07:
+Limits and prices as published on 2026-10-07, and unchanged when checked
+again on 2026-11-18:
 
 | Service | Free limit that matters | Next step up |
 |---|---|---|
@@ -166,12 +168,14 @@ Limits and prices as published on 2026-10-07:
 | Cloudflare R2 | 10 GB storage, egress free | $0.015 per GB-month |
 | Cloudflare Workers | 100,000 requests per day | $5/month |
 | Sentry | 5,000 errors per month, one user | Team: $26/month |
+| Resend | 3,000 emails per month, 100 per day | Pro: $20/month (50,000 emails) |
 
 Sources: [Supabase](https://supabase.com/pricing),
 [PowerSync](https://www.powersync.com/pricing),
 [R2](https://developers.cloudflare.com/r2/pricing/),
 [Workers](https://developers.cloudflare.com/workers/platform/pricing/),
-[Sentry](https://sentry.io/pricing/).
+[Sentry](https://sentry.io/pricing/),
+[Resend](https://resend.com/pricing).
 
 **Database size is not the first limit after all.** `dive_samples` is
 the heaviest table, but measurement on 2026-10-08 (below) puts a dive at
@@ -259,6 +263,80 @@ Hosting as a share of revenue on the full hosted stack, at €25 a year:
 | 50 | about €875 | about €910 | break-even |
 | 200 | about €3,500 | about €910 | 26% |
 | 500 | about €8,750 | about €910 | 10% |
+
+### At a larger user base
+
+Estimated on 2026-11-18 from that day's list prices. The fixed base fees
+dominate: from 100 to 10,000 paying subscribers the bill grows about
+four times. Amounts are in US dollars, as the services bill.
+
+| Paying subscribers | Supabase | PowerSync | Cloudflare | Per month | Per year | Per subscriber per year |
+|---|---|---|---|---|---|---|
+| 100 | $25 | $49 | $0 | $74 | $890 | $8.90 |
+| 1,000 | $30 | $49 | $9 | $88 | $1,050 | $1.05 |
+| 5,000 | $76 | $64 | $24 | $164 | $1,970 | $0.39 |
+| 10,000 | $129 | $149 | $42 | $320 | $3,840 | $0.38 |
+
+Paid-plan prices behind it:
+
+- **Supabase Pro:** $25/month with a $10 compute credit. Compute sizes
+  are Micro $10, Small $15, Medium $60 and Large $110 a month. Disk
+  beyond 8 GB is $0.125 per GB, egress beyond 250 GB $0.09 per GB.
+- **PowerSync Pro:** $49/month. Beyond 30 GB synced or 10 GB hosted,
+  $1 per GB; beyond 1,000 peak concurrent clients, $30 per 1,000. Pro's
+  default maximum is 3,000 clients and 100 GB hosted; Team is
+  $599/month.
+- **Cloudflare:** R2 storage beyond 10 GB is $0.015 per GB-month, egress
+  free. Workers Paid is $5/month for 10 million requests.
+
+Assumptions:
+
+- Only paying subscribers sync, each with 2 devices and 300 dives.
+- A dive is about 6 kB of synced rows. Measured on 2026-11-18 on a copy
+  of the owner's logbook: 758 dives in 4.5 MB (`dive_samples` 3.1 MB,
+  `dives` 0.7 MB, `dive_annotations` 0.6 MB). That is in line with the
+  5.3 kB measured on 2026-10-08. Postgres and PowerSync's hosted copy
+  are each taken as twice the synced size.
+- Each device downloads everything twice a month: new devices,
+  reinstalls, and every sync-streams deploy, which makes every client
+  sync again.
+- 10% of devices are connected at the busiest moment.
+- Attachments average 250 MB per subscriber, against the 1 GB limit.
+- Supabase compute: Micro at 100 subscribers, Small at 1,000, Medium at
+  5,000 and Large at 10,000.
+
+Points to watch:
+
+- **Peak concurrent clients is the weakest assumption.** The desktop app
+  keeps its connection while it is open. At 30% instead of 10%, 10,000
+  subscribers make 6,000 peak clients, past Pro's default maximum. Under
+  the assumptions above that point comes at about 15,000 subscribers;
+  then compare Team with self-hosting PowerSync's Open Edition (see
+  "Hosting" above).
+- **The store commission costs more than the servers.** It is 15% of the
+  price excluding VAT: about €4.85 a year per subscriber at €39, more
+  than ten times the hosting per subscriber at 10,000.
+- **Store terms changed in 2026.** Apple's EU terms from 2026-10-01 set
+  In-App Purchase at 26%, and 15% for the Small Business Program and for
+  subscriptions after their first year. Google Play in the EEA, UK and
+  US charges subscriptions a 10% service fee plus a 5% billing fee since
+  2026-06-30, 15% in total.
+
+Other costs that grow with sales: RevenueCat is free up to $2,500 a month
+in tracked revenue, then 1% of all of it; Paddle takes 5% + $0.50 per web
+sale; Resend and Sentry move to $20 and $26 a month past their free
+tiers.
+
+Sources: [Supabase](https://supabase.com/pricing),
+[PowerSync](https://powersync.com/pricing),
+[R2](https://developers.cloudflare.com/r2/pricing/),
+[Workers](https://developers.cloudflare.com/workers/platform/pricing/),
+[App Store Small Business Program](https://developer.apple.com/app-store/small-business-program/),
+[Apple's EU terms (9to5Mac)](https://9to5mac.com/2026/08/18/apple-overhauls-app-store-fees-in-the-eu-with-new-unified-terms/),
+[Google Play service fees](https://support.google.com/googleplay/android-developer/answer/112622),
+[Google Play registration](https://support.google.com/googleplay/android-developer/answer/6112435),
+[RevenueCat](https://www.revenuecat.com/pricing/),
+[Paddle](https://www.paddle.com/pricing).
 
 ## Pricing (not yet decided)
 
