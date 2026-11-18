@@ -33,11 +33,13 @@ import 'dive_dao.dart' show DiveDao;
 typedef MvPoint = ({DateTime date, double mv, String diveId});
 
 class EquipmentDao {
-  final AppDatabase _drift;
   final PowerSyncDatabase _ps;
   final SessionSource _session;
 
-  EquipmentDao(this._drift, this._ps, this._session);
+  /// [drift] is no longer read: every table this DAO touches, dives included,
+  /// lives in PowerSync. The parameter stays so existing callers keep
+  /// compiling.
+  EquipmentDao(AppDatabase drift, this._ps, this._session);
 
   String? get _ownerId => _session.currentSession?.user.id;
 
@@ -735,6 +737,11 @@ class EquipmentDao {
   /// Sum of dive runtimes (in minutes) whose `startTime` falls in
   /// [session.startedDate, endBound). Endbound = next session's startedDate
   /// or [endBoundOverride] when closing.
+  ///
+  /// Reads dives from PowerSync (the Drift `dives` table is legacy, only read
+  /// by the one-off migrator) and skips soft-deleted dives. `started_date` is
+  /// epoch milliseconds, dive `start_time` epoch seconds, so the window is
+  /// compared in milliseconds.
   Future<int> accumulatedMinutesForSession(
     String id, {
     DateTime? endBoundOverride,
@@ -756,15 +763,13 @@ class EquipmentDao {
       }
     }
 
-    final query = _drift.select(_drift.dives)
-      ..where((t) => t.startTime.isBiggerOrEqualValue(session.startedDate! ~/ 1000));
-    if (endEpoch != null) {
-      query.where((t) => t.startTime.isSmallerThanValue(endEpoch! ~/ 1000));
-    }
-    final dives = await query.get();
-
-    final totalSeconds =
-        dives.fold<int>(0, (sum, d) => sum + d.durationSeconds);
+    final row = await _ps.get(
+      'SELECT COALESCE(SUM(duration_seconds), 0) AS total FROM dives '
+      'WHERE deleted_at IS NULL AND start_time * 1000 >= ?'
+      '${endEpoch != null ? ' AND start_time * 1000 < ?' : ''}',
+      [session.startedDate, ?endEpoch],
+    );
+    final totalSeconds = row['total'] as int;
     return totalSeconds ~/ 60;
   }
 
