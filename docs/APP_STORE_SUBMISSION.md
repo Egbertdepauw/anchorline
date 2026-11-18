@@ -106,8 +106,9 @@ The artifact lands at `build/ios/ipa/ccrlogger.ipa`.
 
 Common gotchas:
 - If `pod install` fails on the macOS-SDK-shadowing issue, see the
-  workaround already in `CLAUDE.md` under "Xcode 26 + Command Line
-  Tools".
+  workaround already in
+  [`.claude/skills/toolchain-gotchas/SKILL.md`](../.claude/skills/toolchain-gotchas/SKILL.md)
+  ("Xcode 26 + Command Line Tools").
 - If signing fails, open `ios/Runner.xcworkspace` in Xcode → Runner
   target → Signing & Capabilities → make sure "Automatically manage
   signing" is on and your team is selected. First time only.
@@ -323,8 +324,8 @@ emails.
 
 | Symptom | Fix |
 |---|---|
-| "Library not loaded: @rpath/libgit2-…" at launch | `git2dart_binaries` workaround — see CLAUDE.md |
-| "ld: building for 'iOS' but linking in dylib built for macOS" | CLT SDK shadowing — see CLAUDE.md |
+| "Library not loaded: @rpath/libgit2-…" at launch | `git2dart_binaries` workaround — see [toolchain-gotchas](../.claude/skills/toolchain-gotchas/SKILL.md) |
+| "ld: building for 'iOS' but linking in dylib built for macOS" | CLT SDK shadowing — see [toolchain-gotchas](../.claude/skills/toolchain-gotchas/SKILL.md) |
 | Pod install fails on `flutter clean` | `cd ios && rm -rf Pods Podfile.lock && pod install` |
 | Archive failed: missing provisioning profile | Open Xcode → Signing & Capabilities → "Try Again" on the team picker |
 | App Store rejection: privacy manifest mismatch | Open `ios/Runner/PrivacyInfo.xcprivacy` against the rejection email and adjust |

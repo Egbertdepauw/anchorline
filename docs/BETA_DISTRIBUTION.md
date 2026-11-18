@@ -85,7 +85,7 @@ If an Android Studio update ships a newer JBR, the Gradle build fails
 within seconds and the only error text is the JDK version (for example
 `What went wrong: 25.0.2`). Fix it by bumping the Gradle wrapper, plus
 AGP and Kotlin if their compatibility tables require it, and don't pin
-an older JDK. CLAUDE.md → "Known third-party defects" has the version
+an older JDK. [`.claude/skills/toolchain-gotchas/SKILL.md`](../.claude/skills/toolchain-gotchas/SKILL.md) has the version
 coupling (issue #80).
 
 ---

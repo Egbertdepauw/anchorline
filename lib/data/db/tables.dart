@@ -1,6 +1,6 @@
 /// Drift table definitions for the CCRLogger database.
 ///
-/// Follows CLAUDE.md architectural principles:
+/// Follows ARCHITECTURE.md architectural principles:
 /// - Imported data is immutable (dives, dive_samples) — no sync metadata.
 /// - User-editable entities have sync metadata (annotations, equipment).
 /// - Samples are columnar packed blobs, not row-per-sample.
