@@ -57,6 +57,8 @@ Future<void> _insertBareDive(
   required int dcSerial,
   required DateTime startTime,
   String? dcVendor,
+  int durationSeconds = 60,
+  DateTime? deletedAt,
 }) async {
   final startSec = startTime.millisecondsSinceEpoch ~/ 1000;
   await ps.execute(
@@ -64,9 +66,10 @@ Future<void> _insertBareDive(
     'duration_seconds, max_depth_mm, dive_mode, deco_model, '
     'atmospheric_pressure_mbar, water_density, log_version, dc_model, '
     'sample_interval_ms, gas_mixes_json, parser_version, imported_at, '
-    'dc_vendor) '
-    'VALUES (?, ?, 1, ?, ?, 60, 0, 0, 0, 1013, 1030, 1, ?, 10000, ?, 1, 0, ?)',
-    [id, dcSerial, startSec, startSec + 3600, 0xB407, '[]', dcVendor],
+    'dc_vendor, deleted_at) '
+    'VALUES (?, ?, 1, ?, ?, ?, 0, 0, 0, 1013, 1030, 1, ?, 10000, ?, 1, 0, ?, ?)',
+    [id, dcSerial, startSec, startSec + 3600, durationSeconds, 0xB407, '[]',
+      dcVendor, deletedAt == null ? null : deletedAt.millisecondsSinceEpoch ~/ 1000],
   );
 }
 
@@ -508,32 +511,15 @@ void main() {
         () async {
       final open = await dao.addScrubberSession(startedDate: DateTime(2025, 1, 1));
 
-      Future<void> insertDive(String id, DateTime start, int durationSec) async {
-        await db.into(db.dives).insert(DivesCompanion.insert(
-          id: id,
-          dcSerial: 1,
-          dcDiveNumber: int.parse(id.substring(1)),
-          startTime: start.millisecondsSinceEpoch ~/ 1000,
-          endTime: start.millisecondsSinceEpoch ~/ 1000 + durationSec,
-          durationSeconds: durationSec,
-          maxDepthMm: 0,
-          diveMode: 0,
-          decoModel: 0,
-          atmosphericPressureMbar: 1013,
-          waterDensity: 1030,
-          logVersion: 1,
-          dcModel: 0xB407,
-          sampleIntervalMs: 10000,
-          gasMixesJson: '[]',
-          rawBlob: Uint8List(0),
-          parserVersion: 1,
-          importedAt: 0,
-        ));
-      }
-
-      // Two 30-minute dives in the open session's window → 60 total minutes.
-      await insertDive('d1', DateTime(2025, 2, 1), 30 * 60);
-      await insertDive('d2', DateTime(2025, 3, 1), 30 * 60);
+      // Dives live in PowerSync (the Drift `dives` table is legacy and only
+      // read by the one-off migrator). Two 30-minute dives in the open
+      // session's window → 60 total minutes.
+      await _insertBareDive(ps,
+          id: 'd1', dcSerial: 1, startTime: DateTime(2025, 2, 1),
+          durationSeconds: 30 * 60);
+      await _insertBareDive(ps,
+          id: 'd2', dcSerial: 1, startTime: DateTime(2025, 3, 1),
+          durationSeconds: 30 * 60);
 
       await dao.applyScrubberEvents(
         scrubberResetAt: DateTime(2025, 6, 1),
@@ -543,6 +529,57 @@ void main() {
       final all = await dao.listScrubberSessions();
       final closed = all.firstWhere((s) => s.id == open);
       expect(closed.totalMinutes, 60);
+    });
+
+    // Regression (#267): the scrubber session detail screen showed 0 minutes
+    // because accumulatedMinutesForSession read the legacy Drift `dives`
+    // table, which is empty on every install since dives moved to PowerSync.
+    test('accumulatedMinutesForSession sums PowerSync dives in the half-open '
+        'window [session start, next session start)', () async {
+      final session =
+          await dao.addScrubberSession(startedDate: DateTime(2025, 1, 1));
+      await dao.addScrubberSession(startedDate: DateTime(2025, 6, 1));
+
+      Future<void> dive(String id, DateTime start, int minutes,
+              {DateTime? deletedAt}) =>
+          _insertBareDive(ps,
+              id: id, dcSerial: 1, startTime: start,
+              durationSeconds: minutes * 60, deletedAt: deletedAt);
+
+      // Counted: starts exactly at the session start (inclusive bound)…
+      await dive('at_start', DateTime(2025, 1, 1), 20);
+      // …and inside the window.
+      await dive('inside', DateTime(2025, 3, 1), 45);
+      // Not counted: before the session started.
+      await dive('before', DateTime(2024, 12, 31), 100);
+      // Not counted: starts exactly at the next session (exclusive bound).
+      await dive('at_next', DateTime(2025, 6, 1), 200);
+      // Not counted: soft-deleted.
+      await dive('deleted', DateTime(2025, 4, 1), 300,
+          deletedAt: DateTime(2025, 5, 1));
+
+      expect(await dao.accumulatedMinutesForSession(session), 65);
+    });
+
+    test('accumulatedMinutesForSession uses endBoundOverride as the exclusive '
+        'end', () async {
+      final session =
+          await dao.addScrubberSession(startedDate: DateTime(2025, 1, 1));
+      await _insertBareDive(ps,
+          id: 'early', dcSerial: 1, startTime: DateTime(2025, 2, 1),
+          durationSeconds: 30 * 60);
+      await _insertBareDive(ps,
+          id: 'late', dcSerial: 1, startTime: DateTime(2025, 3, 1),
+          durationSeconds: 40 * 60);
+
+      // Open-ended session: every later dive counts.
+      expect(await dao.accumulatedMinutesForSession(session), 70);
+      // Closing at the second dive's start excludes it.
+      expect(
+        await dao.accumulatedMinutesForSession(session,
+            endBoundOverride: DateTime(2025, 3, 1)),
+        30,
+      );
     });
   });
 
