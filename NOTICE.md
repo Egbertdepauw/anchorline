@@ -100,6 +100,26 @@ is built from source, as a dynamic library, in every build.
   Subsurface's `core/qt-ble.cpp`. The code is Anchorline's own; no
   Subsurface source code was copied.
 
+## Garmin and FIT
+
+Anchorline imports dives from FIT files written by Garmin and Suunto
+dive computers; the devices named below are used as test fixtures; none counts
+as tested yet. The reader is in `packages/fit_reader/` and is Anchorline's own
+code.
+
+- **No Garmin code:** no Garmin FIT SDK code, port of it, or
+  `Profile.xlsx` table is in Anchorline. Garmin's FIT SDK licence forbids
+  copyleft use. The facts about how the files are laid out come from
+  Subsurface's Garmin parser and from real files.
+- **Test fixtures:** `packages/fit_reader/test/fixtures/` holds two Garmin
+  Descent Mk1 dives and a Suunto Ocean dive. They come from Subsurface's
+  test data (<https://github.com/subsurface/subsurface> at commit
+  `1cf5569`, folder `dives/`), which is under the GNU GPL version 2. They
+  were anonymised with `packages/fit_reader/tool/anonymise_fit.dart`.
+- **Trademarks:** Garmin, Descent, FIT, Suunto and Ocean are trademarks
+  of their owners. Anchorline uses them only to name the files and the
+  fixtures, and is not affiliated with or endorsed by Garmin or Suunto.
+
 ## Fonts
 
 - **Inter**, `fonts/Inter-VariableFont.ttf`: Copyright 2016 The Inter
