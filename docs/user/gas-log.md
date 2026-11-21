@@ -17,7 +17,7 @@ Keeps every analysis you saved from the Analyse tab, newest first, so you can se
 - **Match line**: the app compares the reading to the desired mix you chose when saving: **Matches EAN46** in green, or a warning such as **O2 3.2 off EAN50** in red. **Saved before stable** marks a reading taken before it settled.
 - **Warning line**: below the values, when the reading is off the desired mix, the same warning as on the Analyse tab (red for more oxygen than planned on a non-diluent gas, otherwise a grey note).
 - **Export CSV** (the share icon): writes the entries shown (after any filter) to a CSV file and opens the share sheet.
-- **Print label**: on each entry once you set up a label printer. It is unavailable until the entry is signed off, and a residual has no label: the app says "A residual analysis has no label".
+- **Print label**: on each entry once you set up a label printer. It is unavailable until the entry is signed off, and a residual has no label: the app says "A residual analysis has no label". The label follows the entry's role: **Backgas** gets an **OC** label, **Diluent** a **DIL** label, bailout and deco one big MOD. It is printed at the **Label size** and **OC working ppO₂** you set now, not the ones at save time.
 
 ## Good to know
 

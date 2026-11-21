@@ -248,6 +248,13 @@ A 50 × 30 mm label is about 400 × 240 dots, of which the head covers 384 dots.
 - The Blend-target chip shows only if the target was changed in the last 24 hours, and no chip is preselected.
 - Oxygen and offboard cylinders get the bailout/deco label. The role is stored per analysis, so a reprint doesn't follow later edits in Equipment.
 
+## Addendum 2026-11-21: label sizes and the OC label
+
+- **Sizes.** The label comes in four sizes, chosen by a device-local setting (`label_size`, default `50x30`): 50 × 30 mm, 40 × 30 mm, 50 × 50 mm and 50 × 80 mm. The print head is 48 mm (384 dots), so the bitmap sent to the printer is always 384 dots wide and only its height changes: 240, 240, 400 and 640 dots. The encoder needed no change: it already takes any height up to 65535 and sends no label-length command (the media command is "gap label").
+- **40 mm centring, unverified.** A 40 mm label is 320 dots wide. We assume the M110's roll guide centres the roll under the head, so the content is drawn in the 320 dots centred in the bitmap, 32 dots from each side, plus the usual 12-dot safe margin inside that (`kNarrowLabelOffsetDots`). This has not been checked on hardware. If the roll sits against one side, the one constant moves.
+- **Layouts per size.** 50 × 30 is unchanged, pixel for pixel. 40 × 30 keeps the layout and shrinks the text that does not fit (the footer goes from 26 to about 21, the initials are left out when there is no room). 50 × 50 and 50 × 80 put the bar on top and the footer at the bottom, with a bigger bar and mix name, and stack the headline in between: the depth with its `m`, the caption centred under it, so a 3-digit depth gets the whole width.
+- **OC label.** A **Backgas** analysis gets a new layout, like the diluent one: an outlined `OC` tag, the mix name and initials in the bar; the depth at the working ppO2 as the headline, captioned `ppO2 1.4`; a centred `MOD 1.6: 67 m` line; the usual footer. The working ppO2 is a device-local setting, 1.3 or 1.4 (`label_oc_working_ppo2`, default 1.4). Depths use the same rules as the others: the analysed O2 through `limitDepthMeters`, never the desired O2. "Use 1.4 for deeper mixes" does not affect it. Bailout and deco keep the single-MOD label.
+
 ## Left to the builder
 
 File and class names, how to chunk BLE writes, font choice, exact pixel layout within the rules above, and the exact wording of UI strings.
