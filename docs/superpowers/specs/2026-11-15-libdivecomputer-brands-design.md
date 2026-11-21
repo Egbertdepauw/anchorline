@@ -5,6 +5,9 @@
 **Revised:** 2026-11-16, sections 2, 10 and 12: the other authors' code
 ships in every build, the store builds too, and is left out of the store
 builds only if an author asks.
+**Revised:** 2026-11-17, section 12: Garmin comes before cable and classic
+Bluetooth, and has its own design,
+[`2026-11-17-garmin-fit-import-design.md`](2026-11-17-garmin-fit-import-design.md).
 **Supersedes:** the engine decision ("pure-Dart ports, no FFI") in
 [`2026-06-04-multi-dc-driver-architecture-design.md`](2026-06-04-multi-dc-driver-architecture-design.md).
 Its data-model changes and the idea of one download shape for every brand
@@ -57,7 +60,7 @@ case and keeps its own reader.
 - Classic Bluetooth on iOS. Apple doesn't allow it without the MFi
   programme, so the older classic-Bluetooth-only models (Ratio iX3M GPS,
   HW Frog, Tecdiving) will never work on iPhones.
-- Garmin in the first phases (section 12, phase 4).
+- Garmin in the first phases (section 12, phase 3, and its own design).
 - Writing settings to dive computers, firmware updates, or anything beyond
   downloading dives.
 - A web build. FFI does not exist there.
@@ -781,7 +784,14 @@ Each phase is one or more PRs, planned separately.
    - Store and website builds carry the same families. If an author asks
      for their code to stay out of the store builds, the leave-out list
      drops it there (sections 2 and 10).
-3. **Cable and classic-Bluetooth computers.** libdivecomputer's serial
+3. **Garmin and other FIT files.** Garmin computers hand over FIT files
+   over USB rather than speaking a protocol, and Garmin isn't in upstream
+   libdivecomputer. Designed in
+   [`2026-11-17-garmin-fit-import-design.md`](2026-11-17-garmin-fit-import-design.md):
+   a pure-Dart FIT reader and a file import, before reading the watch
+   directly. Egbert put it before cable computers because the Descent line
+   is newer and many divers own Garmin gear.
+4. **Cable and classic-Bluetooth computers.** libdivecomputer's serial
    code and a port picker on desktop. Classic Bluetooth through
    libdivecomputer's own code on Windows, and through the app on Android
    and Linux; this brings in the older Ratio iX3M GPS, HW Frog and
@@ -789,10 +799,6 @@ Each phase is one or more PRs, planned separately.
    libusb) are worth their extra native dependency is decided then.
    Android USB cables through the existing SOLO USB channel are a possible
    later step.
-4. **Garmin, as FIT file import.** Garmin computers hand over FIT files
-   over USB rather than speaking a protocol, and Garmin isn't in upstream
-   libdivecomputer. A later design picks between Subsurface's Garmin parser
-   and a Dart FIT reader, and covers getting the files on phones.
 
 ### 13. Changes to other documents
 
