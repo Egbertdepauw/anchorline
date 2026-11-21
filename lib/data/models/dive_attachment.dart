@@ -5,7 +5,7 @@
 /// hierarchy so callers don't have to repeat null-checks for "is this a
 /// file or a link?" — pattern matching does it.
 ///
-/// Sync metadata fields are present from day one (per CLAUDE.md
+/// Sync metadata fields are present from day one (per ARCHITECTURE.md
 /// principle 6). [SyncStatus] is reused from `annotation.dart` rather
 /// than redefined here; one canonical enum keeps PowerSync's
 /// `sync_status` integer column unambiguous across DAOs.
@@ -70,7 +70,7 @@ sealed class DiveAttachment {
   final String? description;
   final int displayOrder;
 
-  // Sync metadata (see CLAUDE.md principle 6).
+  // Sync metadata (see ARCHITECTURE.md principle 6).
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;

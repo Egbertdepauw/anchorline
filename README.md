@@ -64,4 +64,4 @@ details and [`NOTICE.md`](NOTICE.md) for all third-party code and assets.
 The name "Anchorline" and its logo are not covered by the licence; a fork
 needs its own name.
 
-Contributions are welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Contributions are welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md). The architecture and working rules (for people and AI agents) are in [`ARCHITECTURE.md`](ARCHITECTURE.md).

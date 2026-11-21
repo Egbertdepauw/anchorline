@@ -31,7 +31,7 @@ body:
     id: phase
     attributes:
       label: Roadmap fit
-      description: See CLAUDE.md for phase definitions. Don't worry if you're not sure — leave blank.
+      description: See docs/PROJECT_PLAN.md for phase definitions. Don't worry if you're not sure — leave blank.
       options:
         - Phase 1 (Shearwater BLE + dive analysis)
         - Phase 2 (cloud sync + multi-device)

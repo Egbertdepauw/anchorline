@@ -10,7 +10,7 @@ us traceability ("why was this changed?") and keeps `main` always shippable.
 2. **Branch from `main`** with a descriptive name:
    `fix/123-jwt-expired-stall`, `feat/45-surface-gf-port`,
    `chore/12-bump-flutter`. Number = issue number.
-3. **Write tests** for the change (TDD where possible — see CLAUDE.md).
+3. **Write tests** for the change (TDD where possible — see ARCHITECTURE.md).
 4. **Conventional Commits** for messages: `fix(sync): never hand …`,
    `feat(import): per-dive progress …`, `chore(version): 1.0.0+27 → +28`.
    **Sign off every commit** with `git commit -s` (see the licence
@@ -122,7 +122,7 @@ Types match the commit prefix: `fix/`, `feat/`, `chore/`, `docs/`,
 
 ### 3. Code
 
-- Follow the patterns in `CLAUDE.md`.
+- Follow the rules in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 - Write a failing test first when fixing a bug — the test is what proves
   the fix, both now and against future regressions.
 - Run `flutter analyze` and `flutter test` locally; both must pass before
@@ -194,4 +194,5 @@ The build number in `pubspec.yaml` is the source of truth.
 GitHub Actions runs on every PR (config in `.github/workflows/`). At
 minimum, expect `flutter analyze` + `flutter test` to be green before a
 PR can merge. Mac App Store / TestFlight builds remain manual — see
-CLAUDE.md for the recipe.
+`docs/RELEASING.md` and the per-platform guides in `docs/`
+(`*_DISTRIBUTION.md`, `TESTFLIGHT_QUICKSTART.md`) for the recipe.

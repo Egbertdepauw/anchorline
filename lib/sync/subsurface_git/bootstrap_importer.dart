@@ -2,11 +2,11 @@
 /// user's Subsurface Cloud repo and lands them in CCRLog as fresh dive
 /// rows.
 ///
-/// This is the read-direction counterpart to the (currently-disabled)
-/// write-direction sync orchestrator. The two are deliberately distinct:
+/// This is the read-direction counterpart to the write-direction sync
+/// orchestrator. The two are deliberately distinct:
 ///
-/// - The write sync rewrites Subsurface files from CCRLog state and is
-///   on a safety hold (it can clobber Subsurface-side edits).
+/// - The write sync rewrites Subsurface files from CCRLog state, and
+///   declines any dive with a Subsurface-side edit rather than clobber it.
 /// - The bootstrap importer is purely *additive*. It never writes to
 ///   Subsurface, never edits anything in CCRLog that already exists, and
 ///   never soft-deletes. The worst it can do on failure is leave CCRLog

@@ -31,7 +31,7 @@ flutter_macos_podfile_setup
 # FFI tests until `flutter pub get` restored the cache). That whole workaround
 # is gone as of git2dart_binaries ≥1.12.1: upstream ships a self-contained
 # libgit2.dylib (libssh2/OpenSSL statically linked), so nothing needs fixing
-# up. History in CLAUDE.md "Known third-party defects".
+# up. History in .claude/skills/toolchain-gotchas/SKILL.md.
 
 target 'Runner' do
   use_frameworks!
@@ -52,7 +52,7 @@ post_install do |installer|
     target.build_configurations.each do |config|
       # Apple's MAS validator requires deployment target >= 12.0 for
       # arm64-only submissions (which is what we ship — see ARCHS
-      # block below + CLAUDE.md "git2dart_binaries arm64-only" note).
+      # block below: the git2dart_binaries macOS dylib is arm64 only).
       # Pre-Monterey Macs are out of scope.
       if config.build_settings['MACOSX_DEPLOYMENT_TARGET'].to_f < 12.0
         config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '12.0'
