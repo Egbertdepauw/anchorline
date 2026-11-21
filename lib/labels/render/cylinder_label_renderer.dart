@@ -85,12 +85,21 @@ class CylinderLabelRender {
 }
 
 /// Renders [label] and reports where each element went.
+///
+/// [rotateTallCentre] turns the headline of a 50 x 80 mm label 90° (see
+/// [_kTallCentreTurn]); it does nothing on the other sizes.
 Future<CylinderLabelRender> renderCylinderLabelWithLayout(
   CylinderLabel label, [
   LabelSize size = LabelSize.defaultSize,
+  bool rotateTallCentre = false,
 ]) async {
   final recorder = ui.PictureRecorder();
-  final layout = _paintLabel(Canvas(recorder, _canvasFor(size)), label, size);
+  final layout = _paintLabel(
+    Canvas(recorder, _canvasFor(size)),
+    label,
+    size,
+    rotateTallCentre: rotateTallCentre,
+  );
   final picture = recorder.endRecording();
   final ui.Image image;
   try {
@@ -127,7 +136,10 @@ Future<CylinderLabelRender> renderCylinderLabelWithLayout(
 Future<LabelBitmap> renderCylinderLabel(
   CylinderLabel label, [
   LabelSize size = LabelSize.defaultSize,
-]) async => (await renderCylinderLabelWithLayout(label, size)).bitmap;
+  bool rotateTallCentre = false,
+]) async =>
+    (await renderCylinderLabelWithLayout(label, size, rotateTallCentre))
+        .bitmap;
 
 /// The 1-bit render of [label] as a black-and-white image, exactly what
 /// the printer gets. For golden tests and an on-screen preview. The caller
@@ -135,8 +147,9 @@ Future<LabelBitmap> renderCylinderLabel(
 Future<ui.Image> renderCylinderLabelImage(
   CylinderLabel label, [
   LabelSize size = LabelSize.defaultSize,
+  bool rotateTallCentre = false,
 ]) async {
-  final bitmap = await renderCylinderLabel(label, size);
+  final bitmap = await renderCylinderLabel(label, size, rotateTallCentre);
   final pixels = Uint8List(bitmap.width * bitmap.height * 4);
   for (var y = 0; y < bitmap.height; y++) {
     for (var x = 0; x < bitmap.width; x++) {
@@ -196,6 +209,7 @@ class _Metrics {
     required this.headlineGapBottom,
     required this.captionSize,
     this.stacked = false,
+    this.mixNameReserveMinSize,
   });
 
   /// Black bar along the top of the safe area, and the inset of the bar's
@@ -236,6 +250,12 @@ class _Metrics {
   /// than beside it, with the `m` on top of it (30 mm labels).
   final bool stacked;
 
+  /// When set, the mix name may shrink down to this size to leave room for
+  /// the whole initials after it, rather than the initials being left out.
+  /// Null (50 x 30): the name keeps its size and the initials take what is
+  /// left.
+  final double? mixNameReserveMinSize;
+
   static const _short = _Metrics(
     barHeight: 52,
     barPadding: 10,
@@ -267,6 +287,7 @@ class _Metrics {
     headlineGapTop: 12,
     headlineGapBottom: 14,
     captionSize: 22,
+    mixNameReserveMinSize: 30,
   );
 
   static const _tall50 = _Metrics(
@@ -284,6 +305,7 @@ class _Metrics {
     headlineGapBottom: 24,
     captionSize: 34,
     stacked: true,
+    mixNameReserveMinSize: 40,
   );
 
   static const _tall80 = _Metrics(
@@ -301,6 +323,7 @@ class _Metrics {
     headlineGapBottom: 40,
     captionSize: 40,
     stacked: true,
+    mixNameReserveMinSize: 40,
   );
 
   static _Metrics of(LabelSize size) => switch (size) {
@@ -314,9 +337,18 @@ class _Metrics {
 /// The mix name's floor.
 const double _kMixNameMinSize = 20;
 
-/// The smallest the mix name may get to make room for the initials on the
-/// tall labels.
-const double _kTallNameMinSize = 40;
+/// Which way the rotated centre of the 50 x 80 mm label turns, in radians
+/// for [Canvas.rotate]: -pi/2 is a quarter turn counterclockwise, so the
+/// depth reads from the bottom of the label to the top (tilt your head
+/// left) and the tops of the letters point at the label's left edge. To
+/// read the other way, use +pi/2 and mirror the translate in
+/// [_paintRotatedHeadline].
+const double _kTallCentreTurn = -math.pi / 2;
+
+/// Space above and below the rotated centre, against the bar and the lines
+/// at the bottom. Less than the upright gap: the rotated block's long side
+/// is the one that needs the room.
+const double _kRotatedCentreGap = 24;
 
 /// The tag's outline and corner.
 const double _kTagStroke = 3;
@@ -468,7 +500,12 @@ double _fitSize(double max, double min, bool Function(double size) fits) {
 double _centredBaseline(double centre, double capHeight) =>
     (centre + capHeight / 2).roundToDouble();
 
-_Layout _paintLabel(Canvas canvas, CylinderLabel label, LabelSize size) {
+_Layout _paintLabel(
+  Canvas canvas,
+  CylinderLabel label,
+  LabelSize size, {
+  bool rotateTallCentre = false,
+}) {
   final line = _Lines();
   try {
     final m = _Metrics.of(size);
@@ -497,21 +534,24 @@ _Layout _paintLabel(Canvas canvas, CylinderLabel label, LabelSize size) {
       _kMixNameMinSize,
       (s) => line(label.mixName, size: s).width <= nameSpace,
     );
-    // On the tall labels the initials are part of the design, so the name
-    // gives up a few dots of size (down to [_kTallNameMinSize]) to leave
-    // them room, rather than leaving them out. The 30 mm labels keep their
-    // sizes.
+    // On the 40 mm and tall labels the initials are part of the design, so
+    // the name gives up a few dots of size (down to
+    // [_Metrics.mixNameReserveMinSize]) to leave them room, rather than
+    // leaving them out. The 50 x 30 label keeps its sizes.
     final by = label.analysedBy;
-    if (m.stacked && by != null) {
+    final reserveMin = m.mixNameReserveMinSize;
+    var initialsReserved = false;
+    if (reserveMin != null && by != null) {
       final initialsWidth = line(by, size: m.initialsSize).width;
       final reserved = initialsWidth + _kInitialsGap;
       final shrunk = _fitSize(
         m.mixNameSize,
-        _kTallNameMinSize,
+        reserveMin,
         (s) => line(label.mixName, size: s).width <= nameSpace - reserved,
       );
       if (line(label.mixName, size: shrunk).width <= nameSpace - reserved) {
         nameSize = shrunk;
+        initialsReserved = true;
       }
     }
     final name = line(label.mixName, size: nameSize, color: _kWhite);
@@ -523,7 +563,8 @@ _Layout _paintLabel(Canvas canvas, CylinderLabel label, LabelSize size) {
 
     Rect? initials;
     final initialsSpace = textRight - (mixName.right + _kInitialsGap);
-    if (by != null && initialsSpace >= _kInitialsMinWidth) {
+    if (by != null &&
+        (initialsReserved || initialsSpace >= _kInitialsMinWidth)) {
       final i = line(
         by,
         size: m.initialsSize,
@@ -577,15 +618,25 @@ _Layout _paintLabel(Canvas canvas, CylinderLabel label, LabelSize size) {
       baseline = (smallTop - m.smallLineGap).floorToDouble();
     }
 
-    final headline = _paintHeadline(
-      canvas,
-      line,
-      label,
-      m,
-      safe,
-      top: bar.bottom + m.headlineGapTop,
-      bottom: smallTop - m.headlineGapBottom,
-    );
+    final headline = rotateTallCentre && size == LabelSize.mm50x80
+        ? _paintRotatedHeadline(
+            canvas,
+            line,
+            label,
+            m,
+            safe,
+            top: bar.bottom + _kRotatedCentreGap,
+            bottom: smallTop - _kRotatedCentreGap,
+          )
+        : _paintHeadline(
+            canvas,
+            line,
+            label,
+            m,
+            safe,
+            top: bar.bottom + m.headlineGapTop,
+            bottom: smallTop - m.headlineGapBottom,
+          );
 
     return (
       bar: bar,
@@ -703,6 +754,49 @@ Rect _paintHeadline(
     right = math.max(right, unitBox.right);
   }
   return Rect.fromLTRB(numberBox.left, numberBox.top, right, numberBox.bottom);
+}
+
+/// The stacked headline turned by [_kTallCentreTurn], filling the box
+/// between [top] and [bottom] across the safe width. In the turned frame the
+/// box is as wide as it is tall on the label, so the depth can get bigger
+/// than across the 360 dots of the label's width. Returns the bounds of
+/// what was drawn, in label dots.
+Rect _paintRotatedHeadline(
+  Canvas canvas,
+  _Lines line,
+  CylinderLabel label,
+  _Metrics m,
+  Rect safe, {
+  required double top,
+  required double bottom,
+}) {
+  final unit = label.headlineMeters == null ? null : 'm';
+  final caption = line(label.headlineCaption, size: m.captionSize);
+  // Local frame: x runs up the label, y runs to the label's right, with
+  // the origin at the box's bottom left corner.
+  final localBox = Rect.fromLTWH(0, 0, bottom - top, safe.width);
+  canvas.save();
+  canvas.translate(safe.left, bottom);
+  canvas.rotate(_kTallCentreTurn);
+  final local = _paintStackedHeadline(
+    canvas,
+    line,
+    label,
+    m,
+    localBox,
+    unit,
+    caption,
+    top: localBox.top,
+    bottom: localBox.bottom,
+  );
+  canvas.restore();
+  // (x, y) in the local frame is (safe.left + y, bottom - x) on the label.
+  return Rect.fromLTRB(
+    safe.left + local.top,
+    bottom - local.right,
+    safe.left + local.bottom,
+    bottom - local.left,
+  );
 }
 
 Rect _paintStackedHeadline(

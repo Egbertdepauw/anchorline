@@ -21,6 +21,7 @@ Defaults for blending and analysing gas: what your fills cost, what a new blend 
 - **Analyzer**: **MOD rows at ppO₂** lists the ppO₂ values for which the analyzer shows a maximum operating depth. Remove one with its cross (the last one stays), or tap **+ Add** and enter a ppO₂ in bar. **Fill pressure starts at** sets the pressure a new analysis begins with, in bar.
 - **Label printer**: appears where label printing is available. It shows the saved printer, or **No printer set up**, with **Find printer**, **Print test label** and **Forget printer**. Below them:
   - **Label size**: the size of the labels in the printer, one of **50 × 30 mm**, **40 × 30 mm**, **50 × 50 mm** and **50 × 80 mm** (width × length). Every label you print is drawn for this size.
+  - **Rotate centre on 50 × 80**: shown only for the 50 × 80 mm size. It turns the big depth 90° counterclockwise (it reads from the bottom up) so it can be larger. Off by default.
   - **Use 1.4 for deeper mixes**: bailout and deco labels show the depth at ppO₂ 1.4 for mixes below 50 % O₂. Off: 1.6 for all.
   - **OC working ppO₂**: **1.3** or **1.4**, the ppO₂ for the big depth on **Backgas** labels. It starts at 1.4.
 

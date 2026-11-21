@@ -51,6 +51,18 @@ void main() {
     }
   });
 
+  test('rotate-the-tall-centre defaults to off and persists', () async {
+    final s = await _loaded();
+    expect(s.labelRotateTallCentre, isFalse);
+    await s.setLabelRotateTallCentre(true);
+    expect(s.labelRotateTallCentre, isTrue);
+    expect((await _reloaded()).labelRotateTallCentre, isTrue);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('label_rotate_tall_centre'), isTrue);
+    await s.setLabelRotateTallCentre(false);
+    expect((await _reloaded()).labelRotateTallCentre, isFalse);
+  });
+
   test('an unknown or mistyped stored label size falls back to 50 x 30',
       () async {
     SharedPreferences.setMockInitialValues({'label_size': '60x40'});

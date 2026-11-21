@@ -41,7 +41,7 @@ class _Rig {
     final fakePrinter = printer ?? FakeLabelPrinter();
     final fakeScanner = scanner ?? FakeLabelPrinterScanner();
     final service = LabelPrintService(
-      render: render ?? (_, _) async => LabelBitmap.blank(384, 240),
+      render: render ?? (_, _, _) async => LabelBitmap.blank(384, 240),
       printerFor: (_) => fakePrinter,
       scanner: fakeScanner,
       printerId: () => settings.labelPrinterId,
@@ -321,11 +321,29 @@ void main() {
       );
     });
 
+    testWidgets('the rotate-centre row shows only for 50 x 80', (tester) async {
+      final rig = await _Rig.build();
+      await tester.pumpWidget(rig.section);
+      expect(_key('label-printer-rotate-centre'), findsNothing);
+      for (final size in [LabelSize.mm40x30, LabelSize.mm50x50]) {
+        await rig.settings.setLabelSize(size);
+        await tester.pump();
+        expect(_key('label-printer-rotate-centre'), findsNothing);
+      }
+      await rig.settings.setLabelSize(LabelSize.mm50x80);
+      await tester.pump();
+      expect(find.text('Rotate centre on 50 × 80'), findsOneWidget);
+      expect(rig.settings.labelRotateTallCentre, isFalse);
+      await tester.tap(_key('label-printer-rotate-centre'));
+      await tester.pump();
+      expect(rig.settings.labelRotateTallCentre, isTrue);
+    });
+
     testWidgets('printing uses the chosen size', (tester) async {
       final sizes = <LabelSize>[];
       final rig = await _Rig.build(
         configured: true,
-        render: (_, size) async {
+        render: (_, size, _) async {
           sizes.add(size);
           return LabelBitmap.blank(384, size.heightDots);
         },
@@ -422,7 +440,7 @@ void main() {
         (tester) async {
       final rig = await _Rig.build(
         configured: true,
-        render: (_, _) async => throw StateError('render bug'),
+        render: (_, _, _) async => throw StateError('render bug'),
       );
       await tester.pumpWidget(rig.section);
 
@@ -450,7 +468,7 @@ void main() {
       addTearDown(() => labelPrintErrorSink = oldSink);
       final rig = await _Rig.build(
         configured: true,
-        render: (_, _) async => throw StateError('render bug'),
+        render: (_, _, _) async => throw StateError('render bug'),
       );
       await tester.pumpWidget(rig.section);
 

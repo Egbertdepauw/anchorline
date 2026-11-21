@@ -211,7 +211,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _labelPrintService = !bleCentralAvailable
         ? null
         : LabelPrintService(
-            render: renderCylinderLabel,
+            render: (label, size, rotate) =>
+                renderCylinderLabel(label, size, rotate),
             printerFor: (id) => PhomemoBlePrinter(remoteId: id),
             scanner: PhomemoBleScanner(),
             printerId: () => widget.settingsNotifier.labelPrinterId,
@@ -219,6 +220,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 widget.settingsNotifier.labelUse14ForDeeperMixes,
             ocWorkingPpo2: () => widget.settingsNotifier.labelOcWorkingPpo2,
             labelSize: () => widget.settingsNotifier.labelSize,
+            rotateTallCentre: () =>
+                widget.settingsNotifier.labelRotateTallCentre,
           );
     _blendNotifier = BlendNotifier(settings: widget.settingsNotifier);
     // Restores the Blend tab's target mix and pressure. Not awaited: the tab

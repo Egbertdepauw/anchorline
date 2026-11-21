@@ -232,6 +232,69 @@ void main() {
     expect(r.bar.right, 340);
   });
 
+  group('rotated centre on 50 x 80', () {
+    final safe = _safeAreaOf(LabelSize.mm50x80);
+    final samples = {
+      'bailout': _tx2135,
+      'diluent': _tx2135Diluent,
+      'oc': _tx2135Oc,
+      'oc 3-digit': _tx1070Oc,
+      'bailout 3-digit': _tx1170,
+    };
+    for (final s in samples.entries) {
+      test('${s.key}: stays inside the safe area', () async {
+        final r = await renderCylinderLabelWithLayout(
+            s.value, LabelSize.mm50x80, true);
+        expect(_within(r.headline, safe), isTrue, reason: '${r.headline}');
+        expect(_count(r.bitmap, r.headline), greaterThan(0));
+        // Taller than wide: the depth runs along the label.
+        expect(r.headline.height, greaterThan(r.headline.width));
+        for (var y = 0; y < r.bitmap.height; y++) {
+          for (var x = 0; x < r.bitmap.width; x++) {
+            final inside = x >= safe.left &&
+                x < safe.right &&
+                y >= safe.top &&
+                y < safe.bottom;
+            if (!inside) {
+              expect(r.bitmap.isBlack(x, y), isFalse, reason: '($x, $y)');
+            }
+          }
+        }
+      });
+    }
+
+    test('the depth is bigger than upright', () async {
+      final up = await renderCylinderLabelWithLayout(_tx2135, LabelSize.mm50x80);
+      final turned = await renderCylinderLabelWithLayout(
+          _tx2135, LabelSize.mm50x80, true);
+      expect(turned.headline.height, greaterThan(up.headline.width));
+    });
+
+    test('has no effect on the other sizes', () async {
+      for (final size in LabelSize.values) {
+        if (size == LabelSize.mm50x80) continue;
+        for (final l in [_tx2135, _tx2135Diluent, _tx2135Oc, _tx1070Oc]) {
+          final off = await renderCylinderLabel(l, size);
+          final on = await renderCylinderLabel(l, size, true);
+          expect(on.bits, off.bits, reason: size.displayName);
+        }
+      }
+    });
+  });
+
+  test('the initials show on every 40 x 30 and tall layout', () async {
+    for (final size in [
+      LabelSize.mm40x30,
+      LabelSize.mm50x50,
+      LabelSize.mm50x80,
+    ]) {
+      for (final l in [_tx2135, _tx2135Diluent, _tx2135Oc, _tx1070Oc]) {
+        final r = await renderCylinderLabelWithLayout(l, size);
+        expect(r.initials, isNotNull, reason: size.displayName);
+      }
+    }
+  });
+
   test('a taller label gets a bigger headline depth', () async {
     Future<double> height(LabelSize size) async =>
         (await renderCylinderLabelWithLayout(_tx2135, size)).headline.height;
@@ -317,6 +380,14 @@ void main() {
       'oc': _tx2135Oc,
       'oc_130m': _tx1070Oc,
     };
+    for (final g in layouts.entries) {
+      test('${g.key}_50x80_rotated', () async {
+        await expectLater(
+          await renderCylinderLabelImage(g.value, LabelSize.mm50x80, true),
+          matchesGoldenFile('goldens/${g.key}_50x80_rotated.png'),
+        );
+      }, skip: !_compareGoldens);
+    }
     for (final size in LabelSize.values) {
       if (size == LabelSize.mm50x30) continue;
       for (final g in layouts.entries) {

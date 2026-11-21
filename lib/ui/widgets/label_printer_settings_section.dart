@@ -108,6 +108,18 @@ class LabelPrinterSettingsSection extends StatelessWidget {
                 ),
               ),
             ),
+            if (settings.labelSize == LabelSize.mm50x80)
+              SettingRow(
+                title: 'Rotate centre on 50 × 80',
+                helper: 'Turns the big depth 90° so it can be larger',
+                onTap: () => settings.setLabelRotateTallCentre(
+                    !settings.labelRotateTallCentre),
+                control: Switch(
+                  key: const ValueKey('label-printer-rotate-centre'),
+                  value: settings.labelRotateTallCentre,
+                  onChanged: settings.setLabelRotateTallCentre,
+                ),
+              ),
             SettingRow(
               title: 'Use 1.4 for deeper mixes',
               helper: 'MOD at ppO₂ 1.4 below 50 % O₂. Off: 1.6 for all',

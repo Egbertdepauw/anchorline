@@ -33,7 +33,7 @@ class _Rig {
   })  : printer = printer ?? FakeLabelPrinter(),
         scanner = FakeLabelPrinterScanner() {
     service = LabelPrintService(
-      render: (label, size) async {
+      render: (label, size, _) async {
         rendered.add(label);
         renderedSizes.add(size);
         return bitmap;
@@ -118,7 +118,7 @@ LabelPrintService _serviceOn(
 }) {
   var next = 0;
   return LabelPrintService(
-    render: render ?? (_, _) async => LabelBitmap.blank(384, 240),
+    render: render ?? (_, _, _) async => LabelBitmap.blank(384, 240),
     printerFor: (_) => printers[next++],
     scanner: FakeLabelPrinterScanner(),
     printerId: () => 'printer-1',
@@ -149,7 +149,7 @@ void main() {
   // cut it off and hide its more specific error.
   test('waits 25 s for a connect by default', () {
     final service = LabelPrintService(
-      render: (_, _) async => LabelBitmap.blank(384, 240),
+      render: (_, _, _) async => LabelBitmap.blank(384, 240),
       printerFor: (_) => FakeLabelPrinter(),
       scanner: FakeLabelPrinterScanner(),
       printerId: () => 'printer-1',
@@ -241,7 +241,7 @@ void main() {
       final printer = FakeLabelPrinter();
       final service = _serviceOn(
         [printer],
-        render: (_, _) async {
+        render: (_, _, _) async {
           if (++renders == 1) throw StateError('render bug');
           return LabelBitmap.blank(384, 240);
         },
@@ -448,7 +448,7 @@ void main() {
     test('a render error never connects', () async {
       final printer = FakeLabelPrinter();
       final service = LabelPrintService(
-        render: (_, _) async => throw StateError('render failed'),
+        render: (_, _, _) async => throw StateError('render failed'),
         printerFor: (_) => printer,
         scanner: FakeLabelPrinterScanner(),
         printerId: () => 'printer-1',
@@ -522,7 +522,7 @@ void main() {
         () async {
       final sizes = <LabelSize>[];
       final service = LabelPrintService(
-        render: (_, size) async {
+        render: (_, size, _) async {
           sizes.add(size);
           return LabelBitmap.blank(384, 240);
         },
@@ -533,6 +533,28 @@ void main() {
       );
       await service.printTestLabel();
       expect(sizes, [LabelSize.mm50x30]);
+    });
+
+    test('passes the centre rotation to the renderer, test print included',
+        () async {
+      final flags = <bool>[];
+      var rotate = false;
+      final service = LabelPrintService(
+        render: (_, _, r) async {
+          flags.add(r);
+          return LabelBitmap.blank(384, 240);
+        },
+        printerFor: (_) => FakeLabelPrinter(),
+        scanner: FakeLabelPrinterScanner(),
+        printerId: () => 'p',
+        use14ForDeeperMixes: () => false,
+        rotateTallCentre: () => rotate,
+      );
+      await service.printTestLabel();
+      rotate = true;
+      await service.printTestLabel();
+      await service.printAnalysis(_analysis());
+      expect(flags, [false, true, true]);
     });
   });
 

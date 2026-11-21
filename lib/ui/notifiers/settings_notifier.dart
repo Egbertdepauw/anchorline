@@ -63,6 +63,7 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kLabelUse14 = 'label_use_14_for_deeper_mixes';
   static const _kLabelOcWorkingPpo2 = 'label_oc_working_ppo2';
   static const _kLabelSize = 'label_size';
+  static const _kLabelRotateTallCentre = 'label_rotate_tall_centre';
   static const _kAnalyzerBridgeId = 'analyzer_bridge_id';
   static const _kAnalyzerBridgeName = 'analyzer_bridge_name';
   static const _kAnalyzerBridgeVbus = 'analyzer_bridge_vbus';
@@ -148,6 +149,7 @@ class SettingsNotifier extends ChangeNotifier {
   bool _labelUse14ForDeeperMixes = false;
   double _labelOcWorkingPpo2 = kDefaultOcWorkingPpo2;
   LabelSize _labelSize = LabelSize.defaultSize;
+  bool _labelRotateTallCentre = false;
   // The SOLO bridge paired on this device (device-local, never synced).
   String? _analyzerBridgeId;
   String? _analyzerBridgeName;
@@ -228,6 +230,10 @@ class SettingsNotifier extends ChangeNotifier {
   /// The size of label the printer holds; every label is drawn for it.
   /// 50 × 30 mm by default.
   LabelSize get labelSize => _labelSize;
+
+  /// Whether the 50 × 80 mm label draws its big depth rotated 90°. Has no
+  /// effect on other sizes. Off by default.
+  bool get labelRotateTallCentre => _labelRotateTallCentre;
 
   /// The label printer saved on this device: its BLE id and the name shown
   /// in Settings. Both null when none is set up.
@@ -394,6 +400,7 @@ class SettingsNotifier extends ChangeNotifier {
     final storedLabelSize = prefs.get(_kLabelSize);
     _labelSize =
         LabelSize.fromKey(storedLabelSize is String ? storedLabelSize : null);
+    _labelRotateTallCentre = prefs.getBool(_kLabelRotateTallCentre) ?? false;
     _analyzerBridgeId = prefs.getString(_kAnalyzerBridgeId);
     _analyzerBridgeName = prefs.getString(_kAnalyzerBridgeName);
     _analyzerBridgeVbus = prefs.getBool(_kAnalyzerBridgeVbus) ?? false;
@@ -814,6 +821,14 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kLabelSize, v.key);
+  }
+
+  Future<void> setLabelRotateTallCentre(bool v) async {
+    if (_labelRotateTallCentre == v) return;
+    _labelRotateTallCentre = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kLabelRotateTallCentre, v);
   }
 
   /// Saves the label printer for this device. [id] is the BLE id used to

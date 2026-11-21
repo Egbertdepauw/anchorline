@@ -42,7 +42,7 @@ LabelPrintService _service(
   List<CylinderLabel>? rendered,
 }) =>
     LabelPrintService(
-      render: (label, _) async {
+      render: (label, _, _) async {
         rendered?.add(label);
         return LabelBitmap.blank(384, 240);
       },
@@ -60,7 +60,7 @@ LabelPrintService _serviceOn(
 }) {
   var next = 0;
   return LabelPrintService(
-    render: (label, _) async {
+    render: (label, _, _) async {
       rendered?.add(label);
       return LabelBitmap.blank(384, 240);
     },
