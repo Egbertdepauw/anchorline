@@ -103,7 +103,7 @@ class _Harness {
     if (printer) {
       fakePrinter = FakeLabelPrinter();
       printing = LabelPrintService(
-        render: (label) async => LabelBitmap.blank(384, 240),
+        render: (label, _) async => LabelBitmap.blank(384, 240),
         printerFor: (_) => fakePrinter!,
         scanner: FakeLabelPrinterScanner(),
         printerId: () => printerSetUp ? 'dev-1' : null,
@@ -1842,7 +1842,7 @@ void main() {
       Future<LabelBitmap> Function(Object label)? render,
     }) =>
         LabelPrintService(
-          render: (label) async =>
+          render: (label, _) async =>
               render != null ? await render(label) : LabelBitmap.blank(384, 240),
           printerFor: (_) => FakeLabelPrinter(faultOnPrint: fault),
           scanner: FakeLabelPrinterScanner(),

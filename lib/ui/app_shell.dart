@@ -217,6 +217,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             printerId: () => widget.settingsNotifier.labelPrinterId,
             use14ForDeeperMixes: () =>
                 widget.settingsNotifier.labelUse14ForDeeperMixes,
+            ocWorkingPpo2: () => widget.settingsNotifier.labelOcWorkingPpo2,
+            labelSize: () => widget.settingsNotifier.labelSize,
           );
     _blendNotifier = BlendNotifier(settings: widget.settingsNotifier);
     // Restores the Blend tab's target mix and pressure. Not awaited: the tab

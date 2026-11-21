@@ -1,3 +1,4 @@
+import 'package:ccrlogger/label_printer/label_bitmap.dart';
 import 'package:ccrlogger/ui/notifiers/settings_notifier.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -32,6 +33,62 @@ void main() {
     await s.setLabelUse14ForDeeperMixes(false);
     expect(s.labelUse14ForDeeperMixes, isFalse);
     expect((await _reloaded()).labelUse14ForDeeperMixes, isFalse);
+  });
+
+  test('the label size defaults to 50 x 30 and persists', () async {
+    final s = await _loaded();
+    expect(s.labelSize, LabelSize.mm50x30);
+
+    await s.setLabelSize(LabelSize.mm40x30);
+    expect(s.labelSize, LabelSize.mm40x30);
+    expect((await _reloaded()).labelSize, LabelSize.mm40x30);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('label_size'), '40x30');
+
+    for (final size in LabelSize.values) {
+      await s.setLabelSize(size);
+      expect((await _reloaded()).labelSize, size);
+    }
+  });
+
+  test('an unknown or mistyped stored label size falls back to 50 x 30',
+      () async {
+    SharedPreferences.setMockInitialValues({'label_size': '60x40'});
+    expect((await _reloaded()).labelSize, LabelSize.mm50x30);
+    SharedPreferences.setMockInitialValues({'label_size': 7});
+    expect((await _reloaded()).labelSize, LabelSize.mm50x30);
+  });
+
+  test('the OC working ppO2 defaults to 1.4 and persists', () async {
+    final s = await _loaded();
+    expect(s.labelOcWorkingPpo2, 1.4);
+
+    await s.setLabelOcWorkingPpo2(1.3);
+    expect(s.labelOcWorkingPpo2, 1.3);
+    expect((await _reloaded()).labelOcWorkingPpo2, 1.3);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getDouble('label_oc_working_ppo2'), 1.3);
+
+    await s.setLabelOcWorkingPpo2(1.4);
+    expect((await _reloaded()).labelOcWorkingPpo2, 1.4);
+  });
+
+  test('an unknown or mistyped stored OC working ppO2 falls back to 1.4',
+      () async {
+    SharedPreferences.setMockInitialValues({'label_oc_working_ppo2': 1.5});
+    expect((await _reloaded()).labelOcWorkingPpo2, 1.4);
+    SharedPreferences.setMockInitialValues({'label_oc_working_ppo2': 'x'});
+    expect((await _reloaded()).labelOcWorkingPpo2, 1.4);
+  });
+
+  test('setting an OC working ppO2 other than 1.3 or 1.4 is ignored',
+      () async {
+    final s = await _loaded();
+    var notified = 0;
+    s.addListener(() => notified++);
+    await s.setLabelOcWorkingPpo2(1.6);
+    expect(s.labelOcWorkingPpo2, 1.4);
+    expect(notified, 0);
   });
 
   test('the printer persists and reads back', () async {
@@ -99,5 +156,9 @@ void main() {
     expect(notified, 2);
     await s.forgetLabelPrinter();
     expect(notified, 3);
+    await s.setLabelSize(LabelSize.mm50x50);
+    expect(notified, 4);
+    await s.setLabelOcWorkingPpo2(1.3);
+    expect(notified, 5);
   });
 }

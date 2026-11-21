@@ -31,6 +31,43 @@ void main() {
     expect(kLabelSafeMarginDots, 12);
   });
 
+  group('LabelSize', () {
+    test('has the four sizes with their dot dimensions', () {
+      expect(LabelSize.values.map((s) => s.key),
+          ['50x30', '40x30', '50x50', '50x80']);
+      expect(LabelSize.values.map((s) => s.displayName),
+          ['50 × 30 mm', '40 × 30 mm', '50 × 50 mm', '50 × 80 mm']);
+      expect(LabelSize.values.map((s) => s.widthDots), [384, 320, 384, 384]);
+      expect(LabelSize.values.map((s) => s.heightDots), [240, 240, 400, 640]);
+      expect(LabelSize.defaultSize, LabelSize.mm50x30);
+    });
+
+    test('the 40 mm label is centred in the 384-dot head', () {
+      expect(kNarrowLabelOffsetDots, 32);
+      expect(LabelSize.mm40x30.offsetDots, 32);
+      expect(32 + LabelSize.mm40x30.widthDots + 32, kLabelWidthDots);
+      for (final s in LabelSize.values.where((s) => s != LabelSize.mm40x30)) {
+        expect(s.offsetDots, 0);
+      }
+    });
+
+    test('the safe area is the label inside its 12-dot margin', () {
+      final a = LabelSize.mm40x30.safeArea;
+      expect((a.left, a.top, a.width, a.height), (44.0, 12.0, 296.0, 216.0));
+      final b = LabelSize.mm50x80.safeArea;
+      expect((b.left, b.top, b.width, b.height), (12.0, 12.0, 360.0, 616.0));
+    });
+
+    test('fromKey round-trips and falls back to 50 x 30', () {
+      for (final s in LabelSize.values) {
+        expect(LabelSize.fromKey(s.key), s);
+      }
+      expect(LabelSize.fromKey(null), LabelSize.mm50x30);
+      expect(LabelSize.fromKey('60x40'), LabelSize.mm50x30);
+      expect(LabelSize.fromKey(''), LabelSize.mm50x30);
+    });
+  });
+
   group('LabelBitmap.blank', () {
     test('384 x 240 has 48 bytes per row, 11520 bytes, all white', () {
       final b = LabelBitmap.blank(384, 240);

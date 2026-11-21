@@ -1,4 +1,4 @@
-/// The values and strings on a 50 × 30 mm cylinder label (issue #114).
+/// The values and strings on a cylinder label, whatever its size (issue #114).
 ///
 /// Pure Dart, no Flutter imports. A [CylinderLabel] is built from a saved
 /// [GasAnalysis] plus the "Use 1.4 for deeper mixes" setting, and carries
@@ -17,6 +17,10 @@
 ///   analyses at 49.6 % keeps 1.6. With no desired mix, or on a hard
 ///   mismatch, it uses the analysed O2 rounded to a whole percent.
 /// * The diluent label always uses 1.1 / 1.3 / 1.6, whatever the setting.
+/// * The OC label (gas role Backgas) headlines the depth at the working
+///   ppO2 (1.3 or 1.4, "OC working ppO2") and adds the MOD at 1.6. Its
+///   depths come from the analysed O2 like the others, and "Use 1.4 for
+///   deeper mixes" does not touch it.
 /// * Numbers and the date are formatted by hand or with a fixed English
 ///   locale, so a Dutch device prints `20.6` and `31 Oct 26`, not `20,6`
 ///   and `31 okt 26`.
@@ -48,6 +52,13 @@ const double kDiluentSetpointPpo2 = 1.3;
 
 /// Diluent label: the MOD ppO2.
 const double kDiluentModPpo2 = 1.6;
+
+/// OC label: the working ppO2 choices, and the default.
+const List<double> kOcWorkingPpo2Choices = [1.3, 1.4];
+const double kDefaultOcWorkingPpo2 = 1.4;
+
+/// OC label: the MOD ppO2 on the small line.
+const double kOcModPpo2 = 1.6;
 
 /// Shown instead of a depth that can't be worked out (no oxygen).
 const String _noDepth = '–';
@@ -98,7 +109,7 @@ double bailoutModPpo2({
         : kBailoutModPpo2;
 
 /// Which layout a label uses.
-enum CylinderLabelKind { bailout, diluent }
+enum CylinderLabelKind { bailout, diluent, oc }
 
 /// Everything printed on one label. Build it with
 /// [CylinderLabel.fromAnalysis]; the constructor is public for renderer
@@ -127,7 +138,8 @@ class CylinderLabel {
 
   final DateTime analysedAt;
 
-  /// Diluent only (null on bailout): depth at ppO2 1.3 and MOD at ppO2 1.6.
+  /// Diluent only: depth at ppO2 1.3. [mod16Meters] (MOD at ppO2 1.6) is set
+  /// on diluent and OC labels; both are null on bailout.
   final int? setpointMeters;
   final int? mod16Meters;
 
@@ -146,9 +158,12 @@ class CylinderLabel {
 
   /// The label for [a]. [use14ForDeeperMixes] is the device-local "Use 1.4
   /// for deeper mixes" setting; it only affects bailout/deco labels.
+  /// [ocWorkingPpo2] is the device-local "OC working ppO2" setting; it only
+  /// affects the OC (Backgas) label.
   factory CylinderLabel.fromAnalysis(
     GasAnalysis a, {
     required bool use14ForDeeperMixes,
+    double ocWorkingPpo2 = kDefaultOcWorkingPpo2,
   }) {
     // Up to red the label names the gas the diver asked for. A hard
     // mismatch, or no desired mix, names the gas that is really in the
@@ -175,16 +190,23 @@ class CylinderLabel {
     final by = a.analysedBy?.trim();
     final he = a.hePercent < kHeliumNoiseFloorPercent ? null : a.hePercent;
     final diluent = a.gasRole == GasRole.diluent;
+    final oc = a.gasRole == GasRole.backgas;
 
     final double headlinePpo2 = diluent
         ? kDiluentTodPpo2
-        : bailoutModPpo2(
-            o2PercentForRule: o2PercentForRule,
-            use14ForDeeperMixes: use14ForDeeperMixes,
-          );
+        : oc
+            ? ocWorkingPpo2
+            : bailoutModPpo2(
+                o2PercentForRule: o2PercentForRule,
+                use14ForDeeperMixes: use14ForDeeperMixes,
+              );
 
     return CylinderLabel(
-      kind: diluent ? CylinderLabelKind.diluent : CylinderLabelKind.bailout,
+      kind: diluent
+          ? CylinderLabelKind.diluent
+          : oc
+              ? CylinderLabelKind.oc
+              : CylinderLabelKind.bailout,
       mixName: mixName,
       analysedBy: (by == null || by.isEmpty) ? null : by,
       headlineMeters: depth(headlinePpo2),
@@ -193,7 +215,11 @@ class CylinderLabel {
       hePercent: he,
       analysedAt: a.analysedAt,
       setpointMeters: diluent ? depth(kDiluentSetpointPpo2) : null,
-      mod16Meters: diluent ? depth(kDiluentModPpo2) : null,
+      mod16Meters: diluent
+          ? depth(kDiluentModPpo2)
+          : oc
+              ? depth(kOcModPpo2)
+              : null,
     );
   }
 
@@ -218,16 +244,28 @@ class CylinderLabel {
 
   bool get _isDiluent => kind == CylinderLabelKind.diluent;
 
-  /// The outlined tag after the bar's left edge: `DIL`, or null on bailout.
-  String? get barTag => _isDiluent ? 'DIL' : null;
+  /// The outlined tag after the bar's left edge: `DIL` or `OC`, or null on
+  /// bailout.
+  String? get barTag => switch (kind) {
+        CylinderLabelKind.diluent => 'DIL',
+        CylinderLabelKind.oc => 'OC',
+        CylinderLabelKind.bailout => null,
+      };
 
   /// The big number: whole metres, or a dash when there is no usable depth.
   /// The renderer adds the unit.
   String get headlineText => headlineMeters?.toString() ?? _noDepth;
 
-  /// The small line under the headline: `MOD 1.6`, `MOD 1.4` or `TOD 1.1`.
-  String get headlineCaption =>
-      '${_isDiluent ? 'TOD' : 'MOD'} ${_ppo2Text(headlinePpo2)}';
+  /// The small line beside or under the headline: `MOD 1.6`, `MOD 1.4`,
+  /// `TOD 1.1` or, on the OC label, `ppO2 1.4`.
+  String get headlineCaption {
+    final name = switch (kind) {
+      CylinderLabelKind.diluent => 'TOD',
+      CylinderLabelKind.oc => 'ppO2',
+      CylinderLabelKind.bailout => 'MOD',
+    };
+    return '$name ${_ppo2Text(headlinePpo2)}';
+  }
 
   /// Diluent only: `1.3: 53 m`.
   String? get diluentLeft => _isDiluent
@@ -237,6 +275,11 @@ class CylinderLabel {
   /// Diluent only: `MOD 1.6: 67 m`.
   String? get diluentRight => _isDiluent
       ? 'MOD ${_ppo2Text(kDiluentModPpo2)}: ${_depthText(mod16Meters)}'
+      : null;
+
+  /// OC only: `MOD 1.6: 67 m`.
+  String? get ocModLine => kind == CylinderLabelKind.oc
+      ? 'MOD ${_ppo2Text(kOcModPpo2)}: ${_depthText(mod16Meters)}'
       : null;
 
   /// `O2 20.6  He 33.8` (two spaces), or `O2 32.1` for a gas without helium.

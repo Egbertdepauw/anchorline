@@ -2,6 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../analysis/fill_pressure.dart';
+import '../../label_printer/label_bitmap.dart' show LabelSize;
+import '../../labels/cylinder_label.dart'
+    show kDefaultOcWorkingPpo2, kOcWorkingPpo2Choices;
 import '../theme/app_themes.dart';
 import '../widgets/map_tile_sources.dart' show MapLayerStyle;
 import '../widgets/trace_segmented_bar.dart' show TraceType;
@@ -58,6 +61,8 @@ class SettingsNotifier extends ChangeNotifier {
   /// Where the analyzer's "Fill pressure" starts when a cylinder is saved.
   static const double kDefaultFillPressureStartBar = 230;
   static const _kLabelUse14 = 'label_use_14_for_deeper_mixes';
+  static const _kLabelOcWorkingPpo2 = 'label_oc_working_ppo2';
+  static const _kLabelSize = 'label_size';
   static const _kAnalyzerBridgeId = 'analyzer_bridge_id';
   static const _kAnalyzerBridgeName = 'analyzer_bridge_name';
   static const _kAnalyzerBridgeVbus = 'analyzer_bridge_vbus';
@@ -141,6 +146,8 @@ class SettingsNotifier extends ChangeNotifier {
   double _blendDiluentMaxL = 3.0;
   // ── Cylinder labels (device-local, never synced) ────────────────
   bool _labelUse14ForDeeperMixes = false;
+  double _labelOcWorkingPpo2 = kDefaultOcWorkingPpo2;
+  LabelSize _labelSize = LabelSize.defaultSize;
   // The SOLO bridge paired on this device (device-local, never synced).
   String? _analyzerBridgeId;
   String? _analyzerBridgeName;
@@ -213,6 +220,14 @@ class SettingsNotifier extends ChangeNotifier {
   /// Whether a cylinder label uses ppO2 1.4 instead of 1.6 for the MOD of a
   /// bailout/deco mix under 50 % O2.
   bool get labelUse14ForDeeperMixes => _labelUse14ForDeeperMixes;
+
+  /// The ppO2 (1.3 or 1.4) the OC (Backgas) label's headline depth is
+  /// worked out at. 1.4 by default.
+  double get labelOcWorkingPpo2 => _labelOcWorkingPpo2;
+
+  /// The size of label the printer holds; every label is drawn for it.
+  /// 50 × 30 mm by default.
+  LabelSize get labelSize => _labelSize;
 
   /// The label printer saved on this device: its BLE id and the name shown
   /// in Settings. Both null when none is set up.
@@ -369,6 +384,16 @@ class SettingsNotifier extends ChangeNotifier {
     _blendDiluentMaxL =
         (prefs.getDouble(_kBlendDiluentMaxL) ?? 3.0).clamp(0.5, 50.0);
     _labelUse14ForDeeperMixes = prefs.getBool(_kLabelUse14) ?? false;
+    // `get`, as for the theme below: a stored value of the wrong type or an
+    // unknown one falls back to the default.
+    final storedOcPpo2 = prefs.get(_kLabelOcWorkingPpo2);
+    _labelOcWorkingPpo2 = storedOcPpo2 is num &&
+            kOcWorkingPpo2Choices.contains(storedOcPpo2.toDouble())
+        ? storedOcPpo2.toDouble()
+        : kDefaultOcWorkingPpo2;
+    final storedLabelSize = prefs.get(_kLabelSize);
+    _labelSize =
+        LabelSize.fromKey(storedLabelSize is String ? storedLabelSize : null);
     _analyzerBridgeId = prefs.getString(_kAnalyzerBridgeId);
     _analyzerBridgeName = prefs.getString(_kAnalyzerBridgeName);
     _analyzerBridgeVbus = prefs.getBool(_kAnalyzerBridgeVbus) ?? false;
@@ -772,6 +797,23 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kLabelUse14, v);
+  }
+
+  /// Sets the OC label's working ppO2. Anything but 1.3 or 1.4 is ignored.
+  Future<void> setLabelOcWorkingPpo2(double v) async {
+    if (!kOcWorkingPpo2Choices.contains(v) || _labelOcWorkingPpo2 == v) return;
+    _labelOcWorkingPpo2 = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kLabelOcWorkingPpo2, v);
+  }
+
+  Future<void> setLabelSize(LabelSize v) async {
+    if (_labelSize == v) return;
+    _labelSize = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLabelSize, v.key);
   }
 
   /// Saves the label printer for this device. [id] is the BLE id used to

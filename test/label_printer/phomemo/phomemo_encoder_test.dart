@@ -53,6 +53,22 @@ void main() {
       expect(job.sublist(11539), _footer);
     });
 
+    test('50 x 80 mm (384 x 640) sizes the raster for 640 rows', () {
+      for (final size in LabelSize.values) {
+        final job = encodePhomemoM110Job(
+          LabelBitmap.blank(kLabelWidthDots, size.heightDots),
+        );
+        final rows = size.heightDots;
+        expect(job.length, 11 + 8 + 48 * rows + 8, reason: size.displayName);
+        expect(job.sublist(11, 19), [
+          0x1D, 0x76, 0x30, 0x00, 0x30, 0x00, rows & 0xFF, rows >> 8, //
+        ]);
+      }
+      // 640 = 0x0280.
+      final tall = encodePhomemoM110Job(LabelBitmap.blank(384, 640));
+      expect(tall.sublist(17, 19), [0x80, 0x02]);
+    });
+
     test('copies: 2 is the single job twice', () {
       final single = encodePhomemoM110Job(_twoRowBitmap());
       final double = encodePhomemoM110Job(_twoRowBitmap(), copies: 2);

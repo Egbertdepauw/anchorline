@@ -29,8 +29,10 @@ GasAnalysis _analysis(
       gasRole: role ?? GasRole.bailout,
     );
 
-CylinderLabel _label(GasAnalysis a, {bool use14 = false}) =>
-    CylinderLabel.fromAnalysis(a, use14ForDeeperMixes: use14);
+CylinderLabel _label(GasAnalysis a,
+        {bool use14 = false, double ocPpo2 = kDefaultOcWorkingPpo2}) =>
+    CylinderLabel.fromAnalysis(a,
+        use14ForDeeperMixes: use14, ocWorkingPpo2: ocPpo2);
 
 void main() {
   // Keep this group FIRST. The label's date formatter is created lazily, once
@@ -315,6 +317,117 @@ void main() {
     });
   });
 
+  group('OC label (Backgas)', () {
+    GasAnalysis oc(double o2, double he, {int? desiredO2, int? desiredHe}) =>
+        _analysis(o2, he,
+            desiredO2: desiredO2, desiredHe: desiredHe, role: GasRole.backgas);
+    final tx = oc(20.6, 33.8, desiredO2: 21, desiredHe: 35);
+
+    test('Tx21/35 at 1.4: ppO2 1.4 headline, MOD 1.6 below', () {
+      // 20.6 % is below the desired 21, so every depth is a stop:
+      // 1.4 is 58.0 m -> 57 (19 stops, ppO2 1.38 there),
+      // 1.6 is 67.7 m -> 66 (69 m would be 1.63).
+      final l = _label(tx);
+      expect(l.kind, CylinderLabelKind.oc);
+      expect(l.barTag, 'OC');
+      expect(l.mixName, 'Tx21/35');
+      expect(l.headlineMeters, 57);
+      expect(l.headlineText, '57');
+      expect(l.headlineCaption, 'ppO2 1.4');
+      expect(l.headlinePpo2, 1.4);
+      expect(l.mod16Meters, 66);
+      expect(l.ocModLine, 'MOD 1.6: 66 m');
+      expect(l.diluentLeft, isNull);
+      expect(l.diluentRight, isNull);
+      expect(l.footerLeft, 'O2 20.6  He 33.8');
+    });
+
+    test('Tx21/35 at 1.3: 53.1 m -> 54', () {
+      final l = _label(tx, ocPpo2: 1.3);
+      expect(l.headlineText, '54');
+      expect(l.headlineCaption, 'ppO2 1.3');
+      expect(l.ocModLine, 'MOD 1.6: 66 m');
+    });
+
+    test('EAN32 at 1.4 and 1.3', () {
+      final ean32 = oc(32.0, 0, desiredO2: 32, desiredHe: 0);
+      // 1.4: 33.75 m -> 33. 1.3: 30.6 m -> 30. 1.6: 40.0 m -> 39 (13 stops).
+      final at14 = _label(ean32);
+      expect(at14.headlineText, '33');
+      expect(at14.ocModLine, 'MOD 1.6: 39 m');
+      expect(at14.footerLeft, 'O2 32.0');
+      final at13 = _label(ean32, ocPpo2: 1.3);
+      expect(at13.headlineText, '30');
+      expect(at13.ocModLine, 'MOD 1.6: 39 m');
+    });
+
+    test('air at 1.4 and 1.3', () {
+      final air = oc(20.9, 0, desiredO2: 21, desiredHe: 0);
+      // 1.4: 57.0 m -> 57. 1.3: 52.2 m -> 51. 1.6: 66.6 m -> 66.
+      expect(_label(air).headlineText, '57');
+      expect(_label(air, ocPpo2: 1.3).headlineText, '51');
+      expect(_label(air).ocModLine, 'MOD 1.6: 66 m');
+    });
+
+    test('depths come from the analysed O2, not the desired one', () {
+      // Desired 21 would give 56.7 m at 1.4; analysed 19.0 gives 63.7 m,
+      // a stop at 63. The mix name is still the desired one.
+      final l = _label(oc(19.0, 35.0, desiredO2: 21, desiredHe: 35));
+      expect(l.mixName, 'Tx21/35');
+      expect(l.headlineText, '63');
+      // 19.0 % at 1.6 is 74.2 m -> 72 (ppO2 1.6 at 72 m is 1.55).
+      expect(l.ocModLine, 'MOD 1.6: 72 m');
+    });
+
+    test('above the desired O2 the depths are exact, rounded down', () {
+      // 21.5 %: 1.4 is 55.1 m, 1.6 is 64.4 m.
+      final l = _label(oc(21.5, 35.0, desiredO2: 21, desiredHe: 35));
+      expect(l.headlineText, '55');
+      expect(l.ocModLine, 'MOD 1.6: 64 m');
+    });
+
+    test('the 1.4 for deeper mixes setting does not change an OC label', () {
+      final off = _label(tx);
+      final on = _label(tx, use14: true);
+      expect(on.headlineText, off.headlineText);
+      expect(on.headlineCaption, off.headlineCaption);
+      expect(on.ocModLine, off.ocModLine);
+    });
+
+    test('a hard mismatch prints the analysed gas on an OC label', () {
+      final l = _label(oc(21.0, 10.0, desiredO2: 21, desiredHe: 35));
+      expect(l.mixName, 'Tx21/10');
+      expect(l.barTag, 'OC');
+    });
+
+    test('no usable depth prints dashes', () {
+      final l = _label(oc(0, 0));
+      expect(l.headlineText, '–');
+      expect(l.ocModLine, 'MOD 1.6: –');
+    });
+
+    test('bailout and deco keep the single-MOD label', () {
+      for (final role in [GasRole.bailout, GasRole.deco]) {
+        final l = _label(_analysis(20.6, 33.8,
+            desiredO2: 21, desiredHe: 35, role: role));
+        expect(l.kind, CylinderLabelKind.bailout);
+        expect(l.barTag, isNull);
+        expect(l.headlineCaption, 'MOD 1.6');
+        expect(l.ocModLine, isNull);
+        expect(l.mod16Meters, isNull);
+      }
+    });
+
+    test('the working ppO2 does not change a bailout or diluent label', () {
+      final bail = _analysis(20.6, 33.8, desiredO2: 21, desiredHe: 35);
+      expect(_label(bail, ocPpo2: 1.3).headlineText,
+          _label(bail, ocPpo2: 1.4).headlineText);
+      final dil = _analysis(20.6, 33.8,
+          desiredO2: 21, desiredHe: 35, role: GasRole.diluent);
+      expect(_label(dil, ocPpo2: 1.3).headlineText, '42');
+    });
+  });
+
   group('diluent label', () {
     final dil = _analysis(20.6, 33.8,
         desiredO2: 21, desiredHe: 35, role: GasRole.diluent);
@@ -386,15 +499,19 @@ void main() {
   });
 
   group('new roles', () {
-    test('deco and backgas print like bailout', () {
+    test('deco prints like bailout', () {
       final base =
           _label(_analysis(50, 0, desiredO2: 50, desiredHe: 0));
-      for (final role in [GasRole.deco, GasRole.backgas]) {
-        final l = _label(
-            _analysis(50, 0, desiredO2: 50, desiredHe: 0, role: role));
-        expect(l.kind, CylinderLabelKind.bailout);
-        expect(l.headlineMeters, base.headlineMeters);
-      }
+      final l = _label(_analysis(50, 0,
+          desiredO2: 50, desiredHe: 0, role: GasRole.deco));
+      expect(l.kind, CylinderLabelKind.bailout);
+      expect(l.headlineMeters, base.headlineMeters);
+    });
+
+    test('backgas gets the OC label', () {
+      final l = _label(_analysis(50, 0,
+          desiredO2: 50, desiredHe: 0, role: GasRole.backgas));
+      expect(l.kind, CylinderLabelKind.oc);
     });
   });
 

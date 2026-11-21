@@ -413,7 +413,7 @@ void main() {
       size: size,
       openBlendsDao: blends,
       labelPrinting: LabelPrintService(
-        render: (label) async => LabelBitmap.blank(384, 240),
+        render: (label, _) async => LabelBitmap.blank(384, 240),
         printerFor: (_) => FakeLabelPrinter(),
         scanner: FakeLabelPrinterScanner(),
         printerId: () => 'dev-1',

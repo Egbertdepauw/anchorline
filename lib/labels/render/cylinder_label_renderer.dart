@@ -3,7 +3,8 @@
 ///
 /// The only Flutter code under `lib/labels/`. The label model decides every
 /// number and string; this file only lays them out, at printer resolution
-/// (384 x 240 dots, 203 dpi), with all ink inside the 12-dot safe margin:
+/// (203 dpi, 384 dots wide, the height of the [LabelSize]), with all ink
+/// inside the 12-dot safe margin. The 50 x 30 mm layout:
 ///
 /// ```
 /// ┌──────────────────────────────────────┐
@@ -15,6 +16,16 @@
 /// │ O2 20.6  He 33.8           31 Oct 26 │  footer
 /// └──────────────────────────────────────┘
 /// ```
+///
+/// The OC label (Backgas) is laid out like the diluent one: an `OC` tag, the
+/// headline captioned `ppO2 1.4`, and a centred `MOD 1.6: 67 m` line in
+/// place of the diluent line.
+///
+/// The sizes differ only in their [_Metrics]. A 40 mm wide label is drawn in
+/// the 320 dots centred in the bitmap (see [kNarrowLabelOffsetDots]). The
+/// 50 x 50 and 50 x 80 mm labels put the bar on top and the footer at the
+/// bottom, and stack the headline (the depth with its `m`, the caption
+/// centred under it) in the space between, so the depth gets the full width.
 ///
 /// * The mix name is never shortened. The initials after it get whatever
 ///   width is left, ellipsized, and are left out when there is no room.
@@ -75,14 +86,15 @@ class CylinderLabelRender {
 
 /// Renders [label] and reports where each element went.
 Future<CylinderLabelRender> renderCylinderLabelWithLayout(
-  CylinderLabel label,
-) async {
+  CylinderLabel label, [
+  LabelSize size = LabelSize.defaultSize,
+]) async {
   final recorder = ui.PictureRecorder();
-  final layout = _paintLabel(Canvas(recorder, _kCanvas), label);
+  final layout = _paintLabel(Canvas(recorder, _canvasFor(size)), label, size);
   final picture = recorder.endRecording();
   final ui.Image image;
   try {
-    image = await picture.toImage(kLabelWidthDots, kLabelHeightDots);
+    image = await picture.toImage(kLabelWidthDots, size.heightDots);
   } finally {
     picture.dispose();
   }
@@ -101,7 +113,7 @@ Future<CylinderLabelRender> renderCylinderLabelWithLayout(
     bitmap: bitmapFromRgba(
       rgba.buffer.asUint8List(rgba.offsetInBytes, rgba.lengthInBytes),
       kLabelWidthDots,
-      kLabelHeightDots,
+      size.heightDots,
     ),
     bar: layout.bar,
     mixName: layout.mixName,
@@ -111,15 +123,20 @@ Future<CylinderLabelRender> renderCylinderLabelWithLayout(
   );
 }
 
-/// The bitmap to print for [label].
-Future<LabelBitmap> renderCylinderLabel(CylinderLabel label) async =>
-    (await renderCylinderLabelWithLayout(label)).bitmap;
+/// The bitmap to print for [label] on a label of [size].
+Future<LabelBitmap> renderCylinderLabel(
+  CylinderLabel label, [
+  LabelSize size = LabelSize.defaultSize,
+]) async => (await renderCylinderLabelWithLayout(label, size)).bitmap;
 
 /// The 1-bit render of [label] as a black-and-white image, exactly what
 /// the printer gets. For golden tests and an on-screen preview. The caller
 /// disposes the image.
-Future<ui.Image> renderCylinderLabelImage(CylinderLabel label) async {
-  final bitmap = await renderCylinderLabel(label);
+Future<ui.Image> renderCylinderLabelImage(
+  CylinderLabel label, [
+  LabelSize size = LabelSize.defaultSize,
+]) async {
+  final bitmap = await renderCylinderLabel(label, size);
   final pixels = Uint8List(bitmap.width * bitmap.height * 4);
   for (var y = 0; y < bitmap.height; y++) {
     for (var x = 0; x < bitmap.width; x++) {
@@ -145,64 +162,176 @@ Future<ui.Image> renderCylinderLabelImage(CylinderLabel label) async {
 // ---------------------------------------------------------------------------
 // Layout, in dots.
 
-final Rect _kCanvas = Rect.fromLTWH(
-  0,
-  0,
-  kLabelWidthDots.toDouble(),
-  kLabelHeightDots.toDouble(),
-);
+Rect _canvasFor(LabelSize size) =>
+    Rect.fromLTWH(0, 0, kLabelWidthDots.toDouble(), size.heightDots.toDouble());
 
-/// Everything is drawn inside this, and the canvas is clipped to it.
-final Rect _kSafe = _kCanvas.deflate(kLabelSafeMarginDots.toDouble());
+/// Everything is drawn inside this, and the canvas is clipped to it: the
+/// label inside its own safe margin.
+Rect _safeFor(LabelSize size) {
+  final a = size.safeArea;
+  return Rect.fromLTWH(a.left, a.top, a.width, a.height);
+}
 
-/// Black bar along the top of the safe area.
-const double _kBarHeight = 52;
+/// Every size-dependent number of the layout, in dots. [_Metrics.of] gives
+/// the set for a [LabelSize]; the 50 x 30 mm set is the original design and
+/// its output must not change.
+///
+/// Thermal printing at 203 dpi loses thin strokes and small text, so no set
+/// goes under a 3-dot stroke, and small text keeps a cap height of about
+/// 19 dots (size 26) wherever the width allows. The 40 mm label is 64 dots
+/// narrower, so its footer shrinks (to about 21, a 15-dot cap) instead.
+class _Metrics {
+  const _Metrics({
+    required this.barHeight,
+    required this.barPadding,
+    required this.mixNameSize,
+    required this.tagHeight,
+    required this.tagTextSize,
+    required this.tagPaddingX,
+    required this.initialsSize,
+    required this.smallSize,
+    required this.smallMinSize,
+    required this.smallLineGap,
+    required this.headlineGapTop,
+    required this.headlineGapBottom,
+    required this.captionSize,
+    this.stacked = false,
+  });
 
-/// Inset of the bar's text from the bar's left and right ends.
-const double _kBarPadding = 10;
+  /// Black bar along the top of the safe area, and the inset of the bar's
+  /// text from the bar's left and right ends.
+  final double barHeight;
+  final double barPadding;
 
-/// Mix name: design size, and the floor it may shrink to so a long name
-/// still fits whole.
-const double _kMixNameSize = 40;
+  /// Mix name: design size. It may shrink to [_kMixNameMinSize] so a long
+  /// name still fits whole.
+  final double mixNameSize;
+
+  /// The `DIL` / `OC` tag: outlined box, vertically centred in the bar.
+  final double tagHeight;
+  final double tagTextSize;
+  final double tagPaddingX;
+
+  /// Initials: the size of the footer, give or take.
+  final double initialsSize;
+
+  /// Footer, diluent / OC line: the design size and the floor it shrinks
+  /// to when a wide line would leave too small a gap between its halves.
+  final double smallSize;
+  final double smallMinSize;
+
+  /// Space between a small line's baseline and the cap line of the one
+  /// below it.
+  final double smallLineGap;
+
+  /// Space between the bar and the headline's cap line, and between the
+  /// headline's baseline and the line below it.
+  final double headlineGapTop;
+  final double headlineGapBottom;
+
+  /// The headline caption's size (`MOD 1.6`).
+  final double captionSize;
+
+  /// Whether the caption sits centred under the depth (tall labels) rather
+  /// than beside it, with the `m` on top of it (30 mm labels).
+  final bool stacked;
+
+  static const _short = _Metrics(
+    barHeight: 52,
+    barPadding: 10,
+    mixNameSize: 40,
+    tagHeight: 34,
+    tagTextSize: 24,
+    tagPaddingX: 7,
+    initialsSize: 26,
+    smallSize: 26,
+    smallMinSize: 18,
+    smallLineGap: 10,
+    headlineGapTop: 12,
+    headlineGapBottom: 14,
+    captionSize: 26,
+  );
+
+  // 320 dots wide: the footer's own width needs size 21 or so.
+  static const _narrow = _Metrics(
+    barHeight: 52,
+    barPadding: 10,
+    mixNameSize: 40,
+    tagHeight: 32,
+    tagTextSize: 22,
+    tagPaddingX: 6,
+    initialsSize: 22,
+    smallSize: 26,
+    smallMinSize: 16,
+    smallLineGap: 10,
+    headlineGapTop: 12,
+    headlineGapBottom: 14,
+    captionSize: 22,
+  );
+
+  static const _tall50 = _Metrics(
+    barHeight: 60,
+    barPadding: 10,
+    mixNameSize: 44,
+    tagHeight: 38,
+    tagTextSize: 26,
+    tagPaddingX: 8,
+    initialsSize: 28,
+    smallSize: 26,
+    smallMinSize: 18,
+    smallLineGap: 12,
+    headlineGapTop: 24,
+    headlineGapBottom: 24,
+    captionSize: 34,
+    stacked: true,
+  );
+
+  static const _tall80 = _Metrics(
+    barHeight: 72,
+    barPadding: 12,
+    mixNameSize: 48,
+    tagHeight: 42,
+    tagTextSize: 28,
+    tagPaddingX: 9,
+    initialsSize: 30,
+    smallSize: 26,
+    smallMinSize: 18,
+    smallLineGap: 14,
+    headlineGapTop: 40,
+    headlineGapBottom: 40,
+    captionSize: 40,
+    stacked: true,
+  );
+
+  static _Metrics of(LabelSize size) => switch (size) {
+    LabelSize.mm50x30 => _short,
+    LabelSize.mm40x30 => _narrow,
+    LabelSize.mm50x50 => _tall50,
+    LabelSize.mm50x80 => _tall80,
+  };
+}
+
+/// The mix name's floor.
 const double _kMixNameMinSize = 20;
 
-/// The `DIL` tag: outlined box, vertically centred in the bar.
-const double _kTagHeight = 34;
+/// The tag's outline and corner.
 const double _kTagStroke = 3;
 const double _kTagRadius = 5;
-const double _kTagTextSize = 24;
-const double _kTagPaddingX = 7;
 
 /// Space between the tag and the mix name.
 const double _kTagGap = 10;
 
-/// Initials: same size as the footer, and the narrowest space worth
-/// drawing them in (less than this would be a letter and an ellipsis).
-const double _kInitialsSize = 26;
+/// The narrowest space worth drawing initials in (less than this would be a
+/// letter and an ellipsis).
 const double _kInitialsMinWidth = 48;
 
 /// Space between the mix name and the initials.
 const double _kInitialsGap = 16;
 
-/// Footer, diluent line and headline caption: 26 gives a 19-dot cap
-/// height. The footer is the widest line and is about as wide as the label
-/// allows at this size, so the footer and diluent line shrink together, by
-/// a dot or two, when a date like `28 May 26` would leave too small a gap.
-const double _kSmallSize = 26;
-const double _kSmallMinSize = 18;
-
 /// The smallest space between the left and right halves of the footer and
 /// the diluent line, so they never read as one run of text: nearly twice
 /// the double space inside `O2 20.6  He 33.8` (11 dots at size 26).
 const double _kSplitMinGap = 20;
-
-/// Space between the diluent line's baseline and the footer's cap line.
-const double _kSmallLineGap = 10;
-
-/// Space between the bar and the headline's cap line, and between the
-/// headline's baseline and the line below it.
-const double _kHeadlineGapTop = 12;
-const double _kHeadlineGapBottom = 14;
 
 /// The headline's floor; never reached by a real depth.
 const double _kHeadlineMinSize = 40;
@@ -213,8 +342,10 @@ const double _kUnitScale = 0.36;
 /// Space between the depth and the `m`/caption column.
 const double _kUnitGap = 8;
 
-/// Space between the `m` and the caption under it.
+/// Space between the `m` and the caption under it, and (stacked) between
+/// the depth's baseline and the caption's cap line.
 const double _kCaptionGap = 8;
+const double _kStackedCaptionGap = 18;
 
 // ---------------------------------------------------------------------------
 // Type.
@@ -333,27 +464,24 @@ double _fitSize(double max, double min, bool Function(double size) fits) {
 double _centredBaseline(double centre, double capHeight) =>
     (centre + capHeight / 2).roundToDouble();
 
-_Layout _paintLabel(Canvas canvas, CylinderLabel label) {
+_Layout _paintLabel(Canvas canvas, CylinderLabel label, LabelSize size) {
   final line = _Lines();
   try {
-    canvas.drawRect(_kCanvas, Paint()..color = _kWhite);
-    canvas.clipRect(_kSafe);
+    final m = _Metrics.of(size);
+    final safe = _safeFor(size);
+    canvas.drawRect(_canvasFor(size), Paint()..color = _kWhite);
+    canvas.clipRect(safe);
 
     // Bar: [tag] mix name ............ initials
-    final bar = Rect.fromLTWH(
-      _kSafe.left,
-      _kSafe.top,
-      _kSafe.width,
-      _kBarHeight,
-    );
+    final bar = Rect.fromLTWH(safe.left, safe.top, safe.width, m.barHeight);
     canvas.drawRect(bar, Paint()..color = _kBlack);
-    var x = bar.left + _kBarPadding;
-    final textRight = bar.right - _kBarPadding;
+    var x = bar.left + m.barPadding;
+    final textRight = bar.right - m.barPadding;
 
     Rect? tag;
     final tagText = label.barTag;
     if (tagText != null) {
-      tag = _paintTag(canvas, line, tagText, left: x, centre: bar.center.dy);
+      tag = _paintTag(canvas, line, m, tagText, left: x, centre: bar.center.dy);
       x = tag.right + _kTagGap;
     }
 
@@ -361,13 +489,16 @@ _Layout _paintLabel(Canvas canvas, CylinderLabel label) {
     // fits at the design size.
     final nameSpace = textRight - x;
     final nameSize = _fitSize(
-      _kMixNameSize,
+      m.mixNameSize,
       _kMixNameMinSize,
       (s) => line(label.mixName, size: s).width <= nameSpace,
     );
     final name = line(label.mixName, size: nameSize, color: _kWhite);
-    final mixName =
-        name.paint(canvas, x, _centredBaseline(bar.center.dy, name.capHeight));
+    final mixName = name.paint(
+      canvas,
+      x,
+      _centredBaseline(bar.center.dy, name.capHeight),
+    );
 
     Rect? initials;
     final by = label.analysedBy;
@@ -375,7 +506,7 @@ _Layout _paintLabel(Canvas canvas, CylinderLabel label) {
     if (by != null && initialsSpace >= _kInitialsMinWidth) {
       final i = line(
         by,
-        size: _kInitialsSize,
+        size: m.initialsSize,
         color: _kWhite,
         maxWidth: initialsSpace,
       );
@@ -386,43 +517,54 @@ _Layout _paintLabel(Canvas canvas, CylinderLabel label) {
       );
     }
 
-    // Footer along the bottom margin, the diluent line above it, both at
-    // one size.
+    // Footer along the bottom margin, the diluent / OC line above it, both
+    // at one size. A pair is left and right; a line with no right half (the
+    // OC line) is centred.
     final dilLeft = label.diluentLeft;
     final dilRight = label.diluentRight;
-    final splitLines = [
+    final ocMod = label.ocModLine;
+    final splitLines = <(String, String?)>[
       (label.footerLeft, label.footerRight),
       if (dilLeft != null && dilRight != null) (dilLeft, dilRight),
+      if (ocMod != null) (ocMod, null),
     ];
     final smallSize = _fitSize(
-      _kSmallSize,
-      _kSmallMinSize,
-      (s) => splitLines.every(
-        (p) =>
-            line(p.$1, size: s).width +
-                _kSplitMinGap +
-                line(p.$2, size: s).width <=
-            _kSafe.width,
-      ),
+      m.smallSize,
+      m.smallMinSize,
+      (s) => splitLines.every((p) {
+        final right = p.$2;
+        return right == null
+            ? line(p.$1, size: s).width <= safe.width
+            : line(p.$1, size: s).width +
+                      _kSplitMinGap +
+                      line(right, size: s).width <=
+                  safe.width;
+      }),
     );
     // Low enough for descenders (the "p" in "Sep") to end at the margin.
-    var baseline = (_kSafe.bottom - smallSize * _kDescentEm).floorToDouble();
+    var baseline = (safe.bottom - smallSize * _kDescentEm).floorToDouble();
     var smallTop = baseline;
     for (final (left, right) in splitLines) {
       final l = line(left, size: smallSize);
-      final r = line(right, size: smallSize);
-      l.paint(canvas, _kSafe.left, baseline);
-      r.paint(canvas, _kSafe.right - r.width, baseline);
+      if (right == null) {
+        l.paint(canvas, safe.left + (safe.width - l.width) / 2, baseline);
+      } else {
+        l.paint(canvas, safe.left, baseline);
+        final r = line(right, size: smallSize);
+        r.paint(canvas, safe.right - r.width, baseline);
+      }
       smallTop = baseline - l.capHeight;
-      baseline = (smallTop - _kSmallLineGap).floorToDouble();
+      baseline = (smallTop - m.smallLineGap).floorToDouble();
     }
 
     final headline = _paintHeadline(
       canvas,
       line,
       label,
-      top: bar.bottom + _kHeadlineGapTop,
-      bottom: smallTop - _kHeadlineGapBottom,
+      m,
+      safe,
+      top: bar.bottom + m.headlineGapTop,
+      bottom: smallTop - m.headlineGapBottom,
     );
 
     return (
@@ -442,16 +584,17 @@ _Layout _paintLabel(Canvas canvas, CylinderLabel label) {
 Rect _paintTag(
   Canvas canvas,
   _Lines line,
+  _Metrics m,
   String text, {
   required double left,
   required double centre,
 }) {
-  final t = line(text, size: _kTagTextSize, color: _kWhite);
+  final t = line(text, size: m.tagTextSize, color: _kWhite);
   final box = Rect.fromLTWH(
     left,
-    (centre - _kTagHeight / 2).roundToDouble(),
-    (t.width + 2 * (_kTagStroke + _kTagPaddingX)).ceilToDouble(),
-    _kTagHeight,
+    (centre - m.tagHeight / 2).roundToDouble(),
+    (t.width + 2 * (_kTagStroke + m.tagPaddingX)).ceilToDouble(),
+    m.tagHeight,
   );
   // The stroke runs half a stroke inside the box, so the outline covers
   // whole dots and its outer edge is exactly [box].
@@ -475,18 +618,38 @@ Rect _paintTag(
 
 /// Paints the depth, its `m` and the caption, centred across the safe
 /// width, with the depth's cap box filling [top] to [bottom] unless the
-/// width limits it. The caption shares the depth's baseline and the `m`
-/// sits on top of the caption.
+/// width limits it.
+///
+/// Beside (30 mm labels): the caption shares the depth's baseline and the
+/// `m` sits on top of the caption. Stacked (tall labels): the `m` follows
+/// the depth on its baseline and the caption is centred under the pair, the
+/// whole block centred between [top] and [bottom].
 Rect _paintHeadline(
   Canvas canvas,
   _Lines line,
-  CylinderLabel label, {
+  CylinderLabel label,
+  _Metrics m,
+  Rect safe, {
   required double top,
   required double bottom,
 }) {
   // No unit after the dash shown when there is no usable depth.
   final unit = label.headlineMeters == null ? null : 'm';
-  final caption = line(label.headlineCaption, size: _kSmallSize);
+  final caption = line(label.headlineCaption, size: m.captionSize);
+
+  if (m.stacked) {
+    return _paintStackedHeadline(
+      canvas,
+      line,
+      label,
+      m,
+      safe,
+      unit,
+      caption,
+      top: top,
+      bottom: bottom,
+    );
+  }
 
   double groupWidth(double size) {
     final number = line(label.headlineText, size: size, opsz: _kDisplayOpsz);
@@ -499,12 +662,12 @@ Rect _paintHeadline(
   final size = _fitSize(
     ((bottom - top) / _kCapHeightEm).floorToDouble(),
     _kHeadlineMinSize,
-    (s) => groupWidth(s) <= _kSafe.width,
+    (s) => groupWidth(s) <= safe.width,
   );
   final number = line(label.headlineText, size: size, opsz: _kDisplayOpsz);
-  final left = _kSafe.left + (_kSafe.width - groupWidth(size)) / 2;
-  final baseline =
-      (top + (bottom - top + number.capHeight) / 2).floorToDouble();
+  final left = safe.left + (safe.width - groupWidth(size)) / 2;
+  final baseline = (top + (bottom - top + number.capHeight) / 2)
+      .floorToDouble();
   final numberBox = number.paint(canvas, left, baseline);
 
   final columnLeft = numberBox.right + _kUnitGap;
@@ -520,4 +683,59 @@ Rect _paintHeadline(
     right = math.max(right, unitBox.right);
   }
   return Rect.fromLTRB(numberBox.left, numberBox.top, right, numberBox.bottom);
+}
+
+Rect _paintStackedHeadline(
+  Canvas canvas,
+  _Lines line,
+  CylinderLabel label,
+  _Metrics m,
+  Rect safe,
+  String? unit,
+  _Line caption, {
+  required double top,
+  required double bottom,
+}) {
+  double rowWidth(double size) {
+    final number = line(label.headlineText, size: size, opsz: _kDisplayOpsz);
+    final unitWidth = unit == null
+        ? 0.0
+        : line(unit, size: size * _kUnitScale, opsz: _kDisplayOpsz).width;
+    return number.width + (unit == null ? 0 : _kUnitGap + unitWidth);
+  }
+
+  // The depth's cap height, the gap and the caption's cap height must all
+  // fit the space as well as the row fitting the width.
+  final maxByHeight =
+      ((bottom - top - _kStackedCaptionGap - caption.capHeight) / _kCapHeightEm)
+          .floorToDouble();
+  final size = _fitSize(
+    maxByHeight,
+    _kHeadlineMinSize,
+    (s) => rowWidth(s) <= safe.width,
+  );
+  final number = line(label.headlineText, size: size, opsz: _kDisplayOpsz);
+  final blockHeight =
+      number.capHeight + _kStackedCaptionGap + caption.capHeight;
+  final numberBaseline =
+      (top + (bottom - top - blockHeight) / 2 + number.capHeight)
+          .floorToDouble();
+  final left = safe.left + (safe.width - rowWidth(size)) / 2;
+  final numberBox = number.paint(canvas, left, numberBaseline);
+  var right = numberBox.right;
+  if (unit != null) {
+    final u = line(unit, size: size * _kUnitScale, opsz: _kDisplayOpsz);
+    right = u.paint(canvas, numberBox.right + _kUnitGap, numberBaseline).right;
+  }
+  final captionBox = caption.paint(
+    canvas,
+    safe.left + (safe.width - caption.width) / 2,
+    (numberBaseline + _kStackedCaptionGap + caption.capHeight).floorToDouble(),
+  );
+  return Rect.fromLTRB(
+    math.min(numberBox.left, captionBox.left),
+    numberBox.top,
+    math.max(right, captionBox.right),
+    captionBox.bottom,
+  );
 }

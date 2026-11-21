@@ -9,13 +9,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 final _when = DateTime(2026, 10, 31, 18, 5);
 
-/// Everything printed must stay inside this (the 12-dot safe margin).
-final _safeArea = Rect.fromLTRB(
-  kLabelSafeMarginDots.toDouble(),
-  kLabelSafeMarginDots.toDouble(),
-  (kLabelWidthDots - kLabelSafeMarginDots).toDouble(),
-  (kLabelHeightDots - kLabelSafeMarginDots).toDouble(),
-);
+/// Everything printed must stay inside this (the 12-dot safe margin of the
+/// label, which for the 40 mm label sits inside the centred 320 dots).
+Rect _safeAreaOf(LabelSize size) => Rect.fromLTRB(
+      (size.offsetDots + kLabelSafeMarginDots).toDouble(),
+      kLabelSafeMarginDots.toDouble(),
+      (size.offsetDots + size.widthDots - kLabelSafeMarginDots).toDouble(),
+      (size.heightDots - kLabelSafeMarginDots).toDouble(),
+    );
 
 CylinderLabel _label(
   double o2,
@@ -25,6 +26,7 @@ CylinderLabel _label(
   GasRole role = GasRole.bailout,
   String? by,
   DateTime? when,
+  double ocWorkingPpo2 = 1.4,
 }) =>
     CylinderLabel.fromAnalysis(
       GasAnalysis(
@@ -39,6 +41,7 @@ CylinderLabel _label(
         gasRole: role,
       ),
       use14ForDeeperMixes: false,
+      ocWorkingPpo2: ocWorkingPpo2,
     );
 
 final _tx2135 = _label(20.6, 33.8, desiredO2: 21, desiredHe: 35, by: 'EdP');
@@ -51,6 +54,32 @@ final _tx2135Diluent = _label(
   desiredO2: 21,
   desiredHe: 35,
   role: GasRole.diluent,
+  by: 'EdP',
+);
+final _tx2135Oc = _label(
+  20.6,
+  33.8,
+  desiredO2: 21,
+  desiredHe: 35,
+  role: GasRole.backgas,
+  by: 'EdP',
+);
+final _ean32Oc = _label(
+  32.0,
+  0,
+  desiredO2: 32,
+  desiredHe: 0,
+  role: GasRole.backgas,
+  ocWorkingPpo2: 1.3,
+);
+
+/// A 3-digit headline (130 m) with the wider `ppO2 1.4` caption.
+final _tx1070Oc = _label(
+  10.0,
+  70.0,
+  desiredO2: 10,
+  desiredHe: 70,
+  role: GasRole.backgas,
   by: 'EdP',
 );
 final _longInitials = _label(
@@ -112,79 +141,121 @@ void main() {
     'Tx21/35 diluent': _tx2135Diluent,
     'long initials': _longInitials,
     'diluent dated 28 May 26': _mayDiluent,
+    'Tx21/35 OC': _tx2135Oc,
+    'EAN32 OC at 1.3': _ean32Oc,
+    'Tx10/70 OC (130 m)': _tx1070Oc,
   };
 
-  for (final sample in samples.entries) {
-    group(sample.key, () {
-      late CylinderLabelRender r;
-      setUpAll(() async {
-        r = await renderCylinderLabelWithLayout(sample.value);
-      });
+  for (final size in LabelSize.values) {
+    for (final sample in samples.entries) {
+      group('${sample.key} on ${size.displayName}', () {
+        late CylinderLabelRender r;
+        final safe = _safeAreaOf(size);
+        setUpAll(() async {
+          r = await renderCylinderLabelWithLayout(sample.value, size);
+        });
 
-      test('is 384 x 240 dots', () {
-        expect(r.bitmap.width, 384);
-        expect(r.bitmap.height, 240);
-      });
+        test('is 384 dots wide and as long as the size', () {
+          expect(r.bitmap.width, 384);
+          expect(r.bitmap.height, size.heightDots);
+        });
 
-      test('has no black pixel within 12 dots of an edge', () {
-        final outside = <String>[];
-        for (var y = 0; y < r.bitmap.height; y++) {
-          for (var x = 0; x < r.bitmap.width; x++) {
-            final inside = x >= 12 && x < 372 && y >= 12 && y < 228;
-            if (!inside && r.bitmap.isBlack(x, y)) outside.add('($x, $y)');
+        test('has no black pixel outside the label\'s safe margin', () {
+          final outside = <String>[];
+          for (var y = 0; y < r.bitmap.height; y++) {
+            for (var x = 0; x < r.bitmap.width; x++) {
+              final inside = x >= safe.left &&
+                  x < safe.right &&
+                  y >= safe.top &&
+                  y < safe.bottom;
+              if (!inside && r.bitmap.isBlack(x, y)) outside.add('($x, $y)');
+            }
           }
-        }
-        expect(outside, isEmpty);
-      });
+          expect(outside, isEmpty);
+        });
 
-      test('lays every element out inside the safe area', () {
-        expect(_within(r.bar, _safeArea), isTrue, reason: 'bar ${r.bar}');
-        expect(_within(r.mixName, _safeArea), isTrue,
-            reason: 'mixName ${r.mixName}');
-        expect(_within(r.headline, _safeArea), isTrue,
-            reason: 'headline ${r.headline}');
-        final initials = r.initials;
-        if (initials != null) {
-          expect(_within(initials, _safeArea), isTrue,
-              reason: 'initials $initials');
-        }
-        final tag = r.tag;
-        if (tag != null) {
-          expect(_within(tag, _safeArea), isTrue, reason: 'tag $tag');
-        }
-      });
-
-      test('draws a mostly black bar', () {
-        expect(_count(r.bitmap, r.bar),
-            greaterThanOrEqualTo(0.6 * _area(r.bar)));
-      });
-
-      test('draws the headline', () {
-        expect(_count(r.bitmap, r.headline), greaterThan(0));
-      });
-
-      if (sample.value.kind == CylinderLabelKind.diluent) {
-        test('puts an outlined DIL tag in the bar, left of the mix name', () {
+        test('lays every element out inside the safe area', () {
+          expect(_within(r.bar, safe), isTrue, reason: 'bar ${r.bar}');
+          expect(_within(r.mixName, safe), isTrue,
+              reason: 'mixName ${r.mixName}');
+          expect(_within(r.headline, safe), isTrue,
+              reason: 'headline ${r.headline}');
+          final initials = r.initials;
+          if (initials != null) {
+            expect(_within(initials, safe), isTrue,
+                reason: 'initials $initials');
+          }
           final tag = r.tag;
-          expect(tag, isNotNull);
-          expect(_within(tag!, r.bar), isTrue,
-              reason: 'tag $tag, bar ${r.bar}');
-          expect(tag.right, lessThanOrEqualTo(r.mixName.left));
-          expect(_count(r.bitmap, tag, black: false), greaterThan(0));
+          if (tag != null) {
+            expect(_within(tag, safe), isTrue, reason: 'tag $tag');
+          }
         });
-      } else {
-        test('has no tag', () {
-          expect(r.tag, isNull);
+
+        test('draws a mostly black bar', () {
+          expect(_count(r.bitmap, r.bar),
+              greaterThanOrEqualTo(0.6 * _area(r.bar)));
         });
-      }
-    });
+
+        test('draws the headline', () {
+          expect(_count(r.bitmap, r.headline), greaterThan(0));
+        });
+
+        if (sample.value.kind != CylinderLabelKind.bailout) {
+          test('puts an outlined tag in the bar, left of the mix name', () {
+            final tag = r.tag;
+            expect(tag, isNotNull);
+            expect(_within(tag!, r.bar), isTrue,
+                reason: 'tag $tag, bar ${r.bar}');
+            expect(tag.right, lessThanOrEqualTo(r.mixName.left));
+            expect(_count(r.bitmap, tag, black: false), greaterThan(0));
+          });
+        } else {
+          test('has no tag', () {
+            expect(r.tag, isNull);
+          });
+        }
+      });
+    }
   }
 
-  test('fits the 130 m headline (Tx11/70 at 11.4 %) inside the margin',
+  test('the 40 mm label is the 50 mm one centred: nothing in the outer 32 dots',
+      () async {
+    final r = await renderCylinderLabelWithLayout(_tx2135, LabelSize.mm40x30);
+    for (var y = 0; y < r.bitmap.height; y++) {
+      for (var x = 0; x < 32 + 12; x++) {
+        expect(r.bitmap.isBlack(x, y), isFalse, reason: '($x, $y)');
+        expect(r.bitmap.isBlack(383 - x, y), isFalse, reason: '(${383 - x}, $y)');
+      }
+    }
+    // The bar spans the label's own safe width, centred in the bitmap.
+    expect(r.bar.left, 44);
+    expect(r.bar.right, 340);
+  });
+
+  test('a taller label gets a bigger headline depth', () async {
+    Future<double> height(LabelSize size) async =>
+        (await renderCylinderLabelWithLayout(_tx2135, size)).headline.height;
+    final short = await height(LabelSize.mm50x30);
+    final tall = await height(LabelSize.mm50x50);
+    final taller = await height(LabelSize.mm50x80);
+    expect(tall, greaterThan(short));
+    expect(taller, greaterThan(tall));
+  });
+
+  test('50 x 30 is unchanged by the size parameter', () async {
+    final implicit = await renderCylinderLabel(_tx2135);
+    final explicit = await renderCylinderLabel(_tx2135, LabelSize.mm50x30);
+    expect(implicit.bits, explicit.bits);
+  });
+
+  test('fits the 130 m headline (Tx11/70 at 11.4 %) inside the margin, at every size',
       () async {
     expect(_tx1170.headlineText, '130');
-    final r = await renderCylinderLabelWithLayout(_tx1170);
-    expect(r.headline.right, lessThanOrEqualTo(372));
+    for (final size in LabelSize.values) {
+      final r = await renderCylinderLabelWithLayout(_tx1170, size);
+      expect(r.headline.right, lessThanOrEqualTo(_safeAreaOf(size).right),
+          reason: size.displayName);
+    }
   });
 
   test('renderCylinderLabel returns the bitmap of the layout render',
@@ -229,7 +300,39 @@ void main() {
           await renderCylinderLabelImage(g.value),
           matchesGoldenFile('goldens/${g.key}.png'),
         );
-      }, skip: !Platform.isMacOS);
+      }, skip: !_compareGoldens);
+    }
+
+    // The other sizes: bailout, diluent and OC at each. The 50 x 30 OC
+    // label is `tx2135_oc`; the rest are named `<layout>_<size>`.
+    test('tx2135_oc', () async {
+      await expectLater(
+        await renderCylinderLabelImage(_tx2135Oc),
+        matchesGoldenFile('goldens/tx2135_oc.png'),
+      );
+    }, skip: !_compareGoldens);
+    final layouts = <String, CylinderLabel>{
+      'bailout': _tx2135,
+      'diluent': _tx2135Diluent,
+      'oc': _tx2135Oc,
+      'oc_130m': _tx1070Oc,
+    };
+    for (final size in LabelSize.values) {
+      if (size == LabelSize.mm50x30) continue;
+      for (final g in layouts.entries) {
+        test('${g.key}_${size.key}', () async {
+          await expectLater(
+            await renderCylinderLabelImage(g.value, size),
+            matchesGoldenFile('goldens/${g.key}_${size.key}.png'),
+          );
+        }, skip: !_compareGoldens);
+      }
     }
   });
 }
+
+/// Font rasterization differs between macOS and the Ubuntu CI runners, so
+/// the goldens are only compared on macOS (or when `ANCHORLINE_GOLDENS` is
+/// set, to look at a render on another platform).
+final bool _compareGoldens =
+    Platform.isMacOS || Platform.environment.containsKey('ANCHORLINE_GOLDENS');

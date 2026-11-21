@@ -12,12 +12,13 @@ import '../_helpers/fake_label_printer.dart';
 final _when = DateTime(2026, 10, 31, 18, 5);
 
 /// An EAN32 with no desired mix: 1.6 gives a 40 m MOD, 1.4 a 33 m one.
-GasAnalysis _analysis() => GasAnalysis(
+GasAnalysis _analysis({GasRole role = GasRole.bailout}) => GasAnalysis(
       id: 'a1',
       analysedAt: _when,
       o2Percent: 32,
       hePercent: 0,
       stable: true,
+      gasRole: role,
     );
 
 /// A [LabelPrintService] wired to a [FakeLabelPrinter], with the settings
@@ -32,8 +33,9 @@ class _Rig {
   })  : printer = printer ?? FakeLabelPrinter(),
         scanner = FakeLabelPrinterScanner() {
     service = LabelPrintService(
-      render: (label) async {
+      render: (label, size) async {
         rendered.add(label);
+        renderedSizes.add(size);
         return bitmap;
       },
       printerFor: (id) {
@@ -43,6 +45,8 @@ class _Rig {
       scanner: scanner,
       printerId: () => printerId,
       use14ForDeeperMixes: () => use14,
+      ocWorkingPpo2: () => ocPpo2,
+      labelSize: () => size,
       connectTimeout: connectTimeout,
       now: () => now ?? _when,
     );
@@ -52,9 +56,12 @@ class _Rig {
   final FakeLabelPrinterScanner scanner;
   final bitmap = LabelBitmap.blank(384, 240);
   final rendered = <CylinderLabel>[];
+  final renderedSizes = <LabelSize>[];
   final requestedIds = <String>[];
   String? printerId;
   bool use14;
+  double ocPpo2 = 1.4;
+  LabelSize size = LabelSize.mm50x30;
   late final LabelPrintService service;
 }
 
@@ -111,7 +118,7 @@ LabelPrintService _serviceOn(
 }) {
   var next = 0;
   return LabelPrintService(
-    render: render ?? (_) async => LabelBitmap.blank(384, 240),
+    render: render ?? (_, _) async => LabelBitmap.blank(384, 240),
     printerFor: (_) => printers[next++],
     scanner: FakeLabelPrinterScanner(),
     printerId: () => 'printer-1',
@@ -142,7 +149,7 @@ void main() {
   // cut it off and hide its more specific error.
   test('waits 25 s for a connect by default', () {
     final service = LabelPrintService(
-      render: (_) async => LabelBitmap.blank(384, 240),
+      render: (_, _) async => LabelBitmap.blank(384, 240),
       printerFor: (_) => FakeLabelPrinter(),
       scanner: FakeLabelPrinterScanner(),
       printerId: () => 'printer-1',
@@ -234,7 +241,7 @@ void main() {
       final printer = FakeLabelPrinter();
       final service = _serviceOn(
         [printer],
-        render: (_) async {
+        render: (_, _) async {
           if (++renders == 1) throw StateError('render bug');
           return LabelBitmap.blank(384, 240);
         },
@@ -441,7 +448,7 @@ void main() {
     test('a render error never connects', () async {
       final printer = FakeLabelPrinter();
       final service = LabelPrintService(
-        render: (_) async => throw StateError('render failed'),
+        render: (_, _) async => throw StateError('render failed'),
         printerFor: (_) => printer,
         scanner: FakeLabelPrinterScanner(),
         printerId: () => 'printer-1',
@@ -489,6 +496,43 @@ void main() {
       expect(label.headlineText, '33');
       rig.use14 = false;
       expect(rig.service.labelFor(_analysis()).headlineCaption, 'MOD 1.6');
+    });
+  });
+
+  group('label size and OC working ppO2', () {
+    test('the label is rendered for the current size', () async {
+      final rig = _Rig();
+      await rig.service.printTestLabel();
+      rig.size = LabelSize.mm50x80;
+      await rig.service.printTestLabel();
+      await rig.service.printAnalysis(_analysis());
+      expect(rig.renderedSizes,
+          [LabelSize.mm50x30, LabelSize.mm50x80, LabelSize.mm50x80]);
+    });
+
+    test('labelFor reads the OC working ppO2 at call time', () {
+      final rig = _Rig();
+      final backgas = _analysis(role: GasRole.backgas);
+      expect(rig.service.labelFor(backgas).headlineCaption, 'ppO2 1.4');
+      rig.ocPpo2 = 1.3;
+      expect(rig.service.labelFor(backgas).headlineCaption, 'ppO2 1.3');
+    });
+
+    test('a service built without the settings uses 1.4 and 50 x 30',
+        () async {
+      final sizes = <LabelSize>[];
+      final service = LabelPrintService(
+        render: (_, size) async {
+          sizes.add(size);
+          return LabelBitmap.blank(384, 240);
+        },
+        printerFor: (_) => FakeLabelPrinter(),
+        scanner: FakeLabelPrinterScanner(),
+        printerId: () => 'p',
+        use14ForDeeperMixes: () => false,
+      );
+      await service.printTestLabel();
+      expect(sizes, [LabelSize.mm50x30]);
     });
   });
 

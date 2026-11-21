@@ -51,7 +51,7 @@ LabelPrintService _service(
 }) {
   var next = 0;
   return LabelPrintService(
-    render: (label) async {
+    render: (label, _) async {
       rendered?.add(label);
       return LabelBitmap.blank(384, 240);
     },
@@ -386,7 +386,7 @@ void main() {
         dao: dao,
         openBlend: const DesiredMix(21, 35),
         labelPrinting: LabelPrintService(
-          render: (label) async {
+          render: (label, _) async {
             savedBeforePrint = dao.added.length == 1;
             rendered.add(label);
             return LabelBitmap.blank(384, 240);
