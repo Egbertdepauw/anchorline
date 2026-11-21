@@ -314,6 +314,10 @@ class _Metrics {
 /// The mix name's floor.
 const double _kMixNameMinSize = 20;
 
+/// The smallest the mix name may get to make room for the initials on the
+/// tall labels.
+const double _kTallNameMinSize = 40;
+
 /// The tag's outline and corner.
 const double _kTagStroke = 3;
 const double _kTagRadius = 5;
@@ -488,11 +492,28 @@ _Layout _paintLabel(Canvas canvas, CylinderLabel label, LabelSize size) {
     // Never shortened: shrinks instead, though every name the app makes
     // fits at the design size.
     final nameSpace = textRight - x;
-    final nameSize = _fitSize(
+    var nameSize = _fitSize(
       m.mixNameSize,
       _kMixNameMinSize,
       (s) => line(label.mixName, size: s).width <= nameSpace,
     );
+    // On the tall labels the initials are part of the design, so the name
+    // gives up a few dots of size (down to [_kTallNameMinSize]) to leave
+    // them room, rather than leaving them out. The 30 mm labels keep their
+    // sizes.
+    final by = label.analysedBy;
+    if (m.stacked && by != null) {
+      final initialsWidth = line(by, size: m.initialsSize).width;
+      final reserved = initialsWidth + _kInitialsGap;
+      final shrunk = _fitSize(
+        m.mixNameSize,
+        _kTallNameMinSize,
+        (s) => line(label.mixName, size: s).width <= nameSpace - reserved,
+      );
+      if (line(label.mixName, size: shrunk).width <= nameSpace - reserved) {
+        nameSize = shrunk;
+      }
+    }
     final name = line(label.mixName, size: nameSize, color: _kWhite);
     final mixName = name.paint(
       canvas,
@@ -501,7 +522,6 @@ _Layout _paintLabel(Canvas canvas, CylinderLabel label, LabelSize size) {
     );
 
     Rect? initials;
-    final by = label.analysedBy;
     final initialsSpace = textRight - (mixName.right + _kInitialsGap);
     if (by != null && initialsSpace >= _kInitialsMinWidth) {
       final i = line(
