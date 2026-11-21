@@ -23,6 +23,7 @@ Shows a live reading from a Divesoft SOLO gas analyzer, works out planning value
 ## Good to know
 
 - **Save & print** and **Print a label on each OK** appear after you set up a label printer (**Set up label printer**).
+- Labels are 50 × 30 mm direct thermal gap labels for the Phomemo M110 (see [Gas settings](/manual/settings-gas)).
 - A save that closes an open blend says so in its message, for example "closes Tx18/45".
 - Room air is not logged on OK. Tap **Save** for it.
 - An OK press before the reading is stable is saved and marked in the log.

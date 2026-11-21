@@ -23,4 +23,5 @@ Defaults for blending and analysing gas: what your fills cost, what a new blend 
 ## Good to know
 
 - Where label printing is available, a **Label printer** section appears below the analyzer settings.
+- Cylinder labels are printed on a **Phomemo M110** and need **50 × 30 mm** labels (50 mm wide, 30 mm long): direct thermal gap labels, paper or synthetic ("waterproof"). Other Phomemo-compatible gap labels of that size work too. Other sizes are not supported yet.
 - The prices carry no currency; they are just numbers you choose.
