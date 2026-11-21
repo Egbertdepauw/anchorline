@@ -789,6 +789,22 @@ class _ImportScreenState extends State<ImportScreen> {
     ));
   }
 
+  /// The dives the computer would not send (#261), on Done and on the
+  /// error screen; nothing when there were none.
+  List<Widget> _refusedDives(ImportNotifier n, ThemeData theme) {
+    final refused = n.refusedDiveNumbers;
+    if (refused.isEmpty) return const [];
+    return [
+      const SizedBox(height: 8),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Text(refusedDivesLabel(refused),
+            textAlign: TextAlign.center,
+            style: TextStyle(color: theme.colorScheme.error, fontSize: 14)),
+      ),
+    ];
+  }
+
   Widget _buildDone(ImportNotifier n, ThemeData theme) {
     return Center(child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -801,6 +817,7 @@ class _ImportScreenState extends State<ImportScreen> {
           const SizedBox(height: 8),
           Text('${n.failedCount} failed', style: TextStyle(color: theme.colorScheme.error, fontSize: 14)),
         ],
+        ..._refusedDives(n, theme),
         const SizedBox(height: 32),
         FilledButton.icon(
           onPressed: widget.onViewDives,
@@ -894,6 +911,7 @@ class _ImportScreenState extends State<ImportScreen> {
           Text('${n.downloadedCount} dives were imported successfully',
               style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
         ],
+        ..._refusedDives(n, theme),
         const SizedBox(height: 32),
         // A file import has no scan to retry: go back to the start.
         if (n.isFitImport)

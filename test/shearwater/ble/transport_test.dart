@@ -97,6 +97,96 @@ void main() {
     }
   });
 
+  group('a dive the computer refuses (#261)', () {
+    /// The recorded trace with [refuseInits] / [disconnectDuring], read up
+    /// to the manifest, and the three newest dives (716-718) downloaded.
+    /// The stream's events and its error, if any.
+    Future<({List<DownloadEvent> events, Object? error, TraceMockBle ble})>
+        downloadThree(
+            {int? refuse716,
+            ({int address, int afterBlocks})? disconnectDuring}) async {
+      // Filled in below, once the manifest gives dive 716's address.
+      final ble = TraceMockBle('test/fixtures/raw/subsurface2.combined.txt',
+          refuseInits: <int, int>{}, disconnectDuring: disconnectDuring);
+      final t = ShearwaterBleTransport(divePipelineWindow: 1)
+        ..connectWithIo(ble);
+      final info = await t.readDeviceInfo();
+      final three = (await t.readManifest()).take(3).toList();
+      if (refuse716 != null) {
+        final e716 = three.firstWhere((e) => e.diveNumber == 716);
+        ble.refuseInits[info.baseAddress + e716.address] = refuse716;
+      }
+      final events = <DownloadEvent>[];
+      Object? error;
+      await t.downloadDives(three).handleError((Object e) => error = e)
+          .forEach(events.add);
+      return (events: events, error: error, ble: ble);
+    }
+
+    List<int> downloaded(List<DownloadEvent> events) => [
+          for (final e in events)
+            if (e is DownloadedDive) e.manifest.diveNumber,
+        ];
+
+    test('a refusal of the first of three dives skips it and imports the rest',
+        () async {
+      final r = await downloadThree(refuse716: 0x31);
+
+      expect(r.error, isNull);
+      expect(r.ble.refusedInits, hasLength(1));
+      final refused = r.events.whereType<DownloadRefusedDive>().toList();
+      expect([for (final e in refused) e.manifest.diveNumber], [716]);
+      expect(refused.single.errorCode, 0x31);
+      // The refusal comes in download order, before the next dive starts.
+      final order = [
+        for (final e in r.events)
+          if (e is DownloadRefusedDive)
+            'refused ${e.manifest.diveNumber}'
+          else if (e is DownloadedDive)
+            'dive ${e.manifest.diveNumber}',
+      ];
+      expect(order, ['refused 716', 'dive 717', 'dive 718']);
+      // No Quit after the refused Init (the replay would not match it), and
+      // dives 717 and 718 are still their own bytes.
+      expect(downloaded(r.events), [717, 718]);
+      for (final d in r.events.whereType<DownloadedDive>()) {
+        final fixture = File(
+                'test/fixtures/dives/dive_${d.manifest.diveNumber}.bin')
+            .readAsBytesSync();
+        expect(d.data, equals(fixture),
+            reason: 'dive ${d.manifest.diveNumber}');
+      }
+    });
+
+    test('an init NAK with a sequence error still fails the import',
+        () async {
+      final r = await downloadThree(refuse716: 0x24);
+
+      expect(r.error, isA<DownloadInitNakException>());
+      expect(r.events.whereType<DownloadRefusedDive>(), isEmpty);
+      expect(downloaded(r.events), isEmpty);
+    });
+
+    test('a disconnect mid-dive still fails the import', () async {
+      // Dive 717's address, from the manifest of a separate replay.
+      final probe = TraceMockBle('test/fixtures/raw/subsurface2.combined.txt');
+      final pt = ShearwaterBleTransport(divePipelineWindow: 1)
+        ..connectWithIo(probe);
+      final info = await pt.readDeviceInfo();
+      final e717 =
+          (await pt.readManifest()).firstWhere((e) => e.diveNumber == 717);
+
+      final r = await downloadThree(disconnectDuring: (
+        address: info.baseAddress + e717.address,
+        afterBlocks: 2,
+      ));
+
+      expect(r.error, isA<StateError>());
+      expect(downloaded(r.events), [716]);
+      expect(r.events.whereType<DownloadRefusedDive>(), isEmpty);
+    });
+  });
+
   group('model number (RDBI 0x8060)', () {
     /// The recorded trace, with RDBI 0x8060 (which it doesn't have)
     /// answered by [modelResponse], or NAKed when that's null.

@@ -22,7 +22,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// (the trace predates RDBI 0x8060) is answered from [rdbiResponses], or
 /// with a NAK when the identifier isn't in there. [rewriteResponse] can
 /// replace recorded responses, to replay the trace with variations the
-/// recorded device never sent.
+/// recorded device never sent. [refuseInits] answers the Init of an address
+/// with a NAK instead of its recording, and [disconnectDuring] drops the
+/// link part-way through the download of an address.
 class TraceMockBle implements BleIo {
   final List<_TraceEntry> _entries;
 
@@ -49,12 +51,34 @@ class TraceMockBle implements BleIo {
   /// Payload of a response to an unrecorded request, sent on the next read.
   List<int>? _unrecordedResponse;
 
+  /// Download addresses whose Init is answered with `7F 35 <NRC>`, the
+  /// NRC per address. The replay stays where it was, so any request but
+  /// another Init after the NAK fails to match the recording.
+  final Map<int, int> refuseInits;
+
+  /// Drops the link once [afterBlocks] block responses of the download of
+  /// [address] have been read: the next read throws what
+  /// `FlutterBluePlusBleIo` throws when the link goes.
+  final ({int address, int afterBlocks})? disconnectDuring;
+
+  /// Addresses whose Init was answered with a NAK from [refuseInits].
+  final List<int> refusedInits = [];
+
+  /// The address of the latest Init, and reads since it (its response
+  /// included).
+  int? _initAddressSent;
+  int _readsSinceInit = 0;
+
   TraceMockBle(String tracePath,
       {Map<int, List<int>> rdbiResponses = const {},
-      List<int>? Function(Uint8List payload)? rewriteResponse})
-      : this._(_parseTrace(tracePath), rdbiResponses, rewriteResponse);
+      List<int>? Function(Uint8List payload)? rewriteResponse,
+      Map<int, int> refuseInits = const {},
+      ({int address, int afterBlocks})? disconnectDuring})
+      : this._(_parseTrace(tracePath), rdbiResponses, rewriteResponse,
+            refuseInits, disconnectDuring);
 
-  TraceMockBle._(this._entries, this.rdbiResponses, this.rewriteResponse)
+  TraceMockBle._(this._entries, this.rdbiResponses, this.rewriteResponse,
+      this.refuseInits, this.disconnectDuring)
       : _initsByAddress = _indexInits(_entries);
 
   @override
@@ -70,6 +94,14 @@ class TraceMockBle implements BleIo {
 
     final address = _initAddress(data);
     if (address != null) {
+      _initAddressSent = address;
+      _readsSinceInit = 0;
+      final nrc = refuseInits[address];
+      if (nrc != null) {
+        refusedInits.add(address);
+        _unrecordedResponse = [0x7F, 0x35, nrc];
+        return;
+      }
       if (next < _entries.length &&
           _initAddress(_entries[next].bytes) == null) {
         throw StateError('Download Init ${_hexBytes(request)} where the '
@@ -121,6 +153,13 @@ class TraceMockBle implements BleIo {
 
   @override
   Future<List<Uint8List>> readFrames() async {
+    _readsSinceInit++;
+    final drop = disconnectDuring;
+    if (drop != null &&
+        _initAddressSent == drop.address &&
+        _readsSinceInit > 1 + drop.afterBlocks) {
+      throw StateError('Disconnected');
+    }
     final unrecorded = _unrecordedResponse;
     if (unrecorded != null) {
       _unrecordedResponse = null;
@@ -409,6 +448,65 @@ void main() {
         ),
         throwsA(isA<ProtocolException>().having(
             (e) => e.message, 'message', contains('max packet 2306'))),
+      );
+    });
+  });
+
+  group('download init NAK', () {
+    Future<ShearwaterProtocol> afterManifest(TraceMockBle ble) async {
+      final p = ShearwaterProtocol(ble);
+      await p.rdbi(idSerial);
+      await p.rdbi(idFirmware);
+      await p.rdbi(idHardware);
+      await p.rdbi(idLogUpload);
+      for (var i = 0; i < 5; i++) {
+        await p.download(
+            address: manifestAddr, size: manifestSize, compressed: false);
+      }
+      return p;
+    }
+
+    test('throws DownloadInitNakException with the NRC', () async {
+      final ble = TraceMockBle('test/fixtures/raw/subsurface2.combined.txt',
+          refuseInits: {0x808A6AC0: 0x31});
+      final p = await afterManifest(ble);
+
+      await expectLater(
+        p.download(address: 0x808A6AC0, size: 0xFFFFFF, compressed: true),
+        throwsA(isA<DownloadInitNakException>()
+            .having((e) => e.errorCode, 'errorCode', 0x31)
+            .having((e) => e.refusesRequest, 'refusesRequest', isTrue)),
+      );
+      expect(ble.refusedInits, equals([0x808A6AC0]));
+    });
+
+    test('a sequence error or a pending response is not a refusal', () {
+      // 0x24: the device thinks a transfer is still open. 0x78: it will
+      // answer later. 0x11 / 0x7F: it does not take uploads at all now.
+      for (final nrc in [0x11, 0x24, 0x78, 0x7F]) {
+        expect(DownloadInitNakException(nrc).refusesRequest, isFalse,
+            reason: 'NRC 0x${nrc.toRadixString(16)}');
+      }
+      for (final nrc in [0x13, 0x22, 0x31, 0x70]) {
+        expect(DownloadInitNakException(nrc).refusesRequest, isTrue,
+            reason: 'NRC 0x${nrc.toRadixString(16)}');
+      }
+    });
+
+    test('a NAK for another service is not an init NAK', () async {
+      // A late `7F 36 24` from a previous download, read as the answer
+      // to this Init, says nothing about this dive.
+      final ble = TraceMockBle('test/fixtures/raw/subsurface2.combined.txt',
+          rewriteResponse: (payload) =>
+              payload.length == 3 && payload[0] == 0x75 && payload[2] == 0x92
+                  ? [0x7F, 0x36, 0x24]
+                  : null);
+      final p = await afterManifest(ble);
+
+      await expectLater(
+        p.download(address: 0x808A6AC0, size: 0xFFFFFF, compressed: true),
+        throwsA(isA<ProtocolException>().having(
+            (e) => e, 'type', isNot(isA<DownloadInitNakException>()))),
       );
     });
   });

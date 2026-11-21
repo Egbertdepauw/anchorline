@@ -106,6 +106,19 @@ class DownloadedDive extends DownloadEvent {
   DownloadedDive({required this.manifest, required this.data});
 }
 
+/// A dive the computer would not send: it answered the dive's download
+/// Init with a NAK that refuses that request only
+/// ([DownloadInitNakException.refusesRequest]). Nothing was downloaded for
+/// it, and the download carries on with the next dive.
+class DownloadRefusedDive extends DownloadEvent {
+  final ManifestEntry manifest;
+
+  /// The NAK's error code (ISO 14229 NRC), 0x31 in the case seen so far.
+  final int errorCode;
+
+  const DownloadRefusedDive({required this.manifest, required this.errorCode});
+}
+
 /// Shearwater BLE transport — the main import interface.
 ///
 /// Usage:
@@ -119,6 +132,7 @@ class DownloadedDive extends DownloadEvent {
 ///   switch (event) {
 ///     case DownloadProgressEvent(): /* update UI */
 ///     case DownloadedDive(): /* parse + persist */
+///     case DownloadRefusedDive(): /* tell the user it was skipped */
 ///   }
 /// }
 /// await transport.disconnect();
@@ -287,6 +301,11 @@ class ShearwaterBleTransport implements ShearwaterLink {
   ///   200 ms while its bytes arrive, and a saturated 100% one when it
   ///   completes, so the UI can briefly show a full bar.
   /// * [DownloadedDive] once per dive, right after its 100% event.
+  /// * [DownloadRefusedDive] instead, for a dive the computer would not
+  ///   send (#261). libdivecomputer ends the whole download there; this
+  ///   skips the dive, since its Init opened no transfer, and asks for the
+  ///   next one. Every other error, a dropped link, a timeout or a NAK
+  ///   during the blocks included, still ends the stream with that error.
   ///
   /// In May 2026 Anchorline asked for the manifest's `address`..`endAddress`
   /// range instead. That range is larger than the dive's data, so the
@@ -424,6 +443,22 @@ class ShearwaterBleTransport implements ShearwaterLink {
               ));
             },
           );
+        } on DownloadInitNakException catch (e, st) {
+          if (!e.refusesRequest) {
+            debugPrint('downloadDives: dive #${entry.diveNumber} '
+                '(addr=0x${address.toRadixString(16)}) FAILED: $e\n$st');
+            rethrow;
+          }
+          BleDebugLogger.instance.log(
+              'dive ${i + 1}/${entries.length}: #${entry.diveNumber} refused '
+              'by the computer (init NAK '
+              '0x${e.errorCode.toRadixString(16).padLeft(2, '0')}); '
+              'skipping it');
+          if (!controller.isClosed) {
+            controller.add(
+                DownloadRefusedDive(manifest: entry, errorCode: e.errorCode));
+          }
+          continue;
         } catch (e, st) {
           debugPrint('downloadDives: dive #${entry.diveNumber} '
               '(addr=0x${address.toRadixString(16)}) FAILED: $e\n$st');

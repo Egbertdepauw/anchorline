@@ -143,6 +143,19 @@ class DiveSourceDiveFailed extends DiveSourceEvent {
   });
 }
 
+/// A dive the computer would not send. Nothing was downloaded for it, so
+/// there is nothing to import; the download carries on with the next dive.
+/// Only Shearwater emits it (#261).
+class DiveSourceDiveRefused extends DiveSourceEvent {
+  final DiveListing listing;
+
+  /// The computer's reason code; for a Shearwater the NRC of the NAK it
+  /// answered the dive's download init with.
+  final int errorCode;
+
+  const DiveSourceDiveRefused({required this.listing, required this.errorCode});
+}
+
 /// The end of a download, for engines that learn the result of the whole
 /// download only at its end (libdivecomputer). Shearwater never emits it.
 class DiveSourceFinished extends DiveSourceEvent {

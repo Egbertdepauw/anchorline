@@ -268,6 +268,16 @@ class ShearwaterProtocol {
     if (!initResponse.isValid) {
       throw ProtocolException('Invalid download init response');
     }
+    // A NAK for this Init (`7F 35 <NRC>`, three bytes, as libdivecomputer
+    // recognises an RDBI NAK) means the device did not start the upload. A
+    // NAK naming another service is a stray answer to an older request and
+    // falls through to the parse below, which rejects it.
+    final initPayload = initResponse.payload;
+    if (initResponse.isNak &&
+        initPayload.length == 3 &&
+        initPayload[1] == 0x35) {
+      throw DownloadInitNakException(initResponse.nakErrorCode);
+    }
     final maxPacket = parseDownloadInitResponse(initResponse.payload);
     _bleLog('  max packet $maxPacket bytes');
 
@@ -529,4 +539,30 @@ class RdbiNakException extends ProtocolException {
 
   RdbiNakException(this.id, this.errorCode)
       : super('RDBI NAK: error code 0x${errorCode.toRadixString(16)}');
+}
+
+/// The device answered a download Init (0x35) with a NAK: it would not
+/// start the upload. No transfer was opened, so there is nothing to Quit,
+/// and the next Init can follow straight away.
+///
+/// A Perdix AI answered the Init of its oldest dive with `7F 35 31` (NRC
+/// 0x31, requestOutOfRange) during a full re-import (#261).
+class DownloadInitNakException extends ProtocolException {
+  /// The NAK's error code, an ISO 14229 negative response code (NRC).
+  final int errorCode;
+
+  /// NRCs that say something about the session rather than about this
+  /// request: 0x11 serviceNotSupported and 0x7F
+  /// serviceNotSupportedInActiveSession (no uploads at all right now),
+  /// 0x24 requestSequenceError (the device thinks a transfer is still
+  /// open), 0x78 responsePending (a real answer is still to come).
+  static const _sessionErrorCodes = {0x11, 0x24, 0x78, 0x7F};
+
+  /// Whether the device refused this one request, so another address may
+  /// still download. False for an NRC that puts the session in doubt.
+  bool get refusesRequest => !_sessionErrorCodes.contains(errorCode);
+
+  DownloadInitNakException(this.errorCode)
+      : super('Download init NAK: error code '
+            '0x${errorCode.toRadixString(16).padLeft(2, '0')}');
 }

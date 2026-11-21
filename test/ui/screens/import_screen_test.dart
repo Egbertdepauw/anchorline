@@ -72,6 +72,27 @@ class _SpyNotifier extends ImportNotifier {
       selected = device.remoteId.str;
 }
 
+/// A notifier held in [state] after a Shearwater download of 306 dives that
+/// skipped [refusedDiveNumbers].
+class _AfterDownloadNotifier extends ImportNotifier {
+  _AfterDownloadNotifier(this.state, this.refusedDiveNumbers)
+      : super(
+          dao: _Dao(),
+          importStateDao: _StateDao(),
+          equipmentDao: _EquipDao(),
+          central: FakeBleCentral(),
+        );
+
+  @override
+  final ImportFlowState state;
+
+  @override
+  final List<int> refusedDiveNumbers;
+
+  @override
+  int get downloadedCount => 306;
+}
+
 class _NoLink implements LibdcBleLink {
   @override
   String get advertisedName => 'fake';
@@ -131,6 +152,42 @@ void main() {
   }
 
   setUp(() => central = FakeBleCentral());
+
+  group('dives the computer refused (#261)', () {
+    Future<void> showAfter(WidgetTester tester, ImportNotifier n) async {
+      tester.view.physicalSize = const Size(900, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(n.dispose);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: ImportScreen(notifier: n, onViewDives: () {})),
+      ));
+    }
+
+    testWidgets('Done names the skipped dive', (tester) async {
+      await showAfter(
+          tester, _AfterDownloadNotifier(ImportFlowState.done, [1]));
+      expect(find.text('Imported 306 dives'), findsOneWidget);
+      expect(find.text('Skipped dive #1: the dive computer would not send it.'),
+          findsOneWidget);
+    });
+
+    testWidgets('Done without refusals shows no skipped line', (tester) async {
+      await showAfter(tester, _AfterDownloadNotifier(ImportFlowState.done, []));
+      expect(find.textContaining('Skipped'), findsNothing);
+    });
+
+    testWidgets('an error after a refusal still names the skipped dive',
+        (tester) async {
+      await showAfter(
+          tester, _AfterDownloadNotifier(ImportFlowState.error, [1, 2]));
+      expect(
+          find.text(
+              'Skipped 2 dives the dive computer would not send: #1, #2.'),
+          findsOneWidget);
+    });
+  });
 
   testWidgets('an unchecked family shows "Not yet tested by us"',
       (tester) async {
