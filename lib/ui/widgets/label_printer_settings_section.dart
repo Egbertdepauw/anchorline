@@ -1,6 +1,6 @@
 /// Settings for the cylinder label printer (issue #114): find and pair a
-/// Bluetooth label printer, print a test label, forget the printer, and the
-/// "Use 1.4 for deeper mixes" switch.
+/// Bluetooth label printer, print a test label, forget the printer, the label
+/// size, the "Use 1.4 for deeper mixes" switch and the OC working ppO2.
 ///
 /// [LabelPrinterSettingsSection] sits in Settings, on the Gas tab, and is
 /// also what [LabelPrinterSettingsScreen] shows on its own, for the "Set up
@@ -11,7 +11,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../label_printer/label_bitmap.dart';
 import '../../label_printer/label_printer.dart';
+import '../../labels/cylinder_label.dart';
 import '../../labels/label_print_service.dart';
 import '../components/setting_row.dart';
 import '../notifiers/settings_notifier.dart';
@@ -80,6 +82,45 @@ class LabelPrinterSettingsSection extends StatelessWidget {
                 thickness: 1,
                 color: context.palette.surfaceRaised),
             SettingRow(
+              title: 'Label size',
+              helper: 'Width × length of the labels in the printer',
+              // Capped and expanded, so it can't overflow a narrow phone.
+              control: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 130),
+                child: DropdownButton<LabelSize>(
+                  key: const ValueKey('label-printer-size'),
+                  value: settings.labelSize,
+                  isDense: true,
+                  isExpanded: true,
+                  items: [
+                    for (final size in LabelSize.values)
+                      DropdownMenuItem(
+                        value: size,
+                        child: Text(
+                          size.displayName,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) settings.setLabelSize(v);
+                  },
+                ),
+              ),
+            ),
+            if (settings.labelSize == LabelSize.mm50x80)
+              SettingRow(
+                title: 'Rotate centre on 50 × 80',
+                helper: 'Turns the big depth 90° so it can be larger',
+                onTap: () => settings.setLabelRotateTallCentre(
+                    !settings.labelRotateTallCentre),
+                control: Switch(
+                  key: const ValueKey('label-printer-rotate-centre'),
+                  value: settings.labelRotateTallCentre,
+                  onChanged: settings.setLabelRotateTallCentre,
+                ),
+              ),
+            SettingRow(
               title: 'Use 1.4 for deeper mixes',
               helper: 'MOD at ppO₂ 1.4 below 50 % O₂. Off: 1.6 for all',
               onTap: () => settings.setLabelUse14ForDeeperMixes(
@@ -88,6 +129,24 @@ class LabelPrinterSettingsSection extends StatelessWidget {
                 key: const ValueKey('label-printer-use14'),
                 value: settings.labelUse14ForDeeperMixes,
                 onChanged: settings.setLabelUse14ForDeeperMixes,
+              ),
+            ),
+            SettingRow(
+              title: 'OC working ppO₂',
+              helper: 'Headline depth on Backgas labels',
+              control: SegmentedButton<double>(
+                key: const ValueKey('label-printer-oc-ppo2'),
+                showSelectedIcon: false,
+                segments: [
+                  for (final v in kOcWorkingPpo2Choices)
+                    ButtonSegment(
+                      value: v,
+                      label: Text(v.toStringAsFixed(1)),
+                    ),
+                ],
+                selected: {settings.labelOcWorkingPpo2},
+                onSelectionChanged: (s) =>
+                    settings.setLabelOcWorkingPpo2(s.first),
               ),
             ),
           ],

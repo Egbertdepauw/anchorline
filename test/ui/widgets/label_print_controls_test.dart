@@ -52,7 +52,7 @@ LabelPrintService _service(
   var next = 0;
   return LabelPrintService(
     render: render ??
-        (label) async {
+        (label, _, _) async {
           rendered?.add(label);
           return LabelBitmap.blank(384, 240);
         },
@@ -414,7 +414,7 @@ void main() {
       var renders = 0;
       final service = _service(
         [FakeLabelPrinter()],
-        render: (_) async {
+        render: (_, _, _) async {
           renders++;
           if (renders == 1) throw StateError('render bug');
           return LabelBitmap.blank(384, 240);
@@ -441,7 +441,7 @@ void main() {
       final reports = _captureReports();
       final service = _service(
         [FakeLabelPrinter()],
-        render: (_) async => throw StateError('render bug'),
+        render: (_, _, _) async => throw StateError('render bug'),
       );
 
       await _printFrom(tester, service);

@@ -41,11 +41,13 @@ class _Rig {
     final fakePrinter = printer ?? FakeLabelPrinter();
     final fakeScanner = scanner ?? FakeLabelPrinterScanner();
     final service = LabelPrintService(
-      render: render ?? (_) async => LabelBitmap.blank(384, 240),
+      render: render ?? (_, _, _) async => LabelBitmap.blank(384, 240),
       printerFor: (_) => fakePrinter,
       scanner: fakeScanner,
       printerId: () => settings.labelPrinterId,
       use14ForDeeperMixes: () => settings.labelUse14ForDeeperMixes,
+      ocWorkingPpo2: () => settings.labelOcWorkingPpo2,
+      labelSize: () => settings.labelSize,
     );
     return _Rig._(settings, fakePrinter, fakeScanner, service);
   }
@@ -287,6 +289,94 @@ void main() {
     });
   });
 
+  group('Label size', () {
+    testWidgets('shows 50 × 30 mm and picks another size', (tester) async {
+      final rig = await _Rig.build();
+      await tester.pumpWidget(rig.section);
+      expect(find.text('Label size'), findsOneWidget);
+      expect(
+        find.descendant(
+            of: _key('label-printer-size'), matching: find.text('50 × 30 mm')),
+        findsOneWidget,
+      );
+
+      await tester.tap(_key('label-printer-size'));
+      await tester.pumpAndSettle();
+      for (final name in [
+        '50 × 30 mm',
+        '40 × 30 mm',
+        '50 × 50 mm',
+        '50 × 80 mm',
+      ]) {
+        expect(find.text(name), findsWidgets, reason: name);
+      }
+      await tester.tap(find.text('50 × 80 mm').last);
+      await tester.pumpAndSettle();
+
+      expect(rig.settings.labelSize, LabelSize.mm50x80);
+      expect(
+        find.descendant(
+            of: _key('label-printer-size'), matching: find.text('50 × 80 mm')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the rotate-centre row shows only for 50 x 80', (tester) async {
+      final rig = await _Rig.build();
+      await tester.pumpWidget(rig.section);
+      expect(_key('label-printer-rotate-centre'), findsNothing);
+      for (final size in [LabelSize.mm40x30, LabelSize.mm50x50]) {
+        await rig.settings.setLabelSize(size);
+        await tester.pump();
+        expect(_key('label-printer-rotate-centre'), findsNothing);
+      }
+      await rig.settings.setLabelSize(LabelSize.mm50x80);
+      await tester.pump();
+      expect(find.text('Rotate centre on 50 × 80'), findsOneWidget);
+      expect(rig.settings.labelRotateTallCentre, isFalse);
+      await tester.tap(_key('label-printer-rotate-centre'));
+      await tester.pump();
+      expect(rig.settings.labelRotateTallCentre, isTrue);
+    });
+
+    testWidgets('printing uses the chosen size', (tester) async {
+      final sizes = <LabelSize>[];
+      final rig = await _Rig.build(
+        configured: true,
+        render: (_, size, _) async {
+          sizes.add(size);
+          return LabelBitmap.blank(384, size.heightDots);
+        },
+      );
+      await rig.settings.setLabelSize(LabelSize.mm40x30);
+      await tester.pumpWidget(rig.section);
+      await tester.tap(_key('label-printer-test'));
+      await tester.pumpAndSettle();
+      expect(sizes, [LabelSize.mm40x30]);
+    });
+  });
+
+  group('OC working ppO₂', () {
+    testWidgets('shows 1.4 selected and switches to 1.3', (tester) async {
+      final rig = await _Rig.build();
+      await tester.pumpWidget(rig.section);
+      expect(find.text('OC working ppO₂'), findsOneWidget);
+      expect(find.text('Headline depth on Backgas labels'), findsOneWidget);
+      SegmentedButton<double> button() =>
+          tester.widget(_key('label-printer-oc-ppo2'));
+      expect(button().selected, {1.4});
+
+      await tester.tap(find.text('1.3'));
+      await tester.pumpAndSettle();
+      expect(rig.settings.labelOcWorkingPpo2, 1.3);
+      expect(button().selected, {1.3});
+
+      await tester.tap(find.text('1.4'));
+      await tester.pumpAndSettle();
+      expect(rig.settings.labelOcWorkingPpo2, 1.4);
+    });
+  });
+
   group('Print test label', () {
     testWidgets('prints one label on the saved printer', (tester) async {
       final rig = await _Rig.build(configured: true);
@@ -350,7 +440,7 @@ void main() {
         (tester) async {
       final rig = await _Rig.build(
         configured: true,
-        render: (_) async => throw StateError('render bug'),
+        render: (_, _, _) async => throw StateError('render bug'),
       );
       await tester.pumpWidget(rig.section);
 
@@ -378,7 +468,7 @@ void main() {
       addTearDown(() => labelPrintErrorSink = oldSink);
       final rig = await _Rig.build(
         configured: true,
-        render: (_) async => throw StateError('render bug'),
+        render: (_, _, _) async => throw StateError('render bug'),
       );
       await tester.pumpWidget(rig.section);
 

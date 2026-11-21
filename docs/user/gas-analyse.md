@@ -23,6 +23,7 @@ Shows a live reading from a Divesoft SOLO gas analyzer, works out planning value
 ## Good to know
 
 - **Save & print** and **Print a label on each OK** appear after you set up a label printer (**Set up label printer**).
+- Labels are direct thermal gap labels for the Phomemo M110, in 50 × 30, 40 × 30, 50 × 50 or 50 × 80 mm. You pick the size you loaded under **Label size** (see [Gas settings](/manual/settings-gas)). A Backgas analysis prints an OC label: an **OC** tag, the depth at the OC working ppO₂ and the MOD at 1.6.
 - A save that closes an open blend says so in its message, for example "closes Tx18/45".
 - Room air is not logged on OK. Tap **Save** for it.
 - An OK press before the reading is stable is saved and marked in the log.

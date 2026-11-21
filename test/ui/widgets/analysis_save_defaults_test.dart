@@ -134,7 +134,7 @@ class _Rig {
     blend = BlendNotifier(settings: settings);
     final printing = printer
         ? LabelPrintService(
-            render: (label) async => LabelBitmap.blank(384, 240),
+            render: (label, _, _) async => LabelBitmap.blank(384, 240),
             printerFor: (_) => fakePrinter,
             scanner: FakeLabelPrinterScanner(),
             printerId: () => printerSetUp ? 'dev-1' : null,

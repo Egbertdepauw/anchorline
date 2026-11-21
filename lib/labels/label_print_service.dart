@@ -21,8 +21,13 @@ import '../label_printer/label_bitmap.dart';
 import '../label_printer/label_printer.dart';
 import 'cylinder_label.dart';
 
-/// Draws [label] as the bitmap the printer prints.
-typedef LabelRenderer = Future<LabelBitmap> Function(CylinderLabel label);
+/// Draws [label] as the bitmap the printer prints on a label of [size].
+/// [rotateTallCentre] is the "Rotate centre on 50 × 80" setting.
+typedef LabelRenderer = Future<LabelBitmap> Function(
+  CylinderLabel label,
+  LabelSize size,
+  bool rotateTallCentre,
+);
 
 /// The printer saved under [printerId] (a [FoundLabelPrinter.id]).
 typedef LabelPrinterFactory = LabelPrinter Function(String printerId);
@@ -46,12 +51,18 @@ class LabelPrintService {
     required this.scanner,
     required String? Function() printerId,
     required bool Function() use14ForDeeperMixes,
+    double Function()? ocWorkingPpo2,
+    LabelSize Function()? labelSize,
+    bool Function()? rotateTallCentre,
     this.connectTimeout = const Duration(seconds: 25),
     DateTime Function() now = DateTime.now,
   })  : _render = render,
         _printerFor = printerFor,
         _printerId = printerId,
         _use14ForDeeperMixes = use14ForDeeperMixes,
+        _ocWorkingPpo2 = ocWorkingPpo2 ?? (() => kDefaultOcWorkingPpo2),
+        _labelSize = labelSize ?? (() => LabelSize.defaultSize),
+        _rotateTallCentre = rotateTallCentre ?? (() => false),
         _now = now;
 
   /// Finds printers in range, for the "Find printer" dialog.
@@ -68,6 +79,9 @@ class LabelPrintService {
   final LabelPrinterFactory _printerFor;
   final String? Function() _printerId;
   final bool Function() _use14ForDeeperMixes;
+  final double Function() _ocWorkingPpo2;
+  final LabelSize Function() _labelSize;
+  final bool Function() _rotateTallCentre;
   final DateTime Function() _now;
 
   /// The end of the job queued last. The next job starts once it is over,
@@ -81,11 +95,13 @@ class LabelPrintService {
   /// a MOD warning follows the same rule as the label.
   bool get use14ForDeeperMixes => _use14ForDeeperMixes();
 
-  /// The label for [a] under the current "Use 1.4 for deeper mixes"
-  /// setting, so a reprint follows a setting changed since the first print.
+  /// The label for [a] under the current "Use 1.4 for deeper mixes" and
+  /// "OC working ppO2" settings, so a reprint follows a setting changed
+  /// since the first print.
   CylinderLabel labelFor(GasAnalysis a) => CylinderLabel.fromAnalysis(
         a,
         use14ForDeeperMixes: _use14ForDeeperMixes(),
+        ocWorkingPpo2: _ocWorkingPpo2(),
       );
 
   /// Prints [copies] (1 to [kMaxLabelCopies]) of the label for [a]. Returns
@@ -114,7 +130,7 @@ class LabelPrintService {
         const LabelPrinterException('A residual analysis has no label'),
       );
     }
-    return _enqueue(labelFor(a), copies);
+    return _enqueue(labelFor(a), _labelSize(), _rotateTallCentre(), copies);
   }
 
   /// Prints the sample label of Settings → "Print test label", dated now.
@@ -124,6 +140,8 @@ class LabelPrintService {
           now: _now(),
           use14ForDeeperMixes: _use14ForDeeperMixes(),
         ),
+        _labelSize(),
+        _rotateTallCentre(),
         1,
       );
 
@@ -138,20 +156,34 @@ class LabelPrintService {
   ///
   /// Everything in the job starts only when it reaches the front, the
   /// connect timeout included.
-  Future<List<PrinterFault>> _enqueue(CylinderLabel label, int copies) {
-    final job = _lastJob.then((_) => _print(label, copies));
+  ///
+  /// The label size and the centre rotation are read when the job is asked
+  /// for, like the label.
+  Future<List<PrinterFault>> _enqueue(
+    CylinderLabel label,
+    LabelSize size,
+    bool rotateTallCentre,
+    int copies,
+  ) {
+    final job =
+        _lastJob.then((_) => _print(label, size, rotateTallCentre, copies));
     // The next job waits for this one to end, not for it to succeed: the
     // error is for this job's caller only.
     _lastJob = job.then<void>((_) {}, onError: (Object _) {});
     return job;
   }
 
-  Future<List<PrinterFault>> _print(CylinderLabel label, int copies) async {
+  Future<List<PrinterFault>> _print(
+    CylinderLabel label,
+    LabelSize size,
+    bool rotateTallCentre,
+    int copies,
+  ) async {
     final id = _printerId();
     if (id == null) throw const LabelPrinterException(_kNoPrinter);
 
     // Render before connecting, so a render error doesn't hold the BLE link.
-    final bitmap = await _render(label);
+    final bitmap = await _render(label, size, rotateTallCentre);
 
     final printer = _printerFor(id);
     try {
