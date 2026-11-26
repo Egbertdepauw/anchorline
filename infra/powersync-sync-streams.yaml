@@ -14,7 +14,7 @@
 # dive they cannot see (purgeOrphanedBailoutCarry), and that delete uploads.
 #
 # A new PowerSync-backed table needs a query line here, and the file has to
-# be deployed to the PowerSync dashboard before that table syncs (CLAUDE.md
+# be deployed to the PowerSync dashboard before that table syncs (ARCHITECTURE.md
 # principle 7). test/sync/cloud/sync_streams_config_test.dart checks that
 # every table in lib/sync/cloud/powersync_schema.dart has a line here. It
 # reads each query as one line starting

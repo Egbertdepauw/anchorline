@@ -76,7 +76,7 @@ fi
 # Rule 8 (per file, migrations numbered 0027+): a table added to the
 # `powersync` publication must be created in the same file with
 # `primary key (owner_id, id)`. Ids are computed from hardware and dive data,
-# so two accounts can share one (0027, CLAUDE.md principle 7).
+# so two accounts can share one (0027, ARCHITECTURE.md principle 7).
 # Only sees single-line, unquoted `add table` / `for table` forms (the rule 6
 # convention).
 fail8=0
@@ -108,7 +108,7 @@ for f in "${sqls[@]}"; do
 done
 if [ "$fail8" -ne 0 ]; then
   echo ""
-  echo "FAIL: synced tables must use primary key (owner_id, id) (CLAUDE.md principle 7)." >&2
+  echo "FAIL: synced tables must use primary key (owner_id, id) (ARCHITECTURE.md principle 7)." >&2
   exit 1
 fi
 echo "OK: all migrations are idempotent and every table has explicit Data API grants."

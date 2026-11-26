@@ -23,7 +23,7 @@ enum SyncStatus { synced, pending, conflict }
 class Weight {
   const Weight({required this.weightKg, required this.description});
 
-  /// Kilograms. Always metric (CLAUDE.md principle 4).
+  /// Kilograms. Always metric (ARCHITECTURE.md principle 4).
   final double weightKg;
 
   /// Free-text label as the diver chose to describe it ("backplate",
@@ -94,7 +94,7 @@ class DiveAnnotation {
   final double? waterTempC;
   final List<Weight> weights;
 
-  // Sync metadata (designed in from day one per CLAUDE.md).
+  // Sync metadata (designed in from day one per ARCHITECTURE.md).
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;

@@ -167,7 +167,7 @@ class _DiveInformationSectionState extends State<DiveInformationSection> {
     final sampleInterval = '${(dive.sampleIntervalMs / 1000).round()} s';
     final logVersion =
         '${dive.logVersion}${_isPnf(dive.logVersion) ? ' (PNF)' : ''}';
-    const unitsLabel = 'Metric'; // CCRLog always stores metric per CLAUDE.md.
+    const unitsLabel = 'Metric'; // CCRLog always stores metric per ARCHITECTURE.md.
 
     final children = <Widget>[
       const SectionHeader('Dive computer'),

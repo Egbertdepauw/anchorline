@@ -82,9 +82,9 @@ If uploads still fail with 42501 after sign-in, PowerSync's `uploadError` names 
 
 Historical incident (2026-05-08): an early version of the CCRLog → Subsurface git write-direction sync emitted samples in the older Subsurface format (sparse `dc_supplied_ppo2=`, frequent `po2=`) and force-pushed a commit titled "CCRLog sync — N dives" to Subsurface Cloud, **overwriting the user's authoritative recordings** for those dives. The user's main repo at `~/Dev/CCRLog/ss_git/...` retained the correct working-tree content because it hadn't fetched yet, but the cloud branch held the corrupt commit.
 
-A safety hold is currently in place in `sync_orchestrator.dart` that throws unconditionally to prevent the write-direction code from running until the planner is rewritten. **Do not remove that hold without first**:
+A safety hold in `sync_orchestrator.dart` kept the write direction off until both fixes below existed. Both are in now and the write sync is live, so they are invariants. **Never weaken either**:
 
-1. Making the serializer emit `dc_supplied_ppo2=` per-sample (current code only emits `po2=` based step values, which is what produced the broken output).
-2. Adding conflict resolution: when CCRLog's planned write would change a Divecomputer file in a way that loses data Subsurface previously recorded, **abort that per-dive write** rather than overwrite.
+1. The serializer emits `dc_supplied_ppo2=` per sample (the broken version emitted only `po2=` step values).
+2. When a planned write would change a Divecomputer file in a way that loses data Subsurface recorded, the planner **declines that per-dive write** (`foreignEditConflict` in `sync_planner.dart`) rather than overwrite.
 
 If a user reports their Subsurface Cloud is corrupted again: have them force-push their main repo's HEAD over the cloud branch (`git push --force origin HEAD:<branch>`), reset Subsurface app's local cache (so it doesn't re-push the bad commit), then in CCRLog `rm -rf subsurface_clone` and re-bootstrap.

@@ -8,7 +8,7 @@
 ENABLE_HARDENED_RUNTIME = YES
 
 // arm64-only release builds. The git2dart_binaries dylibs ship
-// arm64 only (see CLAUDE.md "Known third-party defects"), so a
+// arm64 only (`lipo -archs` on 1.12.1's libgit2.dylib), so a
 // Universal-Binary x86_64 slice cannot link. Without this, MAS .pkg
 // + Developer ID archives fail with Sentry x86_64 compile errors
 // downstream of the linker warnings about missing x86_64 in

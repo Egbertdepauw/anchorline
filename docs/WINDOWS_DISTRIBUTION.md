@@ -70,7 +70,7 @@ bare .exe does not run without its siblings. Sanity checks:
 |---|---|---|
 | `Compatibility with CMake < 3.5 has been removed` … `CMake step for pdfium failed` | pdfx configures pdfium in a nested build tree; CMake ≥ 4.0 rejects its ancient `cmake_minimum_required` | **Fixed in-repo**: `windows/CMakeLists.txt` seeds `ENV{CMAKE_POLICY_VERSION_MINIMUM}=3.5`. A CMake deprecation *warning* still prints — harmless. |
 | `Could NOT find JNI (missing: JAVA_INCLUDE_PATH …)` | `sentry_flutter` → `package:jni` needs a JDK at build time | **Toolchain prereq**: install the JDK + `JAVA_HOME` (§1.4), open a fresh terminal. |
-| `error MSB3073 … cmake_install.cmake` at the very end of the build | `git2dart_binaries` ≤ 1.10.4 referenced Windows DLLs it never shipped, so the INSTALL copy died | **Fixed by the `^1.12.1` pin.** If it ever reappears after a binaries bump, audit shipped files vs. the manifest in the pub archive (see CLAUDE.md "Known third-party defects"). |
+| `error MSB3073 … cmake_install.cmake` at the very end of the build | `git2dart_binaries` ≤ 1.10.4 referenced Windows DLLs it never shipped, so the INSTALL copy died | **Fixed by the `^1.12.1` pin.** If it ever reappears after a binaries bump, audit shipped files vs. the manifest in the pub archive (see [toolchain-gotchas](../.claude/skills/toolchain-gotchas/SKILL.md)). |
 | `error MSB8076: Only ARM, ARM64 and ARM64EC platforms are supported` (crashpad) | Building on Windows-on-**ARM** with the x64 toolchain | Not applicable on native x64. Tracked as issue #3. |
 
 ## 5. Package the installer

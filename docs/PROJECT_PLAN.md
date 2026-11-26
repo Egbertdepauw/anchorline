@@ -1,6 +1,6 @@
 # Project plan (Phase 1)
 
-Moved out of CLAUDE.md so it does not load into every session.
+Kept out of ARCHITECTURE.md so it does not load into every agent session.
 
 ## Phase 1 scope (what we are building first)
 
