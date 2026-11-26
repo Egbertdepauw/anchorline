@@ -141,6 +141,24 @@ Future<List<Directory>> defaultFitCopyRoots({bool? desktop}) async {
 /// "1 dive" or "N dives".
 String diveCountLabel(int n) => n == 1 ? '1 dive' : '$n dives';
 
+/// The line naming the dives the computer would not send, lowest number
+/// first and at most ten of them: "Skipped dive #1: the dive computer would
+/// not send it." or "Skipped 3 dives the dive computer would not send: #1,
+/// #4, #9."
+String refusedDivesLabel(List<int> diveNumbers) {
+  final sorted = [...diveNumbers]..sort();
+  if (sorted.length == 1) {
+    return 'Skipped dive #${sorted.single}: the dive computer would not '
+        'send it.';
+  }
+  const shown = 10;
+  final names = [for (final n in sorted.take(shown)) '#$n'].join(', ');
+  final more =
+      sorted.length > shown ? ' and ${sorted.length - shown} more' : '';
+  return 'Skipped ${sorted.length} dives the dive computer would not send: '
+      '$names$more.';
+}
+
 /// A short English reason for a libdivecomputer download that stopped with
 /// [status], for the message shown to the diver.
 String libdcStopReason(LibdcStatus status) => switch (status) {
@@ -206,6 +224,7 @@ class ImportNotifier extends ChangeNotifier {
   String? _errorMessage;
   int _failedCount = 0;
   int _refreshedCount = 0;
+  final List<int> _refusedDiveNumbers = [];
   bool _forceFullReimport = false;
   bool _recordNextDownload = false;
 
@@ -278,6 +297,12 @@ class ImportNotifier extends ChangeNotifier {
   /// Dives of the current download whose stored data was refreshed in place.
   /// A detail screen opened before the download may show stale cylinder rows.
   int get refreshedCount => _refreshedCount;
+
+  /// Dive numbers of the current download that the computer would not send
+  /// (#261), in download order. Not counted in [failedCount]: nothing came
+  /// down to fail, and another download asks for them again only when it
+  /// re-imports all dives.
+  List<int> get refusedDiveNumbers => List.unmodifiable(_refusedDiveNumbers);
 
   /// 0-based index into the download subset of the dive currently
   /// streaming bytes from the device. Null until the first progress
@@ -899,7 +924,8 @@ class ImportNotifier extends ChangeNotifier {
   /// Download and persist all queued dives.
   ///
   /// Each dive is parsed and committed atomically. Failures on individual
-  /// dives are counted in [failedCount] and do not abort the stream.
+  /// dives are counted in [failedCount] and do not abort the stream. Dives
+  /// the computer refuses to send are listed in [refusedDiveNumbers].
   ///
   /// Shearwater: on completion (success or connection error), the newest
   /// successfully imported fingerprint is saved via [ImportStateDao] for
@@ -925,6 +951,7 @@ class ImportNotifier extends ChangeNotifier {
     _downloadedCount = 0;
     _failedCount = 0;
     _refreshedCount = 0;
+    _refusedDiveNumbers.clear();
     _currentDiveIndex = null;
     _totalDives = toDownload.length;
     _diveBytes = null;
@@ -1037,6 +1064,14 @@ class ImportNotifier extends ChangeNotifier {
             await _applyScrubberEvents(serial);
             _flushNotify();
 
+          case DiveSourceDiveRefused():
+            // The computer would not send this dive; the download goes on
+            // with the next one. Not reported as a problem: no data came
+            // down, so there is nothing of ours that failed.
+            _currentDiveNumber = event.listing.diveNumber;
+            _refusedDiveNumbers.add(event.listing.diveNumber);
+            _flushNotify();
+
           case DiveSourceFinished():
             // Shearwater never emits this. Keep the recording for sharing,
             // and move the fingerprint only when no dive failed: a failed
@@ -1118,6 +1153,7 @@ class ImportNotifier extends ChangeNotifier {
       _usageTracker?.track('import_completed', {
         'dives': _downloadedCount,
         'total': _totalToDownload,
+        'refused': _refusedDiveNumbers.length,
         'mock': useMock,
         'engine': engine,
         'vendor': vendor,
@@ -1126,6 +1162,7 @@ class ImportNotifier extends ChangeNotifier {
       _usageTracker?.track('import_failed', {
         'dives': _downloadedCount,
         'total': _totalToDownload,
+        'refused': _refusedDiveNumbers.length,
         'engine': engine,
         'vendor': vendor,
         // Truncate to keep telemetry rows small and avoid leaking
@@ -1268,6 +1305,7 @@ class ImportNotifier extends ChangeNotifier {
     _errorMessage = null;
     _failedCount = 0;
     _refreshedCount = 0;
+    _refusedDiveNumbers.clear();
     _mockDeviceAvailable = false;
     _discoveredDevices.clear();
     _forceFullReimport = false;

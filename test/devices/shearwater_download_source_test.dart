@@ -40,7 +40,13 @@ class _FakeLink implements ShearwaterLink {
 
   @override
   Future<List<ManifestEntry>> readManifest({Uint8List? lastFingerprint}) async =>
-      [for (final e in events) if (e is DownloadedDive) e.manifest];
+      [
+        for (final e in events)
+          if (e is DownloadedDive)
+            e.manifest
+          else if (e is DownloadRefusedDive)
+            e.manifest,
+      ];
 
   @override
   Stream<DownloadEvent> downloadDives(List<ManifestEntry> entries) =>
@@ -239,6 +245,34 @@ void main() {
     expect(outcomes, hasLength(2));
     expect(outcomes[0], isA<DiveSourceDiveFailed>());
     expect((outcomes[0] as DiveSourceDiveFailed).listing!.diveNumber, 1);
+    expect(outcomes[1], isA<DiveSourceDive>());
+  });
+
+  test('a dive the computer refuses yields DiveSourceDiveRefused and the next dive still arrives',
+      () async {
+    final ref = _traceTransport();
+    await ref.readDeviceInfo();
+    final m = (await ref.readManifest()).first;
+    final good = (await ref.downloadDives([m]).toList())
+        .whereType<DownloadedDive>()
+        .single;
+
+    final refused =
+        DownloadRefusedDive(manifest: _entry(1, 1700000000), errorCode: 0x31);
+    final source =
+        await ShearwaterDownloadSource.open(_FakeLink([refused, good]));
+    final events = await source.download().toList();
+    final outcomes = events
+        .where((e) =>
+            e is DiveSourceDive ||
+            e is DiveSourceDiveFailed ||
+            e is DiveSourceDiveRefused)
+        .toList();
+    expect(outcomes, hasLength(2));
+    final r = outcomes[0] as DiveSourceDiveRefused;
+    expect(r.listing.diveNumber, 1);
+    expect(r.listing.diveId, generateDiveId(0xB89641E4, 1, 1700000000));
+    expect(r.errorCode, 0x31);
     expect(outcomes[1], isA<DiveSourceDive>());
   });
 

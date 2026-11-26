@@ -142,6 +142,11 @@ class ShearwaterDownloadSource implements DiveDownloadSource {
           } catch (e, st) {
             yield DiveSourceDiveFailed(listing: listing, error: e, stack: st);
           }
+        case DownloadRefusedDive():
+          yield DiveSourceDiveRefused(
+            listing: _listing(event.manifest),
+            errorCode: event.errorCode,
+          );
       }
     }
   }
