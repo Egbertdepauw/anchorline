@@ -3,6 +3,7 @@
 Where: **Settings** tab, **Gas** sub-tab.
 
 ![The Gas settings with blending prices, blend tab defaults and analyzer MOD rows](images/settings-gas-1.png)
+![The same tab scrolled: the analyzer rows and the Label printer section with no printer set up, the label size and OC working ppO₂](images/settings-gas-2.png)
 
 ## What it's for
 
@@ -19,7 +20,7 @@ Defaults for blending and analysing gas: what your fills cost, what a new blend 
   - **Settle time (min)**: how long a fill needs to settle before you analyse it. Open blends turn red, orange and green against it. It starts at 60 and takes 0 to 1440 minutes.
   - **Diluent cylinder up to (L)**: a cylinder with this water capacity or less, and at most 32% oxygen, is guessed as diluent on the Blend tab. It starts at 3 and takes 0.5 to 50 litres.
 - **Analyzer**: **MOD rows at ppO₂** lists the ppO₂ values for which the analyzer shows a maximum operating depth. Remove one with its cross (the last one stays), or tap **+ Add** and enter a ppO₂ in bar. **Fill pressure starts at** sets the pressure a new analysis begins with, in bar.
-- **Label printer**: appears where label printing is available. It shows the saved printer, or **No printer set up**, with **Find printer**, **Print test label** and **Forget printer**. Below them:
+- **Label printer**: appears where label printing is available. It shows the saved printer, or **No printer set up**, with **Find printer** and **Print test label**. **Print test label** works once a printer is saved, and **Forget printer** appears then. Below them:
   - **Label size**: the size of the labels in the printer, one of **50 × 30 mm**, **40 × 30 mm**, **50 × 50 mm** and **50 × 80 mm** (width × length). Every label you print is drawn for this size.
   - **Rotate centre on 50 × 80**: shown only for the 50 × 80 mm size. It turns the big depth 90° counterclockwise (it reads from the bottom up) so it can be larger. Off by default.
   - **Use 1.4 for deeper mixes**: bailout and deco labels show the depth at ppO₂ 1.4 for mixes below 50 % O₂. Off: 1.6 for all.
@@ -32,3 +33,7 @@ Defaults for blending and analysing gas: what your fills cost, what a new blend 
 - The **40 × 30 mm** label is printed centred under the print head. That has not been checked on a printer yet; if the print sits against one side, tell us.
 - A **Backgas** label shows an **OC** tag and the depth at the **OC working ppO₂** as the big number, with the MOD at ppO₂ 1.6 below it. Bailout and deco labels show one big MOD; diluent labels show **DIL** and three depths.
 - The prices carry no currency; they are just numbers you choose.
+
+Every label type at every size, left to right 50 × 30, 40 × 30, 50 × 50, 50 × 80 and 50 × 80 rotated; top to bottom bailout, diluent and Backgas (OC):
+
+![Bailout, diluent and Backgas labels at each of the four sizes, and 50 × 80 rotated](images/label-sizes.png)
