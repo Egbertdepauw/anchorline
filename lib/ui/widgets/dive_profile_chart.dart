@@ -71,6 +71,17 @@ class DiveProfileChart extends StatelessWidget {
   }
 }
 
+/// Indices of the legs that start on a different gas than the leg
+/// before them: where the chart draws a gas-switch marker.
+@visibleForTesting
+List<int> gasSwitchLegIndices(List<AscentStop> legs) {
+  final out = <int>[];
+  for (var i = 1; i < legs.length; i++) {
+    if (legs[i].gas != legs[i - 1].gas) out.add(i);
+  }
+  return out;
+}
+
 class _DiveProfilePainter extends CustomPainter {
   _DiveProfilePainter({required this.legs, required this.palette});
 
@@ -214,17 +225,18 @@ class _DiveProfilePainter extends CustomPainter {
     // A switch happens at the *start* of a leg whose gas differs from
     // the previous leg. Drop a vertical tick from (time, depth) up
     // toward the surface, plus the new mix label.
-    DiveGasMix? prevGas;
     final switchPaint = Paint()
       ..color = _switchMarker
       ..strokeWidth = 1.2
       ..style = PaintingStyle.stroke;
     var cum = 0.0;
     final labelOffsets = <_Label>[];
-    for (final leg in legs) {
+    final switches = gasSwitchLegIndices(legs).toSet();
+    for (var i = 0; i < legs.length; i++) {
+      final leg = legs[i];
       final startTime = cum;
       cum += leg.duration.inSeconds / 60.0;
-      if (prevGas != null && leg.gas != prevGas) {
+      if (switches.contains(i)) {
         final x = sx(startTime);
         final y = sy(leg.depthStartMeters);
         canvas.drawLine(Offset(x, y), Offset(x, top), switchPaint);
@@ -234,7 +246,6 @@ class _DiveProfilePainter extends CustomPainter {
           text: StopLadderTable.mixLabel(leg.gas),
         ));
       }
-      prevGas = leg.gas;
     }
     // Always label the first gas above the start point.
     labelOffsets.insert(

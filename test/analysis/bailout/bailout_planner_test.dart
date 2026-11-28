@@ -215,7 +215,7 @@ void main() {
         maxDepth: 51.0,
         recordedDiluent: dil18_45,
         userTanks: const [_ean50, _o2],
-        userVolumes: const {_ean50: 1800.0, _o2: 1800.0},
+        userVolumes: {_ean50: 1800.0, _o2: 1800.0},
         bailoutCapableDiluent: true,
       );
       expect(result.stops, isNotEmpty);
@@ -226,6 +226,27 @@ void main() {
           reason:
               'planner must prepend a depth-safe bottom mix when user tanks are deco-only');
     });
+  });
+
+  // #274: the volume map is keyed by mix. A caller that builds the tank
+  // list and the volume map from separate DiveGasMix instances must
+  // still find the volume.
+  test('Scenario A finds the tank volume through a different instance '
+      'of the same mix', () {
+    DiveGasMix air() =>
+        DiveGasMix(oxygenPercent: 21, heliumPercent: 0, isDiluent: false);
+    final tank = air();
+    final volumeKey = air();
+    expect(identical(tank, volumeKey), isFalse);
+    final result = _plan(
+      maxDepth: 25.0,
+      userTanks: [tank],
+      userVolumes: {volumeKey: 2000.0},
+      n2: _loadedN2,
+    );
+    expect(result.perGas, hasLength(1));
+    expect(result.perGas.values.single.availableL, 2000.0);
+    expect(result.verdict, BailoutVerdict.sufficient);
   });
 
   group('planBailout — Scenario B (standard gases / catalogue)', () {
