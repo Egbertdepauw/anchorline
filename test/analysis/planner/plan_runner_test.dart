@@ -402,4 +402,76 @@ void main() {
     );
     expect(result.diveAscent.every((s) => s.setpointBar == null), isTrue);
   });
+
+  // #274: an OC plan on Air alone listed "Air 1605 L · Air 329 L ·
+  // Air 84 L", one entry per DiveGasMix instance instead of per mix.
+  test('OC plan on Air alone tallies one gasConsumedByMix entry', () {
+    final result = runPlan(
+      gases: const [
+        DivePlanGas(oxygenPercent: 21, heliumPercent: 0, isDiluent: false),
+      ],
+      segments: const [
+        DivePlanSegment(
+            depthMeters: 30, durationMinutes: 25, gasMixIndex: 0),
+      ],
+      bailout: const [],
+      mode: DivePlanMode.oc,
+      gfLow: 30,
+      gfHigh: 85,
+      useVpmb: false,
+      vpmbConservatism: 2,
+      ascentRateMpm: 9,
+      descentRateMpm: 18,
+      bottomSetpoint: 1.3,
+      ascentSetpoint: 0.7,
+      decoSetpoint: 1.5,
+      lastStopDepthMeters: 3,
+      availableTanks: const [kAl40, kAl80],
+    );
+    expect(result.gasConsumedByMix, hasLength(1));
+    expect(result.gasConsumedByMix.single.gas.oxygenPercent, 21);
+    expect(result.gasConsumedByMix.single.litres,
+        closeTo(result.gasConsumedLitres, 1e-6));
+  });
+
+  test('two bailout bottles of one gas pool their volume', () {
+    final result = runPlan(
+      gases: const [
+        DivePlanGas(oxygenPercent: 21, heliumPercent: 35, isDiluent: true),
+        DivePlanGas(oxygenPercent: 50, heliumPercent: 0, isDiluent: false),
+      ],
+      segments: const [
+        DivePlanSegment(
+            depthMeters: 40,
+            durationMinutes: 20,
+            gasMixIndex: 0,
+            setpoint: 1.3),
+      ],
+      bailout: const [
+        DivePlanBailoutBottle(
+            gasMixIndex: 0, waterCapacityL: 11.1, fillPressureBar: 200),
+        DivePlanBailoutBottle(
+            gasMixIndex: 0, waterCapacityL: 11.1, fillPressureBar: 200),
+        DivePlanBailoutBottle(
+            gasMixIndex: 1, waterCapacityL: 5.7, fillPressureBar: 200),
+      ],
+      mode: DivePlanMode.cc,
+      gfLow: 30,
+      gfHigh: 85,
+      useVpmb: false,
+      vpmbConservatism: 2,
+      ascentRateMpm: 9,
+      descentRateMpm: 18,
+      bottomSetpoint: 1.3,
+      ascentSetpoint: 0.7,
+      decoSetpoint: 1.4,
+      lastStopDepthMeters: 6,
+      availableTanks: const [kAl40, kAl80],
+    );
+    final bottom = result.bailout.perGas.entries
+        .where((e) => e.key.oxygenPercent == 21 && e.key.heliumPercent == 35)
+        .toList();
+    expect(bottom, hasLength(1));
+    expect(bottom.single.value.availableL, closeTo(2 * 11.1 * 200, 1e-6));
+  });
 }

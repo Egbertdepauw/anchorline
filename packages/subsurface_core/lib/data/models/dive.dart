@@ -207,4 +207,19 @@ class DiveGasMix {
         heliumPercent: json['he'] as int,
         isDiluent: json['dil'] as bool,
       );
+
+  // Value equality: the planner, the bailout planner and the charts key
+  // maps by mix and detect gas switches with !=, and every leg carries
+  // its own instance (#274). isDiluent is part of it, so a diluent and a
+  // bailout cylinder of the same mix stay apart.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DiveGasMix &&
+          other.oxygenPercent == oxygenPercent &&
+          other.heliumPercent == heliumPercent &&
+          other.isDiluent == isDiluent;
+
+  @override
+  int get hashCode => Object.hash(oxygenPercent, heliumPercent, isDiluent);
 }
