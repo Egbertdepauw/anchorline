@@ -49,7 +49,7 @@ void main() {
       expect(DateFormat('d MMM yy').format(_when), '31 okt 26');
       final l = _label(_analysis(20.6, 33.8, desiredO2: 21, desiredHe: 35));
       expect(l.footerRight, '31 Oct 26');
-      expect(l.footerLeft, 'O2 20.6  He 33.8');
+      expect(l.footerLeft, 'O2: 20.6  He: 33.8');
       final dil = _label(_analysis(20.6, 33.8, role: GasRole.diluent));
       expect(dil.diluentLeft, '1.3: 54 m');
     });
@@ -339,7 +339,7 @@ void main() {
       expect(l.ocModLine, 'MOD 1.6: 66 m');
       expect(l.diluentLeft, isNull);
       expect(l.diluentRight, isNull);
-      expect(l.footerLeft, 'O2 20.6  He 33.8');
+      expect(l.footerLeft, 'O2: 20.6  He: 33.8');
     });
 
     test('Tx21/35 at 1.3: 53.1 m -> 54', () {
@@ -355,7 +355,7 @@ void main() {
       final at14 = _label(ean32);
       expect(at14.headlineText, '33');
       expect(at14.ocModLine, 'MOD 1.6: 39 m');
-      expect(at14.footerLeft, 'O2 32.0');
+      expect(at14.footerLeft, 'O2: 32.0');
       final at13 = _label(ean32, ocPpo2: 1.3);
       expect(at13.headlineText, '30');
       expect(at13.ocModLine, 'MOD 1.6: 39 m');
@@ -519,22 +519,22 @@ void main() {
     test('helium below the noise floor is left out of the footer', () {
       final l = _label(_analysis(20.6, 0.4));
       expect(l.hePercent, isNull);
-      expect(l.footerLeft, 'O2 20.6');
+      expect(l.footerLeft, 'O2: 20.6');
       expect(l.mixName, 'Air');
     });
 
     test('helium at the noise floor is shown', () {
       final l = _label(_analysis(20.6, 1.0));
       expect(l.hePercent, 1.0);
-      expect(l.footerLeft, 'O2 20.6  He 1.0');
+      expect(l.footerLeft, 'O2: 20.6  He: 1.0');
     });
 
     test('footer shows one decimal and two spaces before He', () {
       final l = _label(_analysis(20.6, 33.8));
       expect(l.o2Percent, 20.6);
       expect(l.hePercent, 33.8);
-      expect(l.footerLeft, 'O2 20.6  He 33.8');
-      expect(_label(_analysis(32.14, 0)).footerLeft, 'O2 32.1');
+      expect(l.footerLeft, 'O2: 20.6  He: 33.8');
+      expect(_label(_analysis(32.14, 0)).footerLeft, 'O2: 32.1');
     });
 
     test('the date is d MMM yy', () {
@@ -560,7 +560,7 @@ void main() {
       expect(l.headlineText, '66');
       expect(l.headlineCaption, 'MOD 1.6');
       expect(l.analysedBy, isNull);
-      expect(l.footerLeft, 'O2 20.6  He 33.8');
+      expect(l.footerLeft, 'O2: 20.6  He: 33.8');
       expect(l.footerRight, '31 Oct 26');
     });
 

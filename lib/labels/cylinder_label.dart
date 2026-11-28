@@ -282,11 +282,11 @@ class CylinderLabel {
       ? 'MOD ${_ppo2Text(kOcModPpo2)}: ${_depthText(mod16Meters)}'
       : null;
 
-  /// `O2 20.6  He 33.8` (two spaces), or `O2 32.1` for a gas without helium.
+  /// `O2: 20.6  He: 33.8` (two spaces), or `O2: 32.1` for a gas without helium.
   String get footerLeft {
     final he = hePercent;
-    final o2Text = 'O2 ${o2Percent.toStringAsFixed(1)}';
-    return he == null ? o2Text : '$o2Text  He ${he.toStringAsFixed(1)}';
+    final o2Text = 'O2: ${o2Percent.toStringAsFixed(1)}';
+    return he == null ? o2Text : '$o2Text  He: ${he.toStringAsFixed(1)}';
   }
 
   /// The analysis date: `31 Oct 26`.
