@@ -13,6 +13,7 @@ class _FakeAuthClient implements AuthClient {
   AuthResponse Function()? signUpResponder;
   AuthResponse Function()? verifyResponder;
   void Function()? resendResponder;
+  final signInCalls = <String>[];
   final verifyCalls = <({String email, String code})>[];
   final resendCalls = <String>[];
   final setPasswordCalls = <String>[];
@@ -32,6 +33,7 @@ class _FakeAuthClient implements AuthClient {
     required String email,
     required String password,
   }) async {
+    signInCalls.add(email);
     final r = signInResponder!();
     if (r.session != null) {
       session = r.session;
@@ -87,6 +89,19 @@ class _FakeAuthClient implements AuthClient {
   }
 
   void dispose() => _ctrl.close();
+}
+
+class _FakeBackfiller implements OwnerIdBackfiller {
+  final calls = <String>[];
+
+  @override
+  Future<int> backfillIfNeeded(String userId) async {
+    calls.add(userId);
+    return 0;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 User _user(String id, String email) => User(
@@ -256,6 +271,67 @@ void main() {
       expect((res as AuthFailure).message,
           contains('wrong or has expired'));
       expect(svc.isSignedIn, isFalse);
+
+      svc.dispose();
+      fake.dispose();
+    });
+
+    test('a code used up by the email link signs in with the password',
+        () async {
+      final fake = _FakeAuthClient();
+      final backfiller = _FakeBackfiller();
+      final u = _user('abc', 'a@b.test');
+      fake.verifyResponder = () => throw const AuthException(
+          'Token has expired or is invalid',
+          statusCode: '403',
+          code: 'otp_expired');
+      fake.signInResponder = () => AuthResponse(session: _session(u), user: u);
+
+      final svc = AuthService(client: fake, backfiller: backfiller);
+      final res = await svc.verifyEmailCode(
+          email: 'a@b.test', code: '123456', password: 'mine');
+      expect(res, isA<AuthSuccess>());
+      expect(svc.isSignedIn, isTrue);
+      expect(fake.signInCalls, ['a@b.test']);
+      expect(backfiller.calls, ['abc']);
+      expect(fake.setPasswordCalls, isEmpty);
+
+      svc.dispose();
+      fake.dispose();
+    });
+
+    test('an expired code keeps its message when the sign-in fails', () async {
+      final fake = _FakeAuthClient();
+      fake.verifyResponder = () => throw const AuthException(
+          'Token has expired or is invalid',
+          statusCode: '403',
+          code: 'otp_expired');
+      fake.signInResponder = () => throw const AuthException('Invalid login');
+
+      final svc = AuthService(client: fake);
+      final res = await svc.verifyEmailCode(
+          email: 'a@b.test', code: '000000', password: 'wrong');
+      expect(res, isA<AuthFailure>());
+      expect((res as AuthFailure).message, contains('wrong or has expired'));
+      expect(fake.signInCalls, ['a@b.test']);
+      expect(svc.isSignedIn, isFalse);
+
+      svc.dispose();
+      fake.dispose();
+    });
+
+    test('an expired code with an empty password tries no sign-in', () async {
+      final fake = _FakeAuthClient();
+      fake.verifyResponder = () => throw const AuthException(
+          'Token has expired or is invalid',
+          statusCode: '403',
+          code: 'otp_expired');
+
+      final svc = AuthService(client: fake);
+      final res = await svc.verifyEmailCode(
+          email: 'a@b.test', code: '000000', password: '');
+      expect((res as AuthFailure).message, contains('wrong or has expired'));
+      expect(fake.signInCalls, isEmpty);
 
       svc.dispose();
       fake.dispose();

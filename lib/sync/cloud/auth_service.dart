@@ -230,6 +230,15 @@ class AuthService extends ChangeNotifier {
       return AuthSuccess(user);
     } on AuthException catch (e) {
       if (e.code == 'otp_expired') {
+        // The email link and the code share one token. Tapping the link
+        // confirms the address and uses the token up, so a code typed
+        // afterwards reads as expired although the account is confirmed.
+        // The password is already the stored one, so signing in with it
+        // finishes the job.
+        if (password != null && password.isNotEmpty) {
+          final signedIn = await _signInAfterLink(email, password);
+          if (signedIn != null) return signedIn;
+        }
         return const AuthFailure(
             'That code is wrong or has expired. If you already clicked the '
             'link in the email, press Back and sign in. Otherwise check the '
@@ -238,6 +247,22 @@ class AuthService extends ChangeNotifier {
       return AuthFailure(e.message);
     } catch (e) {
       return AuthFailure(e.toString());
+    }
+  }
+
+  /// Password sign-in for [verifyEmailCode] when the link already confirmed
+  /// the address. Returns null on any failure so the caller keeps its message.
+  Future<AuthResult?> _signInAfterLink(String email, String password) async {
+    try {
+      final res =
+          await _client.signInWithPassword(email: email, password: password);
+      final user = res.user;
+      if (res.session == null || user == null) return null;
+      await _runBackfill(user.id);
+      notifyListeners();
+      return AuthSuccess(user);
+    } catch (_) {
+      return null;
     }
   }
 
