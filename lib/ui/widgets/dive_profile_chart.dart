@@ -22,6 +22,14 @@ import '../theme/safety_colors.dart';
 import '../theme/tokens.dart';
 import 'stop_ladder_table.dart' show StopLadderTable;
 
+/// Where the "min" unit of the time axis is painted: on the tick label
+/// baseline, right-aligned to end [gap] points before the plot's left edge,
+/// so it can never reach a tick label ("0" is centred on the edge).
+@visibleForTesting
+Offset timeUnitOffset(double plotLeft, double plotBottom, double unitWidth,
+        {double gap = 8}) =>
+    Offset(plotLeft - gap - unitWidth, plotBottom + 4);
+
 class DiveProfileChart extends StatelessWidget {
   const DiveProfileChart({
     super.key,
@@ -174,7 +182,8 @@ class _DiveProfilePainter extends CustomPainter {
       )..layout();
       tp.paint(canvas, Offset(x - tp.width / 2, top + plotH + 4));
     }
-    // "min" suffix beneath the right edge.
+    // "min" unit in the empty corner left of the first tick ("0"), not at
+    // the right edge where it covered the last tick label (#275).
     final unitTp = TextPainter(
       text: TextSpan(
         text: 'min',
@@ -186,8 +195,7 @@ class _DiveProfilePainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    unitTp.paint(canvas,
-        Offset(left + plotW - unitTp.width, top + plotH + 4));
+    unitTp.paint(canvas, timeUnitOffset(left, top + plotH, unitTp.width));
 
     // ── Filled profile ───────────────────────────────────────────────
     final fillPath = Path()..moveTo(sx(0), sy(0));
