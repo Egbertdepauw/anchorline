@@ -76,6 +76,8 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
 
   Future<void> _save() async {
     final label = _label.text.trim();
+    // Captured before any pop so "Saved" outlives this route.
+    final messenger = ScaffoldMessenger.of(context);
     if (_isDraft) {
       final newId = await widget.dao.addCylinder(
         label: label.isEmpty ? 'New cylinder' : label,
@@ -89,6 +91,7 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
       );
       if (!mounted) return;
       Navigator.of(context).pop(newId);
+      _showSaved(messenger);
     } else {
       await widget.dao.updateCylinder(
         _c!.id,
@@ -102,7 +105,18 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
         notes: _notes.text.trim(),
       );
       await _load();
+      _showSaved(messenger);
     }
+  }
+
+  void _showSaved(ScaffoldMessengerState messenger) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('Saved'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ));
   }
 
   /// Parses a user-typed decimal, accepting `,` as the decimal separator

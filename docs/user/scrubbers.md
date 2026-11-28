@@ -16,7 +16,7 @@ Keeps a record of each scrubber pack and how many hours of diving it has seen, s
 - **Started**: the date the pack began.
 - **Accumulated**: the total runtime of the dives linked to the pack, added up from the dive computer's logs. A dive belongs to the pack whose start date it follows, up to the next pack's start.
 - **Media type**: for example the scrubber material. You type it, and **Notes** is yours too.
-- **Icons**: the lock closes an active pack and is shown only while it is active. The check saves media type and notes, the bin deletes the pack.
+- **Icons**: the lock closes an active pack and is shown only while it is active. The check saves media type and notes and the app shows **Saved**, the bin deletes the pack.
 
 ## Good to know
 
