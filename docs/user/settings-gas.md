@@ -37,3 +37,7 @@ Defaults for blending and analysing gas: what your fills cost, what a new blend 
 Every label type at every size, left to right 50 × 30, 40 × 30, 50 × 50, 50 × 80 and 50 × 80 rotated; top to bottom bailout, diluent and Backgas (OC):
 
 ![Bailout, diluent and Backgas labels at each of the four sizes, and 50 × 80 rotated](images/label-sizes.png)
+
+Both 50 × 80 mm layouts on a real M110, rotated above and upright below: a Backgas label for air analysed at 22.2 % O₂. Photo by Roland Poptie, who tested the large labels and the analyzer bridge firmware on his own setup (on the right: the ESP32-S3 board and a USB power bank). Thank you, Roland.
+
+![Two 50 × 80 mm Backgas labels for air coming out of a Phomemo M110, the rotated layout above the upright one, each showing 53 m at ppO₂ 1.4 and MOD 1.6 at 62 m; beside the printer an ESP32-S3 board and a USB power bank](images/labels-m110-photo.png)
