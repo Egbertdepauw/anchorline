@@ -30,10 +30,20 @@ Defaults for blending and analysing gas: what your fills cost, what a new blend 
 
 - Where label printing is available, a **Label printer** section appears below the analyzer settings.
 - Cylinder labels are printed on a **Phomemo M110** on direct thermal gap labels, paper or synthetic ("waterproof"). Four sizes work: **50 × 30 mm** (the default), **40 × 30 mm**, **50 × 50 mm** and **50 × 80 mm**. Load labels of one size and pick the same size under **Label size** in the **Label printer** section; the app does not detect the roll. Other Phomemo-compatible gap labels of these sizes work too.
-- The **40 × 30 mm** label is printed centred under the print head. That has not been checked on a printer yet; if the print sits against one side, tell us.
+- The **40 × 30 mm** label is printed centred under the print head. Roland Poptie checked that on his M110 (photo below).
 - A **Backgas** label shows an **OC** tag and the depth at the **OC working ppO₂** as the big number, with the MOD at ppO₂ 1.6 below it. Bailout and deco labels show one big MOD; diluent labels show **DIL** and three depths.
 - The prices carry no currency; they are just numbers you choose.
 
 Every label type at every size, left to right 50 × 30, 40 × 30, 50 × 50, 50 × 80 and 50 × 80 rotated; top to bottom bailout, diluent and Backgas (OC):
 
 ![Bailout, diluent and Backgas labels at each of the four sizes, and 50 × 80 rotated](images/label-sizes.png)
+
+Roland Poptie tested the labels and the analyzer bridge firmware on his own M110 and ESP32-S3. Thank you, Roland. His photos show the same Backgas label for air analysed at 22.2 % O₂.
+
+Both 50 × 80 mm layouts, rotated above and upright below; on the right the ESP32-S3 board and a USB power bank:
+
+![Two 50 × 80 mm Backgas labels for air coming out of a Phomemo M110, the rotated layout above the upright one, each showing 53 m at ppO₂ 1.4 and MOD 1.6 at 62 m; beside the printer an ESP32-S3 board and a USB power bank](images/labels-m110-50x80-photo.png)
+
+The 40 × 30 mm label, centred between the gaps:
+
+![A 40 × 30 mm Backgas label for air held above a Phomemo M110, showing 53 m at ppO₂ 1.4 and MOD 1.6 at 62 m, with the print centred on the label](images/labels-m110-40x30-photo.png)
