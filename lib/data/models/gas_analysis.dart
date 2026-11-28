@@ -96,10 +96,15 @@ enum CaptureSource {
       };
 }
 
-/// The role to preselect for a cylinder: diluent cylinders are diluent,
-/// everything else (oxygen, bailout, offboard, no role) is bailout/deco.
-GasRole gasRoleForCylinderRole(String? cylinderRole) =>
-    cylinderRole == CylinderRole.diluent ? GasRole.diluent : GasRole.bailout;
+/// The role to preselect for a cylinder: diluent and backgas cylinders keep
+/// their role, travel and stage cylinders are deco gas, everything else
+/// (oxygen, bailout, offboard, no or unknown role) is bailout.
+GasRole gasRoleForCylinderRole(String? cylinderRole) => switch (cylinderRole) {
+      CylinderRole.diluent => GasRole.diluent,
+      CylinderRole.backgas => GasRole.backgas,
+      CylinderRole.travel || CylinderRole.stage => GasRole.deco,
+      _ => GasRole.bailout,
+    };
 
 /// The mix the diver wanted the cylinder to hold, in whole percents.
 class DesiredMix {

@@ -50,10 +50,10 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
     if (!_isDraft) _load();
   }
 
-  Future<int> _nextBailoutOrder() async {
+  Future<int> _nextNumber(String role) async {
     final cylinders = await widget.dao.listCylinders();
     final maxOrder = cylinders
-        .where((c) => c.role == CylinderRole.bailout)
+        .where((c) => c.role == role)
         .map((c) => c.bailoutOrder ?? 0)
         .fold<int>(0, (a, b) => a > b ? a : b);
     return maxOrder + 1;
@@ -82,7 +82,7 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
       final newId = await widget.dao.addCylinder(
         label: label.isEmpty ? 'New cylinder' : label,
         role: _role,
-        bailoutOrder: _role == CylinderRole.bailout
+        bailoutOrder: CylinderRole.isNumbered(_role)
             ? int.tryParse(_bailoutOrder.text.trim()) ?? 1
             : null,
         volumeLiters: _parseDecimal(_vol.text) ?? 5,
@@ -97,7 +97,7 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
         _c!.id,
         label: label,
         role: _role,
-        bailoutOrder: _role == CylinderRole.bailout
+        bailoutOrder: CylinderRole.isNumbered(_role)
             ? int.tryParse(_bailoutOrder.text.trim())
             : null,
         volumeLiters: _parseDecimal(_vol.text),
@@ -180,30 +180,34 @@ class _CylinderDetailScreenState extends State<CylinderDetailScreen> {
                   decoration: const InputDecoration(labelText: 'Role'),
                   items: [
                     for (final r in CylinderRole.all)
-                      DropdownMenuItem(value: r, child: Text(r)),
+                      DropdownMenuItem(value: r, child: Text(cylinderRoleLabel(r))),
                   ],
                   onChanged: (v) async {
                     final newRole = v ?? _role;
-                    if (newRole == CylinderRole.bailout &&
-                        _bailoutOrder.text.trim().isEmpty &&
-                        _role != CylinderRole.bailout) {
-                      final next = await _nextBailoutOrder();
+                    if (newRole != _role) {
+                      // The number is per role: clear a stale one, then
+                      // propose the next free number for a numbered role.
+                      final next = CylinderRole.isNumbered(newRole)
+                          ? await _nextNumber(newRole)
+                          : null;
                       if (!mounted) return;
                       setState(() {
                         _role = newRole;
-                        _bailoutOrder.text = next.toString();
+                        _bailoutOrder.text = next?.toString() ?? '';
                       });
                     } else {
                       setState(() => _role = newRole);
                     }
                   },
                 ),
-                if (_role == CylinderRole.bailout)
+                if (CylinderRole.isNumbered(_role))
                   TextField(
                     controller: _bailoutOrder,
                     keyboardType: TextInputType.number,
-                    decoration:
-                        const InputDecoration(labelText: 'Bailout order (#)'),
+                    decoration: InputDecoration(
+                        labelText: _role == CylinderRole.stage
+                            ? 'Stage number (#)'
+                            : 'Bailout order (#)'),
                   ),
                 TextField(
                   controller: _vol,
