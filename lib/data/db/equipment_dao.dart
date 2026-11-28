@@ -787,8 +787,9 @@ class EquipmentDao {
       throw ArgumentError.value(role, 'role',
           'must be one of ${CylinderRole.all}');
     }
-    final effectiveOrder =
-        role == CylinderRole.bailout ? bailoutOrder : null;
+    // The `bailout_order` column holds the number for both bailout and stage
+    // cylinders (the name is historical); other roles carry none.
+    final effectiveOrder = CylinderRole.isNumbered(role) ? bailoutOrder : null;
     final now = DateTime.now().millisecondsSinceEpoch;
     final id = 'cyl_${now}_$role';
     await _ps.execute(
@@ -808,11 +809,8 @@ class EquipmentDao {
       'SELECT * FROM cylinders WHERE deleted_at IS NULL',
     );
     final cyls = rows.map(_rowToCylinder).toList();
-    const roleOrder = {
-      CylinderRole.oxygen: 0,
-      CylinderRole.diluent: 1,
-      CylinderRole.bailout: 2,
-      CylinderRole.offboard: 3,
+    final roleOrder = {
+      for (var i = 0; i < CylinderRole.all.length; i++) CylinderRole.all[i]: i,
     };
     cyls.sort((a, b) {
       final ra = roleOrder[a.role] ?? 99;
@@ -857,7 +855,7 @@ class EquipmentDao {
       final newRole = role ?? existing['role'] as String;
       final newLabel = label ?? existing['label'] as String;
       final int? newBailoutOrder;
-      if (newRole != CylinderRole.bailout) {
+      if (!CylinderRole.isNumbered(newRole)) {
         newBailoutOrder = null;
       } else if (bailoutOrder != null) {
         newBailoutOrder = bailoutOrder;

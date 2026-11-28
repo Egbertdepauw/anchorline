@@ -100,12 +100,12 @@ class _CylindersListScreenState extends State<CylindersListScreen> {
       if (list == null || list.isEmpty) continue;
       sections.add(Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Text(_label(role),
+        child: Text(cylinderRoleLabel(role),
             style: Theme.of(context).textTheme.titleMedium),
       ));
       for (final c in list) {
         sections.add(ListTile(
-          title: Text(c.role == CylinderRole.bailout
+          title: Text(CylinderRole.isNumbered(c.role)
               ? '#${c.bailoutOrder ?? '?'} · ${c.label}'
               : c.label),
           subtitle: Text(
@@ -126,19 +126,5 @@ class _CylindersListScreenState extends State<CylindersListScreen> {
       }
     }
     return ListView(children: sections);
-  }
-
-  String _label(String role) {
-    switch (role) {
-      case CylinderRole.oxygen:
-        return 'Oxygen';
-      case CylinderRole.diluent:
-        return 'Diluent';
-      case CylinderRole.bailout:
-        return 'Bailout';
-      case CylinderRole.offboard:
-        return 'Offboard';
-    }
-    return role;
   }
 }
