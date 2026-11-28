@@ -51,12 +51,20 @@ class _ScrubberSessionDetailScreenState
 
   Future<void> _save() async {
     if (_session == null) return;
+    final messenger = ScaffoldMessenger.of(context);
     await widget.dao.updateScrubberSession(
       widget.id,
       mediaType: _mediaCtrl.text.trim(),
       notes: _notesCtrl.text.trim(),
     );
     await _load();
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('Saved'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ));
   }
 
   Future<void> _delete() async {

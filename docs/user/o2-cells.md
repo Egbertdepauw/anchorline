@@ -18,7 +18,7 @@ Tracks each oxygen cell across the dives it was installed for, showing how its m
 - **Age bar**: months since install against 12, and the dive count, with a chip: **Healthy**, **Watch**, **Replace** or **Insufficient data**.
 - **Surface mV / Peak mV**: Surface is the average reading in the first metre of each dive. Peak is the highest reading of each dive.
 - **Reference lines** (Peak only): **BASELINE** is the best peak of the first five dives. **RECENT** is the best peak of the last five. **WATCH** is 85% of baseline and **REPLACE** 70%. RECENT on or above WATCH is Healthy; on or above REPLACE is Watch; below is Replace.
-- **Label**, **Notes**: yours. The icons retire, save and delete the cell; a cell with dives cannot be deleted.
+- **Label**, **Notes**: yours. The icons retire, save and delete the cell; a cell with dives cannot be deleted. After the check the app shows **Saved**.
 
 ## Good to know
 

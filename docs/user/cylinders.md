@@ -19,6 +19,7 @@ Your cylinders, entered by you. They are what you link to dives and what the gas
 - **Bailout order (#)**: the order of a bailout cylinder in your list. It is only used for the Bailout role.
 - **Volume (L)** and **Working pressure (bar)**: the figures you type for the cylinder.
 - **Notes**: free text.
+- **Save**: the check in the top bar stores your changes, and the app shows **Saved**.
 - **Gas analyses**: opens the analyzer readings saved for this cylinder; see [Analyse](/manual/gas-analyse).
 
 ## Good to know

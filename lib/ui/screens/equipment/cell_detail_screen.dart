@@ -96,6 +96,8 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
   Future<void> _save() async {
     final label = _labelCtrl.text.trim();
     final notes = _notesCtrl.text.trim();
+    // Captured before any pop so "Saved" outlives this route.
+    final messenger = ScaffoldMessenger.of(context);
     try {
       if (_isDraft) {
         final newId = await widget.dao.addCell(
@@ -106,6 +108,7 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
         );
         if (!mounted) return;
         Navigator.of(context).pop(newId);
+        _showSaved(messenger);
       } else {
         await widget.dao.updateCell(
           _cell!.id,
@@ -115,6 +118,7 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
           notes: notes,
         );
         await _load();
+        _showSaved(messenger);
       }
     } on SlotInUseException catch (e) {
       if (!mounted) return;
@@ -126,6 +130,16 @@ class _CellDetailScreenState extends State<CellDetailScreen> {
             "Slot ${e.slot} is already in use by '$otherLabel'. Retire that cell first."),
       ));
     }
+  }
+
+  void _showSaved(ScaffoldMessengerState messenger) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('Saved'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ));
   }
 
   Future<void> _retire() async {
